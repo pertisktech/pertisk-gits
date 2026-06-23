@@ -153,6 +153,7 @@ Type=simple
 User=pertisk-gits
 Group=pertisk-gits
 WorkingDirectory=/var/lib/pertisk-gits
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=-/etc/pertisk-gits/pertisk-gits.conf
 ExecStart=/usr/bin/pertisk-gits
 Restart=always

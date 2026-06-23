@@ -39,7 +39,7 @@ pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Res
         .or_else(|| branches.first().cloned())
         .unwrap_or_else(|| default_branch.to_string());
 
-    let empty = !ref_exists(repo_path, &default_ref).await?;
+    let empty = branches.is_empty() || !ref_exists(repo_path, &default_ref).await?;
 
     Ok(RepoBrowser {
         branches,
@@ -73,6 +73,10 @@ pub async fn ref_exists(repo_path: &Path, ref_name: &str) -> anyhow::Result<bool
 }
 
 pub async fn list_tree(repo_path: &Path, ref_name: &str, path: &str) -> anyhow::Result<Vec<TreeEntry>> {
+    if !ref_exists(repo_path, ref_name).await? {
+        anyhow::bail!("branch '{ref_name}' not found");
+    }
+
     let tree_ref = if path.is_empty() {
         format!("refs/heads/{ref_name}")
     } else {
@@ -105,11 +109,19 @@ pub async fn list_tree(repo_path: &Path, ref_name: &str, path: &str) -> anyhow::
 }
 
 pub async fn read_blob(repo_path: &Path, ref_name: &str, path: &str) -> anyhow::Result<String> {
+    if !ref_exists(repo_path, ref_name).await? {
+        anyhow::bail!("branch '{ref_name}' not found");
+    }
+
     let object = format!("refs/heads/{ref_name}:{path}");
     git(repo_path, &["show", &object]).await
 }
 
 pub async fn list_commits(repo_path: &Path, ref_name: &str, limit: u32) -> anyhow::Result<Vec<CommitInfo>> {
+    if !ref_exists(repo_path, ref_name).await? {
+        anyhow::bail!("branch '{ref_name}' not found");
+    }
+
     let refspec = format!("refs/heads/{ref_name}");
     let pretty = "%H%x1f%an%x1f%ae%x1f%at%x1f%s";
     let limit = limit.to_string();

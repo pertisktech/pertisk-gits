@@ -6,7 +6,7 @@ import {
   GitCommit,
   Loader2,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
 import { Card } from '../components/Card'
@@ -30,9 +30,9 @@ interface RepoBrowserProps {
 }
 
 export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBrowserProps) {
-  const [ref, setRef] = useState(defaultBranch)
   const [path, setPath] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [branchOverride, setBranchOverride] = useState<string | null>(null)
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
@@ -41,30 +41,26 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
   })
 
   const browser = browserData?.browser
-
-  useEffect(() => {
-    if (browser?.default_ref) {
-      setRef(browser.default_ref)
-    }
-  }, [browser?.default_ref])
+  const ref = branchOverride ?? browser?.default_ref ?? defaultBranch
+  const canBrowse = Boolean(token && browser && !browser.empty)
 
   const { data: treeData, isLoading: treeLoading } = useQuery({
     queryKey: ['repo-tree', orgSlug, repoSlug, ref, path],
     queryFn: () => api.getRepoTree(token, orgSlug, repoSlug, { ref, path }),
-    enabled: Boolean(token && browser && !browser.empty),
+    enabled: canBrowse,
   })
 
   const { data: commitsData } = useQuery({
     queryKey: ['repo-commits', orgSlug, repoSlug, ref],
     queryFn: () => api.getRepoCommits(token, orgSlug, repoSlug, { ref, limit: 10 }),
-    enabled: Boolean(token && browser && !browser.empty),
+    enabled: canBrowse,
   })
 
   const { data: blobData, isLoading: blobLoading } = useQuery({
     queryKey: ['repo-blob', orgSlug, repoSlug, ref, selectedFile],
     queryFn: () =>
       api.getRepoBlob(token, orgSlug, repoSlug, { ref, path: selectedFile! }),
-    enabled: Boolean(token && selectedFile && browser && !browser.empty),
+    enabled: Boolean(canBrowse && selectedFile),
   })
 
   function navigateTo(newPath: string) {
@@ -121,7 +117,7 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
               id="branch-select"
               value={ref}
               onChange={(e) => {
-                setRef(e.target.value)
+                setBranchOverride(e.target.value)
                 navigateTo('')
               }}
               className="px-2.5 py-1.5 rounded-lg border border-border bg-bg text-sm text-text font-mono"

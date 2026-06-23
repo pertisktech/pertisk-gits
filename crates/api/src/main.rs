@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
-    http::{header, Request, StatusCode},
+    http::{header, Method, Request, StatusCode},
     middleware::{from_fn_with_state, Next},
-    response::{IntoResponse, Response},
-    routing::{get, post},
+    response::{Html, IntoResponse, Response},
+    routing::{get, get_service, post},
     Json, Router,
 };
 use pertisk_domain::{
@@ -134,8 +134,11 @@ async fn main() -> anyhow::Result<()> {
                 web_dist.display()
             );
         }
-        let spa = ServeDir::new(web_dist).not_found_service(ServeFile::new(index));
-        app = app.fallback_service(spa);
+        app = app
+            .nest_service("/assets", ServeDir::new(web_dist.join("assets")))
+            .route_service("/favicon.svg", get_service(ServeFile::new(web_dist.join("favicon.svg"))))
+            .route_service("/icons.svg", get_service(ServeFile::new(web_dist.join("icons.svg"))))
+            .fallback(get(spa_index));
         tracing::info!("serving web UI from {}", web_dist.display());
     } else {
         app = app.route("/", get(root));
@@ -168,6 +171,35 @@ async fn root() -> Json<serde_json::Value> {
         "health": "/api/v1/health",
         "api_base": "/api/v1"
     }))
+}
+
+async fn spa_index(method: Method, State(state): State<AppState>) -> Result<Response, StatusCode> {
+    if method != Method::GET && method != Method::HEAD {
+        return Err(StatusCode::NOT_FOUND);
+    }
+
+    let web_dist = state
+        .config
+        .web_dist
+        .as_ref()
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let mut response = if method == Method::HEAD {
+        StatusCode::OK.into_response()
+    } else {
+        let content = tokio::fs::read_to_string(web_dist.join("index.html"))
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        Html(content).into_response()
+    };
+
+    let headers = response.headers_mut();
+    headers.insert(
+        header::CACHE_CONTROL,
+        header::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+    );
+
+    Ok(response)
 }
 
 async fn health() -> Json<HealthResponse> {
@@ -547,6 +579,15 @@ async fn load_repo(
     Ok((org, repo, repo_path))
 }
 
+fn map_explorer_error(err: anyhow::Error) -> ApiError {
+    let msg = err.to_string().to_lowercase();
+    if msg.contains("not found") || msg.contains("unknown revision") || msg.contains("bad revision") {
+        ApiError::from(DomainError::NotFound)
+    } else {
+        ApiError::from(DomainError::Internal(err.to_string()))
+    }
+}
+
 async fn get_repo_browser(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -556,7 +597,7 @@ async fn get_repo_browser(
 
     let browser = explorer::repo_browser(&repo_path, &repo.default_branch)
         .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        .map_err(map_explorer_error)?;
 
     Ok(Json(BrowserResponse { browser }))
 }
@@ -571,7 +612,7 @@ async fn get_repo_tree(
 
     let entries = explorer::list_tree(&repo_path, &query.r#ref, &query.path)
         .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        .map_err(map_explorer_error)?;
 
     Ok(Json(TreeResponse {
         entries,
@@ -594,7 +635,7 @@ async fn get_repo_blob(
 
     let content = explorer::read_blob(&repo_path, &query.r#ref, &query.path)
         .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        .map_err(map_explorer_error)?;
 
     let is_binary = content.bytes().any(|b| b == 0);
 
@@ -616,7 +657,7 @@ async fn get_repo_commits(
 
     let commits = explorer::list_commits(&repo_path, &query.r#ref, query.limit.min(100))
         .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        .map_err(map_explorer_error)?;
 
     Ok(Json(CommitsResponse {
         commits,
