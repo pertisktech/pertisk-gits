@@ -13,6 +13,7 @@ import type { TreeEntry } from '../api/types'
 import { findReadmePath } from '../lib/readme'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
+import { CodeFileView } from './CodeFileView'
 import { RepoReadme } from './RepoReadme'
 
 interface RepoBrowserProps {
@@ -283,18 +284,16 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
               Raw
             </a>
           </div>
-          <div className="gogs-panel-body">
+          <div className="gogs-panel-body flush">
             {blobLoading ? (
-              <div className="flex items-center gap-2 text-text-secondary text-sm">
+              <div className="flex items-center gap-2 text-text-secondary text-sm p-4">
                 <Loader2 size={16} className="animate-spin" />
                 Loading file…
               </div>
             ) : blobData?.is_binary ? (
-              <p className="text-sm text-text-secondary">Binary file — preview not available.</p>
+              <p className="text-sm text-text-secondary p-4">Binary file — preview not available.</p>
             ) : (
-              <pre className="m-0 p-3 rounded-md bg-bg border border-border font-mono text-xs text-text overflow-x-auto leading-relaxed whitespace-pre-wrap">
-                {blobData?.content ?? ''}
-              </pre>
+              <CodeFileView path={selectedFile} content={blobData?.content ?? ''} />
             )}
           </div>
         </div>

@@ -914,6 +914,27 @@ body,
   white-space: pre;
 }
 
+.gogs-code-view {
+  overflow: auto;
+}
+
+.gogs-code-view .w-tc-editor {
+  border: none !important;
+  border-radius: 0;
+  min-height: 12rem;
+}
+
+.gogs-code-view .w-tc-editor textarea,
+.gogs-code-view .w-tc-editor pre {
+  font-family: var(--font-mono) !important;
+  font-size: 0.75rem !important;
+  line-height: 1.5 !important;
+}
+
+.gogs-code-view .w-tc-editor textarea {
+  cursor: default;
+}
+
 .gogs-clone-input {
   width: 100%;
   padding: 0.45rem 0.6rem;
