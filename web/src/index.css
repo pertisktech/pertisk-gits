@@ -1,0 +1,639 @@
+/* Flux-inspired violet theme */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import './styles/theme.css';
+
+:root {
+  /* ── Neutrals (violet-tinted dark navy) ─────────────────────────────────── */
+  --color-naturals-n0: #0c0d18;
+  --color-naturals-n1: #10111e;
+  --color-naturals-n2: #131421;
+  --color-naturals-n3: #181a2c;
+  --color-naturals-n4: #1d1f32;
+  --color-naturals-n5: #23253c;
+  --color-naturals-n6: #2c2f4c;
+  --color-naturals-n7: #3b3e5e;
+  --color-naturals-n8: #585b7a;
+  --color-naturals-n9: #7778a0;
+  --color-naturals-n10: #8e90ad;
+  --color-naturals-n11: #a8aac6;
+  --color-naturals-n12: #c8c9de;
+  --color-naturals-n13: #e6e7f0;
+  --color-naturals-n14: #ffffff;
+
+  /* ── Primary (violet) ─────────────────────────────────────────────────────── */
+  --color-primary-p1: #d8c8fd;
+  --color-primary-p2: #b89ef9;
+  --color-primary-p3: #9a7bf7;
+  --color-primary-p4: #7c59f0;
+  --color-primary-p5: #5f3fd4;
+  --color-primary-p6: #281a5e;
+
+  /* ── Semantic named colors ──────────────────────────────────────────────── */
+  --color-green-g1: #4ade9b;
+  --color-green-g2: #22a06b;
+  --color-red-r1: #ff5c56;
+  --color-red-r2: #6e2f30;
+  --color-yellow-y1: #fbbf24;
+  --color-yellow-y2: #d97706;
+  --color-blue-b1: #60a5fa;
+
+  /* ── Semantic aliases ─────────────────────────────────────────────────────── */
+  --color-bg: var(--color-naturals-n0);
+  --color-surface: var(--color-naturals-n1);
+  --color-surface-elevated: var(--color-naturals-n2);
+  --color-hover: var(--color-naturals-n4);
+  --color-border: var(--color-naturals-n5);
+  --color-text: var(--color-naturals-n13);
+  --color-text-secondary: var(--color-naturals-n11);
+  --color-muted: var(--color-naturals-n9);
+  --color-card: var(--color-naturals-n2);
+  --color-sidebar: #090a14;
+  --color-primary: var(--color-primary-p3);
+  --color-primary-hover: var(--color-primary-p2);
+  --color-bg-gradient-start: var(--color-naturals-n0);
+  --color-bg-gradient-end: var(--color-naturals-n1);
+
+  /* ── Icon / status colors — aligned with Omni named palette ──────────────── */
+  --color-icon-primary: var(--color-primary-p3);
+  --color-icon-secondary: var(--color-naturals-n10);
+  --color-icon-success: var(--color-green-g1);
+  --color-icon-warning: var(--color-yellow-y1);
+  --color-icon-danger: var(--color-red-r1);
+  --color-icon-info: var(--color-blue-b1);
+
+  /* ── Status ready color (teal) ───────────────────────────────────────────── */
+  --color-status-ready: #25a7a0;
+  --color-status-ready-bg: rgba(37, 167, 160, 0.12);
+  /* Workload overview accent (modern teal) ─────────────────────────────────── */
+  --color-workload-accent: #14b8a6;
+  --color-workload-accent-strong: #0f766e;
+  --color-workload-accent-bg: color-mix(in srgb, var(--color-workload-accent) 16%, transparent);
+  --color-workload-accent-soft: color-mix(in srgb, var(--color-workload-accent) 38%, var(--color-border));
+
+  /* ── Dashboard metric colors (pie charts, workload summary badges) ──────────── */
+  --color-dashboard-success: var(--color-green-g1);
+  --color-dashboard-success-bg: color-mix(in srgb, var(--color-green-g1) 12%, transparent);
+  --color-dashboard-warning: var(--color-yellow-y1);
+  --color-dashboard-warning-bg: color-mix(in srgb, var(--color-yellow-y1) 12%, transparent);
+  --color-dashboard-danger: var(--color-red-r1);
+  --color-dashboard-danger-bg: color-mix(in srgb, var(--color-red-r1) 12%, transparent);
+  --color-dashboard-info: var(--color-blue-b1);
+  --color-dashboard-info-bg: color-mix(in srgb, var(--color-blue-b1) 12%, transparent);
+  /* Primary chart/series color — dark green for dashboard & workload overview charts */
+  --color-dashboard-metric-primary: var(--color-green-g2);
+  --color-dashboard-metric-primary-bg: color-mix(in srgb, var(--color-green-g2) 12%, transparent);
+  --color-dashboard-metric-secondary: #a855f7;
+  --color-dashboard-metric-secondary-bg: rgba(168, 85, 247, 0.12);
+  --color-dashboard-metric-tertiary: #ec4899;
+  --color-dashboard-metric-tertiary-bg: rgba(236, 72, 153, 0.12);
+  --color-dashboard-metric-quaternary: #06b6d4;
+  --color-dashboard-metric-quaternary-bg: rgba(6, 182, 212, 0.12);
+
+  /* Bottom panel tokens */
+  --bottom-panel-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface) 86%, transparent),
+    color-mix(in srgb, var(--color-bg) 95%, transparent)
+  );
+  --bottom-panel-tabbar-bg: color-mix(in srgb, var(--color-surface-elevated) 88%, var(--color-bg));
+  --bottom-panel-tab-active-bg: color-mix(in srgb, var(--color-bg) 72%, var(--color-surface));
+  --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+  --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 80%, var(--color-surface));
+
+  /* ── Radius ───────────────────────────────────────────────────────────────── */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --radius-2xl: 20px;
+
+  /* ── Typography ──────────────────────────────────────────────────────────── */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  /* ── Shadows / transitions ───────────────────────────────────────────────── */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+  --shadow-sidebar: 0 0 0 1px rgba(31, 34, 46, 0.95), 8px 0 24px rgba(0, 0, 0, 0.32);
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-sidebar: 220ms;
+  --error: var(--color-red-r1);
+  --warn: var(--color-yellow-y1);
+}
+
+/* html.dark tweaks — glow + minor overrides only (all core tokens already in :root) */
+html.dark {
+  --color-primary-glow: color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+/* html.light — override for the few surfaces that differ in light mode */
+html.light {
+  --color-bg: #f5f5fa;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-hover: #eeeef8;
+  --color-border: #e2e2ec;
+  --color-text: #16162a;
+  --color-text-secondary: #4a4b6e;
+  --color-muted: #6c6d90;
+  --color-card: #ffffff;
+  --color-sidebar: #f0f0f9;
+  --color-primary: #6d3ef5;
+  --color-primary-hover: #8b65f7;
+  --color-icon-secondary: #6c6d90;
+  --color-bg-gradient-start: #f5f5fa;
+  --color-bg-gradient-end: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(22, 22, 42, 0.07);
+  --shadow-md: 0 8px 24px rgba(22, 22, 42, 0.1);
+  --shadow-lg: 0 16px 48px rgba(22, 22, 42, 0.14);
+  --shadow-sidebar: 0 0 0 1px rgba(140, 130, 200, 0.2), 8px 0 8px rgba(22, 22, 42, 0.04);
+
+  --color-naturals-n0: #ffffff;
+  --color-naturals-n1: #f8f8fc;
+  --color-naturals-n2: #f2f2f8;
+  --color-naturals-n3: #eaeaf4;
+  --color-naturals-n4: #e2e2ec;
+  --color-naturals-n5: #d8d8e8;
+  --color-naturals-n6: #c4c4d8;
+  --color-naturals-n7: #a8a8c4;
+  --color-naturals-n8: #8888a8;
+  --color-naturals-n9: #6c6d90;
+  --color-naturals-n10: #565674;
+  --color-naturals-n11: #4a4b6e;
+  --color-naturals-n12: #2e2f52;
+  --color-naturals-n13: #16162a;
+  --color-naturals-n14: #0a0a18;
+
+  --label-green: #15803d;
+  --label-red: #b91c1c;
+  --label-violet: #7c3aed;
+  --label-yellow: #92400e;
+  --label-cyan: #0e7490;
+  --label-blue: #1d4ed8;
+
+  --bottom-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+  --bottom-panel-tabbar-bg: color-mix(in srgb, #ffffff 90%, var(--color-hover));
+  --bottom-panel-tab-active-bg: #ffffff;
+  --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 26%, var(--color-border));
+  --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 72%, #ffffff);
+}
+
+:root {
+  --radius-xl: 10px;
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Map legacy names for existing components */
+:root {
+  --bg: var(--color-bg);
+  --bg-card: var(--color-card);
+  --bg-hover: var(--color-hover);
+  --border: var(--color-border);
+  --text: var(--color-text);
+  --text-muted: var(--color-muted);
+  --accent: var(--color-primary);
+  --accent-dim: var(--color-primary-hover);
+  --radius: var(--radius-lg);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: var(--color-bg);
+  background-image: linear-gradient(180deg, var(--color-bg-gradient-start), var(--color-bg-gradient-end));
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+button:not(:disabled):not([data-no-global-button-hover='true']):hover {
+  background-color: color-mix(in srgb, var(--color-primary) 14%, var(--color-surface));
+}
+
+button:not(:disabled):not([data-no-global-button-hover='true']):focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--color-primary) 70%, var(--color-border));
+  outline-offset: 1px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Dark mode: subtle gradient overlay */
+html.dark body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(900px 400px at 100% -10%, color-mix(in srgb, var(--color-primary) 10%, transparent), transparent 65%),
+    radial-gradient(600px 300px at 0% 60%, color-mix(in srgb, var(--color-blue-b1) 5%, transparent), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+html,
+body,
+#root {
+  transition: background-color var(--transition-normal), color var(--transition-fast);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 5px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-radius: 10px;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted);
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Styled icon tooltips */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  background: var(--color-surface-elevated);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+  z-index: 9999;
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* Sonner toaster — match app theme */
+[data-sonner-toast] {
+  gap: 10px !important;
+}
+[data-sonner-toast] [data-title] {
+  font-weight: 500;
+  color: var(--color-text) !important;
+}
+[data-sonner-toast] [data-description] {
+  color: var(--color-text-secondary) !important;
+}
+[data-sonner-toast][data-type='success'] {
+  border-color: color-mix(in srgb, var(--color-green-g1) 30%, var(--color-border)) !important;
+}
+[data-sonner-toast][data-type='success'] [data-icon] svg {
+  color: var(--color-green-g1) !important;
+}
+[data-sonner-toast][data-type='error'] {
+  border-color: color-mix(in srgb, var(--color-red-r1) 30%, var(--color-naturals-n6)) !important;
+}
+[data-sonner-toast][data-type='error'] [data-icon] svg {
+  color: var(--color-red-r1) !important;
+}
+[data-sonner-toast] [data-close-button] {
+  background: var(--color-hover) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-secondary) !important;
+}
+[data-sonner-toast] [data-close-button]:hover {
+  background: var(--color-border) !important;
+  color: var(--color-text) !important;
+}
+
+/* ── Resource labels (Omni design system) ────────────────────────────────── */
+.resource-label {
+  border-radius: var(--radius-sm);
+  padding-inline: 0.5rem;
+  padding-block: 0.125rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.5;
+  background-color: color-mix(in hsl, currentColor 14%, transparent);
+  border: 1px solid color-mix(in hsl, currentColor 28%, transparent);
+}
+
+.label-green   { color: #61ff9b; }
+.label-red     { color: #fc2226; }
+.label-orange  { color: #f67a51; }
+.label-violet  { color: #fd90e6; }
+.label-yellow  { color: #fcdf69; }
+.label-cyan    { color: #00c4d6; }
+.label-blue1   { color: #6fabeb; }
+.label-blue2   { color: #3388ff; }
+.label-blue3   { color: #9675f0; }
+.label-light1  { color: #e89292; }
+.label-light2  { color: #c09c75; }
+.label-light3  { color: #b7bb7e; }
+.label-light4  { color: #849a7f; }
+.label-light5  { color: #7ba09d; }
+.label-light6  { color: #7e86ba; }
+.label-light7  { color: #a57bbc; }
+.label-grayed-out { color: var(--color-naturals-n8); }
+
+/* Bottom panel theme + tab alignment */
+.bottom-panel-shell {
+  background: var(--bottom-panel-bg);
+  backdrop-filter: blur(6px);
+}
+
+.bottom-panel-tabbar {
+  min-height: 2.6rem;
+  border-bottom: 1px solid var(--color-border);
+  background: var(--bottom-panel-tabbar-bg);
+}
+
+.bottom-panel-tabs {
+  height: 100%;
+  scrollbar-width: thin;
+}
+
+.bottom-panel-tab {
+  position: relative;
+  height: 2rem;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 0.65rem 0.65rem 0 0;
+  transform: translateY(1px);
+}
+
+.bottom-panel-tab:hover {
+  background: var(--bottom-panel-tab-hover-bg);
+}
+
+.bottom-panel-tab.is-active {
+  background: var(--bottom-panel-tab-active-bg);
+  border-color: var(--bottom-panel-tab-active-border);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-primary) 26%, transparent);
+}
+
+.bottom-panel-controls {
+  height: 100%;
+}
+
+.bottom-panel-control-btn {
+  background: color-mix(in srgb, var(--color-surface-elevated) 86%, transparent);
+}
+
+.bottom-panel-control-btn:hover {
+  background: var(--bottom-panel-tab-hover-bg);
+}
+
+/* YAML editor — override Ace background to match terminal surface */
+.yaml-editor-pane .ace_editor,
+.yaml-editor-pane .ace_scroller,
+.yaml-editor-pane .ace_content {
+  background: var(--color-surface-elevated) !important;
+}
+.yaml-editor-pane .ace_gutter {
+  background: color-mix(in srgb, var(--color-surface-elevated) 85%, black 15%) !important;
+}
+
+/* Base foreground = value color (unquoted scalars) */
+.yaml-editor-pane .ace-tomorrow-night,
+.yaml-editor-pane .ace-github {
+  color: #C18971 !important;
+}
+
+/* Keys (meta.tag) */
+.yaml-editor-pane .ace_meta.ace_tag {
+  color: #3CC7B0 !important;
+}
+
+/* Quoted string values */
+.yaml-editor-pane .ace_string {
+  color: #C18971 !important;
+}
+
+/* Numbers */
+.yaml-editor-pane .ace_constant.ace_numeric {
+  color: var(--color-text) !important;
+}
+
+/* Booleans / null */
+.yaml-editor-pane .ace_constant.ace_language {
+  color: #549AD3 !important;
+}
+
+/* Structural: colon separators, list markers */
+.yaml-editor-pane .ace_keyword,
+.yaml-editor-pane .ace_list.ace_markup {
+  color: var(--color-text) !important;
+  opacity: 0.45;
+}
+
+/* Comments */
+.yaml-editor-pane .ace_comment {
+  color: var(--color-text) !important;
+  opacity: 0.35;
+}
+
+/* Hide vertical scrollbar */
+.yaml-editor-pane .ace_scrollbar-v {
+  display: none !important;
+}
+
+/* Hide indent guides */
+.yaml-editor-pane .ace_indent-guide {
+  background: none !important;
+  border: none !important;
+}
+
+/* Hide print margin */
+.yaml-editor-pane .ace_print-margin {
+  visibility: hidden !important;
+  display: none !important;
+}
+
+/* Workload overview charts — use theme text color so labels are visible in dark/light mode */
+.chart-theme-text text {
+  fill: var(--color-text) !important;
+}
+.chart-theme-text .recharts-legend-item-text {
+  color: var(--color-text) !important;
+  fill: var(--color-text) !important;
+}
+
+/* Recharts tooltip — theme background and text; single border on content only */
+.chart-theme-text .recharts-tooltip-wrapper {
+  border: none !important;
+}
+.chart-theme-text .recharts-default-tooltip {
+  background-color: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+  padding: 10px 12px !important;
+}
+.chart-theme-text .recharts-default-tooltip .recharts-tooltip-label,
+.chart-theme-text .recharts-default-tooltip .recharts-tooltip-item {
+  color: var(--color-text) !important;
+}
+
+/* Global Recharts tooltip (in case rendered in portal) — single border */
+.recharts-tooltip-wrapper {
+  border: none !important;
+}
+.recharts-default-tooltip {
+  background-color: var(--color-surface) !important;
+  border: 1px solid var(--color-border) !important;
+  color: var(--color-text) !important;
+  padding: 10px 12px !important;
+}
+.recharts-default-tooltip .recharts-tooltip-label,
+.recharts-default-tooltip .recharts-tooltip-item {
+  color: var(--color-text) !important;
+}
+
+/* Helm chart README markdown viewer (bottom panel) */
+.markdown-viewer .markdown-viewer-content {
+  color: var(--color-text);
+  line-height: 1.6;
+  word-break: break-word;
+}
+.markdown-viewer .markdown-viewer-content h1,
+.markdown-viewer .markdown-viewer-content h2,
+.markdown-viewer .markdown-viewer-content h3,
+.markdown-viewer .markdown-viewer-content h4 {
+  color: var(--color-text);
+  font-weight: 600;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+}
+.markdown-viewer .markdown-viewer-content h1 { font-size: 1.5em; margin-top: 0; }
+.markdown-viewer .markdown-viewer-content h2 { font-size: 1.25em; padding-bottom: 0.25em; border-bottom: 1px solid var(--color-border); }
+.markdown-viewer .markdown-viewer-content h3 { font-size: 1.1em; }
+.markdown-viewer .markdown-viewer-content h4 { font-size: 1em; }
+.markdown-viewer .markdown-viewer-content p {
+  margin: 0.75em 0;
+}
+.markdown-viewer .markdown-viewer-content p:first-child { margin-top: 0; }
+.markdown-viewer .markdown-viewer-content a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+.markdown-viewer .markdown-viewer-content a:hover {
+  text-decoration: underline;
+}
+.markdown-viewer .markdown-viewer-content code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+}
+.markdown-viewer .markdown-viewer-content pre {
+  margin: 0.75em 0;
+  padding: 1em;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  overflow-x: auto;
+  font-size: 0.875em;
+  line-height: 1.5;
+}
+.markdown-viewer .markdown-viewer-content pre code {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: inherit;
+}
+.markdown-viewer .markdown-viewer-content ul,
+.markdown-viewer .markdown-viewer-content ol {
+  margin: 0.75em 0;
+  padding-left: 1.5em;
+}
+.markdown-viewer .markdown-viewer-content li {
+  margin: 0.25em 0;
+}
+.markdown-viewer .markdown-viewer-content blockquote {
+  margin: 0.75em 0;
+  padding-left: 1em;
+  border-left: 4px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+.markdown-viewer .markdown-viewer-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.9em;
+}
+.markdown-viewer .markdown-viewer-content th,
+.markdown-viewer .markdown-viewer-content td {
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--color-border);
+  text-align: left;
+}
+.markdown-viewer .markdown-viewer-content th {
+  background: var(--color-surface-elevated);
+  font-weight: 600;
+  color: var(--color-text);
+}
+.markdown-viewer .markdown-viewer-content hr {
+  margin: 1.25em 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
+}
+

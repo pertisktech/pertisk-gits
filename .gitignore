@@ -1,0 +1,10 @@
+/target
+**/*.rs.bk
+.env
+.env.local
+data/repos
+web/.npm-cache
+web/node_modules
+web/dist
+.DS_Store
+*.log

@@ -1,0 +1,17 @@
+[package]
+name = "pertisk-gateway"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "pertisk-gateway"
+path = "src/main.rs"
+
+[dependencies]
+async-trait = { workspace = true }
+bytes = "1"
+dotenvy = { workspace = true }
+pingora-core = "0.6"
+pingora-proxy = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
