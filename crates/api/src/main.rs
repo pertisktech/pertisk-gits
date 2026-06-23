@@ -22,6 +22,7 @@ use pertisk_git::{
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tower_http::cors::{Any, CorsLayer};
+use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
@@ -121,10 +122,26 @@ async fn main() -> anyhow::Result<()> {
         repos_root: state.config.repos_root.clone(),
     };
 
-    let app = Router::new()
-        .route("/", get(root))
+    let mut app = Router::new()
         .nest("/api/v1", api_routes)
-        .merge(pertisk_git::http::router().with_state(git_state))
+        .merge(pertisk_git::http::router().with_state(git_state));
+
+    if let Some(web_dist) = &config.web_dist {
+        let index = web_dist.join("index.html");
+        if !index.is_file() {
+            anyhow::bail!(
+                "WEB_DIST={} but index.html is missing — run `cd web && npm run build` first",
+                web_dist.display()
+            );
+        }
+        let spa = ServeDir::new(web_dist).not_found_service(ServeFile::new(index));
+        app = app.fallback_service(spa);
+        tracing::info!("serving web UI from {}", web_dist.display());
+    } else {
+        app = app.route("/", get(root));
+    }
+
+    let app = app
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
