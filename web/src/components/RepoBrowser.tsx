@@ -14,6 +14,7 @@ import { findReadmePath } from '../lib/readme'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
 import { CodeFileView } from './CodeFileView'
+import { RepoClonePanel } from './RepoClonePanel'
 import { RepoReadme } from './RepoReadme'
 
 interface RepoBrowserProps {
@@ -21,9 +22,22 @@ interface RepoBrowserProps {
   orgSlug: string
   repoSlug: string
   defaultBranch: string
+  cloneUrl?: string
+  authCloneUrl?: string
+  cloneUrlSsh?: string | null
+  isPrivate?: boolean
 }
 
-export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBrowserProps) {
+export function RepoBrowser({
+  token,
+  orgSlug,
+  repoSlug,
+  defaultBranch,
+  cloneUrl,
+  authCloneUrl,
+  cloneUrlSsh,
+  isPrivate = false,
+}: RepoBrowserProps) {
   const [path, setPath] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [refOverride, setRefOverride] = useState<string | null>(null)
@@ -82,6 +96,9 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
       ? findReadmePath(treeData.entries)
       : null
 
+  const branchCount = browser?.branches.length ?? 0
+  const tagCount = browser?.tags.length ?? 0
+
   if (browserLoading) {
     return (
       <div className="gogs-panel">
@@ -94,14 +111,23 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
   }
 
   if (browser?.empty) {
+    if (cloneUrl && authCloneUrl) {
+      return (
+        <RepoClonePanel
+          cloneUrl={cloneUrl}
+          authCloneUrl={authCloneUrl}
+          cloneUrlSsh={cloneUrlSsh}
+          defaultBranch={defaultBranch}
+          isPrivate={isPrivate}
+        />
+      )
+    }
+
     return (
       <div className="gogs-panel">
-        <div className="gogs-panel-body text-center py-12">
-          <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
-          <p className="text-text font-medium">This repository is empty</p>
-          <p className="text-sm text-text-secondary mt-1 max-w-md mx-auto">
-            Push your first commit using the clone panel, then files will appear here.
-          </p>
+        <div className="gogs-panel-body flex items-center gap-2 text-text-secondary text-sm">
+          <Loader2 size={16} className="animate-spin" />
+          Loading clone instructions…
         </div>
       </div>
     )
@@ -148,22 +174,28 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
             )}
           </select>
 
-          <div className="gogs-path-crumb flex-1 min-w-0">
-            <button type="button" onClick={() => navigateTo('')}>
-              {repoSlug}
-            </button>
-            {pathParts.map((part, i) => {
-              const subPath = pathParts.slice(0, i + 1).join('/')
-              return (
-                <span key={subPath} className="inline-flex items-center gap-1">
-                  <ChevronRight size={12} className="text-muted" />
-                  <button type="button" onClick={() => navigateTo(subPath)}>
-                    {part}
-                  </button>
-                </span>
-              )
-            })}
-          </div>
+          <span className="text-sm text-text-secondary whitespace-nowrap">
+            {branchCount} Branch.{`  ${tagCount} Tags`}
+          </span>
+
+          {pathParts.length > 0 && (
+            <div className="gogs-path-crumb flex-1 min-w-0">
+              <button type="button" onClick={() => navigateTo('')} aria-label="Repository root">
+                /
+              </button>
+              {pathParts.map((part, i) => {
+                const subPath = pathParts.slice(0, i + 1).join('/')
+                return (
+                  <span key={subPath} className="inline-flex items-center gap-1">
+                    <ChevronRight size={12} className="text-muted" />
+                    <button type="button" onClick={() => navigateTo(subPath)}>
+                      {part}
+                    </button>
+                  </span>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {treeLoading ? (

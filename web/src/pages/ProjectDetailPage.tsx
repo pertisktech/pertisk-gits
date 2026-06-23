@@ -1,73 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { Code2, FolderGit2, GitCommit, Lock, Settings } from 'lucide-react'
+import { Code2, FolderGit2, GitCommit, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { GogsSegment } from '../components/GogsSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
+import { RepoClonePanel } from '../components/RepoClonePanel'
 import { RepoCommits } from '../components/RepoCommits'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
 
 type Tab = 'code' | 'commits' | 'clone' | 'settings'
-
-function CloneTabContent({
-  cloneUrl,
-  authCloneUrl,
-  cloneUrlSsh,
-  defaultBranch,
-  isPrivate,
-}: {
-  cloneUrl: string
-  authCloneUrl: string
-  cloneUrlSsh?: string | null
-  defaultBranch: string
-  isPrivate: boolean
-}) {
-  return (
-    <div className="gogs-panel">
-      <div className="gogs-panel-header">Clone this repository</div>
-      <div className="gogs-panel-body space-y-5">
-        <div>
-          <div className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
-            HTTP
-          </div>
-          <pre className="m-0 p-3 rounded-md bg-bg border border-border font-mono text-xs text-text overflow-x-auto">
-            {`git clone ${cloneUrl}`}
-          </pre>
-        </div>
-        {cloneUrlSsh && (
-          <div>
-            <div className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
-              SSH
-            </div>
-            <pre className="m-0 p-3 rounded-md bg-bg border border-border font-mono text-xs text-text overflow-x-auto">
-              {`git clone ${cloneUrlSsh}`}
-            </pre>
-          </div>
-        )}
-        <div>
-          <div className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
-            Push an existing project
-          </div>
-          <pre className="m-0 p-3 rounded-md bg-bg border border-border font-mono text-xs text-text overflow-x-auto leading-relaxed">{`cd my-project
-git init --initial-branch=${defaultBranch}
-git remote add origin ${authCloneUrl}
-git add .
-git commit -m "Initial commit"
-git push -u origin ${defaultBranch}`}</pre>
-        </div>
-        {isPrivate && (
-          <p className="text-sm text-text-secondary flex items-start gap-2 p-3 rounded-md bg-dashboard-info-bg border border-blue-b1/20">
-            <Lock size={14} className="text-blue-b1 shrink-0 mt-0.5" />
-            Private repository — use your Pertisk Gits account password when Git prompts.
-          </p>
-        )}
-      </div>
-    </div>
-  )
-}
 
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
@@ -145,6 +89,10 @@ export function ProjectDetailPage() {
           orgSlug={orgSlug}
           repoSlug={projectSlug}
           defaultBranch={project.default_branch}
+          cloneUrl={cloneUrl}
+          authCloneUrl={authCloneUrl}
+          cloneUrlSsh={cloneUrlSsh}
+          isPrivate={project.visibility === 'private'}
         />
       )}
 
@@ -158,7 +106,7 @@ export function ProjectDetailPage() {
       )}
 
       {tab === 'clone' && (
-        <CloneTabContent
+        <RepoClonePanel
           cloneUrl={cloneUrl}
           authCloneUrl={authCloneUrl}
           cloneUrlSsh={cloneUrlSsh}
