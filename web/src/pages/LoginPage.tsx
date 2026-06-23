@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from 'react'
-import { GitBranch, Moon, Shield, Sun } from 'lucide-react'
+import { Moon, Shield, Sun } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { AppVersion } from '../components/AppVersion'
 import { useTheme } from '../context/ThemeContext'
 import styles from './AuthPage.module.css'
 
@@ -93,8 +94,7 @@ export function LoginPage() {
 
       <footer className={styles.footer}>
         <p className={styles.version}>
-          <GitBranch size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
-          Pertisk Gits · Phase 1
+          <AppVersion />
         </p>
       </footer>
     </div>

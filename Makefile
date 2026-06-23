@@ -34,7 +34,7 @@ PACKAGE_BUILD ?= 1
 
 # --- Local build (native macOS/Linux binary) ---
 build-local: web-dist
-	$(CARGO) build --release -p pertisk-api
+	PERTISK_VERSION=$(VERSION) $(CARGO) build --release -p pertisk-api
 
 # --- Linux package for server deploy (DEB + RPM + tarball → release/) ---
 build: build-package
@@ -71,20 +71,28 @@ fix-perms:
 	chown -R $(DEV_USER):staff web/node_modules web/dist data target 2>/dev/null || true
 	@echo "Fixed ownership for web/node_modules, web/dist, data/, and target/"
 
+WEB_VERSION_FILE = web/dist/.app-version
+
 web-dist:
 	@if [ -d web/dist/assets ] && [ ! -w web/dist/assets ]; then \
 		echo "web/dist is not writable (usually from 'sudo make dev'). Run: sudo make fix-perms"; exit 1; \
 	fi
-	@echo "Checking web UI build cache..."
-	@if [ -d web/dist ] && [ -z "$$(find web/src web/public web/index.html web/package.json web/package-lock.json -type f -newer web/dist 2>/dev/null | head -n 1)" ]; then \
-		echo "web/dist is up to date; skipping build."; \
-	else \
-		echo "Building web UI..."; \
+	@echo "Checking web UI build cache (version $(VERSION))..."
+	@skip=0; \
+	if [ -d web/dist ] && [ -f "$(WEB_VERSION_FILE)" ] && [ "$$(cat $(WEB_VERSION_FILE))" = "$(VERSION)" ]; then \
+		if [ -z "$$(find web/src web/public web/index.html web/package.json web/package-lock.json web/vite.config.ts -type f -newer web/dist 2>/dev/null | head -n 1)" ]; then \
+			echo "web/dist is up to date (v$(VERSION)); skipping build."; \
+			skip=1; \
+		fi; \
+	fi; \
+	if [ $$skip -eq 0 ]; then \
+		echo "Building web UI (v$(VERSION))..."; \
 		if [ ! -d web/node_modules ]; then $(MAKE) install-web; fi; \
 		rm -rf web/dist 2>/dev/null || { \
 			echo "Cannot clean web/dist. Run: sudo make fix-perms"; exit 1; \
 		}; \
-		cd web && $(RUN_AS_USER)npm run build; \
+		cd web && $(RUN_AS_USER)VERSION="$(VERSION)" npm run build; \
+		echo "$(VERSION)" > "$(WEB_VERSION_FILE)"; \
 	fi
 
 dev-web:
@@ -132,6 +140,7 @@ dev-serve: dev
 
 package-clean:
 	rm -f pertisk-gits-linux-amd64 pertisk-gits-linux-arm64
+	rm -f web/dist/.app-version
 	@echo "Removed Linux binaries; next package build will rebuild via Docker."
 
 package-amd64: web-dist

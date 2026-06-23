@@ -1,8 +1,9 @@
-import { GitBranch, LayoutDashboard, Moon, Plus, Sun, Users } from 'lucide-react'
+import { LayoutDashboard, Moon, Plus, Sun, Users } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { cn } from '../utils/cn'
+import { AppVersion } from './AppVersion'
 import { GlobalSearch } from './GlobalSearch'
 import { UserMenu } from './UserMenu'
 
@@ -78,10 +79,7 @@ export function AppLayout() {
       </main>
 
       <footer className="shrink-0 border-t border-border bg-surface px-4 py-2 text-center text-xs text-muted">
-        <span className="inline-flex items-center gap-1.5">
-          <GitBranch size={12} className="text-primary" />
-          Pertisk Gits · Git hosting
-        </span>
+        <AppVersion />
       </footer>
     </div>
   )

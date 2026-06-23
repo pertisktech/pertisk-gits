@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { EmptyState, LinkButton } from '../components/ui'
+import { builtAppVersion, fetchAppVersion } from '../lib/version'
 
 export function DashboardPage() {
   const { token, user } = useAuth()
@@ -12,6 +13,13 @@ export function DashboardPage() {
     queryKey: ['organizations'],
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
+  })
+
+  const { data: appVersion } = useQuery({
+    queryKey: ['app-version'],
+    queryFn: fetchAppVersion,
+    staleTime: 60 * 60 * 1000,
+    retry: false,
   })
 
   const recentGroups = groups.slice(0, 8)
@@ -46,7 +54,7 @@ export function DashboardPage() {
           <div className="text-sm text-text-secondary mt-0.5">HTTP enabled</div>
         </div>
         <div className="gogs-panel p-4">
-          <div className="text-2xl font-bold text-primary">v0.1</div>
+          <div className="text-2xl font-bold text-primary">v{appVersion ?? builtAppVersion}</div>
           <div className="text-sm text-text-secondary mt-0.5">Platform</div>
         </div>
       </div>

@@ -34,6 +34,7 @@ use validator::Validate;
 mod config;
 mod db;
 mod password;
+mod version;
 
 use config::Config;
 use password::{hash_password, verify_password};
@@ -212,7 +213,7 @@ async fn main() -> anyhow::Result<()> {
 async fn root() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "service": "pertisk-api",
-        "version": env!("CARGO_PKG_VERSION"),
+        "version": version::APP_VERSION,
         "note": "This is the REST API. Open the web UI at http://localhost:5173",
         "health": "/health",
         "health_live": "/health/live",
@@ -270,7 +271,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthRespon
         status_code,
         Json(HealthResponse {
             status: if healthy { "ok" } else { "unhealthy" },
-            version: env!("CARGO_PKG_VERSION"),
+            version: version::APP_VERSION,
             database,
         }),
     )

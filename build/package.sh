@@ -26,8 +26,9 @@ case "$ARCH" in
     ;;
 esac
 
+make web-dist VERSION="$VERSION"
 if [ ! -f web/dist/index.html ]; then
-  echo "Error: web/dist not found. Run: make install-web && make web-dist" >&2
+  echo "Error: web/dist not found after web-dist build." >&2
   exit 1
 fi
 
@@ -62,7 +63,7 @@ is_valid_linux_binary() {
 
 build_native() {
   echo "Using native cargo build for $PACKAGE_NAME (linux/$ARCH, version $VERSION)..."
-  CARGO_BUILD_JOBS="${CARGO_JOBS:-4}" cargo build --release --locked -p "$CARGO_BIN"
+  CARGO_BUILD_JOBS="${CARGO_JOBS:-4}" PERTISK_VERSION="$VERSION" cargo build --release --locked -p "$CARGO_BIN"
   cp "target/release/$CARGO_BIN" "./${artifact}"
   chmod +x "./${artifact}"
 }
