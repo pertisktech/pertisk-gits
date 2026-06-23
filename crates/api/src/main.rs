@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header, Request, StatusCode},
     middleware::{from_fn_with_state, Next},
     response::{IntoResponse, Response},
@@ -13,8 +13,13 @@ use pertisk_domain::{
     models::*,
     DomainError,
 };
-use pertisk_git::{http::GitHttpState, storage::{ensure_bare_repo, init_bare_repo}};
-use serde::Serialize;
+use pertisk_git::{
+    config::repo_disk_path,
+    explorer::{self, CommitInfo, RepoBrowser, TreeEntry},
+    http::GitHttpState,
+    storage::{ensure_bare_repo, init_bare_repo},
+};
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::trace::TraceLayer;
@@ -92,6 +97,22 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}",
             get(get_repository),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/browser",
+            get(get_repo_browser),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/tree",
+            get(get_repo_tree),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/blob",
+            get(get_repo_blob),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/commits",
+            get(get_repo_commits),
         )
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
@@ -419,6 +440,170 @@ async fn get_repository(
     Ok(Json(RepositoryResponse {
         clone_url_http: state.config.clone_url(&org_slug, &repo.slug),
         repository: repo,
+    }))
+}
+
+#[derive(Deserialize)]
+struct TreeQuery {
+    #[serde(default = "default_ref")]
+    r#ref: String,
+    #[serde(default)]
+    path: String,
+}
+
+fn default_ref() -> String {
+    "main".into()
+}
+
+#[derive(Deserialize)]
+struct BlobQuery {
+    #[serde(default = "default_ref")]
+    r#ref: String,
+    path: String,
+}
+
+#[derive(Deserialize)]
+struct CommitsQuery {
+    #[serde(default = "default_ref")]
+    r#ref: String,
+    #[serde(default = "default_commit_limit")]
+    limit: u32,
+}
+
+fn default_commit_limit() -> u32 {
+    30
+}
+
+#[derive(Serialize)]
+struct BrowserResponse {
+    browser: RepoBrowser,
+}
+
+#[derive(Serialize)]
+struct TreeResponse {
+    entries: Vec<TreeEntry>,
+    path: String,
+    r#ref: String,
+}
+
+#[derive(Serialize)]
+struct BlobResponse {
+    path: String,
+    r#ref: String,
+    content: String,
+    is_binary: bool,
+}
+
+#[derive(Serialize)]
+struct CommitsResponse {
+    commits: Vec<CommitInfo>,
+    r#ref: String,
+}
+
+async fn load_repo(
+    state: &AppState,
+    org_slug: &str,
+    repo_slug: &str,
+    user_id: Uuid,
+) -> Result<(Organization, Repository, std::path::PathBuf), ApiError> {
+    let org = find_org_for_member(&state.pool, org_slug, user_id).await?;
+
+    let repo = sqlx::query_as::<_, Repository>(
+        r#"
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        FROM repositories
+        WHERE organization_id = $1 AND slug = $2
+        "#,
+    )
+    .bind(org.id)
+    .bind(repo_slug)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::NotFound)?;
+
+    ensure_bare_repo(&state.config.repos_root, org_slug, &repo.slug)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let repo_path = repo_disk_path(&state.config.repos_root, org_slug, &repo.slug);
+    Ok((org, repo, repo_path))
+}
+
+async fn get_repo_browser(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+) -> Result<Json<BrowserResponse>, ApiError> {
+    let (_org, repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+
+    let browser = explorer::repo_browser(&repo_path, &repo.default_branch)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(BrowserResponse { browser }))
+}
+
+async fn get_repo_tree(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<TreeQuery>,
+) -> Result<Json<TreeResponse>, ApiError> {
+    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+
+    let entries = explorer::list_tree(&repo_path, &query.r#ref, &query.path)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(TreeResponse {
+        entries,
+        path: query.path,
+        r#ref: query.r#ref,
+    }))
+}
+
+async fn get_repo_blob(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<BlobQuery>,
+) -> Result<Json<BlobResponse>, ApiError> {
+    if query.path.is_empty() {
+        return Err(DomainError::Validation("path is required".into()).into());
+    }
+
+    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+
+    let content = explorer::read_blob(&repo_path, &query.r#ref, &query.path)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let is_binary = content.bytes().any(|b| b == 0);
+
+    Ok(Json(BlobResponse {
+        path: query.path,
+        r#ref: query.r#ref,
+        content,
+        is_binary,
+    }))
+}
+
+async fn get_repo_commits(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<CommitsQuery>,
+) -> Result<Json<CommitsResponse>, ApiError> {
+    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+
+    let commits = explorer::list_commits(&repo_path, &query.r#ref, query.limit.min(100))
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(CommitsResponse {
+        commits,
+        r#ref: query.r#ref,
     }))
 }
 

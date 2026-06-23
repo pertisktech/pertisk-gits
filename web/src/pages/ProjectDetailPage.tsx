@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
+import { RepoBrowser } from '../components/RepoBrowser'
 import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
 import { Breadcrumbs, PageHeader } from '../components/ui'
 
@@ -38,9 +39,12 @@ function CopyField({ label, value }: { label: string; value: string }) {
   )
 }
 
+type Tab = 'code' | 'clone'
+
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
   const { token, user } = useAuth()
+  const [tab, setTab] = useState<Tab>('code')
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -90,63 +94,98 @@ export function ProjectDetailPage() {
         </div>
       )}
 
-      {project && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <Card title="Project information">
-            <p className="text-text-secondary mb-4">{project.description ?? 'No description provided.'}</p>
-            <dl className="space-y-3 text-sm">
-              <div>
-                <dt className="text-text-secondary font-medium">Default branch</dt>
-                <dd className="text-text font-mono flex items-center gap-1.5 mt-0.5">
-                  <GitBranch size={14} className="text-primary" />
-                  {project.default_branch}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-text-secondary font-medium">Created</dt>
-                <dd className="text-text mt-0.5">{new Date(project.created_at).toLocaleString()}</dd>
-              </div>
-              <div>
-                <dt className="text-text-secondary font-medium">Last updated</dt>
-                <dd className="text-text mt-0.5">{new Date(project.updated_at).toLocaleString()}</dd>
-              </div>
-            </dl>
-          </Card>
+      {project && token && (
+        <>
+          <div className="flex gap-1 border-b border-border mb-4">
+            {(
+              [
+                ['code', 'Code'],
+                ['clone', 'Clone'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                  tab === id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-text-secondary hover:text-text'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
 
-          <Card title="Clone">
-            <div className="space-y-4">
-              <CopyField label="HTTP clone URL" value={cloneUrl} />
-              {project.visibility === 'private' && (
-                <div className="flex items-start gap-2 p-3 rounded-lg bg-dashboard-info-bg border border-blue-b1/20 text-sm text-text-secondary">
-                  <Lock size={14} className="text-blue-b1 shrink-0 mt-0.5" />
-                  Private project — use your username and password when Git prompts for credentials.
+          {tab === 'code' && (
+            <RepoBrowser
+              token={token}
+              orgSlug={orgSlug}
+              repoSlug={projectSlug}
+              defaultBranch={project.default_branch}
+            />
+          )}
+
+          {tab === 'clone' && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card title="Project information">
+                <p className="text-text-secondary mb-4">{project.description ?? 'No description provided.'}</p>
+                <dl className="space-y-3 text-sm">
+                  <div>
+                    <dt className="text-text-secondary font-medium">Default branch</dt>
+                    <dd className="text-text font-mono flex items-center gap-1.5 mt-0.5">
+                      <GitBranch size={14} className="text-primary" />
+                      {project.default_branch}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary font-medium">Created</dt>
+                    <dd className="text-text mt-0.5">{new Date(project.created_at).toLocaleString()}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-text-secondary font-medium">Last updated</dt>
+                    <dd className="text-text mt-0.5">{new Date(project.updated_at).toLocaleString()}</dd>
+                  </div>
+                </dl>
+              </Card>
+
+              <Card title="Clone">
+                <div className="space-y-4">
+                  <CopyField label="HTTP clone URL" value={cloneUrl} />
+                  {project.visibility === 'private' && (
+                    <div className="flex items-start gap-2 p-3 rounded-lg bg-dashboard-info-bg border border-blue-b1/20 text-sm text-text-secondary">
+                      <Lock size={14} className="text-blue-b1 shrink-0 mt-0.5" />
+                      Private project — use your username and password when Git prompts for credentials.
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          </Card>
+              </Card>
 
-          <Card title="Push an existing folder" className="lg:col-span-2">
-            <pre className="m-0 p-4 rounded-lg bg-bg border border-border font-mono text-xs text-text overflow-x-auto leading-relaxed">{`cd my-project
+              <Card title="Push an existing folder" className="lg:col-span-2">
+                <pre className="m-0 p-4 rounded-lg bg-bg border border-border font-mono text-xs text-text overflow-x-auto leading-relaxed">{`cd my-project
 git init --initial-branch=${project.default_branch}
 git remote add origin ${authCloneUrl}
 git add .
 git commit -m "Initial commit"
 git push -u origin ${project.default_branch}`}</pre>
-            <p className="text-sm text-text-secondary mt-3">
-              Use your Pertisk Gits account password when Git prompts for credentials.
-            </p>
-          </Card>
+                <p className="text-sm text-text-secondary mt-3">
+                  Use your Pertisk Gits account password when Git prompts for credentials.
+                </p>
+              </Card>
 
-          <Card title="Clone this repository" className="lg:col-span-2">
-            <div className="flex items-center gap-2 mb-3 text-text-secondary">
-              <FolderGit2 size={16} />
-              <span className="text-sm">Quick start</span>
+              <Card title="Clone this repository" className="lg:col-span-2">
+                <div className="flex items-center gap-2 mb-3 text-text-secondary">
+                  <FolderGit2 size={16} />
+                  <span className="text-sm">Quick start</span>
+                </div>
+                <pre className="m-0 p-4 rounded-lg bg-bg border border-border font-mono text-xs text-text overflow-x-auto">
+                  {`git clone ${cloneUrl}`}
+                </pre>
+              </Card>
             </div>
-            <pre className="m-0 p-4 rounded-lg bg-bg border border-border font-mono text-xs text-text overflow-x-auto">
-              {`git clone ${cloneUrl}`}
-            </pre>
-          </Card>
-        </div>
+          )}
+        </>
       )}
     </>
   )

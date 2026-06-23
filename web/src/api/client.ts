@@ -1,4 +1,4 @@
-import type { AuthResponse, Organization, Repository, RepositoryDetail, User } from './types'
+import type { AuthResponse, CommitInfo, Organization, RepoBrowser, Repository, RepositoryDetail, TreeEntry, User } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8081/api/v1'
 
@@ -69,4 +69,55 @@ export const api = {
 
   getRepository: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepositoryDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}`, {}, token),
+
+  getRepoBrowser: (token: string, orgSlug: string, repoSlug: string) =>
+    request<{ browser: RepoBrowser }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/browser`,
+      {},
+      token,
+    ),
+
+  getRepoTree: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    params: { ref: string; path?: string },
+  ) => {
+    const search = new URLSearchParams({ ref: params.ref })
+    if (params.path) search.set('path', params.path)
+    return request<{ entries: TreeEntry[]; path: string; ref: string }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/tree?${search}`,
+      {},
+      token,
+    )
+  },
+
+  getRepoBlob: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    params: { ref: string; path: string },
+  ) => {
+    const search = new URLSearchParams({ ref: params.ref, path: params.path })
+    return request<{ path: string; ref: string; content: string; is_binary: boolean }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/blob?${search}`,
+      {},
+      token,
+    )
+  },
+
+  getRepoCommits: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    params: { ref: string; limit?: number },
+  ) => {
+    const search = new URLSearchParams({ ref: params.ref })
+    if (params.limit) search.set('limit', String(params.limit))
+    return request<{ commits: CommitInfo[]; ref: string }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/commits?${search}`,
+      {},
+      token,
+    )
+  },
 }

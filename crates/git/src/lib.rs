@@ -1,5 +1,6 @@
 pub mod access;
 pub mod config;
+pub mod explorer;
 pub mod http;
 pub mod password;
 pub mod protocol;
