@@ -91,8 +91,7 @@ web-dist:
 		rm -rf web/dist 2>/dev/null || { \
 			echo "Cannot clean web/dist. Run: sudo make fix-perms"; exit 1; \
 		}; \
-		cd web && $(RUN_AS_USER)VERSION="$(VERSION)" npm run build; \
-		echo "$(VERSION)" > "$(WEB_VERSION_FILE)"; \
+		cd web && $(RUN_AS_USER)VERSION="$(VERSION)" npm run build && echo "$(VERSION)" > dist/.app-version; \
 	fi
 
 dev-web:
