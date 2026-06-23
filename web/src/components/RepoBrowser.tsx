@@ -9,6 +9,8 @@ import {
 import { useState } from 'react'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
+import { findReadmePath } from '../lib/readme'
+import { RepoReadme } from './RepoReadme'
 
 function formatBytes(size: number | null) {
   if (size == null) return '—'
@@ -77,6 +79,10 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
 
   const pathParts = path ? path.split('/') : []
   const latestCommit = commitsData?.commits[0]
+  const readmePath =
+    path === '' && !selectedFile && treeData?.entries
+      ? findReadmePath(treeData.entries)
+      : null
 
   if (browserLoading) {
     return (
@@ -194,6 +200,16 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
           </table>
         )}
       </div>
+
+      {readmePath && (
+        <RepoReadme
+          token={token}
+          orgSlug={orgSlug}
+          repoSlug={repoSlug}
+          ref={ref}
+          readmePath={readmePath}
+        />
+      )}
 
       {selectedFile && (
         <div className="gogs-panel">
