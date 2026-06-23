@@ -1,45 +1,60 @@
 import { useQuery } from '@tanstack/react-query'
-import { Check, Copy, FolderGit2, GitBranch, Lock } from 'lucide-react'
+import { Code2, FolderGit2, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { Card } from '../components/Card'
+import { CloneSidebar } from '../components/CloneSidebar'
+import { GogsSegment } from '../components/GogsSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
-import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
-import { Breadcrumbs, PageHeader } from '../components/ui'
+import { RepoHeader } from '../components/RepoHeader'
 
-function CopyField({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false)
+type Tab = 'code' | 'clone'
 
-  async function copy() {
-    await navigator.clipboard.writeText(value)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
+function CloneTabContent({
+  cloneUrl,
+  authCloneUrl,
+  defaultBranch,
+  isPrivate,
+}: {
+  cloneUrl: string
+  authCloneUrl: string
+  defaultBranch: string
+  isPrivate: boolean
+}) {
   return (
-    <div>
-      <div className="text-sm font-semibold text-text mb-1.5">{label}</div>
-      <div className="flex gap-2">
-        <code className="flex-1 px-3 py-2 rounded-lg border border-border bg-bg font-mono text-xs text-text break-all">
-          {value}
-        </code>
-        <button
-          type="button"
-          onClick={copy}
-          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border text-text-secondary hover:bg-hover text-sm shrink-0"
-          data-no-global-button-hover="true"
-        >
-          {copied ? <Check size={14} /> : <Copy size={14} />}
-          {copied ? 'Copied' : 'Copy'}
-        </button>
+    <div className="gogs-panel">
+      <div className="gogs-panel-header">Clone this repository</div>
+      <div className="gogs-panel-body space-y-5">
+        <div>
+          <div className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
+            HTTP
+          </div>
+          <pre className="m-0 p-3 rounded-md bg-bg border border-border font-mono text-xs text-text overflow-x-auto">
+            {`git clone ${cloneUrl}`}
+          </pre>
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
+            Push an existing project
+          </div>
+          <pre className="m-0 p-3 rounded-md bg-bg border border-border font-mono text-xs text-text overflow-x-auto leading-relaxed">{`cd my-project
+git init --initial-branch=${defaultBranch}
+git remote add origin ${authCloneUrl}
+git add .
+git commit -m "Initial commit"
+git push -u origin ${defaultBranch}`}</pre>
+        </div>
+        {isPrivate && (
+          <p className="text-sm text-text-secondary flex items-start gap-2 p-3 rounded-md bg-dashboard-info-bg border border-blue-b1/20">
+            <Lock size={14} className="text-blue-b1 shrink-0 mt-0.5" />
+            Private repository — use your Pertisk Gits account password when Git prompts.
+          </p>
+        )}
       </div>
     </div>
   )
 }
-
-type Tab = 'code' | 'clone'
 
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
@@ -63,129 +78,63 @@ export function ProjectDetailPage() {
   const cloneUrl = data?.clone_url_http ?? ''
   const authCloneUrl = user ? cloneUrl.replace('://', `://${user.username}@`) : cloneUrl
 
+  if (isLoading) {
+    return <div className="text-text-secondary text-sm py-8">Loading repository…</div>
+  }
+
+  if (error) {
+    return (
+      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+        {(error as Error).message}
+      </div>
+    )
+  }
+
+  if (!project || !token) return null
+
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
-          { label: project?.name ?? projectSlug },
+      <RepoHeader
+        orgName={group?.name ?? orgSlug}
+        orgSlug={orgSlug}
+        repoName={project.name}
+        description={project.description}
+        visibility={project.visibility}
+      />
+
+      <GogsSegment
+        active={tab}
+        onChange={(id) => setTab(id as Tab)}
+        tabs={[
+          { id: 'code', label: 'Code', icon: Code2 },
+          { id: 'clone', label: 'Clone', icon: FolderGit2 },
         ]}
       />
 
-      <PageHeader
-        title={project?.name ?? projectSlug}
-        subtitle={
-          project ? (
-            <span className="inline-flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm">
-                {orgSlug}/{projectSlug}
-              </span>
-              <StatusBadge variant={visibilityVariant(project.visibility)}>{project.visibility}</StatusBadge>
-            </span>
-          ) : undefined
-        }
-      />
-
-      {isLoading && <div className="text-text-secondary">Loading project…</div>}
-      {error && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(error as Error).message}
+      {tab === 'code' && (
+        <div className="gogs-repo-grid has-sidebar">
+          <RepoBrowser
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            defaultBranch={project.default_branch}
+          />
+          <CloneSidebar
+            cloneUrl={cloneUrl}
+            authCloneUrl={authCloneUrl}
+            defaultBranch={project.default_branch}
+            isPrivate={project.visibility === 'private'}
+          />
         </div>
       )}
 
-      {project && token && (
-        <>
-          <div className="flex gap-1 border-b border-border mb-4">
-            {(
-              [
-                ['code', 'Code'],
-                ['clone', 'Clone'],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setTab(id)}
-                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                  tab === id
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-text-secondary hover:text-text'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {tab === 'code' && (
-            <RepoBrowser
-              token={token}
-              orgSlug={orgSlug}
-              repoSlug={projectSlug}
-              defaultBranch={project.default_branch}
-            />
-          )}
-
-          {tab === 'clone' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <Card title="Project information">
-                <p className="text-text-secondary mb-4">{project.description ?? 'No description provided.'}</p>
-                <dl className="space-y-3 text-sm">
-                  <div>
-                    <dt className="text-text-secondary font-medium">Default branch</dt>
-                    <dd className="text-text font-mono flex items-center gap-1.5 mt-0.5">
-                      <GitBranch size={14} className="text-primary" />
-                      {project.default_branch}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-text-secondary font-medium">Created</dt>
-                    <dd className="text-text mt-0.5">{new Date(project.created_at).toLocaleString()}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-text-secondary font-medium">Last updated</dt>
-                    <dd className="text-text mt-0.5">{new Date(project.updated_at).toLocaleString()}</dd>
-                  </div>
-                </dl>
-              </Card>
-
-              <Card title="Clone">
-                <div className="space-y-4">
-                  <CopyField label="HTTP clone URL" value={cloneUrl} />
-                  {project.visibility === 'private' && (
-                    <div className="flex items-start gap-2 p-3 rounded-lg bg-dashboard-info-bg border border-blue-b1/20 text-sm text-text-secondary">
-                      <Lock size={14} className="text-blue-b1 shrink-0 mt-0.5" />
-                      Private project — use your username and password when Git prompts for credentials.
-                    </div>
-                  )}
-                </div>
-              </Card>
-
-              <Card title="Push an existing folder" className="lg:col-span-2">
-                <pre className="m-0 p-4 rounded-lg bg-bg border border-border font-mono text-xs text-text overflow-x-auto leading-relaxed">{`cd my-project
-git init --initial-branch=${project.default_branch}
-git remote add origin ${authCloneUrl}
-git add .
-git commit -m "Initial commit"
-git push -u origin ${project.default_branch}`}</pre>
-                <p className="text-sm text-text-secondary mt-3">
-                  Use your Pertisk Gits account password when Git prompts for credentials.
-                </p>
-              </Card>
-
-              <Card title="Clone this repository" className="lg:col-span-2">
-                <div className="flex items-center gap-2 mb-3 text-text-secondary">
-                  <FolderGit2 size={16} />
-                  <span className="text-sm">Quick start</span>
-                </div>
-                <pre className="m-0 p-4 rounded-lg bg-bg border border-border font-mono text-xs text-text overflow-x-auto">
-                  {`git clone ${cloneUrl}`}
-                </pre>
-              </Card>
-            </div>
-          )}
-        </>
+      {tab === 'clone' && (
+        <CloneTabContent
+          cloneUrl={cloneUrl}
+          authCloneUrl={authCloneUrl}
+          defaultBranch={project.default_branch}
+          isPrivate={project.visibility === 'private'}
+        />
       )}
     </>
   )

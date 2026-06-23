@@ -3,8 +3,7 @@ import { FolderGit2, Plus, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { StatCard } from '../components/Card'
-import { EmptyState, LinkButton, PageHeader } from '../components/ui'
+import { EmptyState, LinkButton } from '../components/ui'
 
 export function DashboardPage() {
   const { token, user } = useAuth()
@@ -15,78 +14,92 @@ export function DashboardPage() {
     enabled: Boolean(token),
   })
 
-  const recentGroups = groups.slice(0, 5)
+  const recentGroups = groups.slice(0, 8)
 
   return (
     <>
-      <PageHeader
-        title="Dashboard"
-        subtitle={`Welcome back, ${user?.display_name ?? user?.username}`}
-        action={
-          <div className="flex gap-2">
-            <LinkButton to="/groups/new">New group</LinkButton>
-            <LinkButton to="/groups" primary>
-              <Plus size={14} />
-              Browse groups
-            </LinkButton>
-          </div>
-        }
-      />
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard label="Groups" value={isLoading ? '—' : groups.length} />
-        <StatCard label="Platform" value="Phase 1" />
-        <StatCard label="Git HTTP" value="Enabled" />
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold text-text">Dashboard</h1>
+          <p className="text-sm text-text-secondary mt-0.5">
+            Welcome, {user?.display_name ?? user?.username}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <LinkButton to="/groups/new">
+            <Plus size={14} />
+            New group
+          </LinkButton>
+          <LinkButton to="/groups" primary>
+            Repositories
+          </LinkButton>
+        </div>
       </div>
 
-      <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-text">Your groups</h2>
-          <Link to="/groups" className="text-sm text-primary hover:underline">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+        <div className="gogs-panel p-4">
+          <div className="text-2xl font-bold text-primary">{isLoading ? '—' : groups.length}</div>
+          <div className="text-sm text-text-secondary mt-0.5">Groups</div>
+        </div>
+        <div className="gogs-panel p-4">
+          <div className="text-2xl font-bold text-primary">Git</div>
+          <div className="text-sm text-text-secondary mt-0.5">HTTP enabled</div>
+        </div>
+        <div className="gogs-panel p-4">
+          <div className="text-2xl font-bold text-primary">v0.1</div>
+          <div className="text-sm text-text-secondary mt-0.5">Platform</div>
+        </div>
+      </div>
+
+      <div className="gogs-panel">
+        <div className="gogs-panel-header flex items-center justify-between">
+          <span>Your repositories</span>
+          <Link to="/groups" className="text-primary hover:underline font-normal">
             View all
           </Link>
         </div>
 
-        {isLoading && <div className="p-8 text-center text-text-secondary">Loading groups…</div>}
+        {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
 
         {!isLoading && recentGroups.length === 0 && (
           <EmptyState
             icon={<Users size={40} />}
             title="No groups yet"
-            description="Create a group to organize your projects."
-            action={<LinkButton to="/groups/new" primary>Create group</LinkButton>}
+            description="Create a group to host Git repositories."
+            action={
+              <LinkButton to="/groups/new" primary>
+                Create group
+              </LinkButton>
+            }
           />
         )}
 
         {!isLoading && recentGroups.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="gogs-list-table">
             <thead>
-              <tr className="border-b border-border bg-surface-elevated">
-                <th className="px-4 py-2 text-left font-semibold text-text">Group</th>
-                <th className="px-4 py-2 text-left font-semibold text-text">Description</th>
-                <th className="px-4 py-2" />
+              <tr>
+                <th>Group</th>
+                <th>Description</th>
+                <th className="w-32" />
               </tr>
             </thead>
             <tbody>
-              {recentGroups.map((group, i) => (
-                <tr
-                  key={group.id}
-                  className={`border-b border-border hover:bg-hover ${i % 2 ? 'bg-surface-elevated' : 'bg-surface'}`}
-                >
-                  <td className="px-4 py-3">
+              {recentGroups.map((group) => (
+                <tr key={group.id}>
+                  <td>
                     <Link to={`/groups/${group.slug}`} className="font-medium text-text hover:text-primary">
                       {group.name}
                     </Link>
-                    <div className="text-xs text-text-secondary">@{group.slug}</div>
+                    <div className="text-xs text-muted font-mono mt-0.5">{group.slug}</div>
                   </td>
-                  <td className="px-4 py-3 text-text-secondary">{group.description ?? '—'}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="text-text-secondary">{group.description ?? '—'}</td>
+                  <td className="text-right">
                     <Link
                       to={`/groups/${group.slug}/projects/new`}
                       className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                     >
                       <FolderGit2 size={14} />
-                      New project
+                      New repo
                     </Link>
                   </td>
                 </tr>

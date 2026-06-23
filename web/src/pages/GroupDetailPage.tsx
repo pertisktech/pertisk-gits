@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
-import { Breadcrumbs, EmptyState, LinkButton, PageHeader } from '../components/ui'
+import { EmptyState, LinkButton } from '../components/ui'
 
 export function GroupDetailPage() {
   const { slug = '' } = useParams()
@@ -25,32 +25,30 @@ export function GroupDetailPage() {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? slug },
-        ]}
-      />
-      <PageHeader
-        title={group?.name ?? slug}
-        subtitle={group?.description ?? 'Group projects and repositories'}
-        action={
-          <LinkButton to={`/groups/${slug}/projects/new`} primary>
-            <Plus size={14} />
-            New project
-          </LinkButton>
-        }
-      />
+      <div className="gogs-repo-header mb-5">
+        <h1 className="gogs-repo-title">
+          <span>{group?.name ?? slug}</span>
+        </h1>
+        {group?.description && <p className="gogs-repo-desc">{group.description}</p>}
+        <p className="text-xs text-muted font-mono mt-1">@{slug}</p>
+      </div>
 
-      <div className="bg-surface border border-border rounded-lg overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-text">Projects</h2>
-          <span className="text-sm text-text-secondary">{projects.length} repositories</span>
+      <div className="mb-4 flex justify-end">
+        <LinkButton to={`/groups/${slug}/projects/new`} primary>
+          <Plus size={14} />
+          New repository
+        </LinkButton>
+      </div>
+
+      <div className="gogs-panel">
+        <div className="gogs-panel-header flex items-center justify-between">
+          <span>Repositories</span>
+          <span className="font-normal text-text-secondary">{projects.length}</span>
         </div>
 
-        {isLoading && <div className="p-8 text-center text-text-secondary">Loading projects…</div>}
+        {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
         {error && (
-          <div className="m-4 p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+          <div className="m-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
             {(error as Error).message}
           </div>
         )}
@@ -58,53 +56,50 @@ export function GroupDetailPage() {
         {!isLoading && projects.length === 0 && (
           <EmptyState
             icon={<FolderGit2 size={40} />}
-            title="No projects in this group"
-            description="Create a project to host Git repositories."
+            title="No repositories"
+            description="Create a repository in this group."
             action={
               <LinkButton to={`/groups/${slug}/projects/new`} primary>
-                Create project
+                New repository
               </LinkButton>
             }
           />
         )}
 
         {!isLoading && projects.length > 0 && (
-          <table className="w-full text-sm">
+          <table className="gogs-list-table">
             <thead>
-              <tr className="border-b border-border bg-surface-elevated">
-                <th className="px-4 py-2 text-left font-semibold text-text">Project</th>
-                <th className="px-4 py-2 text-left font-semibold text-text">Visibility</th>
-                <th className="px-4 py-2 text-left font-semibold text-text">Default branch</th>
-                <th className="px-4 py-2 text-left font-semibold text-text">Updated</th>
+              <tr>
+                <th>Repository</th>
+                <th>Visibility</th>
+                <th>Branch</th>
+                <th>Updated</th>
               </tr>
             </thead>
             <tbody>
-              {projects.map((project, i) => (
-                <tr
-                  key={project.id}
-                  className={`border-b border-border hover:bg-hover cursor-pointer ${i % 2 ? 'bg-surface-elevated' : 'bg-surface'}`}
-                >
-                  <td className="px-4 py-3">
+              {projects.map((project) => (
+                <tr key={project.id}>
+                  <td>
                     <Link
                       to={`/groups/${slug}/projects/${project.slug}`}
-                      className="font-medium text-text hover:text-primary"
+                      className="font-medium text-text hover:text-primary font-mono text-sm"
                     >
                       {project.name}
                     </Link>
-                    <div className="text-xs text-text-secondary font-mono">
+                    <div className="text-xs text-muted font-mono mt-0.5">
                       {slug}/{project.slug}
                     </div>
                     {project.description && (
-                      <div className="text-xs text-muted mt-1">{project.description}</div>
+                      <div className="text-xs text-text-secondary mt-1">{project.description}</div>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td>
                     <StatusBadge variant={visibilityVariant(project.visibility)}>
                       {project.visibility}
                     </StatusBadge>
                   </td>
-                  <td className="px-4 py-3 font-mono text-text-secondary">{project.default_branch}</td>
-                  <td className="px-4 py-3 text-text-secondary">
+                  <td className="font-mono text-sm text-text-secondary">{project.default_branch}</td>
+                  <td className="text-sm text-text-secondary">
                     {new Date(project.updated_at).toLocaleDateString()}
                   </td>
                 </tr>
