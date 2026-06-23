@@ -14,7 +14,7 @@ export function commitUrl(orgSlug: string, repoSlug: string, sha: string) {
 }
 
 interface RepoCommitsProps {
-  token: string
+  token?: string | null
   orgSlug: string
   repoSlug: string
   defaultBranch: string
@@ -25,8 +25,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
-    queryFn: () => api.getRepoBrowser(token, orgSlug, repoSlug),
-    enabled: Boolean(token),
+    queryFn: () => api.getRepoBrowser(orgSlug, repoSlug, token),
+    enabled: Boolean(orgSlug && repoSlug),
   })
 
   const browser = browserData?.browser
@@ -35,8 +35,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['repo-commits', orgSlug, repoSlug, ref, 'list'],
-    queryFn: () => api.getRepoCommits(token, orgSlug, repoSlug, { ref, limit: 100 }),
-    enabled: Boolean(token && browser && !browser.empty),
+    queryFn: () => api.getRepoCommits(orgSlug, repoSlug, { ref, limit: 100 }, token),
+    enabled: Boolean(orgSlug && repoSlug && browser && !browser.empty),
   })
 
   if (browserLoading) {

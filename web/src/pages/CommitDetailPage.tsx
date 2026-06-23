@@ -22,15 +22,15 @@ export function CommitDetailPage() {
   const group = groups.find((g) => g.slug === orgSlug)
 
   const { data: repoData } = useQuery({
-    queryKey: ['repository', orgSlug, projectSlug],
-    queryFn: () => api.getRepository(token!, orgSlug, projectSlug),
-    enabled: Boolean(token && orgSlug && projectSlug),
+    queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
+    queryFn: () => api.getRepository(orgSlug, projectSlug, token),
+    enabled: Boolean(orgSlug && projectSlug),
   })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['repo-commit', orgSlug, projectSlug, commitSha],
-    queryFn: () => api.getRepoCommit(token!, orgSlug, projectSlug, commitSha),
-    enabled: Boolean(token && orgSlug && projectSlug && commitSha),
+    queryKey: ['repo-commit', orgSlug, projectSlug, commitSha, token ?? 'public'],
+    queryFn: () => api.getRepoCommit(orgSlug, projectSlug, commitSha, token),
+    enabled: Boolean(orgSlug && projectSlug && commitSha),
   })
 
   const commit = data?.commit
@@ -53,7 +53,7 @@ export function CommitDetailPage() {
     )
   }
 
-  if (!commit || !token) return null
+  if (!commit) return null
 
   return (
     <>

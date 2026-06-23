@@ -1,5 +1,6 @@
 import { GitBranch, LayoutDashboard, Moon, Plus, Search, Sun, Users } from 'lucide-react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
+import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { cn } from '../utils/cn'
 import { UserMenu } from './UserMenu'
@@ -8,6 +9,7 @@ const topNavClass = ({ isActive }: { isActive: boolean }) => cn(isActive && 'act
 
 export function AppLayout() {
   const { isDark, toggleTheme } = useTheme()
+  const { user } = useAuth()
 
   return (
     <div className="flex flex-col h-screen bg-bg text-text">
@@ -44,13 +46,15 @@ export function AppLayout() {
           </div>
 
           <div className="ml-auto flex items-center gap-1.5">
-            <NavLink
-              to="/groups/new"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-text-secondary hover:bg-hover hover:text-primary"
-              title="New group"
-            >
-              <Plus size={16} />
-            </NavLink>
+            {user && (
+              <NavLink
+                to="/groups/new"
+                className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-text-secondary hover:bg-hover hover:text-primary"
+                title="New group"
+              >
+                <Plus size={16} />
+              </NavLink>
+            )}
             <button
               type="button"
               onClick={toggleTheme}
@@ -60,7 +64,16 @@ export function AppLayout() {
             >
               {isDark ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-            <UserMenu />
+            {user ? (
+              <UserMenu />
+            ) : (
+              <Link
+                to="/login"
+                className="px-3 py-1.5 rounded-md border border-border text-sm text-text-secondary hover:bg-hover hover:text-primary"
+              >
+                Sign in
+              </Link>
+            )}
           </div>
         </div>
       </header>

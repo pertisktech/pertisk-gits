@@ -5,7 +5,7 @@ import remarkGfm from 'remark-gfm'
 import { api } from '../api/client'
 
 interface RepoReadmeProps {
-  token: string
+  token?: string | null
   orgSlug: string
   repoSlug: string
   ref: string
@@ -15,8 +15,8 @@ interface RepoReadmeProps {
 export function RepoReadme({ token, orgSlug, repoSlug, ref, readmePath }: RepoReadmeProps) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['repo-readme', orgSlug, repoSlug, ref, readmePath],
-    queryFn: () => api.getRepoBlob(token, orgSlug, repoSlug, { ref, path: readmePath }),
-    enabled: Boolean(token && readmePath),
+    queryFn: () => api.getRepoBlob(orgSlug, repoSlug, { ref, path: readmePath }, token),
+    enabled: Boolean(readmePath),
   })
 
   if (isLoading) {

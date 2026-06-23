@@ -77,10 +77,12 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     const requested = searchParams.get('tab')
-    if (requested === 'commits' || requested === 'clone' || requested === 'settings' || requested === 'code') {
+    if (requested === 'commits' || requested === 'clone' || requested === 'code') {
       setTab(requested)
+    } else if (requested === 'settings' && token) {
+      setTab('settings')
     }
-  }, [searchParams])
+  }, [searchParams, token])
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -90,15 +92,22 @@ export function ProjectDetailPage() {
   const group = groups.find((g) => g.slug === orgSlug)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['repository', orgSlug, projectSlug],
-    queryFn: () => api.getRepository(token!, orgSlug, projectSlug),
-    enabled: Boolean(token && orgSlug && projectSlug),
+    queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
+    queryFn: () => api.getRepository(orgSlug, projectSlug, token),
+    enabled: Boolean(orgSlug && projectSlug),
   })
 
   const project = data?.repository
   const cloneUrl = data?.clone_url_http ?? ''
   const cloneUrlSsh = data?.clone_url_ssh ?? null
   const authCloneUrl = user ? cloneUrl.replace('://', `://${user.username}@`) : cloneUrl
+
+  const tabs = [
+    { id: 'code', label: 'Code', icon: Code2 },
+    { id: 'commits', label: 'Commits', icon: GitCommit },
+    { id: 'clone', label: 'Clone', icon: FolderGit2 },
+    ...(token ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
+  ]
 
   if (isLoading) {
     return <div className="text-text-secondary text-sm py-8">Loading repository…</div>
@@ -112,7 +121,7 @@ export function ProjectDetailPage() {
     )
   }
 
-  if (!project || !token) return null
+  if (!project) return null
 
   return (
     <>
@@ -127,12 +136,7 @@ export function ProjectDetailPage() {
       <GogsSegment
         active={tab}
         onChange={(id) => setTab(id as Tab)}
-        tabs={[
-          { id: 'code', label: 'Code', icon: Code2 },
-          { id: 'commits', label: 'Commits', icon: GitCommit },
-          { id: 'clone', label: 'Clone', icon: FolderGit2 },
-          { id: 'settings', label: 'Settings', icon: Settings },
-        ]}
+        tabs={tabs}
       />
 
       {tab === 'code' && (
@@ -163,7 +167,7 @@ export function ProjectDetailPage() {
         />
       )}
 
-      {tab === 'settings' && (
+      {tab === 'settings' && token && (
         <RepoSettings
           token={token}
           orgSlug={orgSlug}

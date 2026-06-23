@@ -89,7 +89,7 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  getRepository: (token: string, orgSlug: string, repoSlug: string) =>
+  getRepository: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<RepositoryDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}`, {}, token),
 
   updateRepository: (
@@ -108,7 +108,7 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  getRepoBrowser: (token: string, orgSlug: string, repoSlug: string) =>
+  getRepoBrowser: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<{ browser: RepoBrowser }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/browser`,
       {},
@@ -116,10 +116,10 @@ export const api = {
     ),
 
   getRepoTree: (
-    token: string,
     orgSlug: string,
     repoSlug: string,
     params: { ref: string; path?: string; ref_kind?: 'branch' | 'tag' },
+    token?: string | null,
   ) => {
     const search = new URLSearchParams({ ref: params.ref })
     if (params.path) search.set('path', params.path)
@@ -132,10 +132,10 @@ export const api = {
   },
 
   getRepoBlob: (
-    token: string,
     orgSlug: string,
     repoSlug: string,
     params: { ref: string; path: string; ref_kind?: 'branch' | 'tag' },
+    token?: string | null,
   ) => {
     const search = new URLSearchParams({ ref: params.ref, path: params.path })
     if (params.ref_kind) search.set('ref_kind', params.ref_kind)
@@ -157,10 +157,10 @@ export const api = {
   },
 
   getRepoCommits: (
-    token: string,
     orgSlug: string,
     repoSlug: string,
     params: { ref: string; limit?: number; ref_kind?: 'branch' | 'tag' },
+    token?: string | null,
   ) => {
     const search = new URLSearchParams({ ref: params.ref })
     if (params.limit) search.set('limit', String(params.limit))
@@ -172,7 +172,7 @@ export const api = {
     )
   },
 
-  getRepoCommit: (token: string, orgSlug: string, repoSlug: string, commitSha: string) =>
+  getRepoCommit: (orgSlug: string, repoSlug: string, commitSha: string, token?: string | null) =>
     request<{ commit: CommitDetail }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/commits/${commitSha}`,
       {},

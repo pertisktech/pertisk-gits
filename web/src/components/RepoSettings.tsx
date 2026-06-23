@@ -37,7 +37,7 @@ export function RepoSettings({
 
   const { data: browserData } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
-    queryFn: () => api.getRepoBrowser(token, orgSlug, repoSlug),
+    queryFn: () => api.getRepoBrowser(orgSlug, repoSlug, token),
     enabled: Boolean(token),
   })
 

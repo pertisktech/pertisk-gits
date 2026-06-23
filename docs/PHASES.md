@@ -6,7 +6,7 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 
 ---
 
-## Phase 0 — Foundation (current)
+## Phase 0 — Foundation
 
 **Goal:** Monorepo, auth, orgs, and empty repo CRUD.
 
@@ -36,9 +36,9 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | SSH access | Done |
 | Branch/tag UI | Done |
 | Repo settings | Done |
-| Web file browser | Done |
+| Web file browser | Done (public repos readable without login) |
 | Raw file download | Done |
-| Commits UI | Done (log; diff/blame later) |
+| Commits UI | Done (blame later) |
 
 **Gateway routes:** `/*.git/*` → `git-http` service
 

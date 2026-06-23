@@ -5,7 +5,7 @@ use axum::{
     http::{header, Method, Request, StatusCode},
     middleware::{from_fn_with_state, Next},
     response::{Html, IntoResponse, Response},
-    routing::{get, get_service, post},
+    routing::{get, get_service, patch, post},
     Json, Router,
 };
 use pertisk_domain::{
@@ -90,21 +90,10 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
     };
 
-    let api_routes = Router::new()
-        .route("/health", get(health))
-        .route("/auth/register", post(register))
-        .route("/auth/login", post(login))
-        .route("/me", get(me))
-        .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
-        .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
-        .route("/organizations", get(list_organizations).post(create_organization))
-        .route(
-            "/organizations/{org_slug}/repositories",
-            get(list_repositories).post(create_repository),
-        )
+    let repo_read_routes = Router::new()
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}",
-            get(get_repository).patch(update_repository),
+            get(get_repository),
         )
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/browser",
@@ -130,7 +119,29 @@ async fn main() -> anyhow::Result<()> {
             "/organizations/{org_slug}/repositories/{repo_slug}/commits/{commit_sha}",
             get(get_repo_commit),
         )
+        .layer(from_fn_with_state(state.clone(), optional_auth_middleware));
+
+    let protected_routes = Router::new()
+        .route("/health", get(health))
+        .route("/auth/register", post(register))
+        .route("/auth/login", post(login))
+        .route("/me", get(me))
+        .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
+        .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
+        .route("/organizations", get(list_organizations).post(create_organization))
+        .route(
+            "/organizations/{org_slug}/repositories",
+            get(list_repositories).post(create_repository),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}",
+            patch(update_repository),
+        )
         .layer(from_fn_with_state(state.clone(), auth_middleware));
+
+    let api_routes = Router::new()
+        .merge(repo_read_routes)
+        .merge(protected_routes);
 
     let git_state = GitHttpState {
         pool: state.pool.clone(),
@@ -611,28 +622,11 @@ async fn create_repository(
 
 async fn get_repository(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path((org_slug, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<RepositoryResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-
-    let repo = sqlx::query_as::<_, Repository>(
-        r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
-        FROM repositories
-        WHERE organization_id = $1 AND slug = $2
-        "#,
-    )
-    .bind(org.id)
-    .bind(&repo_slug)
-    .fetch_optional(&state.pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
-    .ok_or(DomainError::NotFound)?;
-
-    ensure_bare_repo(&state.config.repos_root, &org_slug, &repo.slug)
-        .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    let (_org, repo, _repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
 
     Ok(Json(repo_response(&state.config, &org_slug, repo)))
 }
@@ -847,13 +841,13 @@ struct CommitResponse {
     commit: CommitDetail,
 }
 
-async fn load_repo(
+async fn load_repo_for_read(
     state: &AppState,
     org_slug: &str,
     repo_slug: &str,
-    user_id: Uuid,
+    user: Option<&AuthUser>,
 ) -> Result<(Organization, Repository, std::path::PathBuf), ApiError> {
-    let org = find_org_for_member(&state.pool, org_slug, user_id).await?;
+    let org = find_org_by_slug(&state.pool, org_slug).await?;
 
     let repo = sqlx::query_as::<_, Repository>(
         r#"
@@ -869,12 +863,61 @@ async fn load_repo(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::NotFound)?;
 
+    ensure_can_read_repo(state, org_slug, &repo, user).await?;
+
     ensure_bare_repo(&state.config.repos_root, org_slug, &repo.slug)
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     let repo_path = repo_disk_path(&state.config.repos_root, org_slug, &repo.slug);
     Ok((org, repo, repo_path))
+}
+
+async fn ensure_can_read_repo(
+    state: &AppState,
+    org_slug: &str,
+    repo: &Repository,
+    user: Option<&AuthUser>,
+) -> Result<(), ApiError> {
+    let record = RepoRecord {
+        id: repo.id,
+        org_slug: org_slug.to_string(),
+        repo_slug: repo.slug.clone(),
+        visibility: repo.visibility,
+    };
+    let git_user = user.map(|auth| GitAuthUser {
+        id: auth.user_id,
+        username: auth.username.clone(),
+    });
+
+    let allowed = access::can_read_repo(&state.pool, &record, git_user.as_ref())
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if allowed {
+        return Ok(());
+    }
+
+    if user.is_none() {
+        Err(DomainError::Unauthorized.into())
+    } else {
+        Err(DomainError::Forbidden.into())
+    }
+}
+
+async fn find_org_by_slug(pool: &PgPool, org_slug: &str) -> Result<Organization, ApiError> {
+    sqlx::query_as::<_, Organization>(
+        r#"
+        SELECT o.id, o.slug, o.name, o.description, o.created_at, o.updated_at
+        FROM organizations o
+        WHERE o.slug = $1
+        "#,
+    )
+    .bind(org_slug)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::NotFound.into())
 }
 
 fn map_explorer_error(err: anyhow::Error) -> ApiError {
@@ -888,10 +931,11 @@ fn map_explorer_error(err: anyhow::Error) -> ApiError {
 
 async fn get_repo_browser(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path((org_slug, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<BrowserResponse>, ApiError> {
-    let (_org, repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let (_org, repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
 
     let browser = explorer::repo_browser(&repo_path, &repo.default_branch)
         .await
@@ -902,11 +946,12 @@ async fn get_repo_browser(
 
 async fn get_repo_tree(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path((org_slug, repo_slug)): Path<(String, String)>,
     Query(query): Query<TreeQuery>,
 ) -> Result<Json<TreeResponse>, ApiError> {
-    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let entries = explorer::list_tree(&repo_path, &query.r#ref, ref_kind, &query.path)
@@ -922,7 +967,7 @@ async fn get_repo_tree(
 
 async fn get_repo_blob(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path((org_slug, repo_slug)): Path<(String, String)>,
     Query(query): Query<BlobQuery>,
 ) -> Result<Json<BlobResponse>, ApiError> {
@@ -930,7 +975,8 @@ async fn get_repo_blob(
         return Err(DomainError::Validation("path is required".into()).into());
     }
 
-    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let content = explorer::read_blob(&repo_path, &query.r#ref, ref_kind, &query.path)
@@ -949,7 +995,7 @@ async fn get_repo_blob(
 
 async fn get_repo_raw(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path((org_slug, repo_slug)): Path<(String, String)>,
     Query(query): Query<BlobQuery>,
 ) -> Result<Response, ApiError> {
@@ -957,7 +1003,8 @@ async fn get_repo_raw(
         return Err(DomainError::Validation("path is required".into()).into());
     }
 
-    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let bytes = explorer::read_blob_bytes(&repo_path, &query.r#ref, ref_kind, &query.path)
@@ -985,11 +1032,12 @@ async fn get_repo_raw(
 
 async fn get_repo_commits(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path((org_slug, repo_slug)): Path<(String, String)>,
     Query(query): Query<CommitsQuery>,
 ) -> Result<Json<CommitsResponse>, ApiError> {
-    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let commits = explorer::list_commits(&repo_path, &query.r#ref, ref_kind, query.limit.min(100))
@@ -1004,10 +1052,11 @@ async fn get_repo_commits(
 
 async fn get_repo_commit(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path((org_slug, repo_slug, commit_sha)): Path<(String, String, String)>,
 ) -> Result<Json<CommitResponse>, ApiError> {
-    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
 
     let commit = explorer::get_commit(&repo_path, &commit_sha)
         .await
@@ -1038,9 +1087,48 @@ async fn find_org_for_member(
 }
 
 #[derive(Clone, Debug)]
+pub struct OptionalAuth(pub Option<AuthUser>);
+
+impl<S> axum::extract::FromRequestParts<S> for OptionalAuth
+where
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        Ok(OptionalAuth(parts.extensions.get::<AuthUser>().cloned()))
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct AuthUser {
     pub user_id: Uuid,
     pub username: String,
+}
+
+async fn optional_auth_middleware(
+    State(state): State<AppState>,
+    mut req: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    if let Some(token) = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        if let Ok(claims) = verify_token(&state.config.jwt_secret, token) {
+            req.extensions_mut().insert(AuthUser {
+                user_id: claims.sub,
+                username: claims.username,
+            });
+        }
+    }
+
+    next.run(req).await
 }
 
 async fn auth_middleware(

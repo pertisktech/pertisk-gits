@@ -16,7 +16,7 @@ import { commitUrl } from './RepoCommits'
 import { RepoReadme } from './RepoReadme'
 
 interface RepoBrowserProps {
-  token: string
+  token?: string | null
   orgSlug: string
   repoSlug: string
   defaultBranch: string
@@ -30,8 +30,8 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
-    queryFn: () => api.getRepoBrowser(token, orgSlug, repoSlug),
-    enabled: Boolean(token),
+    queryFn: () => api.getRepoBrowser(orgSlug, repoSlug, token),
+    enabled: Boolean(orgSlug && repoSlug),
   })
 
   const browser = browserData?.browser
@@ -43,22 +43,22 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
         : [defaultBranch]
   const ref = refOverride ?? browser?.default_ref ?? defaultBranch
   const activeRef = refList.includes(ref) ? ref : (refList[0] ?? ref)
-  const canBrowse = Boolean(token && browser && !browser.empty && (refKind === 'branch' || refList.length > 0))
+  const canBrowse = Boolean(browser && !browser.empty && (refKind === 'branch' || refList.length > 0))
 
   const { data: treeData, isLoading: treeLoading } = useQuery({
-    queryKey: ['repo-tree', orgSlug, repoSlug, refKind, activeRef, path],
-    queryFn: () => api.getRepoTree(token, orgSlug, repoSlug, { ref: activeRef, path, ref_kind: refKind }),
+    queryKey: ['repo-tree', orgSlug, repoSlug, refKind, activeRef, path, token ?? 'public'],
+    queryFn: () => api.getRepoTree(orgSlug, repoSlug, { ref: activeRef, path, ref_kind: refKind }, token),
     enabled: canBrowse,
   })
 
   const { data: blobData, isLoading: blobLoading } = useQuery({
-    queryKey: ['repo-blob', orgSlug, repoSlug, refKind, activeRef, selectedFile],
+    queryKey: ['repo-blob', orgSlug, repoSlug, refKind, activeRef, selectedFile, token ?? 'public'],
     queryFn: () =>
-      api.getRepoBlob(token, orgSlug, repoSlug, {
+      api.getRepoBlob(orgSlug, repoSlug, {
         ref: activeRef,
         path: selectedFile!,
         ref_kind: refKind,
-      }),
+      }, token),
     enabled: Boolean(canBrowse && selectedFile),
   })
 
@@ -259,7 +259,9 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
                   path: selectedFile,
                   ref_kind: refKind,
                 })
-                fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+                fetch(url, {
+                  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                })
                   .then((res) => {
                     if (!res.ok) throw new Error('Download failed')
                     return res.blob()
