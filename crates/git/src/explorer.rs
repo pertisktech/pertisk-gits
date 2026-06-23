@@ -5,12 +5,21 @@ use serde::Serialize;
 use tokio::process::Command;
 
 #[derive(Debug, Clone, Serialize)]
+pub struct EntryLastCommit {
+    pub sha: String,
+    pub short_sha: String,
+    pub message: String,
+    pub committed_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct TreeEntry {
     pub name: String,
     pub path: String,
     pub kind: String,
     pub mode: String,
     pub size: Option<u64>,
+    pub last_commit: Option<EntryLastCommit>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -160,7 +169,59 @@ pub async fn list_tree(
         b_dir.cmp(&a_dir).then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
     });
 
+    let last_commits = futures_util::future::join_all(entries.iter().map(|entry| {
+        last_commit_for_path(repo_path, ref_name, kind, &entry.path)
+    }))
+    .await;
+
+    for (entry, last_commit) in entries.iter_mut().zip(last_commits) {
+        entry.last_commit = last_commit.ok().flatten();
+    }
+
     Ok(entries)
+}
+
+async fn last_commit_for_path(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+    path: &str,
+) -> anyhow::Result<Option<EntryLastCommit>> {
+    let refspec = match kind {
+        RefKind::Branch => format!("refs/heads/{ref_name}"),
+        RefKind::Tag => format!("refs/tags/{ref_name}"),
+    };
+
+    let pretty = "%H%x1f%at%x1f%s";
+    let pretty_arg = format!("--pretty=format:{pretty}");
+    let output = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["log", "-1", &pretty_arg, &refspec, "--", path])
+        .output()
+        .await
+        .context("spawn git log")?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let line = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if line.is_empty() {
+        return Ok(None);
+    }
+
+    let parts: Vec<&str> = line.split('\x1f').collect();
+    if parts.len() < 3 {
+        return Ok(None);
+    }
+
+    let sha = parts[0].to_string();
+    Ok(Some(EntryLastCommit {
+        short_sha: sha.chars().take(7).collect(),
+        sha,
+        committed_at: parts[1].parse().unwrap_or(0),
+        message: parts[2].to_string(),
+    }))
 }
 
 pub async fn read_blob(
@@ -238,6 +299,115 @@ pub async fn list_commits(
     Ok(commits)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct CommitDetail {
+    pub sha: String,
+    pub short_sha: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub committed_at: i64,
+    pub message: String,
+    pub body: String,
+    pub parents: Vec<String>,
+    pub diff: String,
+    pub files_changed: u32,
+    pub insertions: u32,
+    pub deletions: u32,
+}
+
+pub async fn get_commit(repo_path: &Path, sha: &str) -> anyhow::Result<CommitDetail> {
+    verify_commit(repo_path, sha).await?;
+
+    let meta = git(
+        repo_path,
+        &[
+            "show",
+            "-s",
+            "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%P%x1f%s%x1f%B",
+            sha,
+        ],
+    )
+    .await?;
+
+    let parts: Vec<&str> = meta.splitn(7, '\x1f').collect();
+    if parts.len() < 7 {
+        anyhow::bail!("failed to parse commit metadata");
+    }
+
+    let full_sha = parts[0].to_string();
+    let parents: Vec<String> = parts[4]
+        .split_whitespace()
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect();
+    let subject = parts[5].to_string();
+    let body = parts[6].trim().to_string();
+
+    let shortstat = git(
+        repo_path,
+        &["show", "-s", "--shortstat", "--format=", sha],
+    )
+    .await
+    .unwrap_or_default();
+
+    let (files_changed, insertions, deletions) = parse_shortstat(&shortstat);
+
+    let diff = git(repo_path, &["show", "--format=", "--patch", "--no-color", sha])
+        .await
+        .unwrap_or_default();
+
+    Ok(CommitDetail {
+        short_sha: full_sha.chars().take(7).collect(),
+        sha: full_sha,
+        author_name: parts[1].to_string(),
+        author_email: parts[2].to_string(),
+        committed_at: parts[3].parse().unwrap_or(0),
+        message: subject,
+        body,
+        parents,
+        diff,
+        files_changed,
+        insertions,
+        deletions,
+    })
+}
+
+async fn verify_commit(repo_path: &Path, sha: &str) -> anyhow::Result<()> {
+    let result = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["rev-parse", "--verify", &format!("{sha}^{{commit}}")])
+        .output()
+        .await?;
+
+    if !result.status.success() {
+        anyhow::bail!("commit '{sha}' not found");
+    }
+
+    Ok(())
+}
+
+fn parse_shortstat(stat: &str) -> (u32, u32, u32) {
+    let line = stat.lines().last().unwrap_or("").trim();
+    let mut files_changed = 0u32;
+    let mut insertions = 0u32;
+    let mut deletions = 0u32;
+
+    for part in line.split(',') {
+        let part = part.trim();
+        if let Some(n) = part.split_whitespace().next().and_then(|s| s.parse().ok()) {
+            if part.contains("file") {
+                files_changed = n;
+            } else if part.contains("insertion") {
+                insertions = n;
+            } else if part.contains("deletion") {
+                deletions = n;
+            }
+        }
+    }
+
+    (files_changed, insertions, deletions)
+}
+
 fn parse_ls_tree_line(line: &str, prefix: &str) -> Option<TreeEntry> {
     // format: <mode> SP <type> SP <object> TAB <file>
     let (meta, name) = line.split_once('\t')?;
@@ -254,6 +424,7 @@ fn parse_ls_tree_line(line: &str, prefix: &str) -> Option<TreeEntry> {
         kind,
         mode,
         size,
+        last_commit: None,
     })
 }
 

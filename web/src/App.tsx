@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-
 import { AuthProvider } from './auth/AuthContext'
 import { AppLayout } from './components/AppLayout'
 import { ThemeProvider } from './context/ThemeContext'
+import { CommitDetailPage } from './pages/CommitDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupsPage } from './pages/GroupsPage'
@@ -38,6 +39,7 @@ export default function App() {
                   <Route path="/groups/new" element={<NewGroupPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
+                  <Route path="/groups/:slug/projects/:projectSlug/commit/:commitSha" element={<CommitDetailPage />} />
                   <Route path="/groups/:slug/projects/:projectSlug" element={<ProjectDetailPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/organizations" element={<Navigate to="/groups" replace />} />

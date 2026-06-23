@@ -1,0 +1,137 @@
+import { useQuery } from '@tanstack/react-query'
+import { GitCommit, Loader2 } from 'lucide-react'
+import { Link, useParams } from 'react-router-dom'
+import { api } from '../api/client'
+import { useAuth } from '../auth/AuthContext'
+import { commitUrl } from '../components/RepoCommits'
+import { Breadcrumbs } from '../components/ui'
+
+function formatDate(ts: number) {
+  return new Date(ts * 1000).toLocaleString()
+}
+
+export function CommitDetailPage() {
+  const { slug: orgSlug = '', projectSlug = '', commitSha = '' } = useParams()
+  const { token } = useAuth()
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => api.listOrganizations(token!),
+    enabled: Boolean(token),
+  })
+  const group = groups.find((g) => g.slug === orgSlug)
+
+  const { data: repoData } = useQuery({
+    queryKey: ['repository', orgSlug, projectSlug],
+    queryFn: () => api.getRepository(token!, orgSlug, projectSlug),
+    enabled: Boolean(token && orgSlug && projectSlug),
+  })
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['repo-commit', orgSlug, projectSlug, commitSha],
+    queryFn: () => api.getRepoCommit(token!, orgSlug, projectSlug, commitSha),
+    enabled: Boolean(token && orgSlug && projectSlug && commitSha),
+  })
+
+  const commit = data?.commit
+  const repoName = repoData?.repository.name ?? projectSlug
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
+        <Loader2 size={16} className="animate-spin" />
+        Loading commit…
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+        {(error as Error).message}
+      </div>
+    )
+  }
+
+  if (!commit || !token) return null
+
+  return (
+    <>
+      <Breadcrumbs
+        items={[
+          { label: 'Groups', to: '/groups' },
+          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
+          { label: repoName, to: `/groups/${orgSlug}/projects/${projectSlug}` },
+          { label: 'Commits', to: `/groups/${orgSlug}/projects/${projectSlug}?tab=commits` },
+          { label: commit.short_sha },
+        ]}
+      />
+
+      <div className="gogs-panel mb-4">
+        <div className="gogs-panel-body space-y-4">
+          <div className="flex items-start gap-3">
+            <GitCommit size={20} className="text-primary shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <h1 className="text-lg font-semibold text-text whitespace-pre-wrap">{commit.message}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
+                <span className="font-mono text-primary">{commit.sha}</span>
+                <span>{commit.author_name}</span>
+                <span className="text-muted">{commit.author_email}</span>
+                <span>{formatDate(commit.committed_at)}</span>
+              </div>
+              {(commit.files_changed > 0 || commit.insertions > 0 || commit.deletions > 0) && (
+                <div className="mt-2 text-xs text-text-secondary flex flex-wrap gap-3">
+                  {commit.files_changed > 0 && (
+                    <span>
+                      {commit.files_changed} file{commit.files_changed === 1 ? '' : 's'} changed
+                    </span>
+                  )}
+                  <span>
+                    <span className="text-dashboard-success">+{commit.insertions}</span>
+                    {' '}
+                    <span className="text-dashboard-danger">−{commit.deletions}</span>
+                  </span>
+                </div>
+              )}
+              {commit.parents.length > 0 && (
+                <div className="mt-3 text-xs text-text-secondary">
+                  <span className="text-muted mr-2">Parents</span>
+                  {commit.parents.map((parent, i) => (
+                    <span key={parent}>
+                      {i > 0 && ', '}
+                      <Link
+                        to={commitUrl(orgSlug, projectSlug, parent)}
+                        className="font-mono text-primary hover:underline"
+                      >
+                        {parent.slice(0, 7)}
+                      </Link>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {commit.body && commit.body !== commit.message && (
+            <pre className="m-0 p-3 rounded-md border border-border bg-surface text-sm text-text whitespace-pre-wrap font-sans">
+              {commit.body}
+            </pre>
+          )}
+        </div>
+      </div>
+
+      {commit.diff ? (
+        <div className="gogs-panel">
+          <div className="gogs-panel-header">Changes</div>
+          <div className="gogs-panel-body flush">
+            <pre className="gogs-diff m-0">{commit.diff}</pre>
+          </div>
+        </div>
+      ) : (
+        <div className="gogs-panel">
+          <div className="gogs-panel-body text-sm text-text-secondary">No file changes in this commit.</div>
+        </div>
+      )}
+    </>
+  )
+}

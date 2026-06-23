@@ -16,7 +16,7 @@ use pertisk_domain::{
 use pertisk_git::{
     access::{self, AuthUser as GitAuthUser, RepoRecord},
     config::repo_disk_path,
-    explorer::{self, CommitInfo, RefKind, RepoBrowser, TreeEntry},
+    explorer::{self, CommitDetail, CommitInfo, RefKind, RepoBrowser, TreeEntry},
     http::GitHttpState,
     ssh::{GitSshConfig, GitSshState},
     storage::{ensure_bare_repo, init_bare_repo},
@@ -125,6 +125,10 @@ async fn main() -> anyhow::Result<()> {
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/commits",
             get(get_repo_commits),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/commits/{commit_sha}",
+            get(get_repo_commit),
         )
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
@@ -838,6 +842,11 @@ struct CommitsResponse {
     r#ref: String,
 }
 
+#[derive(Serialize)]
+struct CommitResponse {
+    commit: CommitDetail,
+}
+
 async fn load_repo(
     state: &AppState,
     org_slug: &str,
@@ -991,6 +1000,20 @@ async fn get_repo_commits(
         commits,
         r#ref: query.r#ref,
     }))
+}
+
+async fn get_repo_commit(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug, commit_sha)): Path<(String, String, String)>,
+) -> Result<Json<CommitResponse>, ApiError> {
+    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+
+    let commit = explorer::get_commit(&repo_path, &commit_sha)
+        .await
+        .map_err(map_explorer_error)?;
+
+    Ok(Json(CommitResponse { commit }))
 }
 
 async fn find_org_for_member(

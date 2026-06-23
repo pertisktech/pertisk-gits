@@ -48,6 +48,14 @@ export interface TreeEntry {
   kind: 'blob' | 'tree' | string
   mode: string
   size: number | null
+  last_commit?: EntryLastCommit | null
+}
+
+export interface EntryLastCommit {
+  sha: string
+  short_sha: string
+  message: string
+  committed_at: number
 }
 
 export interface CommitInfo {
@@ -57,6 +65,15 @@ export interface CommitInfo {
   author_email: string
   committed_at: number
   message: string
+}
+
+export interface CommitDetail extends CommitInfo {
+  body: string
+  parents: string[]
+  diff: string
+  files_changed: number
+  insertions: number
+  deletions: number
 }
 
 export interface RepoBrowser {

@@ -1,4 +1,4 @@
-import type { AuthResponse, CommitInfo, Organization, RepoBrowser, Repository, RepositoryDetail, TreeEntry, User, UserSshKey } from './types'
+import type { AuthResponse, CommitDetail, CommitInfo, Organization, RepoBrowser, Repository, RepositoryDetail, TreeEntry, User, UserSshKey } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
@@ -171,4 +171,11 @@ export const api = {
       token,
     )
   },
+
+  getRepoCommit: (token: string, orgSlug: string, repoSlug: string, commitSha: string) =>
+    request<{ commit: CommitDetail }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/commits/${commitSha}`,
+      {},
+      token,
+    ),
 }

@@ -4,25 +4,16 @@ import {
   Download,
   File,
   Folder,
-  GitCommit,
   Loader2,
 } from 'lucide-react'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
 import { findReadmePath } from '../lib/readme'
+import { formatRelativeTime } from '../lib/relativeTime'
+import { commitUrl } from './RepoCommits'
 import { RepoReadme } from './RepoReadme'
-
-function formatBytes(size: number | null) {
-  if (size == null) return '—'
-  if (size < 1024) return `${size} B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`
-}
-
-function formatDate(ts: number) {
-  return new Date(ts * 1000).toLocaleString()
-}
 
 interface RepoBrowserProps {
   token: string
@@ -60,12 +51,6 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
     enabled: canBrowse,
   })
 
-  const { data: commitsData } = useQuery({
-    queryKey: ['repo-commits', orgSlug, repoSlug, refKind, activeRef],
-    queryFn: () => api.getRepoCommits(token, orgSlug, repoSlug, { ref: activeRef, limit: 10, ref_kind: refKind }),
-    enabled: canBrowse && refKind === 'branch',
-  })
-
   const { data: blobData, isLoading: blobLoading } = useQuery({
     queryKey: ['repo-blob', orgSlug, repoSlug, refKind, activeRef, selectedFile],
     queryFn: () =>
@@ -91,7 +76,6 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
   }
 
   const pathParts = path ? path.split('/') : []
-  const latestCommit = commitsData?.commits[0]
   const readmePath =
     path === '' && !selectedFile && treeData?.entries
       ? findReadmePath(treeData.entries)
@@ -125,17 +109,6 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
   return (
     <div className="space-y-4 min-w-0">
       <div className="gogs-panel">
-        {latestCommit && (
-          <div className="gogs-commit-row">
-            <GitCommit size={14} className="text-primary shrink-0" />
-            <span className="font-mono text-text">{latestCommit.short_sha}</span>
-            <span className="truncate flex-1 text-text-secondary">{latestCommit.message}</span>
-            <span className="shrink-0 text-muted hidden sm:inline">
-              {formatDate(latestCommit.committed_at)}
-            </span>
-          </div>
-        )}
-
         <div className="gogs-toolbar">
           <select
             id="ref-kind-select"
@@ -198,11 +171,12 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
             Loading files…
           </div>
         ) : (
-          <table className="gogs-file-table">
+          <table className="gogs-file-table gogs-file-table-commits">
             <thead>
               <tr>
                 <th>Name</th>
-                <th className="w-28 text-right hidden sm:table-cell">Size</th>
+                <th className="hidden md:table-cell">Last commit message</th>
+                <th className="w-32 text-right hidden md:table-cell" aria-label="Last edit" />
               </tr>
             </thead>
             <tbody>
@@ -217,15 +191,37 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
                       )}
                       {entry.name}
                     </span>
+                    {entry.last_commit && (
+                      <div className="md:hidden flex items-start justify-between gap-3 text-xs text-text-secondary mt-0.5 pl-[1.35rem] min-w-0">
+                        <span className="truncate">{entry.last_commit.message}</span>
+                        <span className="shrink-0 whitespace-nowrap">
+                          {formatRelativeTime(entry.last_commit.committed_at)}
+                        </span>
+                      </div>
+                    )}
                   </td>
-                  <td className="text-right text-text-secondary hidden sm:table-cell">
-                    {entry.kind === 'tree' ? '—' : formatBytes(entry.size)}
+                  <td className="hidden md:table-cell text-text-secondary text-sm">
+                    {entry.last_commit ? (
+                      <Link
+                        to={commitUrl(orgSlug, repoSlug, entry.last_commit.sha)}
+                        className="hover:text-primary hover:underline truncate block max-w-md"
+                        onClick={(e) => e.stopPropagation()}
+                        title={entry.last_commit.message}
+                      >
+                        {entry.last_commit.message}
+                      </Link>
+                    ) : (
+                      '—'
+                    )}
+                  </td>
+                  <td className="text-right text-text-secondary text-sm whitespace-nowrap hidden md:table-cell">
+                    {entry.last_commit ? formatRelativeTime(entry.last_commit.committed_at) : '—'}
                   </td>
                 </tr>
               ))}
               {(treeData?.entries ?? []).length === 0 && (
                 <tr>
-                  <td colSpan={2} className="text-center text-text-secondary py-8">
+                  <td colSpan={3} className="text-center text-text-secondary py-8">
                     This folder is empty.
                   </td>
                 </tr>
@@ -299,32 +295,6 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
               </pre>
             )}
           </div>
-        </div>
-      )}
-
-      {commitsData && commitsData.commits.length > 1 && refKind === 'branch' && (
-        <div className="gogs-panel">
-          <div className="gogs-panel-header flex items-center gap-2">
-            <GitCommit size={14} className="text-primary" />
-            Recent commits
-          </div>
-          <ul className="divide-y divide-border">
-            {commitsData.commits.slice(1).map((commit) => (
-              <li key={commit.sha} className="px-4 py-3 text-sm">
-                <div className="flex items-start gap-2">
-                  <GitCommit size={14} className="text-primary shrink-0 mt-0.5" />
-                  <div className="min-w-0">
-                    <div className="text-text">{commit.message}</div>
-                    <div className="text-xs text-text-secondary mt-0.5 flex flex-wrap gap-x-2">
-                      <span className="font-mono">{commit.short_sha}</span>
-                      <span>{commit.author_name}</span>
-                      <span>{formatDate(commit.committed_at)}</span>
-                    </div>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
         </div>
       )}
     </div>

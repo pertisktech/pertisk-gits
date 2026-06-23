@@ -1,16 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
-import { Code2, FolderGit2, Lock, Settings } from 'lucide-react'
-import { useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Code2, FolderGit2, GitCommit, Lock, Settings } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { CloneSidebar } from '../components/CloneSidebar'
 import { GogsSegment } from '../components/GogsSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
+import { RepoCommits } from '../components/RepoCommits'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
 
-type Tab = 'code' | 'clone' | 'settings'
+type Tab = 'code' | 'commits' | 'clone' | 'settings'
 
 function CloneTabContent({
   cloneUrl,
@@ -71,8 +71,16 @@ git push -u origin ${defaultBranch}`}</pre>
 
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
+  const [searchParams] = useSearchParams()
   const { token, user } = useAuth()
   const [tab, setTab] = useState<Tab>('code')
+
+  useEffect(() => {
+    const requested = searchParams.get('tab')
+    if (requested === 'commits' || requested === 'clone' || requested === 'settings' || requested === 'code') {
+      setTab(requested)
+    }
+  }, [searchParams])
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -121,27 +129,28 @@ export function ProjectDetailPage() {
         onChange={(id) => setTab(id as Tab)}
         tabs={[
           { id: 'code', label: 'Code', icon: Code2 },
+          { id: 'commits', label: 'Commits', icon: GitCommit },
           { id: 'clone', label: 'Clone', icon: FolderGit2 },
           { id: 'settings', label: 'Settings', icon: Settings },
         ]}
       />
 
       {tab === 'code' && (
-        <div className="gogs-repo-grid has-sidebar">
-          <RepoBrowser
-            token={token}
-            orgSlug={orgSlug}
-            repoSlug={projectSlug}
-            defaultBranch={project.default_branch}
-          />
-          <CloneSidebar
-            cloneUrl={cloneUrl}
-            authCloneUrl={authCloneUrl}
-            cloneUrlSsh={cloneUrlSsh}
-            defaultBranch={project.default_branch}
-            isPrivate={project.visibility === 'private'}
-          />
-        </div>
+        <RepoBrowser
+          token={token}
+          orgSlug={orgSlug}
+          repoSlug={projectSlug}
+          defaultBranch={project.default_branch}
+        />
+      )}
+
+      {tab === 'commits' && (
+        <RepoCommits
+          token={token}
+          orgSlug={orgSlug}
+          repoSlug={projectSlug}
+          defaultBranch={project.default_branch}
+        />
       )}
 
       {tab === 'clone' && (
