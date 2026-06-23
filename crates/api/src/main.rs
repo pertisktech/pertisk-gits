@@ -50,6 +50,7 @@ struct ErrorBody {
 struct HealthResponse {
     status: &'static str,
     version: &'static str,
+    database: &'static str,
 }
 
 #[derive(Serialize)]
@@ -123,6 +124,8 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let mut app = Router::new()
+        .route("/health", get(health))
+        .route("/health/live", get(health_live))
         .nest("/api/v1", api_routes)
         .merge(pertisk_git::http::router().with_state(git_state));
 
@@ -168,7 +171,9 @@ async fn root() -> Json<serde_json::Value> {
         "service": "pertisk-api",
         "version": env!("CARGO_PKG_VERSION"),
         "note": "This is the REST API. Open the web UI at http://localhost:5173",
-        "health": "/api/v1/health",
+        "health": "/health",
+        "health_live": "/health/live",
+        "api_health": "/api/v1/health",
         "api_base": "/api/v1"
     }))
 }
@@ -202,11 +207,34 @@ async fn spa_index(method: Method, State(state): State<AppState>) -> Result<Resp
     Ok(response)
 }
 
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "ok",
-        version: env!("CARGO_PKG_VERSION"),
-    })
+async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthResponse>) {
+    let database = match sqlx::query("SELECT 1").execute(&state.pool).await {
+        Ok(_) => "ok",
+        Err(error) => {
+            tracing::warn!(%error, "health check: database unavailable");
+            "error"
+        }
+    };
+
+    let healthy = database == "ok";
+    let status_code = if healthy {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+
+    (
+        status_code,
+        Json(HealthResponse {
+            status: if healthy { "ok" } else { "unhealthy" },
+            version: env!("CARGO_PKG_VERSION"),
+            database,
+        }),
+    )
+}
+
+async fn health_live() -> (StatusCode, &'static str) {
+    (StatusCode::OK, "ok")
 }
 
 async fn register(
@@ -700,6 +728,7 @@ async fn auth_middleware(
     let path = req.uri().path();
 
     if path.ends_with("/health")
+        || path.ends_with("/health/live")
         || path.ends_with("/auth/register")
         || path.ends_with("/auth/login")
     {

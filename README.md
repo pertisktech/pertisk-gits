@@ -101,7 +101,9 @@ Config: `/etc/pertisk-gits/pertisk-gits.conf` — set `DATABASE_URL`, `JWT_SECRE
 
 | Method | Path | Auth |
 |--------|------|------|
-| GET | `/api/v1/health` | No |
+| GET | `/health` | No — readiness (includes DB check) |
+| GET | `/health/live` | No — liveness |
+| GET | `/api/v1/health` | No — same as `/health` |
 | POST | `/api/v1/auth/register` | No |
 | POST | `/api/v1/auth/login` | No |
 | GET | `/api/v1/me` | Bearer JWT |

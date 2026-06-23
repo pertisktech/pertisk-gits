@@ -5,6 +5,7 @@
 | Path | Handler |
 |------|---------|
 | `/api/v1/*` | REST API |
+| `/health`, `/health/live` | Health probes (no auth) |
 | `/{org}/{repo}.git/*` | Git Smart HTTP |
 | `/*` | React SPA (`WEB_DIST`) |
 
@@ -32,6 +33,16 @@ Verify SPA locally on the server:
 ```bash
 curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/groups/node-js/projects/node-express
 # expect 200 (index.html)
+```
+
+Health checks (load balancers, monitoring):
+
+```bash
+# Readiness — verifies PostgreSQL connectivity (503 if DB is down)
+curl -fsS http://127.0.0.1:8080/health
+
+# Liveness — process is up (always 200 when the server is running)
+curl -fsS http://127.0.0.1:8080/health/live
 ```
 
 If that returns **200** but HTTPS still **404**, fix the reverse proxy below.
