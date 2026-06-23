@@ -8,3 +8,9 @@ web/node_modules
 web/dist
 .DS_Store
 *.log
+
+# Packaging
+release/
+pkg-pertisk-gits/
+pertisk-gits-linux-*
+.buildx-cache/

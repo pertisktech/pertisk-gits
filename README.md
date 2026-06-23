@@ -4,6 +4,25 @@ Self-hosted Git platform built with Rust, React, and PostgreSQL.
 
 ## Quick Start
 
+### Using Make (recommended)
+
+```bash
+cp .env.example .env
+
+# Dev — single port :8080 (Postgres + API + built web UI)
+make dev
+
+# Dev — hot-reload UI on :5173, API on :8080
+make dev-vite
+
+# Stop dev processes
+make dev-stop
+```
+
+Requires: Docker, `cargo-watch` (`cargo install cargo-watch`).
+
+### Manual start
+
 ### 1. Start infrastructure
 
 ```bash
@@ -51,6 +70,32 @@ cargo run -p pertisk-git --bin pertisk-git-http
 3. Push: use your username + account password when Git prompts for credentials
 
 Private projects require authentication for clone and push.
+
+## Packaging & deploy
+
+Like [pertisk-proxy](https://github.com/pertisktech/pertisk-proxy), packages are built with Docker cross-compile + fpm (DEB/RPM).
+
+```bash
+# Build Linux package (amd64 DEB + RPM + tarball → release/)
+make build VERSION=0.1.0
+
+# Build + deploy (auto-detect deb/rpm on remote host)
+make deploy DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.0
+
+# Or explicit package manager
+make deploy-rpm DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.0
+make deploy-deb DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.0
+
+# Build only (both architectures)
+make package VERSION=0.1.0
+
+# Deploy existing package (skip rebuild)
+make deploy DEPLOY_HOST=user@host VERSION=0.1.0 PACKAGE_BUILD=0
+```
+
+Installed service: `pertisk-gits` on port **8080** (UI + API + Git HTTP).
+
+Config: `/etc/pertisk-gits/pertisk-gits.conf` — set `DATABASE_URL`, `JWT_SECRET`, and `GIT_PUBLIC_BASE_URL`, then `sudo systemctl restart pertisk-gits`.
 
 ## API Endpoints (Phase 0)
 
