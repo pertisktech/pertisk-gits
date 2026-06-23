@@ -1,8 +1,9 @@
-import { GitBranch, LayoutDashboard, Moon, Plus, Search, Sun, Users } from 'lucide-react'
+import { GitBranch, LayoutDashboard, Moon, Plus, Sun, Users } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { cn } from '../utils/cn'
+import { GlobalSearch } from './GlobalSearch'
 import { UserMenu } from './UserMenu'
 
 const topNavClass = ({ isActive }: { isActive: boolean }) => cn(isActive && 'active')
@@ -35,15 +36,7 @@ export function AppLayout() {
             </NavLink>
           </nav>
 
-          <div className="hidden md:flex relative flex-1 max-w-xs">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted" />
-            <input
-              type="search"
-              placeholder="Search…"
-              disabled
-              className="w-full pl-8 pr-3 py-1.5 rounded-md border border-border bg-bg text-sm text-text placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/40"
-            />
-          </div>
+          <GlobalSearch />
 
           <div className="ml-auto flex items-center gap-1.5">
             {user && (
