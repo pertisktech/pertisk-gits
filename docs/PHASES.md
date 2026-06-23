@@ -21,7 +21,7 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | React shell (login, org/repo list) | Done |
 | Docker Compose (Postgres, Redis, MinIO) | Done |
 
-**Schema:** `users`, `organizations`, `organization_members`, `repositories`, `repository_permissions`, `api_tokens`
+**Schema:** `users`, `organizations`, `organization_members`, `repositories`, `repository_permissions`, `api_tokens`, `user_ssh_keys`
 
 ---
 
@@ -29,15 +29,16 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 
 **Goal:** Real `git clone`, `push`, `pull` over HTTPS and SSH.
 
-| Deliverable | Details |
-|-------------|---------|
-| Bare repo storage | Disk or object-backed packfiles |
-| Git Smart HTTP | `git-upload-pack` / `git-receive-pack` |
-| SSH access | `git@host:org/repo.git` with key auth |
-| Branch/tag UI | List branches, tags, default branch |
-| Repo settings | Visibility, description, default branch |
-| Web file browser | Tree, blob, raw download |
-| Commits UI | Log, diff, blame (later) |
+| Deliverable | Status |
+|-------------|--------|
+| Bare repo storage | Done |
+| Git Smart HTTP | Done |
+| SSH access | Done |
+| Branch/tag UI | Done |
+| Repo settings | Done |
+| Web file browser | Done |
+| Raw file download | Done |
+| Commits UI | Done (log; diff/blame later) |
 
 **Gateway routes:** `/*.git/*` → `git-http` service
 

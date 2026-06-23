@@ -908,6 +908,48 @@ body,
   word-break: break-all;
 }
 
+.gogs-field {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: 0.875rem;
+  font-family: inherit;
+  outline: none;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.gogs-field:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+
+.gogs-field::placeholder {
+  color: var(--color-muted);
+}
+
+select.gogs-field {
+  appearance: none;
+  background-color: var(--color-surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888aa0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  padding-right: 2rem;
+}
+
+textarea.gogs-field {
+  resize: vertical;
+  min-height: 5rem;
+}
+
+.gogs-field.mono {
+  font-family: var(--font-mono);
+}
+
 .gogs-list-table {
   width: 100%;
   font-size: 0.875rem;

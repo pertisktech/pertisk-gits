@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Code2, FolderGit2, Lock } from 'lucide-react'
+import { Code2, FolderGit2, Lock, Settings } from 'lucide-react'
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
@@ -8,17 +8,20 @@ import { CloneSidebar } from '../components/CloneSidebar'
 import { GogsSegment } from '../components/GogsSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoHeader } from '../components/RepoHeader'
+import { RepoSettings } from '../components/RepoSettings'
 
-type Tab = 'code' | 'clone'
+type Tab = 'code' | 'clone' | 'settings'
 
 function CloneTabContent({
   cloneUrl,
   authCloneUrl,
+  cloneUrlSsh,
   defaultBranch,
   isPrivate,
 }: {
   cloneUrl: string
   authCloneUrl: string
+  cloneUrlSsh?: string | null
   defaultBranch: string
   isPrivate: boolean
 }) {
@@ -34,6 +37,16 @@ function CloneTabContent({
             {`git clone ${cloneUrl}`}
           </pre>
         </div>
+        {cloneUrlSsh && (
+          <div>
+            <div className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
+              SSH
+            </div>
+            <pre className="m-0 p-3 rounded-md bg-bg border border-border font-mono text-xs text-text overflow-x-auto">
+              {`git clone ${cloneUrlSsh}`}
+            </pre>
+          </div>
+        )}
         <div>
           <div className="text-xs font-semibold text-text-secondary mb-2 uppercase tracking-wide">
             Push an existing project
@@ -76,6 +89,7 @@ export function ProjectDetailPage() {
 
   const project = data?.repository
   const cloneUrl = data?.clone_url_http ?? ''
+  const cloneUrlSsh = data?.clone_url_ssh ?? null
   const authCloneUrl = user ? cloneUrl.replace('://', `://${user.username}@`) : cloneUrl
 
   if (isLoading) {
@@ -108,6 +122,7 @@ export function ProjectDetailPage() {
         tabs={[
           { id: 'code', label: 'Code', icon: Code2 },
           { id: 'clone', label: 'Clone', icon: FolderGit2 },
+          { id: 'settings', label: 'Settings', icon: Settings },
         ]}
       />
 
@@ -122,6 +137,7 @@ export function ProjectDetailPage() {
           <CloneSidebar
             cloneUrl={cloneUrl}
             authCloneUrl={authCloneUrl}
+            cloneUrlSsh={cloneUrlSsh}
             defaultBranch={project.default_branch}
             isPrivate={project.visibility === 'private'}
           />
@@ -132,8 +148,19 @@ export function ProjectDetailPage() {
         <CloneTabContent
           cloneUrl={cloneUrl}
           authCloneUrl={authCloneUrl}
+          cloneUrlSsh={cloneUrlSsh}
           defaultBranch={project.default_branch}
           isPrivate={project.visibility === 'private'}
+        />
+      )}
+
+      {tab === 'settings' && (
+        <RepoSettings
+          token={token}
+          orgSlug={orgSlug}
+          repoSlug={projectSlug}
+          project={project}
+          branches={[project.default_branch]}
         />
       )}
     </>

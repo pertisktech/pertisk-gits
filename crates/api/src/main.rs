@@ -14,10 +14,13 @@ use pertisk_domain::{
     DomainError,
 };
 use pertisk_git::{
+    access::{self, AuthUser as GitAuthUser, RepoRecord},
     config::repo_disk_path,
-    explorer::{self, CommitInfo, RepoBrowser, TreeEntry},
+    explorer::{self, CommitInfo, RefKind, RepoBrowser, TreeEntry},
     http::GitHttpState,
+    ssh::{GitSshConfig, GitSshState},
     storage::{ensure_bare_repo, init_bare_repo},
+    ssh_keys,
 };
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -62,6 +65,7 @@ struct MeResponse {
 struct RepositoryResponse {
     repository: Repository,
     clone_url_http: String,
+    clone_url_ssh: Option<String>,
 }
 
 #[tokio::main]
@@ -91,6 +95,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
         .route("/me", get(me))
+        .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
+        .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
         .route("/organizations", get(list_organizations).post(create_organization))
         .route(
             "/organizations/{org_slug}/repositories",
@@ -98,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}",
-            get(get_repository),
+            get(get_repository).patch(update_repository),
         )
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/browser",
@@ -113,6 +119,10 @@ async fn main() -> anyhow::Result<()> {
             get(get_repo_blob),
         )
         .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/raw",
+            get(get_repo_raw),
+        )
+        .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/commits",
             get(get_repo_commits),
         )
@@ -122,6 +132,24 @@ async fn main() -> anyhow::Result<()> {
         pool: state.pool.clone(),
         repos_root: state.config.repos_root.clone(),
     };
+
+    if let Some(ssh_port) = config.git_ssh_port {
+        let ssh_state = Arc::new(GitSshState {
+            pool: state.pool.clone(),
+            repos_root: state.config.repos_root.clone(),
+            config: GitSshConfig {
+                host: std::env::var("GIT_SSH_HOST").unwrap_or_else(|_| "0.0.0.0".into()),
+                port: ssh_port,
+                host_key_path: config.git_ssh_host_key_path.clone(),
+            },
+        });
+
+        tokio::spawn(async move {
+            if let Err(err) = pertisk_git::ssh::run_server(ssh_state).await {
+                tracing::error!("git ssh server failed: {err:#}");
+            }
+        });
+    }
 
     let mut app = Router::new()
         .route("/health", get(health))
@@ -332,6 +360,94 @@ async fn me(
     Ok(Json(MeResponse { user }))
 }
 
+fn repo_response(config: &Config, org_slug: &str, repository: Repository) -> RepositoryResponse {
+    RepositoryResponse {
+        clone_url_http: config.clone_url_http(org_slug, &repository.slug),
+        clone_url_ssh: config.clone_url_ssh(org_slug, &repository.slug),
+        repository,
+    }
+}
+
+async fn list_ssh_keys(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<UserSshKey>>, ApiError> {
+    let keys = sqlx::query_as::<_, UserSshKey>(
+        r#"
+        SELECT id, user_id, title, public_key, fingerprint, created_at
+        FROM user_ssh_keys
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(auth.user_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(keys))
+}
+
+async fn create_ssh_key(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(body): Json<CreateSshKeyRequest>,
+) -> Result<(StatusCode, Json<UserSshKey>), ApiError> {
+    body.validate()
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    let parsed = ssh_keys::parse_public_key(&body.public_key)
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    let key = sqlx::query_as::<_, UserSshKey>(
+        r#"
+        INSERT INTO user_ssh_keys (user_id, title, public_key, fingerprint)
+        VALUES ($1, $2, $3, $4)
+        RETURNING id, user_id, title, public_key, fingerprint, created_at
+        "#,
+    )
+    .bind(auth.user_id)
+    .bind(&body.title)
+    .bind(&parsed.public_key)
+    .bind(&parsed.fingerprint)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db) if db.constraint().is_some() => {
+            ApiError::from(DomainError::Conflict(
+                "ssh key fingerprint or title already exists".into(),
+            ))
+        }
+        other => ApiError::from(DomainError::Internal(other.to_string())),
+    })?;
+
+    Ok((StatusCode::CREATED, Json(key)))
+}
+
+async fn delete_ssh_key(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(key_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM user_ssh_keys
+        WHERE id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(key_id)
+    .bind(auth.user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if result.rows_affected() == 0 {
+        return Err(DomainError::NotFound.into());
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_organizations(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -514,10 +630,123 @@ async fn get_repository(
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    Ok(Json(RepositoryResponse {
-        clone_url_http: state.config.clone_url(&org_slug, &repo.slug),
-        repository: repo,
-    }))
+    Ok(Json(repo_response(&state.config, &org_slug, repo)))
+}
+
+async fn update_repository(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Json(body): Json<UpdateRepositoryRequest>,
+) -> Result<Json<RepositoryResponse>, ApiError> {
+    body.validate()
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    if body.name.is_none()
+        && body.description.is_none()
+        && body.visibility.is_none()
+        && body.default_branch.is_none()
+    {
+        return Err(DomainError::Validation("no fields to update".into()).into());
+    }
+
+    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+
+    let repo = sqlx::query_as::<_, Repository>(
+        r#"
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        FROM repositories
+        WHERE organization_id = $1 AND slug = $2
+        "#,
+    )
+    .bind(org.id)
+    .bind(&repo_slug)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::NotFound)?;
+
+    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+
+    if let Some(default_branch) = &body.default_branch {
+        let repo_path = repo_disk_path(&state.config.repos_root, &org_slug, &repo.slug);
+        if !explorer::ref_exists(&repo_path, default_branch)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+        {
+            return Err(DomainError::Validation(format!(
+                "branch '{default_branch}' does not exist in the repository"
+            ))
+            .into());
+        }
+    }
+
+    let name = body.name.unwrap_or_else(|| repo.name.clone());
+    let description = match body.description {
+        Some(value) => {
+            if value.trim().is_empty() {
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => repo.description,
+    };
+    let visibility = body.visibility.unwrap_or(repo.visibility);
+    let default_branch = body
+        .default_branch
+        .unwrap_or_else(|| repo.default_branch.clone());
+
+    let updated = sqlx::query_as::<_, Repository>(
+        r#"
+        UPDATE repositories
+        SET name = $1,
+            description = $2,
+            visibility = $3,
+            default_branch = $4,
+            updated_at = NOW()
+        WHERE id = $5
+        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        "#,
+    )
+    .bind(name)
+    .bind(description)
+    .bind(visibility)
+    .bind(default_branch)
+    .bind(repo.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(repo_response(&state.config, &org_slug, updated)))
+}
+
+async fn ensure_can_write_repo(
+    state: &AppState,
+    org_slug: &str,
+    repo: &Repository,
+    auth: &AuthUser,
+) -> Result<(), ApiError> {
+    let record = RepoRecord {
+        id: repo.id,
+        org_slug: org_slug.to_string(),
+        repo_slug: repo.slug.clone(),
+        visibility: repo.visibility,
+    };
+    let user = GitAuthUser {
+        id: auth.user_id,
+        username: auth.username.clone(),
+    };
+
+    let allowed = access::can_write_repo(&state.pool, &record, &user)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if !allowed {
+        return Err(DomainError::Forbidden.into());
+    }
+
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -526,10 +755,38 @@ struct TreeQuery {
     r#ref: String,
     #[serde(default)]
     path: String,
+    #[serde(default = "default_ref_kind")]
+    ref_kind: String,
 }
 
 fn default_ref() -> String {
     "main".into()
+}
+
+fn default_ref_kind() -> String {
+    "branch".into()
+}
+
+fn parse_ref_kind(kind: &str) -> Result<RefKind, ApiError> {
+    match kind {
+        "branch" => Ok(RefKind::Branch),
+        "tag" => Ok(RefKind::Tag),
+        _ => Err(DomainError::Validation("ref_kind must be branch or tag".into()).into()),
+    }
+}
+
+fn guess_content_type(path: &str) -> &'static str {
+    match path.rsplit('.').next() {
+        Some("md" | "txt" | "rs" | "js" | "ts" | "tsx" | "json" | "html" | "css" | "yml" | "yaml")
+        => "text/plain; charset=utf-8",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("pdf") => "application/pdf",
+        _ => "application/octet-stream",
+    }
 }
 
 #[derive(Deserialize)]
@@ -537,6 +794,8 @@ struct BlobQuery {
     #[serde(default = "default_ref")]
     r#ref: String,
     path: String,
+    #[serde(default = "default_ref_kind")]
+    ref_kind: String,
 }
 
 #[derive(Deserialize)]
@@ -545,6 +804,8 @@ struct CommitsQuery {
     r#ref: String,
     #[serde(default = "default_commit_limit")]
     limit: u32,
+    #[serde(default = "default_ref_kind")]
+    ref_kind: String,
 }
 
 fn default_commit_limit() -> u32 {
@@ -637,8 +898,9 @@ async fn get_repo_tree(
     Query(query): Query<TreeQuery>,
 ) -> Result<Json<TreeResponse>, ApiError> {
     let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
-    let entries = explorer::list_tree(&repo_path, &query.r#ref, &query.path)
+    let entries = explorer::list_tree(&repo_path, &query.r#ref, ref_kind, &query.path)
         .await
         .map_err(map_explorer_error)?;
 
@@ -660,8 +922,9 @@ async fn get_repo_blob(
     }
 
     let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
-    let content = explorer::read_blob(&repo_path, &query.r#ref, &query.path)
+    let content = explorer::read_blob(&repo_path, &query.r#ref, ref_kind, &query.path)
         .await
         .map_err(map_explorer_error)?;
 
@@ -675,6 +938,42 @@ async fn get_repo_blob(
     }))
 }
 
+async fn get_repo_raw(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<BlobQuery>,
+) -> Result<Response, ApiError> {
+    if query.path.is_empty() {
+        return Err(DomainError::Validation("path is required".into()).into());
+    }
+
+    let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let ref_kind = parse_ref_kind(&query.ref_kind)?;
+
+    let bytes = explorer::read_blob_bytes(&repo_path, &query.r#ref, ref_kind, &query.path)
+        .await
+        .map_err(map_explorer_error)?;
+
+    let filename = query
+        .path
+        .rsplit('/')
+        .next()
+        .unwrap_or(&query.path);
+    let content_type = guess_content_type(&query.path);
+    let disposition = format!("inline; filename=\"{filename}\"");
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, content_type),
+            (header::CONTENT_DISPOSITION, disposition.as_str()),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
 async fn get_repo_commits(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -682,8 +981,9 @@ async fn get_repo_commits(
     Query(query): Query<CommitsQuery>,
 ) -> Result<Json<CommitsResponse>, ApiError> {
     let (_org, _repo, repo_path) = load_repo(&state, &org_slug, &repo_slug, auth.user_id).await?;
+    let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
-    let commits = explorer::list_commits(&repo_path, &query.r#ref, query.limit.min(100))
+    let commits = explorer::list_commits(&repo_path, &query.r#ref, ref_kind, query.limit.min(100))
         .await
         .map_err(map_explorer_error)?;
 

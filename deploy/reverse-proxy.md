@@ -21,8 +21,14 @@ DATABASE_URL=postgres://pertisk:SECRET@127.0.0.1:5432/pertisk_gits
 JWT_SECRET=<long-random-secret>
 REPOS_ROOT=/var/lib/pertisk-gits/repos
 GIT_PUBLIC_BASE_URL=https://gitdev.cloud.pertisk.com
+GIT_SSH_HOST=0.0.0.0
+GIT_SSH_PORT=2222
+GIT_SSH_PUBLIC_HOST=gitdev.cloud.pertisk.com
+GIT_SSH_HOST_KEY_PATH=/var/lib/pertisk-gits/ssh_host_key
 WEB_DIST=/usr/share/pertisk-gits/web
 ```
+
+Open **TCP port 2222** (or your `GIT_SSH_PORT`) on the firewall. Git over SSH uses a separate listener from HTTP — it does not go through the HTTPS reverse proxy.
 
 ```bash
 sudo systemctl restart pertisk-gits

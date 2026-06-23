@@ -1,4 +1,4 @@
-import type { AuthResponse, CommitInfo, Organization, RepoBrowser, Repository, RepositoryDetail, TreeEntry, User } from './types'
+import type { AuthResponse, CommitInfo, Organization, RepoBrowser, Repository, RepositoryDetail, TreeEntry, User, UserSshKey } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
@@ -42,6 +42,28 @@ export const api = {
 
   me: (token: string) => request<{ user: User }>('/me', {}, token),
 
+  listSshKeys: (token: string) => request<UserSshKey[]>('/me/ssh-keys', {}, token),
+
+  createSshKey: (token: string, payload: { title: string; public_key: string }) =>
+    request<UserSshKey>('/me/ssh-keys', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteSshKey: async (token: string, keyId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/me/ssh-keys/${keyId}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
   listOrganizations: (token: string) =>
     request<Organization[]>('/organizations', {}, token),
 
@@ -70,6 +92,22 @@ export const api = {
   getRepository: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepositoryDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}`, {}, token),
 
+  updateRepository: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: {
+      name?: string
+      description?: string
+      visibility?: 'public' | 'private'
+      default_branch?: string
+    },
+  ) =>
+    request<RepositoryDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
   getRepoBrowser: (token: string, orgSlug: string, repoSlug: string) =>
     request<{ browser: RepoBrowser }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/browser`,
@@ -81,10 +119,11 @@ export const api = {
     token: string,
     orgSlug: string,
     repoSlug: string,
-    params: { ref: string; path?: string },
+    params: { ref: string; path?: string; ref_kind?: 'branch' | 'tag' },
   ) => {
     const search = new URLSearchParams({ ref: params.ref })
     if (params.path) search.set('path', params.path)
+    if (params.ref_kind) search.set('ref_kind', params.ref_kind)
     return request<{ entries: TreeEntry[]; path: string; ref: string }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/tree?${search}`,
       {},
@@ -96,9 +135,10 @@ export const api = {
     token: string,
     orgSlug: string,
     repoSlug: string,
-    params: { ref: string; path: string },
+    params: { ref: string; path: string; ref_kind?: 'branch' | 'tag' },
   ) => {
     const search = new URLSearchParams({ ref: params.ref, path: params.path })
+    if (params.ref_kind) search.set('ref_kind', params.ref_kind)
     return request<{ path: string; ref: string; content: string; is_binary: boolean }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/blob?${search}`,
       {},
@@ -106,14 +146,25 @@ export const api = {
     )
   },
 
+  repoRawUrl: (
+    orgSlug: string,
+    repoSlug: string,
+    params: { ref: string; path: string; ref_kind?: 'branch' | 'tag' },
+  ) => {
+    const search = new URLSearchParams({ ref: params.ref, path: params.path })
+    if (params.ref_kind) search.set('ref_kind', params.ref_kind)
+    return `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/raw?${search}`
+  },
+
   getRepoCommits: (
     token: string,
     orgSlug: string,
     repoSlug: string,
-    params: { ref: string; limit?: number },
+    params: { ref: string; limit?: number; ref_kind?: 'branch' | 'tag' },
   ) => {
     const search = new URLSearchParams({ ref: params.ref })
     if (params.limit) search.set('limit', String(params.limit))
+    if (params.ref_kind) search.set('ref_kind', params.ref_kind)
     return request<{ commits: CommitInfo[]; ref: string }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/commits?${search}`,
       {},

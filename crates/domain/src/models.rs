@@ -146,3 +146,31 @@ pub struct CreateRepositoryRequest {
     pub description: Option<String>,
     pub visibility: Option<RepoVisibility>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct UserSshKey {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub title: String,
+    pub public_key: String,
+    pub fingerprint: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateSshKeyRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub title: String,
+    #[validate(length(min = 1))]
+    pub public_key: String,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateRepositoryRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub visibility: Option<RepoVisibility>,
+    #[validate(length(min = 1, max = 255))]
+    pub default_branch: Option<String>,
+}

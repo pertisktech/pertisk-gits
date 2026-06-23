@@ -34,11 +34,13 @@ function CopyField({ label, value }: { label: string; value: string }) {
 export function CloneSidebar({
   cloneUrl,
   authCloneUrl,
+  cloneUrlSsh,
   defaultBranch,
   isPrivate,
 }: {
   cloneUrl: string
   authCloneUrl: string
+  cloneUrlSsh?: string | null
   defaultBranch: string
   isPrivate: boolean
 }) {
@@ -47,10 +49,12 @@ export function CloneSidebar({
       <div className="gogs-panel-header">Clone</div>
       <div className="gogs-panel-body space-y-4">
         <CopyField label="HTTPS" value={cloneUrl} />
+        {cloneUrlSsh && <CopyField label="SSH" value={cloneUrlSsh} />}
         {isPrivate && (
           <p className="text-xs text-text-secondary flex items-start gap-1.5">
             <Lock size={12} className="shrink-0 mt-0.5 text-blue-b1" />
-            Use your username and password when Git prompts.
+            HTTPS: use your username and password when Git prompts.
+            {cloneUrlSsh && ' SSH: add your public key under Profile.'}
           </p>
         )}
         <div>

@@ -30,6 +30,16 @@ export interface Repository {
 export interface RepositoryDetail {
   repository: Repository
   clone_url_http: string
+  clone_url_ssh?: string | null
+}
+
+export interface UserSshKey {
+  id: string
+  user_id: string
+  title: string
+  public_key: string
+  fingerprint: string
+  created_at: string
 }
 
 export interface TreeEntry {
@@ -51,6 +61,7 @@ export interface CommitInfo {
 
 export interface RepoBrowser {
   branches: string[]
+  tags: string[]
   default_ref: string
   empty: boolean
 }

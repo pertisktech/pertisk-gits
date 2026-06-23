@@ -26,12 +26,14 @@ pub struct CommitInfo {
 #[derive(Debug, Clone, Serialize)]
 pub struct RepoBrowser {
     pub branches: Vec<String>,
+    pub tags: Vec<String>,
     pub default_ref: String,
     pub empty: bool,
 }
 
 pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Result<RepoBrowser> {
     let branches = list_branches(repo_path).await?;
+    let tags = list_tags(repo_path).await?;
     let default_ref = branches
         .iter()
         .find(|b| b.as_str() == default_branch)
@@ -43,45 +45,98 @@ pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Res
 
     Ok(RepoBrowser {
         branches,
+        tags,
         default_ref,
         empty,
     })
 }
 
 pub async fn list_branches(repo_path: &Path) -> anyhow::Result<Vec<String>> {
-    let output = git(repo_path, &["for-each-ref", "--format=%(refname:short)", "refs/heads/"])
-        .await?;
+    list_refs(repo_path, "refs/heads/").await
+}
 
-    let branches: Vec<String> = output
+pub async fn list_tags(repo_path: &Path) -> anyhow::Result<Vec<String>> {
+    list_refs(repo_path, "refs/tags/").await
+}
+
+async fn list_refs(repo_path: &Path, prefix: &str) -> anyhow::Result<Vec<String>> {
+    let output = git(
+        repo_path,
+        &["for-each-ref", "--format=%(refname:short)", prefix],
+    )
+    .await?;
+
+    let refs: Vec<String> = output
         .lines()
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
         .collect();
 
-    Ok(branches)
+    Ok(refs)
 }
 
 pub async fn ref_exists(repo_path: &Path, ref_name: &str) -> anyhow::Result<bool> {
+    ref_exists_kind(repo_path, ref_name, RefKind::Branch).await
+}
+
+pub async fn tag_exists(repo_path: &Path, tag_name: &str) -> anyhow::Result<bool> {
+    ref_exists_kind(repo_path, tag_name, RefKind::Tag).await
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum RefKind {
+    Branch,
+    Tag,
+}
+
+pub async fn ref_exists_kind(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+) -> anyhow::Result<bool> {
+    let full_ref = match kind {
+        RefKind::Branch => format!("refs/heads/{ref_name}"),
+        RefKind::Tag => format!("refs/tags/{ref_name}"),
+    };
+
     let result = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
-        .args(["rev-parse", "--verify", &format!("refs/heads/{ref_name}")])
+        .args(["rev-parse", "--verify", &full_ref])
         .output()
         .await?;
 
     Ok(result.status.success())
 }
 
-pub async fn list_tree(repo_path: &Path, ref_name: &str, path: &str) -> anyhow::Result<Vec<TreeEntry>> {
-    if !ref_exists(repo_path, ref_name).await? {
-        anyhow::bail!("branch '{ref_name}' not found");
+fn resolve_object(ref_name: &str, kind: RefKind, path: &str) -> String {
+    let prefix = match kind {
+        RefKind::Branch => format!("refs/heads/{ref_name}"),
+        RefKind::Tag => format!("refs/tags/{ref_name}"),
+    };
+
+    if path.is_empty() {
+        prefix
+    } else {
+        format!("{prefix}:{path}")
+    }
+}
+
+pub async fn list_tree(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+    path: &str,
+) -> anyhow::Result<Vec<TreeEntry>> {
+    if !ref_exists_kind(repo_path, ref_name, kind).await? {
+        let label = match kind {
+            RefKind::Branch => "branch",
+            RefKind::Tag => "tag",
+        };
+        anyhow::bail!("{label} '{ref_name}' not found");
     }
 
-    let tree_ref = if path.is_empty() {
-        format!("refs/heads/{ref_name}")
-    } else {
-        format!("refs/heads/{ref_name}:{path}")
-    };
+    let tree_ref = resolve_object(ref_name, kind, path);
 
     let output = git(repo_path, &["ls-tree", "-l", &tree_ref]).await?;
 
@@ -108,21 +163,52 @@ pub async fn list_tree(repo_path: &Path, ref_name: &str, path: &str) -> anyhow::
     Ok(entries)
 }
 
-pub async fn read_blob(repo_path: &Path, ref_name: &str, path: &str) -> anyhow::Result<String> {
-    if !ref_exists(repo_path, ref_name).await? {
-        anyhow::bail!("branch '{ref_name}' not found");
-    }
-
-    let object = format!("refs/heads/{ref_name}:{path}");
-    git(repo_path, &["show", &object]).await
+pub async fn read_blob(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+    path: &str,
+) -> anyhow::Result<String> {
+    let bytes = read_blob_bytes(repo_path, ref_name, kind, path).await?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
-pub async fn list_commits(repo_path: &Path, ref_name: &str, limit: u32) -> anyhow::Result<Vec<CommitInfo>> {
-    if !ref_exists(repo_path, ref_name).await? {
-        anyhow::bail!("branch '{ref_name}' not found");
+pub async fn read_blob_bytes(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+    path: &str,
+) -> anyhow::Result<Vec<u8>> {
+    if !ref_exists_kind(repo_path, ref_name, kind).await? {
+        let label = match kind {
+            RefKind::Branch => "branch",
+            RefKind::Tag => "tag",
+        };
+        anyhow::bail!("{label} '{ref_name}' not found");
     }
 
-    let refspec = format!("refs/heads/{ref_name}");
+    let object = resolve_object(ref_name, kind, path);
+    git_bytes(repo_path, &["show", &object]).await
+}
+
+pub async fn list_commits(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+    limit: u32,
+) -> anyhow::Result<Vec<CommitInfo>> {
+    if !ref_exists_kind(repo_path, ref_name, kind).await? {
+        let label = match kind {
+            RefKind::Branch => "branch",
+            RefKind::Tag => "tag",
+        };
+        anyhow::bail!("{label} '{ref_name}' not found");
+    }
+
+    let refspec = match kind {
+        RefKind::Branch => format!("refs/heads/{ref_name}"),
+        RefKind::Tag => format!("refs/tags/{ref_name}"),
+    };
     let pretty = "%H%x1f%an%x1f%ae%x1f%at%x1f%s";
     let limit = limit.to_string();
     let pretty_arg = format!("--pretty=format:{pretty}");
@@ -172,6 +258,11 @@ fn parse_ls_tree_line(line: &str, prefix: &str) -> Option<TreeEntry> {
 }
 
 async fn git(repo_path: &Path, args: &[&str]) -> anyhow::Result<String> {
+    let bytes = git_bytes(repo_path, args).await?;
+    Ok(String::from_utf8_lossy(&bytes).trim_end().to_string())
+}
+
+async fn git_bytes(repo_path: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {
     let output = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
         .args(args)
@@ -184,5 +275,5 @@ async fn git(repo_path: &Path, args: &[&str]) -> anyhow::Result<String> {
         anyhow::bail!("git command failed: {stderr}");
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim_end().to_string())
+    Ok(output.stdout)
 }

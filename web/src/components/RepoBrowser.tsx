@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import {
   ChevronRight,
+  Download,
   File,
   Folder,
   GitCommit,
@@ -33,7 +34,8 @@ interface RepoBrowserProps {
 export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBrowserProps) {
   const [path, setPath] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [branchOverride, setBranchOverride] = useState<string | null>(null)
+  const [refOverride, setRefOverride] = useState<string | null>(null)
+  const [refKind, setRefKind] = useState<'branch' | 'tag'>('branch')
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
@@ -42,25 +44,36 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
   })
 
   const browser = browserData?.browser
-  const ref = branchOverride ?? browser?.default_ref ?? defaultBranch
-  const canBrowse = Boolean(token && browser && !browser.empty)
+  const refList =
+    refKind === 'tag'
+      ? browser?.tags ?? []
+      : browser?.branches.length
+        ? browser.branches
+        : [defaultBranch]
+  const ref = refOverride ?? browser?.default_ref ?? defaultBranch
+  const activeRef = refList.includes(ref) ? ref : (refList[0] ?? ref)
+  const canBrowse = Boolean(token && browser && !browser.empty && (refKind === 'branch' || refList.length > 0))
 
   const { data: treeData, isLoading: treeLoading } = useQuery({
-    queryKey: ['repo-tree', orgSlug, repoSlug, ref, path],
-    queryFn: () => api.getRepoTree(token, orgSlug, repoSlug, { ref, path }),
+    queryKey: ['repo-tree', orgSlug, repoSlug, refKind, activeRef, path],
+    queryFn: () => api.getRepoTree(token, orgSlug, repoSlug, { ref: activeRef, path, ref_kind: refKind }),
     enabled: canBrowse,
   })
 
   const { data: commitsData } = useQuery({
-    queryKey: ['repo-commits', orgSlug, repoSlug, ref],
-    queryFn: () => api.getRepoCommits(token, orgSlug, repoSlug, { ref, limit: 10 }),
-    enabled: canBrowse,
+    queryKey: ['repo-commits', orgSlug, repoSlug, refKind, activeRef],
+    queryFn: () => api.getRepoCommits(token, orgSlug, repoSlug, { ref: activeRef, limit: 10, ref_kind: refKind }),
+    enabled: canBrowse && refKind === 'branch',
   })
 
   const { data: blobData, isLoading: blobLoading } = useQuery({
-    queryKey: ['repo-blob', orgSlug, repoSlug, ref, selectedFile],
+    queryKey: ['repo-blob', orgSlug, repoSlug, refKind, activeRef, selectedFile],
     queryFn: () =>
-      api.getRepoBlob(token, orgSlug, repoSlug, { ref, path: selectedFile! }),
+      api.getRepoBlob(token, orgSlug, repoSlug, {
+        ref: activeRef,
+        path: selectedFile!,
+        ref_kind: refKind,
+      }),
     enabled: Boolean(canBrowse && selectedFile),
   })
 
@@ -125,19 +138,40 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
 
         <div className="gogs-toolbar">
           <select
-            id="branch-select"
-            value={ref}
+            id="ref-kind-select"
+            value={refKind}
             onChange={(e) => {
-              setBranchOverride(e.target.value)
+              const kind = e.target.value as 'branch' | 'tag'
+              setRefKind(kind)
+              setRefOverride(null)
               navigateTo('')
             }}
             className="gogs-branch-select"
+            aria-label="Reference type"
           >
-            {(browser?.branches.length ? browser.branches : [defaultBranch]).map((branch) => (
-              <option key={branch} value={branch}>
-                {branch}
-              </option>
-            ))}
+            <option value="branch">Branch</option>
+            <option value="tag">Tag</option>
+          </select>
+
+          <select
+            id="branch-select"
+            value={activeRef}
+            onChange={(e) => {
+              setRefOverride(e.target.value)
+              navigateTo('')
+            }}
+            className="gogs-branch-select min-w-[8rem]"
+            disabled={refList.length === 0}
+          >
+            {refList.length === 0 ? (
+              <option value={activeRef}>{refKind === 'tag' ? 'No tags' : activeRef}</option>
+            ) : (
+              refList.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))
+            )}
           </select>
 
           <div className="gogs-path-crumb flex-1 min-w-0">
@@ -206,14 +240,51 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
           token={token}
           orgSlug={orgSlug}
           repoSlug={repoSlug}
-          ref={ref}
+          ref={activeRef}
           readmePath={readmePath}
         />
       )}
 
       {selectedFile && (
         <div className="gogs-panel">
-          <div className="gogs-panel-header font-mono text-xs">{selectedFile}</div>
+          <div className="gogs-panel-header flex items-center justify-between gap-2">
+            <span className="font-mono text-xs truncate">{selectedFile}</span>
+            <a
+              href={api.repoRawUrl(orgSlug, repoSlug, {
+                ref: activeRef,
+                path: selectedFile,
+                ref_kind: refKind,
+              })}
+              className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
+              onClick={(e) => {
+                e.preventDefault()
+                const url = api.repoRawUrl(orgSlug, repoSlug, {
+                  ref: activeRef,
+                  path: selectedFile,
+                  ref_kind: refKind,
+                })
+                fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+                  .then((res) => {
+                    if (!res.ok) throw new Error('Download failed')
+                    return res.blob()
+                  })
+                  .then((blob) => {
+                    const objectUrl = URL.createObjectURL(blob)
+                    const link = document.createElement('a')
+                    link.href = objectUrl
+                    link.download = selectedFile.split('/').pop() ?? 'file'
+                    link.click()
+                    URL.revokeObjectURL(objectUrl)
+                  })
+                  .catch(() => {
+                    window.open(url, '_blank')
+                  })
+              }}
+            >
+              <Download size={12} />
+              Raw
+            </a>
+          </div>
           <div className="gogs-panel-body">
             {blobLoading ? (
               <div className="flex items-center gap-2 text-text-secondary text-sm">
@@ -231,9 +302,12 @@ export function RepoBrowser({ token, orgSlug, repoSlug, defaultBranch }: RepoBro
         </div>
       )}
 
-      {commitsData && commitsData.commits.length > 1 && (
+      {commitsData && commitsData.commits.length > 1 && refKind === 'branch' && (
         <div className="gogs-panel">
-          <div className="gogs-panel-header">Recent commits</div>
+          <div className="gogs-panel-header flex items-center gap-2">
+            <GitCommit size={14} className="text-primary" />
+            Recent commits
+          </div>
           <ul className="divide-y divide-border">
             {commitsData.commits.slice(1).map((commit) => (
               <li key={commit.sha} className="px-4 py-3 text-sm">
