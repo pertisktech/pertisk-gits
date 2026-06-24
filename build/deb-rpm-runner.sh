@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Run inside docker/Dockerfile.package. Builds .deb and .rpm for pertisk-runner.
+set -euo pipefail
+cd /work
+
+BINARY_NAME="${PACKAGE_NAME:-pertisk-runner}"
+
+fpm -s dir -t deb --force \
+  -n "$BINARY_NAME" \
+  -v "$VERSION" \
+  -a "$deb_arch" \
+  --description "Pertisk Gits self-hosted CI runner" \
+  --url "https://github.com/pertisktech/pertisk-gits" \
+  --maintainer "Pertisk Team" \
+  --license "MIT" \
+  --vendor "Pertisk" \
+  --category "net" \
+  --depends git \
+  --before-install /work/preinstall.sh \
+  --after-install /work/postinstall.sh \
+  --before-remove /work/preremove.sh \
+  --config-files "/etc/pertisk-runner/pertisk-runner.conf" \
+  --deb-systemd-enable \
+  --deb-no-default-config-files \
+  -p /work/release \
+  -C "/work/pkg-${BINARY_NAME}" .
+
+fpm -s dir -t rpm --force \
+  -n "$BINARY_NAME" \
+  -v "$VERSION" \
+  -a "$rpm_arch" \
+  --description "Pertisk Gits self-hosted CI runner" \
+  --url "https://github.com/pertisktech/pertisk-gits" \
+  --maintainer "Pertisk Team" \
+  --license "MIT" \
+  --vendor "Pertisk" \
+  --category "System Environment/Daemons" \
+  --depends git \
+  --depends shadow-utils \
+  --before-install /work/preinstall.sh \
+  --after-install /work/postinstall.sh \
+  --before-remove /work/preremove.sh \
+  --config-files "/etc/pertisk-runner/pertisk-runner.conf" \
+  --rpm-os linux \
+  -p /work/release \
+  -C "/work/pkg-${BINARY_NAME}" .

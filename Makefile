@@ -2,8 +2,10 @@
 	infra infra-down install-web web-dist fix-perms \
 	dev dev-vite dev-serve dev-web dev-stop \
 	package package-clean package-amd64 package-arm64 package-deb package-rpm \
+	package-runner package-runner-clean package-runner-amd64 package-runner-arm64 \
 	release release-amd release-arm \
-	deploy deploy-package deploy-remote deploy-deb deploy-rpm
+	deploy deploy-package deploy-remote deploy-deb deploy-rpm \
+	install-runner deploy-runner-rpm
 
 CARGO ?= cargo
 COMPOSE ?= docker compose -f deploy/docker-compose.yml
@@ -211,3 +213,35 @@ deploy-rpm:
 		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
 		PACKAGE_BUILD="$(PACKAGE_BUILD)" RPM_ARCH="$(if $(filter arm64,$(DEPLOY_ARCH)),aarch64,x86_64)" \
 		./build/deploy-rpm.sh
+
+# --- Runner packaging & deploy ---
+# make install-runner DEPLOY_HOST=user@host VERSION=0.1.0
+# Or:  make deploy-runner-rpm DEPLOY_HOST=user@host
+
+RUNNER_PACKAGE_NAME ?= pertisk-runner
+
+package-runner-clean:
+	rm -f pertisk-runner-linux-amd64 pertisk-runner-linux-arm64
+	rm -f pertisk-runner-linux-amd64.version pertisk-runner-linux-arm64.version
+	@echo "Removed runner Linux binaries; next package build will rebuild via Docker."
+
+package-runner-amd64:
+	chmod +x build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
+	./build/package-runner.sh amd64 $(VERSION) $(PACKAGE_TARGET)
+
+package-runner-arm64:
+	chmod +x build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
+	./build/package-runner.sh arm64 $(VERSION) $(PACKAGE_TARGET)
+
+package-runner: package-runner-amd64 package-runner-arm64
+	@echo "Done. See release/pertisk-runner-*"
+
+install-runner: deploy-runner-rpm
+
+deploy-runner-rpm:
+	chmod +x build/deploy-runner-rpm.sh
+	DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" REMOTE_USER="$(REMOTE_USER)" \
+		VERSION="$(VERSION)" PACKAGE_NAME="$(RUNNER_PACKAGE_NAME)" \
+		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
+		PACKAGE_BUILD="$(PACKAGE_BUILD)" RPM_ARCH="$(if $(filter arm64,$(DEPLOY_ARCH)),aarch64,x86_64)" \
+		./build/deploy-runner-rpm.sh

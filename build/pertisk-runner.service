@@ -1,0 +1,22 @@
+[Unit]
+Description=Pertisk Gits CI runner
+After=network.target pertisk-gits.service
+Wants=network.target
+
+[Service]
+Type=simple
+User=pertisk-runner
+Group=pertisk-runner
+WorkingDirectory=/var/lib/pertisk-runner
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/pertisk-runner/pertisk-runner.conf
+ExecStart=/usr/bin/pertisk-runner run
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65535
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
