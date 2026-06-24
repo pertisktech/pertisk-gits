@@ -8,7 +8,7 @@ use pertisk_cicd::{
     parse_pipeline_yaml,
 };
 
-const LARGE_PIPELINE: &str = include_str!("../../examples/pertisk-ci-rust-perf.yaml");
+const LARGE_PIPELINE: &str = include_str!("../examples/pertisk-ci-rust-perf.yaml");
 
 fn bench_parse(c: &mut Criterion) {
     let mut group = c.benchmark_group("parse_pipeline_yaml");

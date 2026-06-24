@@ -28,6 +28,7 @@ async fn main() -> anyhow::Result<()> {
     let state = GitHttpState {
         pool,
         repos_root: config.repos_root.clone(),
+        post_receive: None,
     };
 
     let app = pertisk_git::http::router()
