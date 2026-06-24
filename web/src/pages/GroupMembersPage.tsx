@@ -3,9 +3,10 @@ import { Loader2, Trash2, UserPlus } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
 import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { OrgMember } from '../api/types'
+import type { OrgMember, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
+import { UserPicker } from '../components/UserPicker'
 import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
 
 type OrgRole = OrgMember['role']
@@ -20,7 +21,7 @@ export function GroupMembersPage() {
   const { slug = '' } = useParams()
   const { token, user } = useAuth()
   const queryClient = useQueryClient()
-  const [username, setUsername] = useState('')
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [newRole, setNewRole] = useState<OrgRole>('member')
   const [error, setError] = useState<string | null>(null)
 
@@ -45,10 +46,14 @@ export function GroupMembersPage() {
   const isOwner = myMembership?.role === 'owner'
 
   const addMember = useMutation({
-    mutationFn: () => api.addOrganizationMember(token!, slug, { username: username.trim(), role: newRole }),
+    mutationFn: () =>
+      api.addOrganizationMember(token!, slug, {
+        user_id: selectedUser!.id,
+        role: newRole,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-members', slug] })
-      setUsername('')
+      setSelectedUser(null)
       setNewRole('member')
       setError(null)
     },
@@ -76,9 +81,15 @@ export function GroupMembersPage() {
 
   function onAddMember(event: FormEvent) {
     event.preventDefault()
+    if (!selectedUser) {
+      setError('Select a user to add')
+      return
+    }
     setError(null)
     addMember.mutate()
   }
+
+  const memberIds = useMemo(() => members.map((member) => member.user.id), [members])
 
   function roleOptionsForTarget(target: OrgMember) {
     const options: OrgRole[] = isOwner ? ['owner', 'admin', 'member'] : ['admin', 'member']
@@ -114,26 +125,27 @@ export function GroupMembersPage() {
           </div>
           <form className="gogs-panel-body space-y-4" onSubmit={onAddMember}>
             <p className="text-sm text-text-secondary">
-              The user must already have an account. Enter their exact username.
+              Search for an existing account by username, email, or display name.
             </p>
-            <div className="flex flex-wrap gap-3">
-              <input
-                className="gogs-field flex-1 min-w-[12rem]"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Username"
-                required
+            <div className="flex flex-wrap gap-3 items-start">
+              <UserPicker
+                token={token!}
+                value={selectedUser}
+                onChange={setSelectedUser}
+                excludeUserIds={memberIds}
+                disabled={addMember.isPending}
               />
               <select
                 className="gogs-field w-40"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as OrgRole)}
+                disabled={addMember.isPending}
               >
                 {isOwner && <option value="owner">Owner</option>}
                 <option value="admin">Admin</option>
                 <option value="member">Member</option>
               </select>
-              <PrimaryButton type="submit" disabled={addMember.isPending}>
+              <PrimaryButton type="submit" disabled={addMember.isPending || !selectedUser}>
                 {addMember.isPending ? (
                   <>
                     <Loader2 size={14} className="animate-spin" />

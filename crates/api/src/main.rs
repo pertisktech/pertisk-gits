@@ -134,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
         .route("/me", get(me))
+        .route("/users/search", get(search_users))
         .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
         .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
         .route("/organizations", get(list_organizations).post(create_organization))
@@ -384,6 +385,50 @@ async fn me(
     .ok_or(DomainError::NotFound)?;
 
     Ok(Json(MeResponse { user }))
+}
+
+#[derive(Deserialize)]
+struct UserSearchQuery {
+    q: String,
+    #[serde(default = "default_user_search_limit")]
+    limit: usize,
+}
+
+fn default_user_search_limit() -> usize {
+    20
+}
+
+async fn search_users(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Query(query): Query<UserSearchQuery>,
+) -> Result<Json<Vec<UserPublic>>, ApiError> {
+    let q = query.q.trim();
+    if q.is_empty() {
+        return Ok(Json(vec![]));
+    }
+
+    let limit = query.limit.clamp(1, 50) as i64;
+    let pattern = format!("%{q}%");
+
+    let users = sqlx::query_as::<_, UserPublic>(
+        r#"
+        SELECT id, username, email, display_name, created_at
+        FROM users
+        WHERE username ILIKE $1
+           OR email ILIKE $1
+           OR COALESCE(display_name, '') ILIKE $1
+        ORDER BY username
+        LIMIT $2
+        "#,
+    )
+    .bind(&pattern)
+    .bind(limit)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(users))
 }
 
 fn repo_response(config: &Config, org_slug: &str, repository: Repository) -> RepositoryResponse {

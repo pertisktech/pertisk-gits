@@ -61,7 +61,7 @@ async fn add_organization_member(
         return Err(DomainError::Forbidden.into());
     }
 
-    let user = find_user_by_username(&state.pool, &body.username).await?;
+    let user = resolve_user_for_add(&state.pool, body.user_id, body.username).await?;
 
     let inserted = sqlx::query_scalar::<_, bool>(
         r#"
@@ -226,7 +226,7 @@ async fn add_repository_collaborator(
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
     let role = body.role.unwrap_or(RepoRole::Read);
-    let user = find_user_by_username(&state.pool, &body.username).await?;
+    let user = resolve_user_for_add(&state.pool, body.user_id, body.username).await?;
 
     let inserted = sqlx::query_scalar::<_, bool>(
         r#"
@@ -449,6 +449,27 @@ async fn find_user_by_username(pool: &PgPool, username: &str) -> Result<User, Ap
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::NotFound.into())
+}
+
+async fn resolve_user_for_add(
+    pool: &PgPool,
+    user_id: Option<Uuid>,
+    username: Option<String>,
+) -> Result<User, ApiError> {
+    if let Some(user_id) = user_id {
+        return find_user_by_id(pool, user_id).await;
+    }
+
+    let Some(username) = username else {
+        return Err(DomainError::Validation("username or user_id is required".into()).into());
+    };
+
+    let username = username.trim();
+    if username.is_empty() {
+        return Err(DomainError::Validation("username or user_id is required".into()).into());
+    }
+
+    find_user_by_username(pool, username).await
 }
 
 async fn find_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<User, ApiError> {

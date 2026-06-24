@@ -62,6 +62,11 @@ export const api = {
 
   me: (token: string) => request<{ user: User }>('/me', {}, token),
 
+  searchUsers: (token: string, q: string, limit = 20) => {
+    const search = new URLSearchParams({ q, limit: String(limit) })
+    return request<User[]>(`/users/search?${search}`, {}, token)
+  },
+
   listSshKeys: (token: string) => request<UserSshKey[]>('/me/ssh-keys', {}, token),
 
   createSshKey: (token: string, payload: { title: string; public_key: string }) =>
@@ -93,7 +98,7 @@ export const api = {
   addOrganizationMember: (
     token: string,
     orgSlug: string,
-    payload: { username: string; role?: 'owner' | 'admin' | 'member' },
+    payload: { username?: string; user_id?: string; role?: 'owner' | 'admin' | 'member' },
   ) =>
     request<OrgMember>(`/organizations/${orgSlug}/members`, {
       method: 'POST',
@@ -136,7 +141,7 @@ export const api = {
     token: string,
     orgSlug: string,
     repoSlug: string,
-    payload: { username: string; role?: 'admin' | 'write' | 'read' },
+    payload: { username?: string; user_id?: string; role?: 'admin' | 'write' | 'read' },
   ) =>
     request<RepoCollaborator>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/collaborators`,

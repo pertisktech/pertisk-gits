@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Trash2, UserPlus } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
-import type { RepoCollaborator } from '../api/types'
+import type { RepoCollaborator, User } from '../api/types'
+import { UserPicker } from './UserPicker'
 import { PrimaryButton, SecondaryButton } from './ui'
 
 type RepoRole = RepoCollaborator['role']
@@ -15,7 +16,7 @@ interface RepoCollaboratorsProps {
 
 export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaboratorsProps) {
   const queryClient = useQueryClient()
-  const [username, setUsername] = useState('')
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [newRole, setNewRole] = useState<RepoRole>('read')
   const [error, setError] = useState<string | null>(null)
 
@@ -29,12 +30,12 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
   const addCollaborator = useMutation({
     mutationFn: () =>
       api.addRepositoryCollaborator(token, orgSlug, repoSlug, {
-        username: username.trim(),
+        user_id: selectedUser!.id,
         role: newRole,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['repo-collaborators', orgSlug, repoSlug] })
-      setUsername('')
+      setSelectedUser(null)
       setNewRole('read')
       setError(null)
     },
@@ -61,12 +62,21 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
     onError: (err: Error) => setError(err.message),
   })
 
+  const collaboratorIds = useMemo(
+    () => collaborators.map((collaborator) => collaborator.user.id),
+    [collaborators],
+  )
+
   if (isError) {
     return null
   }
 
   function onAddCollaborator(event: FormEvent) {
     event.preventDefault()
+    if (!selectedUser) {
+      setError('Select a user to add')
+      return
+    }
     setError(null)
     addCollaborator.mutate()
   }
@@ -83,24 +93,25 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
           Group owners and admins already have full access.
         </p>
 
-        <form className="flex flex-wrap gap-3" onSubmit={onAddCollaborator}>
-          <input
-            className="gogs-field flex-1 min-w-[12rem]"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username"
-            required
+        <form className="flex flex-wrap gap-3 items-start" onSubmit={onAddCollaborator}>
+          <UserPicker
+            token={token}
+            value={selectedUser}
+            onChange={setSelectedUser}
+            excludeUserIds={collaboratorIds}
+            disabled={addCollaborator.isPending}
           />
           <select
             className="gogs-field w-36"
             value={newRole}
             onChange={(e) => setNewRole(e.target.value as RepoRole)}
+            disabled={addCollaborator.isPending}
           >
             <option value="read">Read</option>
             <option value="write">Write</option>
             <option value="admin">Admin</option>
           </select>
-          <PrimaryButton type="submit" disabled={addCollaborator.isPending}>
+          <PrimaryButton type="submit" disabled={addCollaborator.isPending || !selectedUser}>
             {addCollaborator.isPending ? (
               <>
                 <Loader2 size={14} className="animate-spin" />

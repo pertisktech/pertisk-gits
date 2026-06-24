@@ -177,8 +177,8 @@ pub struct UpdateRepositoryRequest {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct AddOrganizationMemberRequest {
-    #[validate(length(min = 1, max = 39))]
-    pub username: String,
+    pub username: Option<String>,
+    pub user_id: Option<Uuid>,
     pub role: Option<OrgRole>,
 }
 
@@ -189,8 +189,8 @@ pub struct UpdateOrganizationMemberRequest {
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct AddRepositoryCollaboratorRequest {
-    #[validate(length(min = 1, max = 39))]
-    pub username: String,
+    pub username: Option<String>,
+    pub user_id: Option<Uuid>,
     pub role: Option<RepoRole>,
 }
 
