@@ -1282,6 +1282,60 @@ textarea.app-field {
   vertical-align: top;
 }
 
+.app-table-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.app-table-sort-btn:hover {
+  color: var(--color-naturals-n14);
+}
+
+.app-table-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--color-naturals-n4);
+}
+
+.app-table-page-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n3);
+  color: var(--color-naturals-n11);
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.app-table-page-btn:hover:not(:disabled) {
+  color: var(--color-naturals-n14);
+  background: var(--color-naturals-n4);
+}
+
+.app-table-page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .app-repo-grid {
   display: grid;
   grid-template-columns: 1fr;

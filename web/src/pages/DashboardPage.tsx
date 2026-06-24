@@ -1,79 +1,156 @@
-import { useQuery } from '@tanstack/react-query'
-import { FolderGit2, Plus, Users } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, FolderGit2, Plus } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { EmptyState, LinkButton } from '../components/ui'
-import { builtAppVersion, fetchAppVersion } from '../lib/version'
+import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
+import { EmptyState, LinkButton, PageHeader } from '../components/ui'
+import { useAllProjects, type DashboardProject } from '../hooks/useAllProjects'
+import { formatRelativeTime } from '../lib/relativeTime'
+import { cn } from '../utils/cn'
+
+const PAGE_SIZE = 15
+
+type SortField = 'name' | 'group' | 'visibility' | 'lastCommit'
+type SortDirection = 'asc' | 'desc'
+
+function compareText(a: string, b: string) {
+  return a.localeCompare(b, undefined, { sensitivity: 'base' })
+}
+
+function tieBreak(a: DashboardProject, b: DashboardProject) {
+  const byName = compareText(a.name, b.name)
+  if (byName !== 0) return byName
+  const byOrg = compareText(a.orgSlug, b.orgSlug)
+  if (byOrg !== 0) return byOrg
+  return compareText(a.slug, b.slug)
+}
+
+function compareProjects(a: DashboardProject, b: DashboardProject, field: SortField): number {
+  let result = 0
+  switch (field) {
+    case 'name':
+      result = compareText(a.name, b.name)
+      break
+    case 'group':
+      result = compareText(a.orgName, b.orgName) || compareText(a.orgSlug, b.orgSlug)
+      break
+    case 'visibility':
+      result = compareText(a.visibility, b.visibility)
+      break
+    case 'lastCommit':
+      result = (a.lastCommittedAt ?? 0) - (b.lastCommittedAt ?? 0)
+      break
+  }
+  return result !== 0 ? result : tieBreak(a, b)
+}
+
+function SortableHeader({
+  label,
+  field,
+  sortField,
+  sortDirection,
+  onSort,
+  className,
+}: {
+  label: string
+  field: SortField
+  sortField: SortField
+  sortDirection: SortDirection
+  onSort: (field: SortField) => void
+  className?: string
+}) {
+  const active = sortField === field
+  const Icon = active ? (sortDirection === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+
+  return (
+    <th className={className}>
+      <button
+        type="button"
+        className="app-table-sort-btn"
+        data-no-global-button-hover="true"
+        onClick={() => onSort(field)}
+        aria-sort={active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none'}
+      >
+        <span>{label}</span>
+        <Icon size={13} className={cn('shrink-0', active ? 'text-primary-p3' : 'opacity-50')} />
+      </button>
+    </th>
+  )
+}
 
 export function DashboardPage() {
-  const { token, user } = useAuth()
+  const { user } = useAuth()
+  const { projects, isLoading, error } = useAllProjects()
+  const [sortField, setSortField] = useState<SortField>('lastCommit')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc')
+  const [page, setPage] = useState(1)
 
-  const { data: groups = [], isLoading } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token),
-  })
+  function handleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDirection((direction) => (direction === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortField(field)
+      setSortDirection(field === 'lastCommit' ? 'desc' : 'asc')
+    }
+    setPage(1)
+  }
 
-  const { data: appVersion } = useQuery({
-    queryKey: ['app-version'],
-    queryFn: fetchAppVersion,
-    staleTime: 60 * 60 * 1000,
-    retry: false,
-  })
+  const sortedProjects = useMemo(() => {
+    const copy = [...projects]
+    copy.sort((a, b) => {
+      const result = compareProjects(a, b, sortField)
+      return sortDirection === 'asc' ? result : -result
+    })
+    return copy
+  }, [projects, sortField, sortDirection])
 
-  const recentGroups = groups.slice(0, 8)
+  const totalPages = Math.max(1, Math.ceil(sortedProjects.length / PAGE_SIZE))
+  const currentPage = Math.min(page, totalPages)
+  const pageProjects = sortedProjects.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  )
+
+  const rangeStart = sortedProjects.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const rangeEnd = Math.min(currentPage * PAGE_SIZE, sortedProjects.length)
 
   return (
     <>
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-text">Dashboard</h1>
-          <p className="text-sm text-text-secondary mt-0.5">
-            Welcome, {user?.display_name ?? user?.username}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <LinkButton to="/groups/new">
-            <Plus size={14} />
-            New group
-          </LinkButton>
-          <LinkButton to="/groups" primary>
-            Repositories
-          </LinkButton>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <div className="app-panel p-4">
-          <div className="text-2xl font-bold text-primary">{isLoading ? '—' : groups.length}</div>
-          <div className="text-sm text-text-secondary mt-0.5">Groups</div>
-        </div>
-        <div className="app-panel p-4">
-          <div className="text-2xl font-bold text-primary">Git</div>
-          <div className="text-sm text-text-secondary mt-0.5">HTTP enabled</div>
-        </div>
-        <div className="app-panel p-4">
-          <div className="text-2xl font-bold text-primary">v{appVersion ?? builtAppVersion}</div>
-          <div className="text-sm text-text-secondary mt-0.5">Platform</div>
-        </div>
-      </div>
+      <PageHeader
+        title="Dashboard"
+        subtitle={`Welcome, ${user?.display_name ?? user?.username}`}
+        action={
+          <div className="flex gap-2">
+            <LinkButton to="/groups/new">
+              <Plus size={14} />
+              New group
+            </LinkButton>
+            <LinkButton to="/groups" primary>
+              All groups
+            </LinkButton>
+          </div>
+        }
+      />
 
       <div className="app-panel">
-        <div className="app-panel-header flex items-center justify-between">
-          <span>Your repositories</span>
-          <Link to="/groups" className="text-primary hover:underline font-normal">
-            View all
-          </Link>
+        <div className="app-panel-header flex items-center justify-between gap-3">
+          <span>All projects</span>
+          <span className="font-normal text-text-secondary">
+            {isLoading ? 'Loading…' : `${sortedProjects.length} total`}
+          </span>
         </div>
 
-        {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
+        {error && (
+          <div className="m-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+            {(error as Error).message}
+          </div>
+        )}
 
-        {!isLoading && recentGroups.length === 0 && (
+        {!isLoading && sortedProjects.length === 0 && (
           <EmptyState
-            icon={<Users size={40} />}
-            title="No groups yet"
-            description="Create a group to host Git repositories."
+            icon={<FolderGit2 size={40} />}
+            title="No projects yet"
+            description="Create a group and add your first repository."
             action={
               <LinkButton to="/groups/new" primary>
                 Create group
@@ -82,38 +159,132 @@ export function DashboardPage() {
           />
         )}
 
-        {!isLoading && recentGroups.length > 0 && (
-          <table className="app-list-table">
-            <thead>
-              <tr>
-                <th>Group</th>
-                <th>Description</th>
-                <th className="w-32" />
-              </tr>
-            </thead>
-            <tbody>
-              {recentGroups.map((group) => (
-                <tr key={group.id}>
-                  <td>
-                    <Link to={`/groups/${group.slug}`} className="font-medium text-text hover:text-primary">
-                      {group.name}
-                    </Link>
-                    <div className="text-xs text-muted font-mono mt-0.5">{group.slug}</div>
-                  </td>
-                  <td className="text-text-secondary">{group.description ?? '—'}</td>
-                  <td className="text-right">
-                    <Link
-                      to={`/groups/${group.slug}/projects/new`}
-                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                    >
-                      <FolderGit2 size={14} />
-                      New repo
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {!isLoading && sortedProjects.length > 0 && (
+          <>
+            <div className="overflow-x-auto">
+              <table className="app-list-table">
+                <thead>
+                  <tr>
+                    <SortableHeader
+                      label="Project"
+                      field="name"
+                      sortField={sortField}
+                      sortDirection={sortDirection}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Group"
+                      field="group"
+                      sortField={sortField}
+                      sortDirection={sortDirection}
+                      onSort={handleSort}
+                    />
+                    <SortableHeader
+                      label="Visibility"
+                      field="visibility"
+                      sortField={sortField}
+                      sortDirection={sortDirection}
+                      onSort={handleSort}
+                    />
+                    <th>Branch</th>
+                    <SortableHeader
+                      label="Last commit"
+                      field="lastCommit"
+                      sortField={sortField}
+                      sortDirection={sortDirection}
+                      onSort={handleSort}
+                      className="w-40"
+                    />
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageProjects.map((project) => (
+                    <tr key={project.id}>
+                      <td>
+                        <Link
+                          to={`/groups/${project.orgSlug}/projects/${project.slug}`}
+                          className="font-medium text-text hover:text-primary"
+                        >
+                          {project.name}
+                        </Link>
+                        <div className="text-xs text-muted font-mono mt-0.5">
+                          {project.orgSlug}/{project.slug}
+                        </div>
+                        {project.description && (
+                          <div className="text-xs text-text-secondary mt-1 line-clamp-2">
+                            {project.description}
+                          </div>
+                        )}
+                      </td>
+                      <td>
+                        <Link
+                          to={`/groups/${project.orgSlug}`}
+                          className="text-sm text-text-secondary hover:text-primary"
+                        >
+                          {project.orgName}
+                        </Link>
+                      </td>
+                      <td>
+                        <StatusBadge variant={visibilityVariant(project.visibility)}>
+                          {project.visibility}
+                        </StatusBadge>
+                      </td>
+                      <td className="font-mono text-sm text-text-secondary">
+                        {project.default_branch}
+                      </td>
+                      <td
+                        className="text-sm text-text-secondary whitespace-nowrap"
+                        title={
+                          project.lastCommittedAt
+                            ? new Date(project.lastCommittedAt * 1000).toLocaleString()
+                            : undefined
+                        }
+                      >
+                        {project.lastCommitLoading
+                          ? '…'
+                          : project.lastCommittedAt
+                            ? formatRelativeTime(project.lastCommittedAt)
+                            : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {totalPages > 1 && (
+              <div className="app-table-pagination">
+                <p className="text-sm text-text-secondary">
+                  Showing {rangeStart}–{rangeEnd} of {sortedProjects.length}
+                </p>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    className="app-table-page-btn"
+                    data-no-global-button-hover="true"
+                    disabled={currentPage <= 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    aria-label="Previous page"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
+                  <span className="px-2 text-sm text-text-secondary tabular-nums">
+                    {currentPage} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="app-table-page-btn"
+                    data-no-global-button-hover="true"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    aria-label="Next page"
+                  >
+                    <ChevronRight size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
     </>

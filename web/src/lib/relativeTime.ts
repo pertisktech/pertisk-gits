@@ -24,3 +24,14 @@ export function formatRelativeTime(ts: number): string {
   const years = Math.floor(days / 365)
   return `${years} year${years === 1 ? '' : 's'} ago`
 }
+
+export function parseIsoTimestamp(iso: string): number {
+  const ms = Date.parse(iso)
+  return Number.isNaN(ms) ? 0 : ms
+}
+
+export function formatRelativeTimeFromIso(iso: string): string {
+  const ms = parseIsoTimestamp(iso)
+  if (ms === 0) return '—'
+  return formatRelativeTime(Math.floor(ms / 1000))
+}
