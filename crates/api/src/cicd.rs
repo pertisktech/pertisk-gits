@@ -11,7 +11,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use pertisk_cicd::{
-    parse_pipeline_yaml, PipelineEvent, Scheduler, TriggerMatcher, CONFIG_PATHS,
+    parse_pipeline_yaml, PipelineEvent, ScheduledJob, Scheduler, TriggerMatcher, CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -54,6 +54,10 @@ pub fn cicd_write_routes() -> Router<AppState> {
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/trigger",
             post(trigger_pipeline),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/rerun",
+            post(rerun_pipeline),
         )
         .route("/runners/register", post(register_runner))
         .route("/runners/{runner_id}", delete(delete_runner))
@@ -397,6 +401,58 @@ async fn trigger_pipeline(
         .ok_or(pertisk_domain::DomainError::NotFound)?;
     let jobs = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
     Ok(Json(run.into_response(jobs)))
+}
+
+async fn rerun_pipeline(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<PipelineRunResponse>, ApiError> {
+    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+
+    if matches!(run.status.as_str(), "pending" | "queued" | "running") {
+        return Err(DomainError::Validation("pipeline is still running".into()).into());
+    }
+
+    let repo_path = pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
+    let Some((config_yaml, config_path)) = read_pipeline_config(&repo_path, &run.commit_sha).await else {
+        return Err(DomainError::Validation(
+            "no pipeline config (.pertisk-ci.yaml) at this commit".into(),
+        )
+        .into());
+    };
+
+    let config = parse_pipeline_yaml(&config_yaml).map_err(|e| {
+        DomainError::Validation(format!("invalid pipeline config: {e}"))
+    })?;
+
+    let jobs = Scheduler::schedule(&config).map_err(|e| {
+        DomainError::Validation(format!("schedule failed: {e}"))
+    })?;
+
+    reset_pipeline_run(
+        &state.pool,
+        repo.id,
+        run_id,
+        &run.commit_sha,
+        &config_path,
+        &jobs,
+    )
+    .await
+    .map_err(sqlx_error)?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+    let job_rows = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
+    Ok(Json(run.into_response(job_rows)))
 }
 
 async fn list_runners(
@@ -1039,13 +1095,62 @@ async fn process_trigger_now(
         sqlx::Error::Protocol(format!("schedule failed: {e}").into())
     })?;
 
+    materialize_jobs_for_run(&state.pool, repository_id, commit_sha, run_id, &jobs).await?;
+
+    Ok(run_id)
+}
+
+async fn reset_pipeline_run(
+    pool: &PgPool,
+    repository_id: Uuid,
+    run_id: Uuid,
+    commit_sha: &str,
+    config_path: &str,
+    jobs: &[ScheduledJob],
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE pipeline_runs
+        SET status = 'queued', config_path = $3, started_at = NOW(), finished_at = NULL
+        WHERE id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(run_id)
+    .bind(repository_id)
+    .bind(config_path)
+    .execute(pool)
+    .await?;
+
+    materialize_jobs_for_run(pool, repository_id, commit_sha, run_id, jobs).await
+}
+
+async fn materialize_jobs_for_run(
+    pool: &PgPool,
+    repository_id: Uuid,
+    commit_sha: &str,
+    run_id: Uuid,
+    jobs: &[ScheduledJob],
+) -> Result<(), sqlx::Error> {
+    let job_names: Vec<String> = jobs.iter().map(|job| job.name.clone()).collect();
+
     for job in jobs {
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
-        let job_run_id = sqlx::query_scalar::<_, Uuid>(
+        sqlx::query(
             r#"
             INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, needs, status)
             VALUES ($1, $2, $3, $4, $5, 'queued')
-            RETURNING id
+            ON CONFLICT (pipeline_run_id, job_name)
+            DO UPDATE SET
+                runs_on = EXCLUDED.runs_on,
+                steps_json = EXCLUDED.steps_json,
+                needs = EXCLUDED.needs,
+                status = 'queued',
+                runner_id = NULL,
+                metrics_json = NULL,
+                log_text = '',
+                queued_at = NOW(),
+                started_at = NULL,
+                finished_at = NULL
             "#,
         )
         .bind(run_id)
@@ -1053,7 +1158,7 @@ async fn process_trigger_now(
         .bind(&job.job.runs_on)
         .bind(steps_json)
         .bind(&job.job.needs)
-        .fetch_one(&state.pool)
+        .execute(pool)
         .await?;
 
         sqlx::query(
@@ -1068,17 +1173,34 @@ async fn process_trigger_now(
         .bind(commit_sha)
         .bind(format!("ci/{}", job.name))
         .bind(run_id)
-        .execute(&state.pool)
+        .execute(pool)
         .await?;
-        let _ = job_run_id;
+    }
+
+    if job_names.is_empty() {
+        sqlx::query("DELETE FROM job_runs WHERE pipeline_run_id = $1")
+            .bind(run_id)
+            .execute(pool)
+            .await?;
+    } else {
+        sqlx::query(
+            r#"
+            DELETE FROM job_runs
+            WHERE pipeline_run_id = $1 AND NOT (job_name = ANY($2))
+            "#,
+        )
+        .bind(run_id)
+        .bind(&job_names)
+        .execute(pool)
+        .await?;
     }
 
     sqlx::query("UPDATE pipeline_runs SET status = 'running' WHERE id = $1")
         .bind(run_id)
-        .execute(&state.pool)
+        .execute(pool)
         .await?;
 
-    Ok(run_id)
+    Ok(())
 }
 
 async fn resolve_git_ref(repo_path: &FsPath, ref_name: &str) -> Result<String, ApiError> {

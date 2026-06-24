@@ -11,7 +11,7 @@ import {
   CiTerminal,
 } from '../components/PipelineTerminal'
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
-import { pipelineUrl, displayRunStatus, isRunInProgress, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
+import { displayRunStatus, isRunInProgress, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
 import { StatusBadge } from '../components/StatusBadge'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
@@ -72,15 +72,12 @@ export function PipelineRunDetailPage() {
   const activeStep = activeSteps.find((step) => step.key === activeStepKey) ?? null
 
   const rerunMutation = useMutation({
-    mutationFn: () =>
-      api.triggerPipeline(token!, orgSlug, projectSlug, {
-        commit_sha: run!.commit_sha,
-        ref_name: run!.ref_name,
-        event_type: 'manual',
-      }),
-    onSuccess: (newRun) => {
+    mutationFn: () => api.rerunPipeline(token!, orgSlug, projectSlug, runId),
+    onSuccess: (updatedRun) => {
+      queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
       queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
-      window.location.assign(pipelineUrl(orgSlug, projectSlug, newRun.id))
+      setActiveJobId(null)
+      setActiveStepKey(null)
     },
   })
 
@@ -149,7 +146,7 @@ export function PipelineRunDetailPage() {
         </div>
         <PrimaryButton
           type="button"
-          disabled={rerunMutation.isPending}
+          disabled={rerunMutation.isPending || isRunInProgress(run)}
           onClick={() => rerunMutation.mutate()}
         >
           {rerunMutation.isPending ? (

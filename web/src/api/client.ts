@@ -535,6 +535,13 @@ export const api = {
       token,
     ),
 
+  rerunPipeline: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
+    request<PipelineRun>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/rerun`,
+      { method: 'POST' },
+      token,
+    ),
+
   listCommitStatuses: (
     orgSlug: string,
     repoSlug: string,
