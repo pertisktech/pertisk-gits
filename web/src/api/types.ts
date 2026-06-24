@@ -325,8 +325,10 @@ export interface Runner {
 export interface RegisterRunnerResponse {
   runner_id: string
   token: string
+  api_url: string
 }
 
 export interface RotateRunnerTokenResponse {
   token: string
+  api_url: string
 }

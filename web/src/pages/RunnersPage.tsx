@@ -18,7 +18,11 @@ export function RunnersPage() {
   const [name, setName] = useState('')
   const [labels, setLabels] = useState('self-hosted')
   const [error, setError] = useState<string | null>(null)
-  const [tokenModal, setTokenModal] = useState<{ title: string; token: string } | null>(null)
+  const [tokenModal, setTokenModal] = useState<{
+    title: string
+    token: string
+    apiUrl: string
+  } | null>(null)
   const [confirm, setConfirm] = useState<RunnerConfirm | null>(null)
 
   const { data: runners = [], isLoading } = useQuery({
@@ -42,7 +46,11 @@ export function RunnersPage() {
       setName('')
       setLabels('self-hosted')
       setError(null)
-      setTokenModal({ title: 'Runner registered', token: data.token })
+      setTokenModal({
+        title: 'Runner registered',
+        token: data.token,
+        apiUrl: data.api_url,
+      })
     },
     onError: (err: Error) => setError(err.message),
   })
@@ -67,6 +75,7 @@ export function RunnersPage() {
       setTokenModal({
         title: runner ? `New token for ${runner.name}` : 'New runner token',
         token: data.token,
+        apiUrl: data.api_url,
       })
     },
     onError: (err: Error) => setError(err.message),
@@ -93,6 +102,7 @@ export function RunnersPage() {
         <TokenModal
           title={tokenModal.title}
           token={tokenModal.token}
+          apiUrl={tokenModal.apiUrl}
           onClose={() => setTokenModal(null)}
         />
       )}

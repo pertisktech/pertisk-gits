@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query'
 import { Check, Copy, Cpu, HardDrive, MemoryStick, Network, RefreshCw, Server, Trash2 } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import type { Runner } from '../api/types'
+import { fetchRunnerApiUrl, formatRunnerConf } from '../lib/runnerConfig'
 import { StatusBadge } from './StatusBadge'
 import { PrimaryButton, SecondaryButton } from './ui'
 
@@ -160,19 +162,31 @@ export function RunnerCard({
 export function TokenModal({
   title,
   token,
+  apiUrl: apiUrlProp,
   onClose,
 }: {
   title: string
   token: string
+  apiUrl?: string
   onClose: () => void
 }) {
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'token' | 'config' | null>(null)
 
-  async function copyToken() {
+  const { data: apiUrlFromHealth } = useQuery({
+    queryKey: ['health', 'api-url'],
+    queryFn: fetchRunnerApiUrl,
+    enabled: !apiUrlProp,
+    staleTime: 60_000,
+  })
+
+  const apiUrl = apiUrlProp ?? apiUrlFromHealth ?? window.location.origin
+  const confSnippet = formatRunnerConf(token, apiUrl)
+
+  async function copyText(text: string, kind: 'token' | 'config') {
     try {
-      await navigator.clipboard.writeText(token)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(text)
+      setCopied(kind)
+      setTimeout(() => setCopied(null), 2000)
     } catch {
       // clipboard may be unavailable
     }
@@ -196,10 +210,7 @@ export function TokenModal({
             <code className="rounded bg-bg px-1 py-0.5 text-xs">/etc/pertisk-runner/pertisk-runner.conf</code>:
           </p>
           <pre className="overflow-x-auto rounded-md border border-naturals-n4 bg-bg p-3 text-xs text-text">
-{`PERTISK_RUNNER_TOKEN=${token}
-PERTISK_API_URL=https://your-gits-host:8080
-# Optional — omit on remote runners; workspace is fetched from the API
-PERTISK_REPOS_ROOT=/var/lib/pertisk-gits/repos`}
+            {confSnippet}
           </pre>
           <p className="text-sm text-text-secondary">
             Then restart:{' '}
@@ -207,8 +218,8 @@ PERTISK_REPOS_ROOT=/var/lib/pertisk-gits/repos`}
           </p>
         </div>
         <div className="flex justify-end gap-2 border-t border-naturals-n4 px-5 py-4">
-          <SecondaryButton type="button" onClick={copyToken}>
-            {copied ? (
+          <SecondaryButton type="button" onClick={() => copyText(token, 'token')}>
+            {copied === 'token' ? (
               <>
                 <Check size={14} />
                 Copied
@@ -217,6 +228,19 @@ PERTISK_REPOS_ROOT=/var/lib/pertisk-gits/repos`}
               <>
                 <Copy size={14} />
                 Copy token
+              </>
+            )}
+          </SecondaryButton>
+          <SecondaryButton type="button" onClick={() => copyText(confSnippet, 'config')}>
+            {copied === 'config' ? (
+              <>
+                <Check size={14} />
+                Copied
+              </>
+            ) : (
+              <>
+                <Copy size={14} />
+                Copy config
               </>
             )}
           </SecondaryButton>

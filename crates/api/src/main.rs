@@ -60,6 +60,8 @@ struct HealthResponse {
     status: &'static str,
     version: &'static str,
     database: &'static str,
+    /// Public API base URL for runners (`PERTISK_API_URL`); from `GIT_PUBLIC_BASE_URL`.
+    api_url: String,
 }
 
 #[derive(Serialize)]
@@ -295,6 +297,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthRespon
             status: if healthy { "ok" } else { "unhealthy" },
             version: version::APP_VERSION,
             database,
+            api_url: state.config.git_public_base_url.clone(),
         }),
     )
 }

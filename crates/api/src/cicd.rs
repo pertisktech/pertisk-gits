@@ -245,6 +245,7 @@ struct RegisterRunnerRequest {
 struct RegisterRunnerResponse {
     runner_id: Uuid,
     token: String,
+    api_url: String,
 }
 
 #[derive(Serialize)]
@@ -271,6 +272,7 @@ struct RunnerResponse {
 #[derive(Serialize)]
 struct RotateRunnerTokenResponse {
     token: String,
+    api_url: String,
 }
 
 #[derive(Deserialize)]
@@ -614,7 +616,11 @@ async fn register_runner(
     .await
     .map_err(sqlx_error)?;
 
-    Ok(Json(RegisterRunnerResponse { runner_id, token }))
+    Ok(Json(RegisterRunnerResponse {
+        runner_id,
+        token,
+        api_url: state.config.git_public_base_url.clone(),
+    }))
 }
 
 async fn delete_runner(
@@ -659,7 +665,10 @@ async fn rotate_runner_token(
         return Err(pertisk_domain::DomainError::NotFound.into());
     }
 
-    Ok(Json(RotateRunnerTokenResponse { token }))
+    Ok(Json(RotateRunnerTokenResponse {
+        token,
+        api_url: state.config.git_public_base_url.clone(),
+    }))
 }
 
 async fn poll_runner_job(
