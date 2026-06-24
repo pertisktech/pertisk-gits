@@ -509,6 +509,31 @@ export const api = {
       token,
     ),
 
+  downloadPipelineArtifact: async (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    runId: string,
+    artifactId: string,
+    filename: string,
+  ) => {
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/artifacts/${artifactId}/download`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || `Download failed (${response.status})`)
+    }
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    URL.revokeObjectURL(url)
+  },
+
   getPipelineConfig: (
     token: string,
     orgSlug: string,

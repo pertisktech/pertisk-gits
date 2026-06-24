@@ -4,58 +4,10 @@ import { useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { PullRequestCommentDetail } from '../api/types'
 import { MarkdownBody } from '../lib/collaboration'
+import { parseUnifiedDiff } from '../lib/unifiedDiff'
 import { PrimaryButton } from './ui'
+import { DiffViewer } from './DiffViewer'
 import { cn } from '../utils/cn'
-
-interface DiffFile {
-  path: string
-  lines: Array<{
-    kind: 'hunk' | 'add' | 'del' | 'ctx'
-    text: string
-    newLine?: number
-  }>
-}
-
-function parseUnifiedDiff(diff: string): DiffFile[] {
-  const files: DiffFile[] = []
-  let current: DiffFile | null = null
-  let newLine = 0
-
-  for (const raw of diff.split('\n')) {
-    if (raw.startsWith('diff --git ')) {
-      current = { path: '', lines: [] }
-      files.push(current)
-      continue
-    }
-    if (!current) continue
-
-    if (raw.startsWith('+++ b/')) {
-      current.path = raw.slice(6)
-      continue
-    }
-    if (raw.startsWith('@@')) {
-      const match = raw.match(/\+(\d+)/)
-      newLine = match ? Number.parseInt(match[1], 10) : 0
-      current.lines.push({ kind: 'hunk', text: raw })
-      continue
-    }
-    if (raw.startsWith('+') && !raw.startsWith('+++')) {
-      current.lines.push({ kind: 'add', text: raw.slice(1), newLine })
-      newLine += 1
-      continue
-    }
-    if (raw.startsWith('-') && !raw.startsWith('---')) {
-      current.lines.push({ kind: 'del', text: raw.slice(1) })
-      continue
-    }
-    if (raw.startsWith(' ')) {
-      current.lines.push({ kind: 'ctx', text: raw.slice(1), newLine })
-      newLine += 1
-    }
-  }
-
-  return files.filter((file) => file.path)
-}
 
 interface PullRequestDiffProps {
   token?: string | null
@@ -107,111 +59,79 @@ export function PullRequestDiff({
   }
 
   return (
-    <div className="divide-y divide-naturals-n4">
-      {files.map((file) => (
-        <div key={file.path}>
-          <div className="px-4 py-2 text-sm font-mono bg-hover border-b border-naturals-n4 text-text">
-            {file.path}
-          </div>
-          <div className="font-mono text-xs overflow-x-auto">
-            {file.lines.map((line, index) => {
-              const lineKey =
-                line.newLine != null ? `${file.path}:${line.newLine}` : `${file.path}:hunk:${index}`
-              const lineComments =
-                line.newLine != null ? commentsByLine.get(`${file.path}:${line.newLine}`) : undefined
-              const isActive =
-                activeLine?.path === file.path && activeLine.line === line.newLine
+    <DiffViewer
+      diff={diff}
+      renderLineActions={({ file, line }) => {
+        if (!token || line.newLine == null) return null
+        return (
+          <button
+            type="button"
+            className="diff-view-line-comment-btn"
+            title="Add review comment"
+            onClick={() => {
+              setActiveLine({ path: file.path, line: line.newLine! })
+              setDraft('')
+            }}
+          >
+            <MessageSquarePlus size={14} />
+          </button>
+        )
+      }}
+      renderAfterLine={({ file, line }) => {
+        if (line.newLine == null || line.kind === 'hunk') return null
 
-              return (
-                <div key={lineKey}>
-                  <div
-                    className={cn(
-                      'grid grid-cols-[3rem_1fr_auto] gap-2 px-4 py-0.5',
-                      line.kind === 'add' && 'bg-dashboard-success-bg/40',
-                      line.kind === 'del' && 'bg-dashboard-danger-bg/40',
-                      line.kind === 'hunk' && 'text-primary bg-hover/50',
-                    )}
-                  >
-                    <span className="text-muted text-right select-none">
-                      {line.newLine ?? ''}
-                    </span>
-                    <span
-                      className={cn(
-                        'whitespace-pre-wrap break-all',
-                        line.kind === 'add' && 'text-dashboard-success',
-                        line.kind === 'del' && 'text-dashboard-danger',
-                      )}
-                    >
-                      {line.kind === 'hunk' ? line.text : `${line.kind === 'add' ? '+' : line.kind === 'del' ? '-' : ' '}${line.text}`}
-                    </span>
-                    {token && line.newLine != null && line.kind !== 'hunk' && (
-                      <button
-                        type="button"
-                        className="text-muted hover:text-primary p-1"
-                        title="Add review comment"
-                        onClick={() => {
-                          setActiveLine({ path: file.path, line: line.newLine! })
-                          setDraft('')
-                        }}
-                      >
-                        <MessageSquarePlus size={14} />
-                      </button>
-                    )}
-                  </div>
+        const lineComments = commentsByLine.get(`${file.path}:${line.newLine}`)
+        const isActive = activeLine?.path === file.path && activeLine.line === line.newLine
 
-                  {lineComments?.map(({ comment, author }) => (
-                    <div
-                      key={comment.id}
-                      className="ml-12 mr-4 mb-2 p-3 rounded-md border border-naturals-n4 bg-surface text-sm"
-                    >
-                      <div className="text-xs text-text-secondary mb-1">
-                        <span className="font-medium text-text">{author.username}</span>
-                      </div>
-                      <MarkdownBody content={comment.body} orgSlug={orgSlug} repoSlug={repoSlug} />
-                    </div>
-                  ))}
-
-                  {isActive && (
-                    <form
-                      className="ml-12 mr-4 mb-3 space-y-2"
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        if (!draft.trim() || !activeLine) return
-                        commentMutation.mutate({
-                          path: activeLine.path,
-                          line: activeLine.line,
-                          body: draft.trim(),
-                        })
-                      }}
-                    >
-                      <textarea
-                        value={draft}
-                        onChange={(e) => setDraft(e.target.value)}
-                        rows={3}
-                        className="app-field w-full resize-y text-sm"
-                        placeholder={`Comment on line ${activeLine.line}`}
-                        required
-                      />
-                      <div className="flex gap-2">
-                        <PrimaryButton type="submit" disabled={commentMutation.isPending}>
-                          Add review comment
-                        </PrimaryButton>
-                        <button
-                          type="button"
-                          className="text-sm text-text-secondary hover:text-text"
-                          onClick={() => setActiveLine(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </form>
-                  )}
+        return (
+          <>
+            {lineComments?.map(({ comment, author }) => (
+              <div key={comment.id} className="diff-view-inline-comment">
+                <div className="text-xs text-text-secondary mb-1">
+                  <span className="font-medium text-text">{author.username}</span>
                 </div>
-              )
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
+                <MarkdownBody content={comment.body} orgSlug={orgSlug} repoSlug={repoSlug} />
+              </div>
+            ))}
+
+            {isActive && (
+              <form
+                className="diff-view-inline-comment-form"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  if (!draft.trim() || !activeLine) return
+                  commentMutation.mutate({
+                    path: activeLine.path,
+                    line: activeLine.line,
+                    body: draft.trim(),
+                  })
+                }}
+              >
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  rows={3}
+                  className="app-field w-full resize-y text-sm"
+                  placeholder={`Comment on line ${activeLine.line}`}
+                  required
+                />
+                <div className="flex gap-2">
+                  <PrimaryButton type="submit" disabled={commentMutation.isPending}>
+                    Add review comment
+                  </PrimaryButton>
+                  <button
+                    type="button"
+                    className={cn('text-sm text-text-secondary hover:text-text')}
+                    onClick={() => setActiveLine(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            )}
+          </>
+        )
+      }}
+    />
   )
 }

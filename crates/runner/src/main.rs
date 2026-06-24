@@ -1,4 +1,5 @@
 mod api;
+mod artifacts;
 mod host;
 mod job;
 mod version;

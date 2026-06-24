@@ -31,6 +31,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 use validator::Validate;
 
+mod artifacts;
 mod collaboration;
 mod cicd;
 mod config;
@@ -46,6 +47,7 @@ use password::{hash_password, verify_password};
 pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<Config>,
+    pub artifacts: artifacts::ArtifactStore,
 }
 
 #[derive(Serialize)]
@@ -89,10 +91,12 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::connect(&config.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
     cicd::spawn_runner_stale_checker(pool.clone());
+    let artifact_store = artifacts::ArtifactStore::from_env()?;
 
     let state = AppState {
         pool,
         config: config.clone(),
+        artifacts: artifact_store,
     };
 
     let repo_read_routes = Router::new()

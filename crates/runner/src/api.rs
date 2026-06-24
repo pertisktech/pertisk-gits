@@ -1,5 +1,6 @@
 use anyhow::Context;
 use pertisk_cicd::config::Step;
+use pertisk_cicd::ArtifactDecl;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use serde_json::Value;
@@ -21,6 +22,8 @@ pub struct PollJobResponse {
     pub repo_slug: String,
     pub commit_sha: String,
     pub steps: Vec<Step>,
+    #[serde(default)]
+    pub artifacts: Vec<ArtifactDecl>,
 }
 
 impl RunnerApi {
@@ -123,5 +126,38 @@ impl RunnerApi {
         }
 
         response.bytes().await.context("read workspace archive")
+    }
+
+    pub async fn upload_artifact(
+        &self,
+        job_id: Uuid,
+        name: &str,
+        rel_path: &str,
+        data: Vec<u8>,
+    ) -> anyhow::Result<()> {
+        let part = reqwest::multipart::Part::bytes(data)
+            .file_name(format!("{name}.tar.gz"))
+            .mime_str("application/gzip")?;
+        let form = reqwest::multipart::Form::new()
+            .text("name", name.to_string())
+            .text("path", rel_path.to_string())
+            .part("file", part);
+
+        let response = self
+            .client
+            .post(format!("{}/api/v1/runner/jobs/{job_id}/artifacts", self.base_url))
+            .bearer_auth(&self.token)
+            .multipart(form)
+            .send()
+            .await
+            .context("upload artifact")?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("artifact upload failed ({status}): {body}");
+        }
+
+        Ok(())
     }
 }

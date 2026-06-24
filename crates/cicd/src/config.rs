@@ -30,6 +30,12 @@ pub struct PullRequestTrigger {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct ArtifactDecl {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Job {
     #[serde(rename = "runs-on", deserialize_with = "deserialize_runs_on")]
     pub runs_on: String,
@@ -40,6 +46,8 @@ pub struct Job {
     pub steps: Vec<Step>,
     #[serde(default)]
     pub timeout_minutes: Option<u32>,
+    #[serde(default)]
+    pub artifacts: Vec<ArtifactDecl>,
 }
 
 fn default_true() -> bool {
@@ -57,6 +65,8 @@ pub struct Step {
     pub working_directory: Option<String>,
     #[serde(default)]
     pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub with: HashMap<String, String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -248,6 +258,26 @@ jobs:
     steps:
       - run: cargo bench --no-run
 "#;
+
+    #[test]
+    fn parses_job_artifacts() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  build:
+    runs-on: self-hosted
+    artifacts:
+      - name: binary
+        path: target/release/app
+    steps:
+      - run: cargo build --release
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.jobs["build"].artifacts.len(), 1);
+        assert_eq!(cfg.jobs["build"].artifacts[0].name, "binary");
+    }
 
     #[test]
     fn parses_optional_required_job() {

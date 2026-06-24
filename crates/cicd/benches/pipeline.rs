@@ -71,8 +71,10 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
                     uses: None,
                     working_directory: None,
                     env: HashMap::new(),
+                    with: HashMap::new(),
                 }],
                 timeout_minutes: None,
+                artifacts: vec![],
             },
         );
     }

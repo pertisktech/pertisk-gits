@@ -161,6 +161,7 @@ pub async fn bench_noop_steps(
             uses: None,
             working_directory: None,
             env: Default::default(),
+            with: Default::default(),
         };
         let output = executor.run_step(workspace, 0, &step, &[]).await;
         durations.push(output.duration.as_millis() as u64);

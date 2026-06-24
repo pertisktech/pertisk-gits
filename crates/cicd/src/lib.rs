@@ -4,7 +4,7 @@ pub mod metrics;
 pub mod schedule;
 pub mod trigger;
 
-pub use config::{parse_pipeline_yaml, Job, PipelineConfig, Step};
+pub use config::{parse_pipeline_yaml, ArtifactDecl, Job, PipelineConfig, Step};
 pub use executor::{bench_noop_steps, JobExecutor, ShellExecutor, StepOutput};
 pub use metrics::{JobMetrics, StepTiming};
 pub use schedule::{ScheduledJob, Scheduler};

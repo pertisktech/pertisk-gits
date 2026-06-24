@@ -4,15 +4,17 @@ use std::time::Duration;
 
 use axum::{
     body::Body,
-    extract::{Path, Query, State},
+    extract::{Multipart, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::Response,
+    response::IntoResponse,
     routing::{delete, get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
 use pertisk_cicd::{
-    parse_pipeline_yaml, PipelineEvent, ScheduledJob, Scheduler, TriggerMatcher, CONFIG_PATHS,
+    parse_pipeline_yaml, PipelineEvent, ScheduledJob, Scheduler, TriggerMatcher,
+    CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -21,6 +23,7 @@ use tokio::process::Command;
 use uuid::Uuid;
 
 use crate::{
+    artifacts::{self, ArtifactStore},
     ensure_can_write_repo, load_repo_for_read, ApiError, AppState, AuthUser,
 };
 use pertisk_domain::DomainError;
@@ -83,6 +86,10 @@ pub fn cicd_read_routes() -> Router<AppState> {
             get(get_pipeline_run),
         )
         .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/artifacts/{artifact_id}/download",
+            get(download_pipeline_artifact),
+        )
+        .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/commits/{commit_sha}/statuses",
             get(list_commit_statuses),
         )
@@ -110,6 +117,7 @@ pub fn runner_routes() -> Router<AppState> {
         .route("/runner/jobs/{job_id}/start", post(start_runner_job))
         .route("/runner/jobs/{job_id}/log", post(append_runner_job_log))
         .route("/runner/jobs/{job_id}/complete", post(complete_runner_job))
+        .route("/runner/jobs/{job_id}/artifacts", post(upload_runner_artifact))
         .route("/runner/heartbeat", post(runner_heartbeat))
         .route(
             "/runner/repos/{org_slug}/{repo_slug}/workspace",
@@ -164,11 +172,22 @@ struct JobRunResponse {
     runs_on: String,
     needs: Vec<String>,
     steps: Vec<JobStepResponse>,
+    artifacts: Vec<JobArtifactResponse>,
     metrics_json: Option<Value>,
     log_text: String,
     queued_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize)]
+struct JobArtifactResponse {
+    id: Uuid,
+    job_run_id: Uuid,
+    name: String,
+    path: String,
+    size_bytes: i64,
+    created_at: DateTime<Utc>,
 }
 
 #[derive(Serialize)]
@@ -270,6 +289,7 @@ struct PollJobResponse {
     commit_sha: String,
     ref_name: String,
     steps: Value,
+    artifacts: Value,
 }
 
 #[derive(Deserialize)]
@@ -663,6 +683,7 @@ async fn poll_runner_job(
                     j.pipeline_run_id,
                     j.job_name,
                     j.steps_json,
+                    j.artifacts_json,
                     p.repository_id,
                     p.commit_sha,
                     p.ref_name,
@@ -690,6 +711,7 @@ async fn poll_runner_job(
                 commit_sha: meta.commit_sha,
                 ref_name: meta.ref_name,
                 steps: meta.steps_json,
+                artifacts: meta.artifacts_json,
             })));
         }
 
@@ -1319,14 +1341,17 @@ async fn materialize_jobs_for_run(
 
     for job in jobs {
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
+        let artifacts_json =
+            serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, needs, status)
-            VALUES ($1, $2, $3, $4, $5, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'queued')
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
                 steps_json = EXCLUDED.steps_json,
+                artifacts_json = EXCLUDED.artifacts_json,
                 needs = EXCLUDED.needs,
                 status = 'queued',
                 runner_id = NULL,
@@ -1341,6 +1366,7 @@ async fn materialize_jobs_for_run(
         .bind(&job.name)
         .bind(&job.job.runs_on)
         .bind(steps_json)
+        .bind(artifacts_json)
         .bind(&job.job.needs)
         .execute(pool)
         .await?;
@@ -1373,6 +1399,16 @@ async fn materialize_jobs_for_run(
             .execute(pool)
             .await?;
     } else {
+        sqlx::query(
+            r#"
+            DELETE FROM job_artifacts
+            WHERE job_run_id IN (SELECT id FROM job_runs WHERE pipeline_run_id = $1)
+            "#,
+        )
+        .bind(run_id)
+        .execute(pool)
+        .await?;
+
         sqlx::query(
             r#"
             DELETE FROM job_runs
@@ -1657,17 +1693,56 @@ fn steps_from_json(steps_json: &Value) -> Vec<JobStepResponse> {
                 .iter()
                 .enumerate()
                 .filter_map(|(index, step)| {
-                    let run = step.get("run")?.as_str()?.to_string();
+                    let run = step.get("run").and_then(|v| v.as_str()).unwrap_or("");
+                    let uses = step.get("uses").and_then(|v| v.as_str());
+                    if run.is_empty() && uses.is_none() {
+                        return None;
+                    }
                     let name = step
                         .get("name")
                         .and_then(|v| v.as_str())
                         .map(str::to_string)
+                        .or_else(|| uses.map(str::to_string))
                         .unwrap_or_else(|| format!("step-{}", index + 1));
-                    Some(JobStepResponse { name, run })
+                    let display = if run.is_empty() {
+                        uses.unwrap_or("").to_string()
+                    } else {
+                        run.to_string()
+                    };
+                    Some(JobStepResponse { name, run: display })
                 })
                 .collect()
         })
         .unwrap_or_default()
+}
+
+async fn fetch_job_artifacts(
+    pool: &PgPool,
+    job_run_id: Uuid,
+) -> Result<Vec<JobArtifactResponse>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, JobArtifactRow>(
+        r#"
+        SELECT id, job_run_id, name, path, size_bytes, created_at, storage_key
+        FROM job_artifacts
+        WHERE job_run_id = $1
+        ORDER BY created_at ASC
+        "#,
+    )
+    .bind(job_run_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| JobArtifactResponse {
+            id: row.id,
+            job_run_id: row.job_run_id,
+            name: row.name,
+            path: row.path,
+            size_bytes: row.size_bytes,
+            created_at: row.created_at,
+        })
+        .collect())
 }
 
 async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobRunResponse>, sqlx::Error> {
@@ -1683,22 +1758,25 @@ async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobR
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(|row| JobRunResponse {
+    let mut jobs = Vec::with_capacity(rows.len());
+    for row in rows {
+        let artifacts = fetch_job_artifacts(pool, row.id).await?;
+        jobs.push(JobRunResponse {
             id: row.id,
             job_name: row.job_name,
             status: row.status,
             runs_on: row.runs_on,
             needs: row.needs,
             steps: steps_from_json(&row.steps_json),
+            artifacts,
             metrics_json: row.metrics_json,
             log_text: row.log_text,
             queued_at: row.queued_at,
             started_at: row.started_at,
             finished_at: row.finished_at,
-        })
-        .collect())
+        });
+    }
+    Ok(jobs)
 }
 
 async fn fetch_pipeline_run(
@@ -1756,11 +1834,151 @@ struct JobPollRow {
     pipeline_run_id: Uuid,
     job_name: String,
     steps_json: Value,
+    artifacts_json: Value,
     repository_id: Uuid,
     commit_sha: String,
     ref_name: String,
     org_slug: String,
     repo_slug: String,
+}
+
+#[derive(sqlx::FromRow)]
+struct JobArtifactRow {
+    id: Uuid,
+    job_run_id: Uuid,
+    name: String,
+    path: String,
+    size_bytes: i64,
+    created_at: DateTime<Utc>,
+    storage_key: String,
+}
+
+async fn upload_runner_artifact(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+    mut multipart: Multipart,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+
+    let allowed = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM job_runs
+            WHERE id = $1 AND runner_id = $2 AND status IN ('running', 'success')
+        )
+        "#,
+    )
+    .bind(job_id)
+    .bind(runner_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
+    if !allowed {
+        return Err((StatusCode::FORBIDDEN, "job not assigned to runner".into()));
+    }
+
+    let mut name: Option<String> = None;
+    let mut rel_path: Option<String> = None;
+    let mut file_data: Option<bytes::Bytes> = None;
+
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| internal(e.to_string()))?
+    {
+        match field.name() {
+            Some("name") => {
+                name = Some(field.text().await.map_err(|e| internal(e.to_string()))?);
+            }
+            Some("path") => {
+                rel_path = Some(field.text().await.map_err(|e| internal(e.to_string()))?);
+            }
+            Some("file") => {
+                file_data = Some(field.bytes().await.map_err(|e| internal(e.to_string()))?);
+            }
+            _ => {}
+        }
+    }
+
+    let name = name.ok_or((StatusCode::BAD_REQUEST, "missing artifact name".into()))?;
+    let rel_path = rel_path.unwrap_or_else(|| name.clone());
+    let data = file_data.ok_or((StatusCode::BAD_REQUEST, "missing artifact file".into()))?;
+
+    let safe_name = artifacts::sanitize_artifact_name(&name);
+    let storage_key = ArtifactStore::storage_key(job_id, &safe_name);
+    state
+        .artifacts
+        .put(&storage_key, &data)
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO job_artifacts (job_run_id, name, path, storage_key, size_bytes)
+        VALUES ($1, $2, $3, $4, $5)
+        "#,
+    )
+    .bind(job_id)
+    .bind(&name)
+    .bind(&rel_path)
+    .bind(&storage_key)
+    .bind(data.len() as i64)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
+    Ok(StatusCode::CREATED)
+}
+
+async fn download_pipeline_artifact(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug, run_id, artifact_id)): Path<(String, String, Uuid, Uuid)>,
+) -> Result<Response, ApiError> {
+    let (_org, repo, _repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+
+    let artifact = sqlx::query_as::<_, JobArtifactRow>(
+        r#"
+        SELECT a.id, a.job_run_id, a.name, a.path, a.size_bytes, a.created_at, a.storage_key
+        FROM job_artifacts a
+        INNER JOIN job_runs j ON j.id = a.job_run_id
+        INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+        WHERE a.id = $1 AND p.id = $2 AND p.repository_id = $3
+        "#,
+    )
+    .bind(artifact_id)
+    .bind(run_id)
+    .bind(repo.id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(sqlx_error)?
+    .ok_or(DomainError::NotFound)?;
+
+    let data = state
+        .artifacts
+        .get(&artifact.storage_key)
+        .await
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+    let filename = artifacts::download_filename(&artifact.name);
+    let disposition = format!("attachment; filename=\"{filename}\"");
+    let headers = [
+        (header::CONTENT_TYPE, "application/gzip"),
+        (
+            header::CONTENT_DISPOSITION,
+            disposition.as_str(),
+        ),
+    ];
+
+    Ok((
+        StatusCode::OK,
+        headers,
+        Body::from(data),
+    )
+        .into_response())
 }
 
 fn hash_runner_token(token: &str) -> String {

@@ -94,8 +94,10 @@ mod tests {
                         uses: None,
                         working_directory: None,
                         env: HashMap::new(),
+                        with: HashMap::new(),
                     }],
                     timeout_minutes: None,
+                    artifacts: vec![],
                 },
             )]),
         }

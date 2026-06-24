@@ -1,11 +1,13 @@
 use std::path::Path;
 use std::time::Instant;
+
 use chrono::Utc;
 use pertisk_cicd::metrics::{JobMetrics, StepTiming};
 use pertisk_cicd::{ShellExecutor, StepOutput};
 use tempfile::TempDir;
 
 use crate::api::{PollJobResponse, RunnerApi};
+use crate::artifacts::{upload_artifact_step, upload_declared_artifact};
 use crate::workspace::materialize_workspace;
 
 pub async fn run_job(
@@ -60,6 +62,47 @@ pub async fn run_job(
     let mut failed = false;
 
     for (index, step) in job.steps.iter().enumerate() {
+        if step.uses.as_deref() == Some("upload-artifact") {
+            let name = step
+                .with
+                .get("name")
+                .cloned()
+                .unwrap_or_else(|| "artifact".into());
+            let rel_path = step
+                .with
+                .get("path")
+                .cloned()
+                .unwrap_or_else(|| name.clone());
+            let started_at = Utc::now();
+            let upload_result = upload_artifact_step(api, job.job_id, &workspace, &name, &rel_path).await;
+            let finished_at = Utc::now();
+            let (exit_code, log_body) = match upload_result {
+                Ok(()) => (0, format!("uploaded artifact {name} from {rel_path}\n")),
+                Err(err) => (1, format!("artifact upload failed: {err:#}\n")),
+            };
+            let step_name = step
+                .name
+                .clone()
+                .unwrap_or_else(|| format!("upload-artifact-{index}"));
+            timings.push(StepTiming {
+                name: step_name.clone(),
+                duration_ms: finished_at
+                    .signed_duration_since(started_at)
+                    .num_milliseconds()
+                    .max(0) as u64,
+                exit_code,
+                started_at,
+                finished_at,
+            });
+            api.append_log(job.job_id, &format!("=== {step_name} (exit {exit_code})\n{log_body}"))
+                .await?;
+            if exit_code != 0 {
+                failed = true;
+                break;
+            }
+            continue;
+        }
+
         let started_at = Utc::now();
         let output = executor
             .run_step(&workspace, index, step, &job_env)
@@ -77,6 +120,28 @@ pub async fn run_job(
         if output.exit_code != 0 {
             failed = true;
             break;
+        }
+    }
+
+    if !failed {
+        for artifact in &job.artifacts {
+            if let Err(err) = upload_declared_artifact(api, job.job_id, &workspace, artifact).await {
+                failed = true;
+                api.append_log(
+                    job.job_id,
+                    &format!("=== artifact {} (exit 1)\nartifact upload failed: {err:#}\n", artifact.name),
+                )
+                .await?;
+                break;
+            }
+            api.append_log(
+                job.job_id,
+                &format!(
+                    "=== artifact {} (exit 0)\nuploaded {} from {}\n",
+                    artifact.name, artifact.name, artifact.path
+                ),
+            )
+            .await?;
         }
     }
 

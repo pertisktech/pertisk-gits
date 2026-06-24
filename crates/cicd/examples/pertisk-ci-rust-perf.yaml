@@ -48,3 +48,6 @@ jobs:
         run: cargo build --release -p pertisk-api
       - name: Measure binary size
         run: ls -lh target/release/pertisk-api
+    artifacts:
+      - name: pertisk-api-release
+        path: target/release/pertisk-api

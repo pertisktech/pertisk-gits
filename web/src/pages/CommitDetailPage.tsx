@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { commitUrl } from '../components/RepoCommits'
 import { CommitStatuses } from '../components/CommitStatuses'
+import { DiffViewer } from '../components/DiffViewer'
 import { Breadcrumbs } from '../components/ui'
 import { projectTabPath } from '../lib/projectRoute'
 
@@ -133,7 +134,7 @@ export function CommitDetailPage() {
         <div className="app-panel">
           <div className="app-panel-header">Changes</div>
           <div className="app-panel-body flush">
-            <pre className="app-diff m-0">{commit.diff}</pre>
+            <DiffViewer diff={commit.diff} />
           </div>
         </div>
       ) : (

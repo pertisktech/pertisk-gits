@@ -93,7 +93,7 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 
 ---
 
-## Phase 4 — CI/CD (In progress)
+## Phase 4 — CI/CD (Done)
 
 **Goal:** Pipelines on push/PR with status on commits and PRs.
 
@@ -104,16 +104,16 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | Runners | `pertisk-runner` shell executor + metrics | Done (MVP) |
 | Live logs | Runner appends log after each step | Done |
 | Optional jobs | `required: false` skips merge gate | Done |
-| Artifacts | Object storage (MinIO) | Todo |
+| Artifacts | Local filesystem (`ARTIFACTS_ROOT`) + download UI | Done |
 | Status API | Commit status + PR merge gate | Done |
 | PR triggers | Auto-run on PR open + branch push | Done |
-| UI | Pipeline graph, step logs, rerun in-place, runner host metrics | Done |
+| UI | Pipeline graph, step logs, artifacts download, rerun in-place, runner host metrics | Done |
 
 **MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, self-hosted runners
 
 Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
-**Tables:** `runners`, `pipeline_runs`, `job_runs`, `commit_statuses`, `pipeline_triggers`
+**Tables:** `runners`, `pipeline_runs`, `job_runs`, `job_artifacts`, `commit_statuses`, `pipeline_triggers`
 
 ---
 

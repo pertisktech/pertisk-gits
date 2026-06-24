@@ -242,6 +242,15 @@ export interface JobMetrics {
   total_ms: number
 }
 
+export interface JobArtifact {
+  id: string
+  job_run_id: string
+  name: string
+  path: string
+  size_bytes: number
+  created_at: string
+}
+
 export interface JobRun {
   id: string
   job_name: string
@@ -249,6 +258,7 @@ export interface JobRun {
   runs_on: string
   needs: string[]
   steps: Array<{ name: string; run: string }>
+  artifacts: JobArtifact[]
   metrics_json: JobMetrics | null
   log_text: string
   queued_at: string

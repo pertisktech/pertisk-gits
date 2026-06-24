@@ -186,6 +186,8 @@ jobs:
 | POST | `/api/v1/runner/jobs/{id}/log` | Runner token (append live log) |
 | GET | `/api/v1/runner/jobs/{id}/workspace` | Runner token |
 | POST | `/api/v1/runner/jobs/{id}/complete` | Runner token |
+| POST | `/api/v1/runner/jobs/{id}/artifacts` | Runner token (multipart upload) |
+| GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/artifacts/{id}/download` | User JWT |
 
 ## Job metrics
 
@@ -232,10 +234,41 @@ While a job runs, the runner appends log output to the API after **each step** c
 
 Re-run resets the **same** pipeline run (same run ID and job rows) instead of creating a duplicate entry in the pipeline list.
 
+### Artifacts
+
+Jobs can publish build outputs as downloadable `.tar.gz` archives. Storage defaults to `data/artifacts` on the API host (`ARTIFACTS_ROOT`).
+
+**Job-level** (uploaded after all steps succeed):
+
+```yaml
+jobs:
+  build:
+    runs-on: self-hosted
+    steps:
+      - run: cargo build --release -p pertisk-api
+    artifacts:
+      - name: pertisk-api-release
+        path: target/release/pertisk-api
+```
+
+**Step-level** (`uses: upload-artifact`):
+
+```yaml
+    steps:
+      - run: echo hello > report.txt
+      - name: Upload report
+        uses: upload-artifact
+        with:
+          name: report
+          path: report.txt
+```
+
+Paths are relative to the job workspace. The runner archives each path with `tar -czf` before upload. On the pipeline run detail page, artifacts appear under the selected job with a **Download** button.
+
 ## Not yet implemented
 
 - Container-isolated runners (currently shell on host)
-- Artifact upload to MinIO
+- S3-compatible object storage backend (MinIO is in `deploy/docker-compose.yml` for future use)
 - Intra-step log streaming (stdout/stderr while a step is running)
 - Per-branch required checks configuration in repo settings (merge gate uses `required` per job in YAML today)
 

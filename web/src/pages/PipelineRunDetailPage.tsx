@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, RefreshCw } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
@@ -23,12 +23,19 @@ import {
   stepMeta,
 } from '../lib/pipelineLog'
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
+}
+
 export function PipelineRunDetailPage() {
   const { slug: orgSlug = '', projectSlug = '', runId = '' } = useParams()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [activeStepKey, setActiveStepKey] = useState<string | null>(null)
+  const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -276,6 +283,51 @@ export function PipelineRunDetailPage() {
                     <span>
                       steps <strong>{activeJob.metrics_json.steps.length}</strong>
                     </span>
+                  </div>
+                )}
+                {activeJob.artifacts?.length > 0 && (
+                  <div className="ci-artifacts-panel">
+                    <h4 className="ci-artifacts-title">Artifacts</h4>
+                    <ul className="ci-artifacts-list">
+                      {activeJob.artifacts.map((artifact) => (
+                        <li key={artifact.id} className="ci-artifacts-item">
+                          <span className="ci-artifacts-name">{artifact.name}</span>
+                          <span className="ci-artifacts-meta">
+                            {formatBytes(artifact.size_bytes)}
+                          </span>
+                          <button
+                            type="button"
+                            className="ci-artifacts-download"
+                            disabled={downloadingArtifactId === artifact.id}
+                            onClick={async () => {
+                              if (!token) return
+                              setDownloadingArtifactId(artifact.id)
+                              try {
+                                await api.downloadPipelineArtifact(
+                                  token,
+                                  orgSlug,
+                                  projectSlug,
+                                  runId,
+                                  artifact.id,
+                                  `${artifact.name}.tar.gz`,
+                                )
+                              } catch (err) {
+                                console.error(err)
+                              } finally {
+                                setDownloadingArtifactId(null)
+                              }
+                            }}
+                          >
+                            {downloadingArtifactId === artifact.id ? (
+                              <Loader2 className="ci-artifacts-icon animate-spin" size={14} />
+                            ) : (
+                              <Download className="ci-artifacts-icon" size={14} />
+                            )}
+                            Download
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </>
