@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Play } from 'lucide-react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { JobRun, PipelineRun } from '../api/types'
@@ -250,6 +251,8 @@ function PipelineConfigGraph({
   repoSlug: string
   defaultBranch: string
 }) {
+  const [selectedJobName, setSelectedJobName] = useState<string | null>(null)
+
   const { data, isLoading, isError } = useQuery({
     queryKey: ['pipeline-config-preview', orgSlug, repoSlug, defaultBranch],
     queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, defaultBranch),
@@ -263,6 +266,8 @@ function PipelineConfigGraph({
       needs: job.needs,
       step_count: job.step_count,
     })) ?? []
+
+  const selectedJob = data?.jobs.find((job) => job.name === selectedJobName) ?? null
 
   if (isError) return null
 
@@ -278,7 +283,30 @@ function PipelineConfigGraph({
           )}
         </div>
       </div>
-      <PipelineGraph jobs={jobs} loading={isLoading} emptyMessage="No jobs in pipeline config" />
+      <PipelineGraph
+        jobs={jobs}
+        loading={isLoading}
+        emptyMessage="No jobs in pipeline config"
+        selectedJob={selectedJobName}
+        onJobSelect={setSelectedJobName}
+      />
+      {selectedJob && (
+        <div className="pipeline-step-preview border-t border-border">
+          <div className="px-3 py-2 bg-surface-secondary border-b border-border">
+            <p className="text-xs font-mono text-text-secondary">
+              steps in <strong className="text-text">{selectedJob.name}</strong>
+            </p>
+          </div>
+          <div className="divide-y divide-border">
+            {selectedJob.steps.map((step) => (
+              <div key={step.name} className="pipeline-step-preview-row">
+                <span className="pipeline-step-preview-name">{step.name}</span>
+                <code className="pipeline-step-preview-run">{step.run}</code>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

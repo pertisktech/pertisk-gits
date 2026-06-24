@@ -4,7 +4,6 @@ import {
   BackgroundVariant,
   Controls,
   Handle,
-  MiniMap,
   Position,
   ReactFlow,
   type NodeProps,
@@ -24,15 +23,6 @@ const STATUS_DOT: Record<string, string> = {
   failure: 'ci-status-dot-failure',
   running: 'ci-status-dot-active',
   queued: 'ci-status-dot-active',
-}
-
-const MINIMAP_COLOR: Record<string, string> = {
-  success: '#3fb950',
-  failure: '#f85149',
-  running: '#d29922',
-  queued: '#d29922',
-  cancelled: '#6e7681',
-  preview: '#6e7681',
 }
 
 function PipelineJobNode({ data }: NodeProps) {
@@ -73,6 +63,7 @@ export function jobsFromRun(jobs: JobRun[]): PipelineGraphJob[] {
     needs: job.needs ?? [],
     status: job.status,
     job_id: job.id,
+    step_count: job.steps?.length ?? job.metrics_json?.steps.length,
   }))
 }
 
@@ -158,14 +149,6 @@ export function PipelineGraph({
       >
         <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="var(--color-border)" />
         <Controls showInteractive={false} className="pipeline-graph-controls" />
-        <MiniMap
-          className="pipeline-graph-minimap"
-          nodeColor={(node) => {
-            const status = (node.data as PipelineGraphNodeData)?.job?.status ?? 'preview'
-            return MINIMAP_COLOR[status] ?? MINIMAP_COLOR.preview
-          }}
-          maskColor="color-mix(in srgb, var(--color-bg) 75%, transparent)"
-        />
       </ReactFlow>
     </div>
   )

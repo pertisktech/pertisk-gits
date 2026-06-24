@@ -144,6 +144,7 @@ export function CiRunLine({
   hint,
   onClick,
   active,
+  nested,
 }: {
   status: string
   label: string
@@ -151,13 +152,19 @@ export function CiRunLine({
   hint?: string
   onClick?: () => void
   active?: boolean
+  nested?: boolean
 }) {
   const Tag = onClick ? 'button' : 'div'
   return (
     <Tag
       type={onClick ? 'button' : undefined}
       onClick={onClick}
-      className={cn('ci-run-line', active && 'ci-run-line-active', onClick && 'ci-run-line-clickable')}
+      className={cn(
+        'ci-run-line',
+        nested && 'ci-run-line-nested',
+        active && 'ci-run-line-active',
+        onClick && 'ci-run-line-clickable',
+      )}
     >
       <CiStatusDot status={status} />
       <span className="ci-run-line-label">{label}</span>

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -15,12 +15,19 @@ import { pipelineUrl, displayRunStatus, isRunInProgress, refLabel, runStatusVari
 import { StatusBadge } from '../components/StatusBadge'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
+import {
+  jobStepViews,
+  stepDisplayStatus,
+  stepLogText,
+  stepMeta,
+} from '../lib/pipelineLog'
 
 export function PipelineRunDetailPage() {
   const { slug: orgSlug = '', projectSlug = '', runId = '' } = useParams()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [activeStepKey, setActiveStepKey] = useState<string | null>(null)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -46,6 +53,23 @@ export function PipelineRunDetailPage() {
     }
     return run.jobs[0] ?? null
   }, [run, activeJobId])
+
+  const activeSteps = useMemo(
+    () => (activeJob ? jobStepViews(activeJob) : []),
+    [activeJob],
+  )
+
+  useEffect(() => {
+    setActiveStepKey(null)
+  }, [activeJob?.id])
+
+  const selectJob = (jobId: string) => {
+    setActiveJobId(jobId)
+    setActiveStepKey(null)
+  }
+
+  const logText = activeJob ? stepLogText(activeJob, activeStepKey) : ''
+  const activeStep = activeSteps.find((step) => step.key === activeStepKey) ?? null
 
   const rerunMutation = useMutation({
     mutationFn: () =>
@@ -179,21 +203,34 @@ export function PipelineRunDetailPage() {
           selectedJob={activeJob?.id ?? null}
           onJobSelect={(jobKey) => {
             const match = run.jobs.find((job) => job.id === jobKey || job.job_name === jobKey)
-            if (match) setActiveJobId(match.id)
+            if (match) selectJob(match.id)
           }}
         />
 
         <div className="ci-terminal-split ci-terminal-split--detail">
           <div className="ci-terminal-sidebar">
             {run.jobs.map((job) => (
-              <CiRunLine
-                key={job.id}
-                status={job.status}
-                label={job.job_name}
-                meta={job.runs_on}
-                active={activeJob?.id === job.id}
-                onClick={() => setActiveJobId(job.id)}
-              />
+              <div key={job.id}>
+                <CiRunLine
+                  status={job.status}
+                  label={job.job_name}
+                  meta={job.runs_on}
+                  active={activeJob?.id === job.id && !activeStepKey}
+                  onClick={() => selectJob(job.id)}
+                />
+                {activeJob?.id === job.id &&
+                  activeSteps.map((step) => (
+                    <CiRunLine
+                      key={step.key}
+                      nested
+                      status={stepDisplayStatus(step.exitCode, job.status)}
+                      label={step.name}
+                      meta={stepMeta(step)}
+                      active={activeStepKey === step.key}
+                      onClick={() => setActiveStepKey(step.key)}
+                    />
+                  ))}
+              </div>
             ))}
           </div>
 
@@ -204,14 +241,23 @@ export function PipelineRunDetailPage() {
                   user="runner"
                   host={activeJob.runs_on}
                   path={activeJob.job_name}
-                  command={activeJob.metrics_json ? `exit ${activeJob.status === 'success' ? 0 : 1}` : 'running…'}
+                  command={
+                    activeStep?.run ??
+                    (activeJob.metrics_json
+                      ? `exit ${activeJob.status === 'success' ? 0 : 1}`
+                      : activeStepKey
+                        ? activeStepKey
+                        : 'running…')
+                  }
                 />
                 <CiLogViewer
                   className="ci-log-viewer--fill"
-                  text={activeJob.log_text}
+                  text={logText}
                   emptyMessage={
                     activeJob.status === 'queued' || activeJob.status === 'running'
-                      ? '(job running…)'
+                      ? activeStepKey
+                        ? '(step running…)'
+                        : '(job running…)'
                       : '(no log output)'
                   }
                 />

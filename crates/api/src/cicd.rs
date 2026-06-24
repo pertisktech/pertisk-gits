@@ -118,11 +118,18 @@ struct JobRunResponse {
     status: String,
     runs_on: String,
     needs: Vec<String>,
+    steps: Vec<JobStepResponse>,
     metrics_json: Option<Value>,
     log_text: String,
     queued_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Serialize)]
+struct JobStepResponse {
+    name: String,
+    run: String,
 }
 
 #[derive(Deserialize)]
@@ -144,6 +151,7 @@ struct PipelineJobPreview {
     runs_on: String,
     needs: Vec<String>,
     step_count: usize,
+    steps: Vec<JobStepResponse>,
 }
 
 #[derive(Serialize)]
@@ -248,8 +256,20 @@ async fn get_pipeline_config_preview(
         .map(|(name, job)| PipelineJobPreview {
             name,
             runs_on: job.runs_on,
-            needs: job.needs,
+            needs: job.needs.clone(),
             step_count: job.steps.len(),
+            steps: job
+                .steps
+                .iter()
+                .enumerate()
+                .map(|(index, step)| JobStepResponse {
+                    name: step
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| format!("step-{}", index + 1)),
+                    run: step.run.clone(),
+                })
+                .collect(),
         })
         .collect();
     jobs.sort_by(|a, b| a.name.cmp(&b.name));
@@ -1309,6 +1329,7 @@ struct JobRunRow {
     status: String,
     runs_on: String,
     needs: Vec<String>,
+    steps_json: Value,
     metrics_json: Option<Value>,
     log_text: String,
     queued_at: DateTime<Utc>,
@@ -1316,10 +1337,31 @@ struct JobRunRow {
     finished_at: Option<DateTime<Utc>>,
 }
 
+fn steps_from_json(steps_json: &Value) -> Vec<JobStepResponse> {
+    steps_json
+        .as_array()
+        .map(|steps| {
+            steps
+                .iter()
+                .enumerate()
+                .filter_map(|(index, step)| {
+                    let run = step.get("run")?.as_str()?.to_string();
+                    let name = step
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .map(str::to_string)
+                        .unwrap_or_else(|| format!("step-{}", index + 1));
+                    Some(JobStepResponse { name, run })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobRunResponse>, sqlx::Error> {
     let rows = sqlx::query_as::<_, JobRunRow>(
         r#"
-        SELECT id, job_name, status::text, runs_on, needs, metrics_json, log_text, queued_at, started_at, finished_at
+        SELECT id, job_name, status::text, runs_on, needs, steps_json, metrics_json, log_text, queued_at, started_at, finished_at
         FROM job_runs
         WHERE pipeline_run_id = $1
         ORDER BY queued_at ASC
@@ -1337,6 +1379,7 @@ async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobR
             status: row.status,
             runs_on: row.runs_on,
             needs: row.needs,
+            steps: steps_from_json(&row.steps_json),
             metrics_json: row.metrics_json,
             log_text: row.log_text,
             queued_at: row.queued_at,

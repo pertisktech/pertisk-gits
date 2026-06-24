@@ -248,6 +248,7 @@ export interface JobRun {
   status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled'
   runs_on: string
   needs: string[]
+  steps: Array<{ name: string; run: string }>
   metrics_json: JobMetrics | null
   log_text: string
   queued_at: string
@@ -260,6 +261,7 @@ export interface PipelineJobPreview {
   runs_on: string
   needs: string[]
   step_count: number
+  steps: Array<{ name: string; run: string }>
 }
 
 export interface PipelineConfigPreview {
