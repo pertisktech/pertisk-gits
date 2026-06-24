@@ -35,7 +35,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         {label}
       </div>
       <div className="flex gap-1.5">
-        <input readOnly value={value} className="gogs-clone-input flex-1" />
+        <input readOnly value={value} className="app-clone-input flex-1" />
         <button
           type="button"
           onClick={copy}
@@ -111,10 +111,10 @@ export function RepoCloneDropdown({
   ]
 
   return (
-    <div className="gogs-clone-dropdown" ref={ref}>
+    <div className="app-clone-dropdown" ref={ref}>
       <button
         type="button"
-        className="gogs-code-dropdown-trigger"
+        className="app-code-dropdown-trigger"
         data-no-global-button-hover="true"
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
@@ -125,8 +125,8 @@ export function RepoCloneDropdown({
       </button>
 
       {open && (
-        <div className="gogs-code-dropdown">
-          <div className="gogs-code-dropdown-tabs" role="tablist">
+        <div className="app-code-dropdown">
+          <div className="app-code-dropdown-tabs" role="tablist">
             {modes.map((item) => (
               <button
                 key={item.id}
@@ -141,7 +141,7 @@ export function RepoCloneDropdown({
             ))}
           </div>
 
-          <div className="gogs-code-dropdown-body">
+          <div className="app-code-dropdown-body">
             {mode === 'https' && (
               <div className="space-y-3">
                 <CopyField label="Clone URL" value={cloneUrl} />
@@ -183,7 +183,7 @@ export function RepoCloneDropdown({
                     </p>
                     <button
                       type="button"
-                      className="gogs-code-download-btn"
+                      className="app-code-download-btn"
                       disabled={downloading}
                       onClick={downloadRepo}
                     >

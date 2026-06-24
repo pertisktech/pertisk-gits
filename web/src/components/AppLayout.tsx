@@ -14,15 +14,15 @@ export function AppLayout() {
   const { user } = useAuth()
 
   return (
-    <div className="gogs-shell text-text">
-      <header className="gogs-topbar shrink-0">
-        <div className="gogs-topbar-inner">
-          <NavLink to="/dashboard" className="gogs-brand">
+    <div className="app-shell text-text">
+      <header className="app-topbar shrink-0">
+        <div className="app-topbar-inner">
+          <NavLink to="/dashboard" className="app-brand">
             <img src="/favicon.svg" alt="" className="w-7 h-7" />
             <span>Pertisk Gits</span>
           </NavLink>
 
-          <nav className="gogs-topnav hidden sm:flex">
+          <nav className="app-topnav hidden sm:flex">
             <NavLink to="/dashboard" className={topNavClass}>
               <span className="inline-flex items-center gap-1.5">
                 <LayoutDashboard size={15} />
@@ -78,8 +78,8 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="gogs-main">
-        <div className="gogs-container">
+      <main className="app-main">
+        <div className="app-container">
           <Outlet />
         </div>
       </main>

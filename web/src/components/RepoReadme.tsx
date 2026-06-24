@@ -21,12 +21,12 @@ export function RepoReadme({ token, orgSlug, repoSlug, ref, readmePath }: RepoRe
 
   if (isLoading) {
     return (
-      <div className="gogs-panel">
-        <div className="gogs-panel-header flex items-center gap-2">
+      <div className="app-panel">
+        <div className="app-panel-header flex items-center gap-2">
           <FileText size={14} className="text-primary" />
           {readmePath}
         </div>
-        <div className="gogs-panel-body flex items-center gap-2 text-text-secondary text-sm">
+        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
           <Loader2 size={16} className="animate-spin" />
           Loading README…
         </div>
@@ -39,12 +39,12 @@ export function RepoReadme({ token, orgSlug, repoSlug, ref, readmePath }: RepoRe
   }
 
   return (
-    <div className="gogs-panel markdown-viewer">
-      <div className="gogs-panel-header flex items-center gap-2">
+    <div className="app-panel markdown-viewer">
+      <div className="app-panel-header flex items-center gap-2">
         <FileText size={14} className="text-primary" />
         {readmePath}
       </div>
-      <div className="gogs-panel-body markdown-viewer-content text-sm text-text">
+      <div className="app-panel-body markdown-viewer-content text-sm text-text">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.content}</ReactMarkdown>
       </div>
     </div>

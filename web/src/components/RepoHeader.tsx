@@ -18,9 +18,9 @@ export function RepoHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="gogs-repo-header flex flex-wrap items-start justify-between gap-3">
+    <div className="app-repo-header flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="gogs-repo-title">
+        <h1 className="app-repo-title">
           <Link to={`/groups/${orgSlug}`}>{orgName}</Link>
           <span className="sep">/</span>
           <span>{repoName}</span>
@@ -30,7 +30,7 @@ export function RepoHeader({
             </StatusBadge>
           )}
         </h1>
-        {description && <p className="gogs-repo-desc">{description}</p>}
+        {description && <p className="app-repo-desc">{description}</p>}
       </div>
       {action}
     </div>

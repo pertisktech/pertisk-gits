@@ -41,8 +41,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
 
   if (browserLoading) {
     return (
-      <div className="gogs-panel">
-        <div className="gogs-panel-body flex items-center gap-2 text-text-secondary text-sm">
+      <div className="app-panel">
+        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
           <Loader2 size={16} className="animate-spin" />
           Loading commits…
         </div>
@@ -52,8 +52,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
 
   if (browser?.empty) {
     return (
-      <div className="gogs-panel">
-        <div className="gogs-panel-body text-center py-12 text-text-secondary text-sm">
+      <div className="app-panel">
+        <div className="app-panel-body text-center py-12 text-text-secondary text-sm">
           No commits yet — push to this repository to see history here.
         </div>
       </div>
@@ -61,13 +61,13 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
   }
 
   return (
-    <div className="gogs-panel">
-      <div className="gogs-toolbar">
+    <div className="app-panel">
+      <div className="app-toolbar">
         <select
           id="commits-branch-select"
           value={ref}
           onChange={(e) => setRefOverride(e.target.value)}
-          className="gogs-branch-select"
+          className="app-branch-select"
           aria-label="Branch"
         >
           {branches.map((branch) => (
@@ -82,13 +82,13 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
       </div>
 
       {error && (
-        <div className="gogs-panel-body p-4 text-sm text-dashboard-danger">
+        <div className="app-panel-body p-4 text-sm text-dashboard-danger">
           {(error as Error).message}
         </div>
       )}
 
       {isLoading ? (
-        <div className="gogs-panel-body flex items-center gap-2 text-text-secondary text-sm p-6">
+        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm p-6">
           <Loader2 size={16} className="animate-spin" />
           Loading commits…
         </div>

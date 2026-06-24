@@ -87,7 +87,7 @@ export function UserPicker({
   return (
     <div ref={containerRef} className={cn('relative min-w-[12rem] flex-1', className)}>
       {value ? (
-        <div className="gogs-field flex items-center gap-2 py-1.5 pr-1">
+        <div className="app-field flex items-center gap-2 py-1.5 pr-1">
           <User size={14} className="text-muted shrink-0" />
           <span className="min-w-0 flex-1 text-sm">
             <span className="font-medium text-text">@{value.username}</span>
@@ -141,7 +141,7 @@ export function UserPicker({
               }
             }}
             placeholder={placeholder}
-            className="gogs-field w-full pl-8"
+            className="app-field w-full pl-8"
             aria-label="Search users"
             aria-expanded={showDropdown}
             aria-autocomplete="list"

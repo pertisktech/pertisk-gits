@@ -118,12 +118,12 @@ export function GroupMembersPage() {
       />
 
       {canManage && (
-        <div className="gogs-panel max-w-3xl mb-5">
-          <div className="gogs-panel-header flex items-center gap-2">
+        <div className="app-panel max-w-3xl mb-5">
+          <div className="app-panel-header flex items-center gap-2">
             <UserPlus size={16} />
             Add member
           </div>
-          <form className="gogs-panel-body space-y-4" onSubmit={onAddMember}>
+          <form className="app-panel-body space-y-4" onSubmit={onAddMember}>
             <p className="text-sm text-text-secondary">
               Search for an existing account by username, email, or display name.
             </p>
@@ -136,7 +136,7 @@ export function GroupMembersPage() {
                 disabled={addMember.isPending}
               />
               <select
-                className="gogs-field w-40"
+                className="app-field w-40"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as OrgRole)}
                 disabled={addMember.isPending}
@@ -166,8 +166,8 @@ export function GroupMembersPage() {
         </div>
       )}
 
-      <div className="gogs-panel max-w-3xl">
-        <div className="gogs-panel-header flex items-center justify-between">
+      <div className="app-panel max-w-3xl">
+        <div className="app-panel-header flex items-center justify-between">
           <span>Members</span>
           <span className="font-normal text-text-secondary">{members.length}</span>
         </div>
@@ -175,7 +175,7 @@ export function GroupMembersPage() {
         {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
 
         {!isLoading && members.length > 0 && (
-          <table className="gogs-list-table">
+          <table className="app-list-table">
             <thead>
               <tr>
                 <th>User</th>
@@ -200,7 +200,7 @@ export function GroupMembersPage() {
                     <td>
                       {canEditTarget ? (
                         <select
-                          className="gogs-field py-1 text-sm"
+                          className="app-field py-1 text-sm"
                           value={member.role}
                           disabled={updateMember.isPending}
                           onChange={(e) =>

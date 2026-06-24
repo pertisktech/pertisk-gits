@@ -45,22 +45,22 @@ export function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
-        <div className="gogs-panel p-4">
+        <div className="app-panel p-4">
           <div className="text-2xl font-bold text-primary">{isLoading ? '—' : groups.length}</div>
           <div className="text-sm text-text-secondary mt-0.5">Groups</div>
         </div>
-        <div className="gogs-panel p-4">
+        <div className="app-panel p-4">
           <div className="text-2xl font-bold text-primary">Git</div>
           <div className="text-sm text-text-secondary mt-0.5">HTTP enabled</div>
         </div>
-        <div className="gogs-panel p-4">
+        <div className="app-panel p-4">
           <div className="text-2xl font-bold text-primary">v{appVersion ?? builtAppVersion}</div>
           <div className="text-sm text-text-secondary mt-0.5">Platform</div>
         </div>
       </div>
 
-      <div className="gogs-panel">
-        <div className="gogs-panel-header flex items-center justify-between">
+      <div className="app-panel">
+        <div className="app-panel-header flex items-center justify-between">
           <span>Your repositories</span>
           <Link to="/groups" className="text-primary hover:underline font-normal">
             View all
@@ -83,7 +83,7 @@ export function DashboardPage() {
         )}
 
         {!isLoading && recentGroups.length > 0 && (
-          <table className="gogs-list-table">
+          <table className="app-list-table">
             <thead>
               <tr>
                 <th>Group</th>

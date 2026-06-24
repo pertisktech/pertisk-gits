@@ -29,8 +29,8 @@ export function GroupsPage() {
         </LinkButton>
       </div>
 
-      <div className="gogs-panel">
-        <div className="gogs-panel-header flex items-center justify-between">
+      <div className="app-panel">
+        <div className="app-panel-header flex items-center justify-between">
           <span>All groups</span>
           <span className="font-normal text-text-secondary">{groups.length} total</span>
         </div>
@@ -56,7 +56,7 @@ export function GroupsPage() {
         )}
 
         {!isLoading && groups.length > 0 && (
-          <table className="gogs-list-table">
+          <table className="app-list-table">
             <thead>
               <tr>
                 <th>Group</th>

@@ -79,12 +79,12 @@ export function ProfilePage() {
           )}
         </Card>
 
-        <div className="gogs-panel">
-          <div className="gogs-panel-header flex items-center gap-2">
+        <div className="app-panel">
+          <div className="app-panel-header flex items-center gap-2">
             <KeyRound size={15} className="text-primary" />
             SSH keys
           </div>
-          <div className="gogs-panel-body space-y-5">
+          <div className="app-panel-body space-y-5">
             <p className="text-sm text-text-secondary">
               Add a public key to clone and push over SSH as{' '}
               <span className="font-mono text-text">git@your-host:org/repo.git</span>.
@@ -97,7 +97,7 @@ export function ProfilePage() {
                 </label>
                 <input
                   id="ssh-key-title"
-                  className="gogs-field"
+                  className="app-field"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="My laptop"
@@ -110,7 +110,7 @@ export function ProfilePage() {
                 </label>
                 <textarea
                   id="ssh-public-key"
-                  className="gogs-field mono"
+                  className="app-field mono"
                   value={publicKey}
                   onChange={(e) => setPublicKey(e.target.value)}
                   placeholder="ssh-ed25519 AAAA... user@host"

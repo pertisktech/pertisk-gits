@@ -82,10 +82,10 @@ export function IssueDetailPage() {
         ]}
       />
 
-      <div className="gogs-issue-grid">
+      <div className="app-issue-grid">
         <div className="min-w-0 space-y-4">
-          <div className="gogs-panel">
-            <div className="gogs-panel-body space-y-4">
+          <div className="app-panel">
+            <div className="app-panel-body space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-3 min-w-0">
                   <CircleDot
@@ -132,9 +132,9 @@ export function IssueDetailPage() {
             </div>
           </div>
 
-          <div className="gogs-panel">
-            <div className="gogs-panel-header">{comments.length} comments</div>
-            <div className="gogs-panel-body space-y-4">
+          <div className="app-panel">
+            <div className="app-panel-header">{comments.length} comments</div>
+            <div className="app-panel-body space-y-4">
               {comments.map(({ comment: c, author: commentAuthor }) => (
                 <div key={c.id} className="border-b border-border pb-4 last:border-0 last:pb-0">
                   <div className="text-xs text-text-secondary mb-2">
@@ -159,7 +159,7 @@ export function IssueDetailPage() {
                     onChange={(e) => setComment(e.target.value)}
                     placeholder="Leave a comment — @username, #123, !456"
                     rows={4}
-                    className="gogs-field resize-y"
+                    className="app-field resize-y"
                     required
                   />
                   <PrimaryButton type="submit" disabled={commentMutation.isPending || !comment.trim()}>

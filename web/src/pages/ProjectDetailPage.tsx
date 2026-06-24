@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { GogsSegment } from '../components/GogsSegment'
+import { AppSegment } from '../components/AppSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
@@ -117,7 +117,7 @@ export function ProjectDetailPage() {
         visibility={project.visibility}
       />
 
-      <GogsSegment
+      <AppSegment
         active={tab}
         onChange={(id) => setTab(id as Tab)}
         tabs={tabs}

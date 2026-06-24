@@ -103,7 +103,7 @@ export function PullRequestDiff({
   })
 
   if (files.length === 0) {
-    return <pre className="gogs-diff m-0">{diff}</pre>
+    return <pre className="app-diff m-0">{diff}</pre>
   }
 
   return (
@@ -188,7 +188,7 @@ export function PullRequestDiff({
                         value={draft}
                         onChange={(e) => setDraft(e.target.value)}
                         rows={3}
-                        className="gogs-field w-full resize-y text-sm"
+                        className="app-field w-full resize-y text-sm"
                         placeholder={`Comment on line ${activeLine.line}`}
                         required
                       />

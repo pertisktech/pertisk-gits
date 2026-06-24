@@ -92,8 +92,8 @@ export function RepoBrowser({
 
   if (browserLoading) {
     return (
-      <div className="gogs-panel">
-        <div className="gogs-panel-body flex items-center gap-2 text-text-secondary text-sm">
+      <div className="app-panel">
+        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
           <Loader2 size={16} className="animate-spin" />
           Loading repository…
         </div>
@@ -103,8 +103,8 @@ export function RepoBrowser({
 
   if (browser?.empty) {
     return (
-      <div className="gogs-panel">
-        <div className="gogs-panel-body text-center py-12">
+      <div className="app-panel">
+        <div className="app-panel-body text-center py-12">
           <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
           <p className="text-text font-medium">This repository is empty</p>
           <p className="text-sm text-text-secondary mt-1 max-w-md mx-auto">
@@ -117,8 +117,8 @@ export function RepoBrowser({
 
   return (
     <div className="space-y-4 min-w-0">
-      <div className="gogs-panel">
-        <div className="gogs-toolbar">
+      <div className="app-panel">
+        <div className="app-toolbar">
           <select
             id="ref-kind-select"
             value={refKind}
@@ -128,7 +128,7 @@ export function RepoBrowser({
               setRefOverride(null)
               navigateTo('')
             }}
-            className="gogs-branch-select"
+            className="app-branch-select"
             aria-label="Reference type"
           >
             <option value="branch">Branch</option>
@@ -142,7 +142,7 @@ export function RepoBrowser({
               setRefOverride(e.target.value)
               navigateTo('')
             }}
-            className="gogs-branch-select min-w-[8rem]"
+            className="app-branch-select min-w-[8rem]"
             disabled={refList.length === 0}
           >
             {refList.length === 0 ? (
@@ -161,7 +161,7 @@ export function RepoBrowser({
           </span>
 
           {pathParts.length > 0 && (
-            <div className="gogs-path-crumb flex-1 min-w-0">
+            <div className="app-path-crumb flex-1 min-w-0">
               <button type="button" onClick={() => navigateTo('')} aria-label="Repository root">
                 /
               </button>
@@ -186,7 +186,7 @@ export function RepoBrowser({
             Loading files…
           </div>
         ) : (
-          <table className="gogs-file-table gogs-file-table-commits">
+          <table className="app-file-table app-file-table-commits">
             <thead>
               <tr>
                 <th>Name</th>
@@ -257,8 +257,8 @@ export function RepoBrowser({
       )}
 
       {selectedFile && (
-        <div className="gogs-panel">
-          <div className="gogs-panel-header flex items-center justify-between gap-2">
+        <div className="app-panel">
+          <div className="app-panel-header flex items-center justify-between gap-2">
             <span className="font-mono text-xs truncate">{selectedFile}</span>
             <a
               href={api.repoRawUrl(orgSlug, repoSlug, {
@@ -298,7 +298,7 @@ export function RepoBrowser({
               Raw
             </a>
           </div>
-          <div className="gogs-panel-body flush">
+          <div className="app-panel-body flush">
             {blobLoading ? (
               <div className="flex items-center gap-2 text-text-secondary text-sm p-4">
                 <Loader2 size={16} className="animate-spin" />

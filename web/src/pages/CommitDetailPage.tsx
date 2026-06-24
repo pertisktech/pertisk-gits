@@ -68,8 +68,8 @@ export function CommitDetailPage() {
         ]}
       />
 
-      <div className="gogs-panel mb-4">
-        <div className="gogs-panel-body space-y-4">
+      <div className="app-panel mb-4">
+        <div className="app-panel-body space-y-4">
           <div className="flex items-start gap-3">
             <GitCommit size={20} className="text-primary shrink-0 mt-0.5" />
             <div className="min-w-0">
@@ -129,15 +129,15 @@ export function CommitDetailPage() {
       </div>
 
       {commit.diff ? (
-        <div className="gogs-panel">
-          <div className="gogs-panel-header">Changes</div>
-          <div className="gogs-panel-body flush">
-            <pre className="gogs-diff m-0">{commit.diff}</pre>
+        <div className="app-panel">
+          <div className="app-panel-header">Changes</div>
+          <div className="app-panel-body flush">
+            <pre className="app-diff m-0">{commit.diff}</pre>
           </div>
         </div>
       ) : (
-        <div className="gogs-panel">
-          <div className="gogs-panel-body text-sm text-text-secondary">No file changes in this commit.</div>
+        <div className="app-panel">
+          <div className="app-panel-body text-sm text-text-secondary">No file changes in this commit.</div>
         </div>
       )}
     </>

@@ -78,16 +78,16 @@ export function RepoSettings({
 
   return (
     <div className="space-y-5">
-      <div className="gogs-panel max-w-2xl">
-      <div className="gogs-panel-header">Repository settings</div>
-      <form className="gogs-panel-body space-y-5" onSubmit={onSubmit}>
+      <div className="app-panel max-w-2xl">
+      <div className="app-panel-header">Repository settings</div>
+      <form className="app-panel-body space-y-5" onSubmit={onSubmit}>
         <div className="space-y-2">
           <label htmlFor="repo-name" className="text-sm font-medium text-text">
             Name
           </label>
           <input
             id="repo-name"
-            className="gogs-field"
+            className="app-field"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -103,7 +103,7 @@ export function RepoSettings({
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
-            className="gogs-field"
+            className="app-field"
             placeholder="Short description of this repository"
           />
         </div>
@@ -114,7 +114,7 @@ export function RepoSettings({
           </label>
           <select
             id="repo-visibility"
-            className="gogs-field"
+            className="app-field"
             value={visibility}
             onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
           >
@@ -129,7 +129,7 @@ export function RepoSettings({
           </label>
           <select
             id="repo-default-branch"
-            className="gogs-field"
+            className="app-field"
             value={defaultBranch}
             onChange={(e) => setDefaultBranch(e.target.value)}
           >

@@ -82,12 +82,12 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
   }
 
   return (
-    <div className="gogs-panel max-w-2xl">
-      <div className="gogs-panel-header flex items-center gap-2">
+    <div className="app-panel max-w-2xl">
+      <div className="app-panel-header flex items-center gap-2">
         <UserPlus size={16} />
         Direct access
       </div>
-      <div className="gogs-panel-body space-y-5">
+      <div className="app-panel-body space-y-5">
         <p className="text-sm text-text-secondary">
           Grant push or admin access to users who are not group members, or override access for a specific repository.
           Group owners and admins already have full access.
@@ -102,7 +102,7 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
             disabled={addCollaborator.isPending}
           />
           <select
-            className="gogs-field w-36"
+            className="app-field w-36"
             value={newRole}
             onChange={(e) => setNewRole(e.target.value as RepoRole)}
             disabled={addCollaborator.isPending}
@@ -136,7 +136,7 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
         )}
 
         {!isLoading && collaborators.length > 0 && (
-          <table className="gogs-list-table">
+          <table className="app-list-table">
             <thead>
               <tr>
                 <th>User</th>
@@ -155,7 +155,7 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
                   </td>
                   <td>
                     <select
-                      className="gogs-field py-1 text-sm"
+                      className="app-field py-1 text-sm"
                       value={collaborator.role}
                       disabled={updateCollaborator.isPending}
                       onChange={(e) =>

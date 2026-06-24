@@ -175,12 +175,12 @@ export function RunnersPage() {
       />
 
       <div className="space-y-5 max-w-4xl">
-        <div className="gogs-panel">
-          <div className="gogs-panel-header flex items-center gap-2">
+        <div className="app-panel">
+          <div className="app-panel-header flex items-center gap-2">
             <Server size={15} className="text-primary" />
             Register runner
           </div>
-          <div className="gogs-panel-body space-y-4">
+          <div className="app-panel-body space-y-4">
             <p className="text-sm text-text-secondary">
               Create a runner, copy the token, then configure it on the host running{' '}
               <span className="font-mono text-text">pertisk-runner</span>. Labels must match{' '}
@@ -195,7 +195,7 @@ export function RunnersPage() {
                   </label>
                   <input
                     id="runner-name"
-                    className="gogs-field"
+                    className="app-field"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="pertisk-proxy"
@@ -208,7 +208,7 @@ export function RunnersPage() {
                   </label>
                   <input
                     id="runner-labels"
-                    className="gogs-field font-mono text-sm"
+                    className="app-field font-mono text-sm"
                     value={labels}
                     onChange={(e) => setLabels(e.target.value)}
                     placeholder="self-hosted, docker"
@@ -240,9 +240,9 @@ export function RunnersPage() {
           </div>
         )}
 
-        <div className="gogs-panel">
-          <div className="gogs-panel-header">Registered runners</div>
-          <div className="gogs-panel-body">
+        <div className="app-panel">
+          <div className="app-panel-header">Registered runners</div>
+          <div className="app-panel-body">
             {isLoading ? (
               <div className="text-sm text-text-secondary">Loading runners…</div>
             ) : runners.length === 0 ? (

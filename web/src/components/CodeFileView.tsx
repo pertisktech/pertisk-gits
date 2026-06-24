@@ -12,7 +12,7 @@ export function CodeFileView({ path, content }: CodeFileViewProps) {
   const { theme } = useTheme()
 
   return (
-    <div className="gogs-code-view">
+    <div className="app-code-view">
       <CodeEditor
         value={content}
         language={languageFromPath(path)}

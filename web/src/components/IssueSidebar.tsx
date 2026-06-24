@@ -58,10 +58,10 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
   }
 
   return (
-    <aside className="gogs-issue-sidebar space-y-3">
-      <div className="gogs-panel">
-        <div className="gogs-panel-header">Assignees</div>
-        <div className="gogs-panel-body">
+    <aside className="app-issue-sidebar space-y-3">
+      <div className="app-panel">
+        <div className="app-panel-header">Assignees</div>
+        <div className="app-panel-body">
           <select
             value={assignee?.id ?? ''}
             onChange={(e) =>
@@ -69,7 +69,7 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
                 assignee_id: e.target.value || null,
               })
             }
-            className="gogs-field !py-1.5 !text-sm"
+            className="app-field !py-1.5 !text-sm"
             disabled={updateMutation.isPending}
           >
             <option value="">No assignee</option>
@@ -82,12 +82,12 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
         </div>
       </div>
 
-      <div className="gogs-panel">
-        <div className="gogs-panel-header flex items-center gap-1.5">
+      <div className="app-panel">
+        <div className="app-panel-header flex items-center gap-1.5">
           <Tag size={14} />
           Labels
         </div>
-        <div className="gogs-panel-body space-y-2">
+        <div className="app-panel-body space-y-2">
           {allLabels.length === 0 ? (
             <p className="text-xs text-text-secondary">No labels yet.</p>
           ) : (
@@ -113,9 +113,9 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
         </div>
       </div>
 
-      <div className="gogs-panel">
-        <div className="gogs-panel-header">Milestone</div>
-        <div className="gogs-panel-body">
+      <div className="app-panel">
+        <div className="app-panel-header">Milestone</div>
+        <div className="app-panel-body">
           <select
             value={milestone?.id ?? ''}
             onChange={(e) =>
@@ -123,7 +123,7 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
                 milestone_id: e.target.value || null,
               })
             }
-            className="gogs-field !py-1.5 !text-sm"
+            className="app-field !py-1.5 !text-sm"
             disabled={updateMutation.isPending}
           >
             <option value="">No milestone</option>
@@ -137,9 +137,9 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
         </div>
       </div>
 
-      <div className="gogs-panel">
-        <div className="gogs-panel-header">Metadata</div>
-        <div className="gogs-panel-body text-xs text-text-secondary space-y-1">
+      <div className="app-panel">
+        <div className="app-panel-header">Metadata</div>
+        <div className="app-panel-body text-xs text-text-secondary space-y-1">
           <div>State: <span className="text-text">{issue.state}</span></div>
           {assignee && (
             <div>
@@ -187,8 +187,8 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
   })
 
   return (
-    <div className="gogs-panel">
-      <div className="gogs-panel-header flex items-center justify-between gap-2">
+    <div className="app-panel">
+      <div className="app-panel-header flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5">
           <Tag size={14} />
           Labels
@@ -201,7 +201,7 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
           {showForm ? 'Cancel' : 'New label'}
         </button>
       </div>
-      <div className="gogs-panel-body space-y-3">
+      <div className="app-panel-body space-y-3">
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
@@ -235,7 +235,7 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
               onChange={(e) => setName(e.target.value)}
               placeholder="Label name"
               required
-              className="gogs-field flex-1 min-w-[8rem] !py-1.5 !text-sm"
+              className="app-field flex-1 min-w-[8rem] !py-1.5 !text-sm"
             />
             <input
               type="color"
@@ -290,8 +290,8 @@ export function RepoMilestonesPanel({ token, orgSlug, repoSlug }: RepoMilestones
   })
 
   return (
-    <div className="gogs-panel">
-      <div className="gogs-panel-header flex items-center justify-between gap-2">
+    <div className="app-panel">
+      <div className="app-panel-header flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5">
           <Target size={14} />
           Milestones
@@ -304,7 +304,7 @@ export function RepoMilestonesPanel({ token, orgSlug, repoSlug }: RepoMilestones
           {showForm ? 'Cancel' : 'New milestone'}
         </button>
       </div>
-      <div className="gogs-panel-body space-y-3">
+      <div className="app-panel-body space-y-3">
         {milestones.length === 0 && !showForm && (
           <p className="text-xs text-text-secondary">No milestones yet.</p>
         )}
@@ -339,20 +339,20 @@ export function RepoMilestonesPanel({ token, orgSlug, repoSlug }: RepoMilestones
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Milestone title"
               required
-              className="gogs-field w-full !py-1.5 !text-sm"
+              className="app-field w-full !py-1.5 !text-sm"
             />
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description (optional)"
               rows={2}
-              className="gogs-field w-full !py-1.5 !text-sm resize-y"
+              className="app-field w-full !py-1.5 !text-sm resize-y"
             />
             <input
               type="date"
               value={dueOn}
               onChange={(e) => setDueOn(e.target.value)}
-              className="gogs-field w-full !py-1.5 !text-sm"
+              className="app-field w-full !py-1.5 !text-sm"
             />
             <PrimaryButton type="submit" disabled={createMutation.isPending || !title.trim()}>
               Create milestone

@@ -161,8 +161,8 @@ export function PullRequestDetailPage() {
         ]}
       />
 
-      <div className="gogs-panel mb-4">
-        <div className="gogs-panel-body space-y-4">
+      <div className="app-panel mb-4">
+        <div className="app-panel-body space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="flex items-start gap-3 min-w-0">
               <GitPullRequest size={20} className="text-primary shrink-0 mt-1" />
@@ -198,7 +198,7 @@ export function PullRequestDetailPage() {
             {token && pr.state === 'open' && compare?.mergeable && (
               <div className="flex flex-wrap items-center gap-2">
                 <select
-                  className="gogs-field !py-1.5 !text-sm"
+                  className="app-field !py-1.5 !text-sm"
                   value={mergeStrategy}
                   onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash')}
                   disabled={mergeMutation.isPending}
@@ -328,9 +328,9 @@ export function PullRequestDetailPage() {
       </div>
 
       {compare?.diff && (
-        <div className="gogs-panel mb-4">
-          <div className="gogs-panel-header">Changes</div>
-          <div className="gogs-panel-body flush">
+        <div className="app-panel mb-4">
+          <div className="app-panel-header">Changes</div>
+          <div className="app-panel-body flush">
             <PullRequestDiff
               token={token}
               orgSlug={orgSlug}
@@ -343,9 +343,9 @@ export function PullRequestDetailPage() {
         </div>
       )}
 
-      <div className="gogs-panel">
-        <div className="gogs-panel-header">{generalComments.length} comments</div>
-        <div className="gogs-panel-body space-y-4">
+      <div className="app-panel">
+        <div className="app-panel-header">{generalComments.length} comments</div>
+        <div className="app-panel-body space-y-4">
           {generalComments.map(({ comment: c, author: commentAuthor }) => (
             <div key={c.id} className="border-b border-border pb-4 last:border-0 last:pb-0">
               <div className="text-xs text-text-secondary mb-2">
@@ -370,7 +370,7 @@ export function PullRequestDetailPage() {
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Leave a comment"
                 rows={4}
-                className="gogs-field resize-y"
+                className="app-field resize-y"
                 required
               />
               <PrimaryButton type="submit" disabled={commentMutation.isPending || !comment.trim()}>

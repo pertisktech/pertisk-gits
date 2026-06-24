@@ -78,8 +78,8 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
 
   if (isLoading) {
     return (
-      <div className="gogs-panel">
-        <div className="gogs-panel-body flex items-center gap-2 text-text-secondary text-sm">
+      <div className="app-panel">
+        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
           <Loader2 size={16} className="animate-spin" />
           Loading issues…
         </div>
@@ -100,12 +100,12 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="gogs-segment inline-flex !mb-0 !border-b-0">
+        <div className="app-segment inline-flex !mb-0 !border-b-0">
           {(['open', 'closed', 'all'] as const).map((state) => (
             <button
               key={state}
               type="button"
-              className={`gogs-segment-tab ${stateFilter === state ? 'active' : ''}`}
+              className={`app-segment-tab ${stateFilter === state ? 'active' : ''}`}
               onClick={() => setStateFilter(state)}
             >
               {state === 'open' && `${data?.open_count ?? 0} Open`}
@@ -119,7 +119,7 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search issues…"
-          className="gogs-field max-w-xs !py-1.5 !text-sm"
+          className="app-field max-w-xs !py-1.5 !text-sm"
         />
         {token && (
           <PrimaryButton type="button" className="ml-auto" onClick={() => setShowNew((v) => !v)}>
@@ -143,10 +143,10 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
       )}
 
       {showNew && token && (
-        <div className="gogs-panel">
-          <div className="gogs-panel-header">New issue</div>
+        <div className="app-panel">
+          <div className="app-panel-header">New issue</div>
           <form
-            className="gogs-panel-body space-y-3"
+            className="app-panel-body space-y-3"
             onSubmit={(e) => {
               e.preventDefault()
               createMutation.mutate()
@@ -157,20 +157,20 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Title"
               required
-              className="gogs-field"
+              className="app-field"
             />
             <textarea
               value={body}
               onChange={(e) => setBody(e.target.value)}
               placeholder="Describe the issue — use @username, #123, !456 (Markdown supported)"
               rows={5}
-              className="gogs-field resize-y"
+              className="app-field resize-y"
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <select
                 value={assigneeId}
                 onChange={(e) => setAssigneeId(e.target.value)}
-                className="gogs-field !py-1.5 !text-sm"
+                className="app-field !py-1.5 !text-sm"
               >
                 <option value="">No assignee</option>
                 {members.map(({ user }) => (
@@ -182,7 +182,7 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
               <select
                 value={milestoneId}
                 onChange={(e) => setMilestoneId(e.target.value)}
-                className="gogs-field !py-1.5 !text-sm"
+                className="app-field !py-1.5 !text-sm"
               >
                 <option value="">No milestone</option>
                 {milestones.map((m) => (
@@ -226,9 +226,9 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
         </div>
       )}
 
-      <div className="gogs-panel">
+      <div className="app-panel">
         {issues.length === 0 ? (
-          <div className="gogs-panel-body text-center py-10 text-text-secondary text-sm">
+          <div className="app-panel-body text-center py-10 text-text-secondary text-sm">
             No issues found.
           </div>
         ) : (

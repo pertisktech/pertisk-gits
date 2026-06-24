@@ -641,15 +641,15 @@ body,
   border-top: 1px solid var(--color-border);
 }
 
-/* ── Gogs-inspired layout (Pertisk theme) ─────────────────────────────────── */
+/* ── Application layout (Pertisk theme) ─────────────────────────────────── */
 
-.gogs-topbar {
+.app-topbar {
   background: var(--color-sidebar);
   border-bottom: 1px solid var(--color-border);
   box-shadow: var(--shadow-sm);
 }
 
-.gogs-topbar-inner {
+.app-topbar-inner {
   max-width: 1280px;
   margin: 0 auto;
   padding: 0 1rem;
@@ -659,7 +659,7 @@ body,
   gap: 1rem;
 }
 
-.gogs-brand {
+.app-brand {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -670,17 +670,17 @@ body,
   flex-shrink: 0;
 }
 
-.gogs-brand:hover {
+.app-brand:hover {
   color: var(--color-primary);
 }
 
-.gogs-topnav {
+.app-topnav {
   display: flex;
   align-items: center;
   gap: 0.25rem;
 }
 
-.gogs-topnav a {
+.app-topnav a {
   padding: 0.4rem 0.75rem;
   border-radius: var(--radius-md);
   font-size: 0.875rem;
@@ -690,18 +690,18 @@ body,
   transition: background var(--transition-fast), color var(--transition-fast);
 }
 
-.gogs-topnav a:hover {
+.app-topnav a:hover {
   color: var(--color-text);
   background: var(--color-hover);
 }
 
-.gogs-topnav a.active {
+.app-topnav a.active {
   color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 12%, transparent);
   font-weight: 600;
 }
 
-.gogs-shell {
+.app-shell {
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -709,24 +709,24 @@ body,
   width: 100%;
 }
 
-.gogs-main {
+.app-main {
   flex: 1;
   overflow: auto;
   min-height: 0;
 }
 
-.gogs-container {
+.app-container {
   max-width: 1280px;
   margin: 0 auto;
   padding: 1.25rem 1rem 2rem;
   width: 100%;
 }
 
-.gogs-repo-header {
+.app-repo-header {
   margin-bottom: 0.75rem;
 }
 
-.gogs-repo-title {
+.app-repo-title {
   font-size: 1.5rem;
   font-weight: 600;
   color: var(--color-text);
@@ -737,27 +737,27 @@ body,
   line-height: 1.3;
 }
 
-.gogs-repo-title a {
+.app-repo-title a {
   color: var(--color-primary);
   text-decoration: none;
 }
 
-.gogs-repo-title a:hover {
+.app-repo-title a:hover {
   text-decoration: underline;
 }
 
-.gogs-repo-title .sep {
+.app-repo-title .sep {
   color: var(--color-muted);
   font-weight: 400;
 }
 
-.gogs-repo-desc {
+.app-repo-desc {
   margin-top: 0.35rem;
   font-size: 0.875rem;
   color: var(--color-text-secondary);
 }
 
-.gogs-segment-bar {
+.app-segment-bar {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
@@ -766,7 +766,7 @@ body,
   margin-bottom: 1rem;
 }
 
-.gogs-segment {
+.app-segment {
   display: flex;
   flex-wrap: wrap;
   gap: 0;
@@ -774,7 +774,7 @@ body,
   flex: 1;
 }
 
-.gogs-segment-tab {
+.app-segment-tab {
   padding: 0.65rem 1rem;
   font-size: 0.875rem;
   font-weight: 500;
@@ -790,24 +790,24 @@ body,
   transition: color var(--transition-fast), border-color var(--transition-fast);
 }
 
-.gogs-segment-tab:hover {
+.app-segment-tab:hover {
   color: var(--color-text);
 }
 
-.gogs-segment-tab.active {
+.app-segment-tab.active {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
   font-weight: 600;
 }
 
-.gogs-panel {
+.app-panel {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
-.gogs-panel-header {
+.app-panel-header {
   padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-elevated);
@@ -816,15 +816,15 @@ body,
   color: var(--color-text);
 }
 
-.gogs-panel-body {
+.app-panel-body {
   padding: 1rem;
 }
 
-.gogs-panel-body.flush {
+.app-panel-body.flush {
   padding: 0;
 }
 
-.gogs-toolbar {
+.app-toolbar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -834,7 +834,7 @@ body,
   background: color-mix(in srgb, var(--color-surface-elevated) 80%, var(--color-surface));
 }
 
-.gogs-branch-select {
+.app-branch-select {
   padding: 0.35rem 0.6rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border);
@@ -844,7 +844,7 @@ body,
   font-family: var(--font-mono);
 }
 
-.gogs-path-crumb {
+.app-path-crumb {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -853,7 +853,7 @@ body,
   font-family: var(--font-mono);
 }
 
-.gogs-path-crumb button {
+.app-path-crumb button {
   color: var(--color-primary);
   background: none;
   border: none;
@@ -861,17 +861,17 @@ body,
   padding: 0;
 }
 
-.gogs-path-crumb button:hover {
+.app-path-crumb button:hover {
   text-decoration: underline;
 }
 
-.gogs-file-table {
+.app-file-table {
   width: 100%;
   font-size: 0.8125rem;
   border-collapse: collapse;
 }
 
-.gogs-file-table thead th {
+.app-file-table thead th {
   padding: 0.5rem 1rem;
   text-align: left;
   font-weight: 600;
@@ -880,26 +880,26 @@ body,
   border-bottom: 1px solid var(--color-border);
 }
 
-.gogs-file-table tbody tr {
+.app-file-table tbody tr {
   border-bottom: 1px solid var(--color-border);
   cursor: pointer;
   transition: background var(--transition-fast);
 }
 
-.gogs-file-table tbody tr:hover {
+.app-file-table tbody tr:hover {
   background: var(--color-hover);
 }
 
-.gogs-file-table tbody tr:last-child {
+.app-file-table tbody tr:last-child {
   border-bottom: none;
 }
 
-.gogs-file-table td {
+.app-file-table td {
   padding: 0.55rem 1rem;
   vertical-align: middle;
 }
 
-.gogs-file-table .name-cell {
+.app-file-table .name-cell {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -907,12 +907,12 @@ body,
   font-family: var(--font-mono);
 }
 
-.gogs-file-table-commits td:nth-child(2) {
+.app-file-table-commits td:nth-child(2) {
   max-width: 0;
   width: 45%;
 }
 
-.gogs-commit-row {
+.app-commit-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -924,7 +924,7 @@ body,
   text-decoration: none;
 }
 
-.gogs-diff {
+.app-diff {
   padding: 1rem;
   overflow-x: auto;
   font-family: var(--font-mono);
@@ -935,28 +935,28 @@ body,
   white-space: pre;
 }
 
-.gogs-code-view {
+.app-code-view {
   overflow: auto;
 }
 
-.gogs-code-view .w-tc-editor {
+.app-code-view .w-tc-editor {
   border: none !important;
   border-radius: 0;
   min-height: 12rem;
 }
 
-.gogs-code-view .w-tc-editor textarea,
-.gogs-code-view .w-tc-editor pre {
+.app-code-view .w-tc-editor textarea,
+.app-code-view .w-tc-editor pre {
   font-family: var(--font-mono) !important;
   font-size: 0.75rem !important;
   line-height: 1.5 !important;
 }
 
-.gogs-code-view .w-tc-editor textarea {
+.app-code-view .w-tc-editor textarea {
   cursor: default;
 }
 
-.gogs-clone-input {
+.app-clone-input {
   width: 100%;
   padding: 0.45rem 0.6rem;
   border-radius: var(--radius-sm);
@@ -968,7 +968,7 @@ body,
   word-break: break-all;
 }
 
-.gogs-field {
+.app-field {
   width: 100%;
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-lg);
@@ -983,16 +983,16 @@ body,
     box-shadow var(--transition-fast);
 }
 
-.gogs-field:focus {
+.app-field:focus {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary) 30%, transparent);
 }
 
-.gogs-field::placeholder {
+.app-field::placeholder {
   color: var(--color-muted);
 }
 
-select.gogs-field {
+select.app-field {
   appearance: none;
   background-color: var(--color-surface);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888aa0' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -1001,22 +1001,22 @@ select.gogs-field {
   padding-right: 2rem;
 }
 
-textarea.gogs-field {
+textarea.app-field {
   resize: vertical;
   min-height: 5rem;
 }
 
-.gogs-field.mono {
+.app-field.mono {
   font-family: var(--font-mono);
 }
 
-.gogs-list-table {
+.app-list-table {
   width: 100%;
   font-size: 0.875rem;
   border-collapse: collapse;
 }
 
-.gogs-list-table thead th {
+.app-list-table thead th {
   padding: 0.6rem 1rem;
   text-align: left;
   font-weight: 600;
@@ -1025,20 +1025,20 @@ textarea.gogs-field {
   border-bottom: 1px solid var(--color-border);
 }
 
-.gogs-list-table tbody tr {
+.app-list-table tbody tr {
   border-bottom: 1px solid var(--color-border);
 }
 
-.gogs-list-table tbody tr:hover {
+.app-list-table tbody tr:hover {
   background: var(--color-hover);
 }
 
-.gogs-list-table td {
+.app-list-table td {
   padding: 0.75rem 1rem;
   vertical-align: top;
 }
 
-.gogs-repo-grid {
+.app-repo-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
@@ -1046,12 +1046,12 @@ textarea.gogs-field {
 }
 
 @media (min-width: 1024px) {
-  .gogs-repo-grid.has-sidebar {
+  .app-repo-grid.has-sidebar {
     grid-template-columns: minmax(0, 1fr) 300px;
   }
 }
 
-.gogs-code-dropdown-trigger {
+.app-code-dropdown-trigger {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -1069,17 +1069,17 @@ textarea.gogs-field {
     border-color var(--transition-fast);
 }
 
-.gogs-code-dropdown-trigger:hover {
+.app-code-dropdown-trigger:hover {
   background: color-mix(in srgb, var(--color-primary) 18%, var(--color-surface));
   border-color: var(--color-primary);
 }
 
-.gogs-clone-dropdown {
+.app-clone-dropdown {
   position: relative;
   flex-shrink: 0;
 }
 
-.gogs-code-dropdown {
+.app-code-dropdown {
   position: absolute;
   right: 0;
   top: calc(100% + 0.35rem);
@@ -1092,13 +1092,13 @@ textarea.gogs-field {
   overflow: hidden;
 }
 
-.gogs-code-dropdown-tabs {
+.app-code-dropdown-tabs {
   display: flex;
   border-bottom: 1px solid var(--color-border);
   background: var(--color-surface-elevated);
 }
 
-.gogs-code-dropdown-tabs button {
+.app-code-dropdown-tabs button {
   flex: 1;
   padding: 0.55rem 0.75rem;
   font-size: 0.75rem;
@@ -1113,20 +1113,20 @@ textarea.gogs-field {
     border-color var(--transition-fast);
 }
 
-.gogs-code-dropdown-tabs button:hover {
+.app-code-dropdown-tabs button:hover {
   color: var(--color-text);
 }
 
-.gogs-code-dropdown-tabs button.active {
+.app-code-dropdown-tabs button.active {
   color: var(--color-primary);
   border-bottom-color: var(--color-primary);
 }
 
-.gogs-code-dropdown-body {
+.app-code-dropdown-body {
   padding: 0.85rem;
 }
 
-.gogs-code-download-btn {
+.app-code-download-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -1142,16 +1142,16 @@ textarea.gogs-field {
   transition: background var(--transition-fast);
 }
 
-.gogs-code-download-btn:hover:not(:disabled) {
+.app-code-download-btn:hover:not(:disabled) {
   background: var(--color-hover);
 }
 
-.gogs-code-download-btn:disabled {
+.app-code-download-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.gogs-issue-grid {
+.app-issue-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 1rem;
@@ -1159,17 +1159,17 @@ textarea.gogs-field {
 }
 
 @media (min-width: 1024px) {
-  .gogs-issue-grid {
+  .app-issue-grid {
     grid-template-columns: minmax(0, 1fr) 260px;
   }
 }
 
-.gogs-issue-sidebar {
+.app-issue-sidebar {
   min-width: 0;
 }
 
 @media (min-width: 1024px) {
-  .gogs-issue-sidebar {
+  .app-issue-sidebar {
     position: sticky;
     top: 1rem;
   }
@@ -1417,7 +1417,7 @@ textarea.gogs-field {
   grid-template-columns: minmax(10rem, 13rem) 1fr;
 }
 
-/* Pipeline run detail — same fluid width as other pages (gogs-container 1280px) */
+/* Pipeline run detail — same fluid width as other pages (app-container 1280px) */
 .pipeline-run-page {
   display: flex;
   flex-direction: column;

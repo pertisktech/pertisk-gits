@@ -25,11 +25,11 @@ export function GroupDetailPage() {
 
   return (
     <>
-      <div className="gogs-repo-header mb-5">
-        <h1 className="gogs-repo-title">
+      <div className="app-repo-header mb-5">
+        <h1 className="app-repo-title">
           <span>{group?.name ?? slug}</span>
         </h1>
-        {group?.description && <p className="gogs-repo-desc">{group.description}</p>}
+        {group?.description && <p className="app-repo-desc">{group.description}</p>}
         <p className="text-xs text-muted font-mono mt-1">@{slug}</p>
       </div>
 
@@ -44,8 +44,8 @@ export function GroupDetailPage() {
         </LinkButton>
       </div>
 
-      <div className="gogs-panel">
-        <div className="gogs-panel-header flex items-center justify-between">
+      <div className="app-panel">
+        <div className="app-panel-header flex items-center justify-between">
           <span>Repositories</span>
           <span className="font-normal text-text-secondary">{projects.length}</span>
         </div>
@@ -71,7 +71,7 @@ export function GroupDetailPage() {
         )}
 
         {!isLoading && projects.length > 0 && (
-          <table className="gogs-list-table">
+          <table className="app-list-table">
             <thead>
               <tr>
                 <th>Repository</th>

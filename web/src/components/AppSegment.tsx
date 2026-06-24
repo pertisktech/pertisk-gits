@@ -2,26 +2,26 @@ import type { LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '../utils/cn'
 
-export interface GogsTab {
+export interface AppTab {
   id: string
   label: string
   icon?: LucideIcon
 }
 
-export function GogsSegment({
+export function AppSegment({
   tabs,
   active,
   onChange,
   action,
 }: {
-  tabs: GogsTab[]
+  tabs: AppTab[]
   active: string
   onChange: (id: string) => void
   action?: ReactNode
 }) {
   return (
-    <div className="gogs-segment-bar">
-      <div className="gogs-segment" role="tablist">
+    <div className="app-segment-bar">
+      <div className="app-segment" role="tablist">
         {tabs.map((tab) => {
           const Icon = tab.icon
           return (
@@ -30,7 +30,7 @@ export function GogsSegment({
               type="button"
               role="tab"
               aria-selected={active === tab.id}
-              className={cn('gogs-segment-tab', active === tab.id && 'active')}
+              className={cn('app-segment-tab', active === tab.id && 'active')}
               onClick={() => onChange(tab.id)}
             >
               {Icon && <Icon size={15} />}

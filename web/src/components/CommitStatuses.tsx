@@ -54,7 +54,7 @@ export function CommitStatuses({
   const anyFailed = statuses.some((s) => s.state === 'failure' || s.state === 'error')
 
   return (
-    <div className="gogs-panel p-4 space-y-3">
+    <div className="app-panel p-4 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-text">Checks</h3>
         <StatusBadge variant={anyFailed ? 'red' : allPassed ? 'green' : 'yellow'}>
