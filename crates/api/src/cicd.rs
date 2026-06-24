@@ -929,6 +929,44 @@ async fn update_commit_status_for_job(
 }
 
 async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> Result<(), sqlx::Error> {
+    let running = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*) FROM job_runs
+        WHERE pipeline_run_id = $1 AND status = 'running'
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    if running > 0 {
+        return Ok(());
+    }
+
+    let failed = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*) FROM job_runs
+        WHERE pipeline_run_id = $1 AND status = 'failure'
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    if failed > 0 {
+        sqlx::query(
+            r#"
+            UPDATE pipeline_runs
+            SET status = 'failure'::pipeline_run_status, finished_at = NOW()
+            WHERE id = $1 AND status IN ('pending', 'queued', 'running')
+            "#,
+        )
+        .bind(pipeline_run_id)
+        .execute(pool)
+        .await?;
+        return Ok(());
+    }
+
     let remaining = sqlx::query_scalar::<_, i64>(
         r#"
         SELECT COUNT(*) FROM job_runs
@@ -943,26 +981,14 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
         return Ok(());
     }
 
-    let failed = sqlx::query_scalar::<_, i64>(
-        r#"
-        SELECT COUNT(*) FROM job_runs
-        WHERE pipeline_run_id = $1 AND status = 'failure'
-        "#,
-    )
-    .bind(pipeline_run_id)
-    .fetch_one(pool)
-    .await?;
-
-    let status = if failed > 0 { "failure" } else { "success" };
     sqlx::query(
         r#"
         UPDATE pipeline_runs
-        SET status = $2::pipeline_run_status, finished_at = NOW()
+        SET status = 'success'::pipeline_run_status, finished_at = NOW()
         WHERE id = $1
         "#,
     )
     .bind(pipeline_run_id)
-    .bind(status)
     .execute(pool)
     .await?;
     Ok(())

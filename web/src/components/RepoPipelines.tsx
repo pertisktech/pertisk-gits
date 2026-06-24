@@ -22,21 +22,6 @@ function pipelineUrl(orgSlug: string, repoSlug: string, runId: string) {
   return `/groups/${orgSlug}/projects/${repoSlug}/pipelines/${runId}`
 }
 
-function runStatusVariant(status: PipelineRun['status']) {
-  if (status === 'success') return 'green' as const
-  if (status === 'failure') return 'red' as const
-  if (status === 'running' || status === 'queued') return 'yellow' as const
-  return 'gray' as const
-}
-
-function shortSha(sha: string) {
-  return sha.slice(0, 7)
-}
-
-function refLabel(refName: string) {
-  return refName.replace(/^refs\/heads\//, '')
-}
-
 function failureSummary(jobs: JobRun[]): string | null {
   const failed = jobs.filter((job) => job.status === 'failure')
   if (failed.length === 0) return null
@@ -52,6 +37,48 @@ function failureSummary(jobs: JobRun[]): string | null {
 
   const line = log.split('\n').find((entry) => entry.trim() && !entry.startsWith('==='))
   return line?.trim().slice(0, 160) ?? `Job "${failed[0].job_name}" failed`
+}
+
+/** UI status — pipeline_run.status can stay "running" while failed jobs exist and others are queued. */
+export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
+  const { jobs, status } = run
+  if (jobs.length === 0) return status
+
+  const hasRunning = jobs.some((j) => j.status === 'running')
+  const hasFailed = jobs.some((j) => j.status === 'failure')
+  const allTerminal = jobs.every(
+    (j) => j.status === 'success' || j.status === 'failure' || j.status === 'cancelled',
+  )
+
+  if (allTerminal) {
+    return hasFailed ? 'failure' : 'success'
+  }
+
+  if (hasFailed && !hasRunning) {
+    return 'failure'
+  }
+
+  return status
+}
+
+export function isRunInProgress(run: PipelineRun): boolean {
+  const displayStatus = displayRunStatus(run)
+  return displayStatus === 'running' || displayStatus === 'queued' || displayStatus === 'pending'
+}
+
+function runStatusVariant(status: PipelineRun['status']) {
+  if (status === 'success') return 'green' as const
+  if (status === 'failure') return 'red' as const
+  if (status === 'running' || status === 'queued') return 'yellow' as const
+  return 'gray' as const
+}
+
+function shortSha(sha: string) {
+  return sha.slice(0, 7)
+}
+
+function refLabel(refName: string) {
+  return refName.replace(/^refs\/heads\//, '')
 }
 
 export function RepoPipelines({
@@ -74,9 +101,7 @@ export function RepoPipelines({
     enabled: Boolean(orgSlug && repoSlug && token),
     refetchInterval: (query) => {
       const items = query.state.data ?? []
-      return items.some((r) => r.status === 'running' || r.status === 'queued' || r.status === 'pending')
-        ? 5000
-        : false
+      return items.some((r) => isRunInProgress(r)) ? 5000 : false
     },
   })
 
@@ -194,7 +219,7 @@ function PipelineRow({
 
   return (
     <CiRunLine
-      status={run.status}
+      status={displayRunStatus(run)}
       label={run.event_type}
       meta={`${shortSha(run.commit_sha)} · ${refLabel(run.ref_name)} · ${passed}/${run.jobs.length}${failed > 0 ? ` (${failed} failed)` : ''} · ${formatDateTime(run.started_at ?? run.created_at)}`}
       hint={summary ?? undefined}

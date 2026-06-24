@@ -705,7 +705,7 @@ body,
   display: flex;
   flex: 1;
   flex-direction: column;
-  min-height: 0;
+  min-height: 100dvh;
   width: 100%;
 }
 
@@ -719,6 +719,20 @@ body,
   max-width: 1280px;
   margin: 0 auto;
   padding: 1.25rem 1rem 2rem;
+}
+
+.gogs-main:has(.pipeline-run-page) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gogs-main:has(.pipeline-run-page) .gogs-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding-bottom: 0;
 }
 
 .gogs-repo-header {
@@ -1414,6 +1428,64 @@ textarea.gogs-field {
 .ci-terminal-split {
   display: grid;
   grid-template-columns: minmax(10rem, 13rem) 1fr;
+}
+
+.ci-terminal--detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ci-terminal-body--detail {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ci-terminal-split--detail {
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+
+.ci-terminal-split--detail .ci-terminal-sidebar {
+  max-height: none;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.ci-terminal-log-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ci-log-viewer--fill {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+
+.pipeline-run-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.pipeline-run-page .ci-terminal--detail {
+  flex: 1;
+  min-height: 0;
+  margin-bottom: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 @media (max-width: 640px) {

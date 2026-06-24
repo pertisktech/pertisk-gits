@@ -10,7 +10,7 @@ import {
   CiRunLine,
   CiTerminal,
 } from '../components/PipelineTerminal'
-import { pipelineUrl, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
+import { pipelineUrl, displayRunStatus, isRunInProgress, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
 import { StatusBadge } from '../components/StatusBadge'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
@@ -34,9 +34,7 @@ export function PipelineRunDetailPage() {
     refetchInterval: (query) => {
       const item = query.state.data
       if (!item) return false
-      return item.status === 'running' || item.status === 'queued' || item.status === 'pending'
-        ? 4000
-        : false
+      return isRunInProgress(item) ? 4000 : false
     },
   })
 
@@ -88,7 +86,7 @@ export function PipelineRunDetailPage() {
   const branch = refLabel(run.ref_name)
 
   return (
-    <>
+    <div className="pipeline-run-page">
       <Breadcrumbs
         items={[
           { label: 'Repositories', to: '/groups' },
@@ -108,7 +106,9 @@ export function PipelineRunDetailPage() {
           </Link>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-text font-mono">pipeline run</h1>
-            <StatusBadge variant={runStatusVariant(run.status)}>{run.status}</StatusBadge>
+            <StatusBadge variant={runStatusVariant(displayRunStatus(run))}>
+              {displayRunStatus(run)}
+            </StatusBadge>
           </div>
           <p className="text-sm text-text-secondary mt-1 font-mono">
             {run.event_type} ·{' '}
@@ -143,6 +143,8 @@ export function PipelineRunDetailPage() {
       )}
 
       <CiTerminal
+        className="ci-terminal--detail"
+        bodyClassName="ci-terminal-body--detail"
         title="pertisk-ci"
         subtitle={`${projectSlug}@${shortSha(run.commit_sha)}`}
         actions={
@@ -170,7 +172,7 @@ export function PipelineRunDetailPage() {
           command={`pipeline run --ref ${branch} --sha ${shortSha(run.commit_sha)}`}
         />
 
-        <div className="ci-terminal-split">
+        <div className="ci-terminal-split ci-terminal-split--detail">
           <div className="ci-terminal-sidebar">
             {run.jobs.map((job) => (
               <CiRunLine
@@ -184,7 +186,7 @@ export function PipelineRunDetailPage() {
             ))}
           </div>
 
-          <div className="min-w-0">
+          <div className="ci-terminal-log-pane">
             {activeJob ? (
               <>
                 <CiPrompt
@@ -194,13 +196,13 @@ export function PipelineRunDetailPage() {
                   command={activeJob.metrics_json ? `exit ${activeJob.status === 'success' ? 0 : 1}` : 'running…'}
                 />
                 <CiLogViewer
+                  className="ci-log-viewer--fill"
                   text={activeJob.log_text}
                   emptyMessage={
                     activeJob.status === 'queued' || activeJob.status === 'running'
                       ? '(job running…)'
                       : '(no log output)'
                   }
-                  maxHeight="32rem"
                 />
                 {activeJob.metrics_json && (
                   <div className="ci-terminal-meta-bar border-t border-border/30">
@@ -225,6 +227,6 @@ export function PipelineRunDetailPage() {
           </div>
         </div>
       </CiTerminal>
-    </>
+    </div>
   )
 }
