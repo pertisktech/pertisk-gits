@@ -60,6 +60,23 @@ export function PullRequestDetailPage() {
     enabled: Boolean(orgSlug && projectSlug && number),
   })
 
+  const headCommitSha = data?.compare?.commits.at(-1)?.sha ?? null
+
+  const { data: ciStatuses = [] } = useQuery({
+    queryKey: ['commit-statuses', orgSlug, projectSlug, headCommitSha, token ?? ''],
+    queryFn: () => api.listCommitStatuses(orgSlug, projectSlug, headCommitSha!, token),
+    enabled: Boolean(token && headCommitSha),
+    refetchInterval: (query) => {
+      const items = query.state.data ?? []
+      return items.some((s) => s.state === 'pending') ? 5000 : false
+    },
+  })
+
+  const ciRequired = ciStatuses.length > 0
+  const ciBlocking =
+    ciRequired &&
+    ciStatuses.some((s) => s.state === 'pending' || s.state === 'failure' || s.state === 'error')
+
   const { data: comments = [] } = useQuery({
     queryKey: ['pull-comments', orgSlug, projectSlug, number, token ?? 'public'],
     queryFn: () => api.listPullRequestComments(orgSlug, projectSlug, number, token),
@@ -146,7 +163,6 @@ export function PullRequestDetailPage() {
 
   const { pull_request: pr, author, compare, review_summary: reviewSummary } = data
   const repoName = repoData?.repository.name ?? projectSlug
-  const headCommitSha = compare?.commits.at(-1)?.sha ?? null
   const approvedCount = reviewSummary.approved_count
   const hasChangesRequested = reviewSummary.changes_requested_count > 0
 
@@ -195,7 +211,7 @@ export function PullRequestDetailPage() {
                 </p>
               </div>
             </div>
-            {token && pr.state === 'open' && compare?.mergeable && (
+            {token && pr.state === 'open' && compare?.mergeable && !ciBlocking && (
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   className="app-field !py-1.5 !text-sm"
@@ -225,6 +241,14 @@ export function PullRequestDetailPage() {
 
           {compare && !compare.mergeable && pr.state === 'open' && (
             <p className="text-sm text-dashboard-danger">This branch has merge conflicts.</p>
+          )}
+
+          {pr.state === 'open' && compare?.mergeable && ciBlocking && (
+            <p className="text-sm text-dashboard-danger">
+              {ciStatuses.some((s) => s.state === 'pending')
+                ? 'CI checks are still running. Merge is disabled until they finish.'
+                : 'CI checks failed. Fix the pipeline before merging.'}
+            </p>
           )}
 
           {compare && (

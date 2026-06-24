@@ -174,6 +174,7 @@ async fn main() -> anyhow::Result<()> {
                 port: ssh_port,
                 host_key_path: config.git_ssh_host_key_path.clone(),
             },
+            post_receive: Some(cicd::post_receive_hook(state.clone())),
         });
 
         tokio::spawn(async move {

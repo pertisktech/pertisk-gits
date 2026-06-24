@@ -70,7 +70,7 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | Squash merge | Done |
 | Merge conflict detection | Done |
 | Rebase merge | Phase 7 |
-| PR status checks | Phase 4 |
+| PR status checks | Done |
 
 **Tables:** `issues`, `issue_comments`, `labels`, `milestones`, `pull_requests`, `pr_reviews`, `pr_comments`
 
@@ -103,8 +103,9 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | Scheduler | `pertisk-worker` processes triggers | Done |
 | Runners | `pertisk-runner` shell executor + metrics | Done (MVP) |
 | Artifacts | Object storage | Todo |
-| Status API | Commit status + PR merge gate | Done (API) |
-| UI | Pipeline list, logs, rerun | Done |
+| Status API | Commit status + PR merge gate | Done |
+| PR triggers | Auto-run on PR open + branch push | Done |
+| UI | Pipeline list, logs, rerun, PR checks | Done |
 
 **MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, self-hosted runners
 

@@ -71,15 +71,23 @@ pub fn runner_routes() -> Router<AppState> {
 pub fn post_receive_hook(
     state: AppState,
 ) -> Arc<
-    dyn Fn(Uuid, PathBuf) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>
+    dyn Fn(
+            Uuid,
+            PathBuf,
+            Vec<pertisk_git::RefUpdate>,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'static>>
         + Send
         + Sync,
 > {
-    Arc::new(move |repository_id, repo_path| {
+    Arc::new(move |repository_id, _repo_path, updates| {
         let state = state.clone();
         Box::pin(async move {
-            if let Err(err) = enqueue_push_triggers(&state, repository_id, &repo_path).await {
+            if let Err(err) = enqueue_push_triggers(&state, repository_id, &updates).await {
                 tracing::warn!("failed to enqueue pipeline triggers: {err:#}");
+                return;
+            }
+            if let Err(err) = flush_pending_triggers(&state).await {
+                tracing::warn!("failed to process pipeline triggers: {err:#}");
             }
         })
     })
@@ -666,20 +674,221 @@ async fn serve_runner_workspace(
 pub async fn enqueue_push_triggers(
     state: &AppState,
     repository_id: Uuid,
-    repo_path: &FsPath,
+    updates: &[pertisk_git::RefUpdate],
 ) -> anyhow::Result<()> {
-    for (sha, branch) in list_branch_tips(repo_path).await? {
+    for update in updates {
+        if update.new_sha.chars().all(|c| c == '0') {
+            continue;
+        }
+
         insert_trigger(
             &state.pool,
             repository_id,
-            &sha,
-            &format!("refs/heads/{branch}"),
+            &update.new_sha,
+            &update.ref_name,
             "push",
             None,
         )
         .await?;
+
+        if let Some(branch) = update.ref_name.strip_prefix("refs/heads/") {
+            if let Err(err) = enqueue_pull_request_triggers_for_branch(
+                &state.pool,
+                repository_id,
+                branch,
+                &update.new_sha,
+            )
+            .await
+            {
+                tracing::warn!(
+                    branch = %branch,
+                    "failed to enqueue pull_request pipeline triggers: {err:#}"
+                );
+            }
+        }
     }
     Ok(())
+}
+
+/// Enqueue `pull_request` triggers for open PRs whose source branch matches `source_branch`.
+pub async fn enqueue_pull_request_triggers_for_branch(
+    pool: &PgPool,
+    repository_id: Uuid,
+    source_branch: &str,
+    head_sha: &str,
+) -> Result<(), sqlx::Error> {
+    let prs = sqlx::query_as::<_, (i32, String)>(
+        r#"
+        SELECT number, target_branch
+        FROM pull_requests
+        WHERE repository_id = $1
+          AND state = 'open'
+          AND source_branch = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(source_branch)
+    .fetch_all(pool)
+    .await?;
+
+    for (number, target_branch) in prs {
+        insert_trigger(
+            pool,
+            repository_id,
+            head_sha,
+            &format!("refs/heads/{target_branch}"),
+            "pull_request",
+            Some(number),
+        )
+        .await?;
+    }
+    Ok(())
+}
+
+/// Block merge when CI statuses exist and any are pending or failed.
+pub async fn ensure_ci_passed_for_commit(
+    pool: &PgPool,
+    repository_id: Uuid,
+    commit_sha: &str,
+) -> Result<(), pertisk_domain::DomainError> {
+    let rows = sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT context, state::text
+        FROM commit_statuses
+        WHERE repository_id = $1 AND commit_sha = $2
+        "#,
+    )
+    .bind(repository_id)
+    .bind(commit_sha)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| pertisk_domain::DomainError::Internal(e.to_string()))?;
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let mut failed = Vec::new();
+    let mut pending = Vec::new();
+    for (context, state) in rows {
+        match state.as_str() {
+            "success" => {}
+            "pending" => pending.push(context),
+            _ => failed.push(context),
+        }
+    }
+
+    if !failed.is_empty() {
+        return Err(pertisk_domain::DomainError::Validation(format!(
+            "CI checks failed: {}",
+            failed.join(", ")
+        )));
+    }
+    if !pending.is_empty() {
+        return Err(pertisk_domain::DomainError::Validation(format!(
+            "CI checks still running: {}",
+            pending.join(", ")
+        )));
+    }
+    Ok(())
+}
+
+/// Process queued pipeline triggers immediately (push path; worker also polls as backup).
+pub async fn flush_pending_triggers(state: &AppState) -> anyhow::Result<u32> {
+    let mut processed = 0u32;
+    loop {
+        let triggers = sqlx::query_as::<_, PendingTriggerRow>(
+            r#"
+            SELECT id, repository_id, commit_sha, ref_name, event_type::text
+            FROM pipeline_triggers
+            WHERE processed = FALSE
+            ORDER BY created_at ASC
+            LIMIT 20
+            "#,
+        )
+        .fetch_all(&state.pool)
+        .await?;
+
+        if triggers.is_empty() {
+            break;
+        }
+
+        for trigger in triggers {
+            if let Some((org_slug, repo_slug)) =
+                repo_slugs(&state.pool, trigger.repository_id).await?
+            {
+                match process_trigger_now(
+                    state,
+                    trigger.repository_id,
+                    &org_slug,
+                    &repo_slug,
+                    &trigger.commit_sha,
+                    &trigger.ref_name,
+                    &trigger.event_type,
+                )
+                .await
+                {
+                    Ok(run_id) => {
+                        tracing::info!(
+                            run_id = %run_id,
+                            event = %trigger.event_type,
+                            repo = %format!("{org_slug}/{repo_slug}"),
+                            "pipeline triggered by push"
+                        );
+                    }
+                    Err(err) => {
+                        let reason = err.to_string();
+                        if reason.contains("RowNotFound") || reason.contains("no matching") {
+                            tracing::info!(
+                                trigger_id = %trigger.id,
+                                commit = %trigger.commit_sha,
+                                ref_name = %trigger.ref_name,
+                                event = %trigger.event_type,
+                                repo = %format!("{org_slug}/{repo_slug}"),
+                                "pipeline trigger skipped (no .pertisk-ci.yaml at commit or branch filter)"
+                            );
+                        } else {
+                            tracing::warn!(
+                                trigger_id = %trigger.id,
+                                event = %trigger.event_type,
+                                repo = %format!("{org_slug}/{repo_slug}"),
+                                "pipeline trigger failed: {reason}"
+                            );
+                        }
+                    }
+                }
+            }
+            sqlx::query("UPDATE pipeline_triggers SET processed = TRUE WHERE id = $1")
+                .bind(trigger.id)
+                .execute(&state.pool)
+                .await?;
+            processed += 1;
+        }
+    }
+    Ok(processed)
+}
+
+async fn repo_slugs(pool: &PgPool, repository_id: Uuid) -> anyhow::Result<Option<(String, String)>> {
+    Ok(sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT o.slug, r.slug
+        FROM repositories r
+        INNER JOIN organizations o ON o.id = r.organization_id
+        WHERE r.id = $1
+        "#,
+    )
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?)
+}
+
+#[derive(sqlx::FromRow)]
+struct PendingTriggerRow {
+    id: Uuid,
+    repository_id: Uuid,
+    commit_sha: String,
+    ref_name: String,
+    event_type: String,
 }
 
 async fn process_trigger_now(
@@ -794,31 +1003,6 @@ async fn read_pipeline_config(repo_path: &FsPath, commit_sha: &str) -> Option<(S
         }
     }
     None
-}
-
-async fn list_branch_tips(repo_path: &FsPath) -> anyhow::Result<Vec<(String, String)>> {
-    let output = Command::new("git")
-        .current_dir(repo_path)
-        .args([
-            "for-each-ref",
-            "refs/heads/",
-            "--format=%(objectname) %(refname:short)",
-        ])
-        .output()
-        .await?;
-
-    if !output.status.success() {
-        anyhow::bail!("git for-each-ref failed");
-    }
-
-    let mut tips = Vec::new();
-    for line in String::from_utf8_lossy(&output.stdout).lines() {
-        let Some((sha, branch)) = line.split_once(' ') else {
-            continue;
-        };
-        tips.push((sha.to_string(), branch.to_string()));
-    }
-    Ok(tips)
 }
 
 async fn insert_trigger(

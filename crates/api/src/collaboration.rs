@@ -930,7 +930,7 @@ async fn create_pull_request(
     let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
     ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
 
-    explorer::compare_branches(&repo_path, &body.target_branch, &body.source_branch)
+    let compare = explorer::compare_branches(&repo_path, &body.target_branch, &body.source_branch)
         .await
         .map_err(map_explorer_error)?;
 
@@ -955,6 +955,19 @@ async fn create_pull_request(
     .fetch_one(&state.pool)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if let Some(head) = compare.commits.last() {
+        if let Err(err) = crate::cicd::enqueue_pull_request_triggers_for_branch(
+            &state.pool,
+            repo.id,
+            &pull.source_branch,
+            &head.sha,
+        )
+        .await
+        {
+            tracing::warn!("failed to enqueue PR pipeline triggers: {err:#}");
+        }
+    }
 
     Ok((
         StatusCode::CREATED,
@@ -1026,6 +1039,14 @@ async fn merge_pull_request(
 
     if existing.state != PullRequestState::Open {
         return Err(DomainError::Validation("pull request is not open".into()).into());
+    }
+
+    let compare = explorer::compare_branches(&repo_path, &existing.target_branch, &existing.source_branch)
+        .await
+        .map_err(map_explorer_error)?;
+
+    if let Some(head) = compare.commits.last() {
+        crate::cicd::ensure_ci_passed_for_commit(&state.pool, repo.id, &head.sha).await?;
     }
 
     let strategy = body.merge_strategy.as_deref().unwrap_or("merge");

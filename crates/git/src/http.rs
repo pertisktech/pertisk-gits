@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::access::{self, AuthUser};
 use crate::config::repo_disk_path;
 use crate::protocol;
+use crate::refs::{diff_refs, snapshot_refs};
 use crate::storage::ensure_bare_repo;
 
 #[derive(Clone)]
@@ -28,7 +29,9 @@ pub struct GitHttpState {
 }
 
 pub type PostReceiveHook = Arc<
-    dyn Fn(Uuid, PathBuf) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + Sync,
+    dyn Fn(Uuid, PathBuf, Vec<crate::refs::RefUpdate>) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>
+        + Send
+        + Sync,
 >;
 
 #[derive(Debug, Deserialize)]
@@ -148,6 +151,10 @@ async fn receive_pack(
         .await
         .map_err(|e| GitHttpError::Internal(e.to_string()))?;
 
+    let refs_before = snapshot_refs(&disk_path)
+        .await
+        .map_err(|e| GitHttpError::Internal(e.to_string()))?;
+
     let response_body = protocol::stateless_rpc(&disk_path, "git-receive-pack", &request_body)
         .await
         .map_err(|e| GitHttpError::Internal(e.to_string()))?;
@@ -157,7 +164,16 @@ async fn receive_pack(
         let repo_id = repo.id;
         let path = disk_path.clone();
         tokio::spawn(async move {
-            hook(repo_id, path).await;
+            let updates = match snapshot_refs(&path).await {
+                Ok(refs_after) => diff_refs(&refs_before, &refs_after),
+                Err(err) => {
+                    tracing::warn!(repo = %path.display(), "post-receive ref snapshot failed: {err:#}");
+                    Vec::new()
+                }
+            };
+            if !updates.is_empty() {
+                hook(repo_id, path, updates).await;
+            }
         });
     }
 

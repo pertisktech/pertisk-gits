@@ -12,11 +12,13 @@ Self-hosted pipelines triggered on **push** and **pull_request**, executed by **
 | Runner | `pertisk-runner` | Executes steps in workspace, reports metrics |
 
 ```
-git push → post-receive hook → pipeline_triggers
-         → pertisk-worker → pipeline_runs + job_runs (queued)
+git push → post-receive hook (HTTP or SSH) → pipeline_triggers
+         → pertisk-api flush (immediate) or pertisk-worker (poll) → pipeline_runs + job_runs
          → pertisk-runner (poll) → shell steps → metrics_json + logs
-         → commit_statuses (ci/<job>) → PR merge gate (Phase 4+)
+         → commit_statuses (ci/<job>) → PR merge gate
 ```
+
+Push triggers run on **both** Git HTTP and Git SSH. The API processes triggers right after push; `pertisk-worker` is a backup poller.
 
 ## Quick start
 
@@ -38,8 +40,17 @@ export JWT_SECRET=dev-secret
 export REPOS_ROOT=data/repos
 
 cargo run -p pertisk-api &
-cargo run -p pertisk-worker
+cargo run -p pertisk-worker   # optional backup; API also processes triggers on push
 ```
+
+### Push did not start a pipeline?
+
+1. **`.pertisk-ci.yaml` must be in the pushed commit** on the branch you push (not only locally).
+2. **`on.push.branches`** must include your branch (e.g. `main`).
+3. **Redeploy `pertisk-api`** — SSH push used to skip the CI hook (fixed in recent builds).
+4. On the server: `sudo systemctl status pertisk-gits pertisk-worker` and check logs:
+   `journalctl -u pertisk-gits -f` for `pipeline triggered by push` or `trigger skipped`.
+5. **Runners** must be online with labels matching `runs-on` (`self-hosted`, `docker`, etc.).
 
 ### 3. Register a runner
 
@@ -196,12 +207,24 @@ Each completed job stores `metrics_json`:
 
 Use this to track runner performance regressions over time.
 
+### Pull request pipelines
+
+Pipelines with `on.pull_request` run when:
+
+- A pull request is **opened** (source branch head is enqueued)
+- New commits are **pushed** to an open PR’s source branch (post-receive hook)
+
+`ref_name` is the **target** branch (e.g. `refs/heads/main`); `commit_sha` is the PR head.
+
+### Merge gate
+
+If the PR head commit has `commit_statuses` (from CI jobs), merge is blocked until every `ci/*` check is `success`. Pending or failed checks return a validation error from the merge API; the PR page hides the merge button while checks are in progress or failed.
+
 ## Not yet implemented
 
 - Container-isolated runners (currently shell on host)
 - Artifact upload to MinIO
 - Streaming logs (batch on complete today)
-- PR merge required checks UI
-- UI pipeline list page
+- Required checks configuration per branch (merge gate uses all `ci/*` statuses on the commit)
 
 See `docs/PHASES.md` Phase 4 for the full roadmap.

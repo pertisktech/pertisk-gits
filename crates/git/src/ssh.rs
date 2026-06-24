@@ -13,6 +13,7 @@ use tokio::sync::Mutex;
 use crate::access::{self, AuthUser};
 use crate::command::{parse_ssh_command, GitService};
 use crate::config::repo_disk_path;
+use crate::refs::{diff_refs, snapshot_refs};
 use crate::serve::run_git_service;
 use crate::ssh_keys::fingerprint_of_key;
 use crate::storage::ensure_bare_repo;
@@ -30,6 +31,7 @@ pub struct GitSshState {
     pub pool: PgPool,
     pub repos_root: PathBuf,
     pub config: GitSshConfig,
+    pub post_receive: Option<crate::http::PostReceiveHook>,
 }
 
 pub async fn run_server(state: Arc<GitSshState>) -> anyhow::Result<()> {
@@ -197,11 +199,13 @@ impl russh::server::Handler for SshSession {
         )
         .await?;
 
+        let repo_id = repo.id;
         let repo_path = repo_disk_path(
             &self.state.repos_root,
             &git_cmd.org_slug,
             &git_cmd.repo_slug,
         );
+        let post_receive = self.state.post_receive.clone();
 
         let Some(channel) = self.take_channel(channel_id).await else {
             session.channel_failure(channel_id)?;
@@ -213,12 +217,36 @@ impl russh::server::Handler for SshSession {
         let service = git_cmd.service;
         tokio::spawn(async move {
             let stream = channel.into_stream();
-            if let Err(err) = run_git_service(&repo_path, service, stream).await {
-                tracing::error!(
-                    repo = %repo_path.display(),
-                    error = %err,
-                    "git ssh service failed"
-                );
+            let refs_before = if service == GitService::ReceivePack {
+                snapshot_refs(&repo_path).await.ok()
+            } else {
+                None
+            };
+
+            match run_git_service(&repo_path, service, stream).await {
+                Ok(()) => {
+                    if service == GitService::ReceivePack {
+                        if let Some(hook) = post_receive {
+                            let updates = match refs_before {
+                                Some(before) => snapshot_refs(&repo_path)
+                                    .await
+                                    .map(|after| diff_refs(&before, &after))
+                                    .unwrap_or_default(),
+                                None => Vec::new(),
+                            };
+                            if !updates.is_empty() {
+                                hook(repo_id, repo_path, updates).await;
+                            }
+                        }
+                    }
+                }
+                Err(err) => {
+                    tracing::error!(
+                        repo = %repo_path.display(),
+                        error = %err,
+                        "git ssh service failed"
+                    );
+                }
             }
         });
 
