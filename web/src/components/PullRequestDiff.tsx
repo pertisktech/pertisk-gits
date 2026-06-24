@@ -107,10 +107,10 @@ export function PullRequestDiff({
   }
 
   return (
-    <div className="divide-y divide-border">
+    <div className="divide-y divide-naturals-n4">
       {files.map((file) => (
         <div key={file.path}>
-          <div className="px-4 py-2 text-sm font-mono bg-hover border-b border-border text-text">
+          <div className="px-4 py-2 text-sm font-mono bg-hover border-b border-naturals-n4 text-text">
             {file.path}
           </div>
           <div className="font-mono text-xs overflow-x-auto">
@@ -162,7 +162,7 @@ export function PullRequestDiff({
                   {lineComments?.map(({ comment, author }) => (
                     <div
                       key={comment.id}
-                      className="ml-12 mr-4 mb-2 p-3 rounded-md border border-border bg-surface text-sm"
+                      className="ml-12 mr-4 mb-2 p-3 rounded-md border border-naturals-n4 bg-surface text-sm"
                     >
                       <div className="text-xs text-text-secondary mb-1">
                         <span className="font-medium text-text">{author.username}</span>

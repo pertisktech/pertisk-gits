@@ -40,8 +40,8 @@ const projectNavItems: {
 const globalLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn('app-sidebar-link', isActive && 'active')
 
-function projectLinkClass(active: boolean) {
-  return cn('app-sidebar-link app-sidebar-link-nested', active && 'active')
+function projectLinkClass(active: boolean, nested = true) {
+  return cn('app-sidebar-link', nested && 'app-sidebar-link-nested', active && 'active')
 }
 
 interface AppSidebarProps {
@@ -61,20 +61,18 @@ export function AppSidebar({ open }: AppSidebarProps) {
       </div>
 
       <nav className="app-sidebar-nav">
-        {globalNavItems.map(({ to, label, icon: Icon, end }) => (
-          <NavLink key={to} to={to} end={end} className={globalLinkClass}>
-            <Icon size={16} className="shrink-0" aria-hidden />
-            <span>{label}</span>
-          </NavLink>
-        ))}
+        {!project &&
+          globalNavItems.map(({ to, label, icon: Icon, end }) => (
+            <NavLink key={to} to={to} end={end} className={globalLinkClass}>
+              <Icon size={16} className="shrink-0" aria-hidden />
+              <span>{label}</span>
+            </NavLink>
+          ))}
 
         {project && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Repository</p>
-            <NavLink
-              to={`/groups/${project.orgSlug}`}
-              className="app-sidebar-back"
-            >
+            <NavLink to={`/groups/${project.orgSlug}`} className="app-sidebar-back">
               <ArrowLeft size={14} aria-hidden />
               <span className="truncate">{project.orgSlug}</span>
             </NavLink>
@@ -93,7 +91,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
                   key={id}
                   to={projectTabPath(project.basePath, id)}
                   end={id === 'code'}
-                  className={() => projectLinkClass(project.tab === id)}
+                  className={() => projectLinkClass(project.tab === id, false)}
                 >
                   <Icon size={16} className="shrink-0" aria-hidden />
                   <span>{label}</span>

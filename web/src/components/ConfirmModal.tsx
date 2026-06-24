@@ -56,10 +56,10 @@ export function ConfirmModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"
-        className="w-full max-w-md rounded-lg border border-border bg-surface shadow-xl"
+        className="w-full max-w-md rounded-lg border border-naturals-n4 bg-surface shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-start justify-between gap-3 border-b border-border px-5 py-4">
+        <div className="flex items-start justify-between gap-3 border-b border-naturals-n4 px-5 py-4">
           <div className="flex items-start gap-3 min-w-0">
             <div
               className={cn(

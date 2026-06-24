@@ -156,7 +156,7 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
             No pull requests found.
           </div>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-naturals-n4">
             {pulls.map(({ pull_request: pr, author, review_summary: reviewSummary }) => (
               <li key={pr.id}>
                 <Link

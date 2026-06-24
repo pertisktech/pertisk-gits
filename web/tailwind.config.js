@@ -5,6 +5,12 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
+    borderColor: {
+      DEFAULT: 'var(--color-naturals-n4)',
+    },
+    divideColor: {
+      DEFAULT: 'var(--color-naturals-n4)',
+    },
     extend: {
       colors: {
         bg: "var(--color-bg)",

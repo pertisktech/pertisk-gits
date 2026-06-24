@@ -39,7 +39,7 @@ function CopyField({ label, value }: { label: string; value: string }) {
         <button
           type="button"
           onClick={copy}
-          className="shrink-0 px-2.5 py-1.5 rounded-md border border-border text-text-secondary hover:bg-hover text-xs"
+          className="shrink-0 px-2.5 py-1.5 rounded-md border border-naturals-n4 text-text-secondary hover:bg-hover text-xs"
           data-no-global-button-hover="true"
           title={copied ? 'Copied!' : 'Copy'}
         >
@@ -196,11 +196,11 @@ export function RepoCloneDropdown({
             )}
 
             {empty && mode !== 'download' && (
-              <div className="mt-3 pt-3 border-t border-border space-y-3">
+              <div className="mt-3 pt-3 border-t border-naturals-n4 space-y-3">
                 <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
                   Push an existing project
                 </div>
-                <pre className="m-0 p-2.5 rounded-md bg-bg border border-border font-mono text-[10px] text-text overflow-x-auto leading-relaxed whitespace-pre-wrap">{`git remote add origin ${authCloneUrl}
+                <pre className="m-0 p-2.5 rounded-md bg-bg border border-naturals-n4 font-mono text-[10px] text-text overflow-x-auto leading-relaxed whitespace-pre-wrap">{`git remote add origin ${authCloneUrl}
 git push -u origin ${defaultBranch}`}</pre>
               </div>
             )}

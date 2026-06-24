@@ -141,7 +141,7 @@ export function ProfilePage() {
             ) : sshKeys.length === 0 ? (
               <p className="text-sm text-text-secondary">No SSH keys yet.</p>
             ) : (
-              <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+              <ul className="divide-y divide-naturals-n4 border border-naturals-n4 rounded-lg overflow-hidden">
                 {sshKeys.map((key) => (
                   <li key={key.id} className="px-4 py-3 flex items-start justify-between gap-3">
                     <div className="min-w-0">
@@ -156,7 +156,7 @@ export function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => deleteKey.mutate(key.id)}
-                      className="shrink-0 p-2 rounded-md border border-border text-text-secondary hover:text-dashboard-danger hover:border-red-r1/30"
+                      className="shrink-0 p-2 rounded-md border border-naturals-n4 text-text-secondary hover:text-dashboard-danger hover:border-red-r1/30"
                       title="Delete key"
                       data-no-global-button-hover="true"
                     >

@@ -205,7 +205,7 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
-            className={`text-xs px-2 py-0.5 rounded-full border ${!activeLabel ? 'border-primary text-primary' : 'border-border text-text-secondary'}`}
+            className={`text-xs px-2 py-0.5 rounded-full border ${!activeLabel ? 'border-primary text-primary' : 'border-naturals-n4 text-text-secondary'}`}
             onClick={() => onFilterLabel(undefined)}
           >
             All
@@ -224,7 +224,7 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
 
         {showForm && (
           <form
-            className="flex flex-wrap items-end gap-2 pt-2 border-t border-border"
+            className="flex flex-wrap items-end gap-2 pt-2 border-t border-naturals-n4"
             onSubmit={(e) => {
               e.preventDefault()
               createMutation.mutate()
@@ -241,7 +241,7 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="h-9 w-12 rounded border border-border bg-surface cursor-pointer"
+              className="h-9 w-12 rounded border border-naturals-n4 bg-surface cursor-pointer"
               title="Label color"
             />
             <PrimaryButton type="submit" disabled={createMutation.isPending || !name.trim()}>
@@ -328,7 +328,7 @@ export function RepoMilestonesPanel({ token, orgSlug, repoSlug }: RepoMilestones
 
         {showForm && (
           <form
-            className="space-y-2 pt-2 border-t border-border"
+            className="space-y-2 pt-2 border-t border-naturals-n4"
             onSubmit={(e) => {
               e.preventDefault()
               createMutation.mutate()

@@ -272,8 +272,8 @@ function PipelineConfigGraph({
   if (isError) return null
 
   return (
-    <div className="rounded-lg border border-border overflow-hidden">
-      <div className="px-3 py-2 border-b border-border bg-surface-secondary flex flex-wrap items-center justify-between gap-2">
+    <div className="rounded-lg border border-naturals-n4 overflow-hidden">
+      <div className="px-3 py-2 border-b border-naturals-n4 bg-naturals-n3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-text font-mono">pipeline graph</h3>
           {data && (
@@ -291,13 +291,13 @@ function PipelineConfigGraph({
         onJobSelect={setSelectedJobName}
       />
       {selectedJob && (
-        <div className="pipeline-step-preview border-t border-border">
-          <div className="px-3 py-2 bg-surface-secondary border-b border-border">
+        <div className="pipeline-step-preview border-t border-naturals-n4">
+          <div className="px-3 py-2 bg-naturals-n3 border-b border-naturals-n4">
             <p className="text-xs font-mono text-text-secondary">
               steps in <strong className="text-text">{selectedJob.name}</strong>
             </p>
           </div>
-          <div className="divide-y divide-border">
+          <div className="divide-y divide-naturals-n4">
             {selectedJob.steps.map((step) => (
               <div key={step.name} className="pipeline-step-preview-row">
                 <span className="pipeline-step-preview-name">{step.name}</span>

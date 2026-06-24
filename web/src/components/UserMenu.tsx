@@ -41,8 +41,8 @@ export function UserMenu() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-1 min-w-[200px] bg-surface border border-border rounded-lg shadow-md z-50 overflow-hidden">
-          <div className="px-4 py-3 border-b border-border">
+        <div className="absolute right-0 top-full mt-1 min-w-[200px] bg-surface border border-naturals-n4 rounded-lg shadow-md z-50 overflow-hidden">
+          <div className="px-4 py-3 border-b border-naturals-n4">
             <div className="font-medium text-text">{user.display_name ?? user.username}</div>
             <div className="text-xs text-text-secondary">@{user.username}</div>
           </div>

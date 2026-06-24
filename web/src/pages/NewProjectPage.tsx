@@ -15,7 +15,7 @@ function slugify(value: string) {
 }
 
 const fieldClass =
-  'w-full px-3 py-2 rounded-lg border border-border bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
+  'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
 
 export function NewProjectPage() {
   const { slug: orgSlug = '' } = useParams()

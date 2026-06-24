@@ -90,7 +90,7 @@ export function RunnerCard({
             type="button"
             onClick={onRotate}
             disabled={rotating}
-            className="p-2 rounded-md border border-border text-text-secondary hover:bg-hover hover:text-primary"
+            className="p-2 rounded-md border border-naturals-n4 text-text-secondary hover:bg-hover hover:text-primary"
             title="Rotate token"
             data-no-global-button-hover="true"
           >
@@ -99,7 +99,7 @@ export function RunnerCard({
           <button
             type="button"
             onClick={onDelete}
-            className="p-2 rounded-md border border-border text-text-secondary hover:text-dashboard-danger hover:border-red-r1/30"
+            className="p-2 rounded-md border border-naturals-n4 text-text-secondary hover:text-dashboard-danger hover:border-red-r1/30"
             title="Delete runner"
             data-no-global-button-hover="true"
           >
@@ -180,22 +180,22 @@ export function TokenModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-lg border border-border bg-surface shadow-lg">
-        <div className="border-b border-border px-5 py-4">
+      <div className="w-full max-w-lg rounded-lg border border-naturals-n4 bg-surface shadow-lg">
+        <div className="border-b border-naturals-n4 px-5 py-4">
           <h2 className="text-lg font-semibold text-text">{title}</h2>
           <p className="mt-1 text-sm text-text-secondary">
             Copy this token now — it will not be shown again.
           </p>
         </div>
         <div className="space-y-4 px-5 py-4">
-          <div className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-text break-all">
+          <div className="rounded-md border border-naturals-n4 bg-bg px-3 py-2 font-mono text-sm text-text break-all">
             {token}
           </div>
           <p className="text-sm text-text-secondary">
             Set on the runner host in{' '}
             <code className="rounded bg-bg px-1 py-0.5 text-xs">/etc/pertisk-runner/pertisk-runner.conf</code>:
           </p>
-          <pre className="overflow-x-auto rounded-md border border-border bg-bg p-3 text-xs text-text">
+          <pre className="overflow-x-auto rounded-md border border-naturals-n4 bg-bg p-3 text-xs text-text">
 {`PERTISK_RUNNER_TOKEN=${token}
 PERTISK_API_URL=https://your-gits-host:8080
 # Optional — omit on remote runners; workspace is fetched from the API
@@ -206,7 +206,7 @@ PERTISK_REPOS_ROOT=/var/lib/pertisk-gits/repos`}
             <code className="rounded bg-bg px-1 py-0.5 text-xs">sudo systemctl restart pertisk-runner</code>
           </p>
         </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
+        <div className="flex justify-end gap-2 border-t border-naturals-n4 px-5 py-4">
           <SecondaryButton type="button" onClick={copyToken}>
             {copied ? (
               <>

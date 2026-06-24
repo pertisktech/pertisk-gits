@@ -122,7 +122,7 @@ export function GlobalSearch() {
           }
         }}
         placeholder="Search groups and repositories…"
-        className="w-full pl-8 pr-3 py-1.5 rounded-md border border-border bg-bg text-sm text-text placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/40"
+        className="w-full pl-8 pr-3 py-1.5 rounded-md border border-naturals-n4 bg-bg text-sm text-text placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/40"
         aria-label="Search groups and repositories"
         aria-expanded={showDropdown}
         aria-autocomplete="list"
@@ -131,7 +131,7 @@ export function GlobalSearch() {
 
       {showDropdown && (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-border bg-surface shadow-lg overflow-hidden"
+          className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-naturals-n4 bg-surface shadow-lg overflow-hidden"
           role="listbox"
         >
           {results.length === 0 ? (

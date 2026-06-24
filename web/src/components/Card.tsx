@@ -13,9 +13,9 @@ export function Card({
   action?: ReactNode
 }) {
   return (
-    <div className={cn('bg-surface border border-border rounded-lg overflow-hidden', className)}>
+    <div className={cn('bg-naturals-n2 border border-naturals-n4 rounded-lg overflow-hidden', className)}>
       {title && (
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-border">
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-naturals-n4">
           <h2 className="text-lg font-semibold text-text">{title}</h2>
           {action}
         </div>
@@ -27,7 +27,7 @@ export function Card({
 
 export function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-surface border border-border rounded-lg p-5">
+    <div className="bg-naturals-n2 border border-naturals-n4 rounded-lg p-5">
       <div className="text-2xl font-bold text-primary">{value}</div>
       <div className="text-sm text-text-secondary mt-1">{label}</div>
     </div>

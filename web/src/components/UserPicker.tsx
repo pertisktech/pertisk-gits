@@ -153,7 +153,7 @@ export function UserPicker({
 
       {showDropdown && (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-border bg-surface shadow-lg overflow-hidden"
+          className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-naturals-n4 bg-surface shadow-lg overflow-hidden"
           role="listbox"
         >
           {isFetching && options.length === 0 ? (

@@ -272,13 +272,13 @@ export function PullRequestDetailPage() {
           )}
 
           {pr.body && (
-            <div className="markdown-viewer border-t border-border pt-4">
+            <div className="markdown-viewer border-t border-naturals-n4 pt-4">
               <MarkdownBody content={pr.body} orgSlug={orgSlug} repoSlug={projectSlug} />
             </div>
           )}
 
           {latestReviews.length > 0 && (
-            <div className="border-t border-border pt-4 space-y-2">
+            <div className="border-t border-naturals-n4 pt-4 space-y-2">
               <h2 className="text-sm font-medium text-text">Reviews</h2>
               <ul className="space-y-2">
                 {latestReviews.map(({ review, reviewer }) => (
@@ -296,7 +296,7 @@ export function PullRequestDetailPage() {
           )}
 
           {token && pr.state === 'open' && (
-            <div className="border-t border-border pt-4 space-y-3">
+            <div className="border-t border-naturals-n4 pt-4 space-y-3">
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -304,7 +304,7 @@ export function PullRequestDetailPage() {
                     'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
                     myLatestReview?.review.state === 'approved'
                       ? 'border-green-g1/40 bg-dashboard-success-bg text-dashboard-success'
-                      : 'border-border hover:bg-hover',
+                      : 'border-naturals-n4 hover:bg-hover',
                   )}
                   onClick={() => reviewMutation.mutate('approved')}
                   disabled={reviewMutation.isPending}
@@ -322,7 +322,7 @@ export function PullRequestDetailPage() {
                     'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
                     myLatestReview?.review.state === 'changes_requested'
                       ? 'border-red-r1/40 bg-dashboard-danger-bg text-dashboard-danger'
-                      : 'border-border hover:bg-hover',
+                      : 'border-naturals-n4 hover:bg-hover',
                   )}
                   onClick={() => reviewMutation.mutate('changes_requested')}
                   disabled={reviewMutation.isPending}
@@ -372,7 +372,7 @@ export function PullRequestDetailPage() {
         <div className="app-panel-header">{generalComments.length} comments</div>
         <div className="app-panel-body space-y-4">
           {generalComments.map(({ comment: c, author: commentAuthor }) => (
-            <div key={c.id} className="border-b border-border pb-4 last:border-0 last:pb-0">
+            <div key={c.id} className="border-b border-naturals-n4 pb-4 last:border-0 last:pb-0">
               <div className="text-xs text-text-secondary mb-2">
                 <span className="font-medium text-text">{commentAuthor.username}</span>
                 {' · '}

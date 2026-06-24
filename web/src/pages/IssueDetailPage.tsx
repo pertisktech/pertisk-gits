@@ -125,7 +125,7 @@ export function IssueDetailPage() {
               )}
 
               {issue.body && (
-                <div className="markdown-viewer border-t border-border pt-4">
+                <div className="markdown-viewer border-t border-naturals-n4 pt-4">
                   <MarkdownBody content={issue.body} orgSlug={orgSlug} repoSlug={projectSlug} />
                 </div>
               )}
@@ -136,7 +136,7 @@ export function IssueDetailPage() {
             <div className="app-panel-header">{comments.length} comments</div>
             <div className="app-panel-body space-y-4">
               {comments.map(({ comment: c, author: commentAuthor }) => (
-                <div key={c.id} className="border-b border-border pb-4 last:border-0 last:pb-0">
+                <div key={c.id} className="border-b border-naturals-n4 pb-4 last:border-0 last:pb-0">
                   <div className="text-xs text-text-secondary mb-2">
                     <span className="font-medium text-text">{commentAuthor.username}</span>
                     {' · '}

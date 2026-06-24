@@ -67,7 +67,7 @@ export function CommitStatuses({
         {statuses.map((status) => (
           <li
             key={status.context}
-            className="flex items-start justify-between gap-3 text-sm border-b border-border/60 pb-2 last:border-0 last:pb-0"
+            className="flex items-start justify-between gap-3 text-sm border-b border-naturals-n4/60 pb-2 last:border-0 last:pb-0"
           >
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-text-secondary">{statusIcon(status.state)}</span>

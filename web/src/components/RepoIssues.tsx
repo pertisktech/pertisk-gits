@@ -232,7 +232,7 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
             No issues found.
           </div>
         ) : (
-          <ul className="divide-y divide-border">
+          <ul className="divide-y divide-naturals-n4">
             {issues.map(({ issue, author, labels, assignee }) => (
               <li key={issue.id}>
                 <Link

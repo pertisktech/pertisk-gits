@@ -114,7 +114,7 @@ export function CommitDetailPage() {
           </div>
 
           {commit.body && commit.body !== commit.message && (
-            <pre className="m-0 p-3 rounded-md border border-border bg-surface text-sm text-text whitespace-pre-wrap font-sans">
+            <pre className="m-0 p-3 rounded-md border border-naturals-n4 bg-surface text-sm text-text whitespace-pre-wrap font-sans">
               {commit.body}
             </pre>
           )}

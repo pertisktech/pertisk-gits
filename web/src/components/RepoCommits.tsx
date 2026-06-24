@@ -93,7 +93,7 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
           Loading commits…
         </div>
       ) : (
-        <ul className="divide-y divide-border">
+        <ul className="divide-y divide-naturals-n4">
           {(data?.commits ?? []).map((commit) => (
             <CommitRow key={commit.sha} commit={commit} orgSlug={orgSlug} repoSlug={repoSlug} />
           ))}
