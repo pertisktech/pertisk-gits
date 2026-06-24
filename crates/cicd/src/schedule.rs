@@ -101,6 +101,7 @@ mod tests {
                         steps: vec![Step {
                             name: None,
                             run: "true".into(),
+                            uses: None,
                             working_directory: None,
                             env: HashMap::new(),
                         }],
@@ -116,6 +117,7 @@ mod tests {
                         steps: vec![Step {
                             name: None,
                             run: "true".into(),
+                            uses: None,
                             working_directory: None,
                             env: HashMap::new(),
                         }],

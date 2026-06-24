@@ -68,6 +68,7 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
                 steps: vec![Step {
                     name: Some("noop".into()),
                     run: "true".into(),
+                    uses: None,
                     working_directory: None,
                     env: HashMap::new(),
                 }],

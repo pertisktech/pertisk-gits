@@ -288,8 +288,13 @@ async fn get_pipeline_config_preview(
                     name: step
                         .name
                         .clone()
+                        .or_else(|| step.uses.clone())
                         .unwrap_or_else(|| format!("step-{}", index + 1)),
-                    run: step.run.clone(),
+                    run: if step.run.trim().is_empty() {
+                        step.uses.clone().unwrap_or_default()
+                    } else {
+                        step.run.clone()
+                    },
                 })
                 .collect(),
         })

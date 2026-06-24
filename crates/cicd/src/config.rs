@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize};
+use serde::de::Error as DeError;
+use serde::{Deserialize, Deserializer, Serialize};
+use serde_yaml::Value;
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PipelineConfig {
+    #[serde(default, deserialize_with = "deserialize_triggers")]
     pub on: Triggers,
     pub jobs: HashMap<String, Job>,
 }
@@ -28,7 +31,7 @@ pub struct PullRequestTrigger {
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Job {
-    #[serde(rename = "runs-on")]
+    #[serde(rename = "runs-on", deserialize_with = "deserialize_runs_on")]
     pub runs_on: String,
     #[serde(default)]
     pub needs: Vec<String>,
@@ -46,7 +49,10 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Step {
     pub name: Option<String>,
+    #[serde(default)]
     pub run: String,
+    #[serde(default)]
+    pub uses: Option<String>,
     #[serde(rename = "working-directory", default)]
     pub working_directory: Option<String>,
     #[serde(default)]
@@ -61,8 +67,155 @@ pub enum ConfigError {
     NoJobs,
 }
 
+fn apply_event_name(triggers: &mut Triggers, name: &str) {
+    match name {
+        "push" => {
+            if triggers.push.is_none() {
+                triggers.push = Some(PushTrigger {
+                    branches: None,
+                    tags: None,
+                });
+            }
+        }
+        "pull_request" => {
+            if triggers.pull_request.is_none() {
+                triggers.pull_request = Some(PullRequestTrigger { branches: None });
+            }
+        }
+        _ => {}
+    }
+}
+
+fn deserialize_triggers<'de, D>(deserializer: D) -> Result<Triggers, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Null => Ok(Triggers::default()),
+        Value::Mapping(_) => serde_yaml::from_value(value).map_err(D::Error::custom),
+        Value::String(event) => {
+            let mut triggers = Triggers::default();
+            apply_event_name(&mut triggers, &event);
+            Ok(triggers)
+        }
+        Value::Sequence(events) => {
+            let mut triggers = Triggers::default();
+            for event in events {
+                let Value::String(name) = event else {
+                    return Err(D::Error::custom("on: expected event names"));
+                };
+                apply_event_name(&mut triggers, &name);
+            }
+            Ok(triggers)
+        }
+        other => Err(D::Error::custom(format!("invalid on trigger: {other:?}"))),
+    }
+}
+
+fn deserialize_runs_on<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::String(label) => Ok(label),
+        Value::Sequence(labels) => {
+            let joined: Vec<String> = labels
+                .into_iter()
+                .filter_map(|entry| entry.as_str().map(str::to_string))
+                .collect();
+            if joined.is_empty() {
+                return Err(D::Error::custom("runs-on must be a string or list of strings"));
+            }
+            Ok(joined.join(","))
+        }
+        other => Err(D::Error::custom(format!("invalid runs-on: {other:?}"))),
+    }
+}
+
+fn looks_like_job(value: &Value) -> bool {
+    match value {
+        Value::Mapping(map) => map.contains_key("runs-on") || map.contains_key("steps"),
+        _ => false,
+    }
+}
+
+fn is_trigger_key(key: &str) -> bool {
+    matches!(key, "push" | "pull_request" | "workflow_dispatch" | "schedule")
+}
+
+fn normalize_pipeline_value(mut root: serde_yaml::Mapping) -> Result<Value, ConfigError> {
+    let mut jobs = match root.remove("jobs") {
+        Some(Value::Mapping(map)) => map,
+        Some(_) => return Err(ConfigError::Yaml(serde_yaml::Error::custom("jobs must be a map"))),
+        None => serde_yaml::Mapping::new(),
+    };
+
+    if let Some(on_value) = root.remove("on") {
+        match on_value {
+            Value::Mapping(on_map) => {
+                let mut triggers = serde_yaml::Mapping::new();
+                for (key, value) in on_map {
+                    let Some(key_str) = key.as_str() else {
+                        triggers.insert(key, value);
+                        continue;
+                    };
+
+                    if is_trigger_key(key_str) {
+                        triggers.insert(key, value);
+                    } else if looks_like_job(&value) {
+                        jobs.insert(key, value);
+                    } else {
+                        triggers.insert(key, value);
+                    }
+                }
+                root.insert("on".into(), Value::Mapping(triggers));
+            }
+            other => {
+                root.insert("on".into(), other);
+            }
+        }
+    }
+
+    if jobs.is_empty() {
+        let stray_keys: Vec<_> = root
+            .keys()
+            .filter_map(|key| key.as_str().map(str::to_string))
+            .filter(|key| !matches!(key.as_str(), "on" | "name" | "env"))
+            .collect();
+
+        for key in stray_keys {
+            if let Some(value) = root.remove(key.as_str()) {
+                if looks_like_job(&value) {
+                    jobs.insert(Value::String(key), value);
+                } else {
+                    root.insert(Value::String(key), value);
+                }
+            }
+        }
+    }
+
+    if jobs.is_empty() {
+        return Err(ConfigError::Yaml(serde_yaml::Error::custom(
+            "missing field `jobs` — add a top-level `jobs:` section for pipeline jobs",
+        )));
+    }
+
+    root.insert("jobs".into(), Value::Mapping(jobs));
+    Ok(Value::Mapping(root))
+}
+
 pub fn parse_pipeline_yaml(raw: &str) -> Result<PipelineConfig, ConfigError> {
-    let config: PipelineConfig = serde_yaml::from_str(raw)?;
+    let value: Value = serde_yaml::from_str(raw)?;
+    let Value::Mapping(root) = value else {
+        return Err(ConfigError::Yaml(serde_yaml::Error::custom(
+            "pipeline config must be a YAML mapping",
+        )));
+    };
+
+    let normalized = normalize_pipeline_value(root)?;
+    let config: PipelineConfig = serde_yaml::from_value(normalized)?;
     if config.jobs.is_empty() {
         return Err(ConfigError::NoJobs);
     }
@@ -109,5 +262,63 @@ jobs:
         assert_eq!(cfg.jobs.len(), 2);
         assert_eq!(cfg.jobs["test"].steps.len(), 2);
         assert_eq!(cfg.jobs["bench"].needs, vec!["test"]);
+    }
+
+    #[test]
+    fn parses_on_push_shorthand() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  test:
+    runs-on: self-hosted
+    steps:
+      - run: echo ok
+"#,
+        )
+        .unwrap();
+        assert!(cfg.on.push.is_some());
+    }
+
+    #[test]
+    fn parses_misplaced_job_under_on() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+  build-docker:
+    runs-on: docker
+    steps:
+      - run: docker build .
+"#,
+        )
+        .unwrap();
+        assert!(cfg.on.push.is_some());
+        assert_eq!(cfg.jobs.len(), 1);
+        assert_eq!(cfg.jobs["build-docker"].runs_on, "docker");
+    }
+
+    #[test]
+    fn parses_on_event_list() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: [self-hosted, docker]
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo ok
+"#,
+        )
+        .unwrap();
+        assert!(cfg.on.push.is_some());
+        assert!(cfg.on.pull_request.is_some());
+        assert_eq!(cfg.jobs["test"].runs_on, "self-hosted,docker");
+        assert_eq!(cfg.jobs["test"].steps[0].uses.as_deref(), Some("actions/checkout@v4"));
     }
 }

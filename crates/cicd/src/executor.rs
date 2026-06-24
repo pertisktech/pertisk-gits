@@ -109,6 +109,22 @@ impl JobExecutor for ShellExecutor {
         let mut timings = Vec::with_capacity(steps.len());
 
         for (index, step) in steps.iter().enumerate() {
+            if step.run.trim().is_empty() {
+                let name = step
+                    .name
+                    .clone()
+                    .or_else(|| step.uses.clone())
+                    .unwrap_or_else(|| format!("step-{index}"));
+                outputs.push(StepOutput {
+                    name,
+                    exit_code: 0,
+                    stdout: "skipped (no run script)".into(),
+                    stderr: String::new(),
+                    duration: Duration::ZERO,
+                });
+                continue;
+            }
+
             let started_at = Utc::now();
             let output = self.run_step(workspace, index, step, job_env).await;
             let finished_at = Utc::now();
@@ -142,6 +158,7 @@ pub async fn bench_noop_steps(
         let step = Step {
             name: Some("noop".into()),
             run: "true".into(),
+            uses: None,
             working_directory: None,
             env: Default::default(),
         };

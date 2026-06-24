@@ -253,10 +253,12 @@ function PipelineConfigGraph({
 }) {
   const [selectedJobName, setSelectedJobName] = useState<string | null>(null)
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['pipeline-config-preview', orgSlug, repoSlug, defaultBranch],
     queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, defaultBranch),
     enabled: Boolean(token && orgSlug && repoSlug && defaultBranch),
+    retry: false,
+    staleTime: 5 * 60_000,
   })
 
   const jobs: PipelineGraphJob[] =
@@ -269,7 +271,16 @@ function PipelineConfigGraph({
 
   const selectedJob = data?.jobs.find((job) => job.name === selectedJobName) ?? null
 
-  if (isError) return null
+  if (isError) {
+    return (
+      <div className="rounded-lg border border-red-r1/30 bg-dashboard-danger-bg p-4 text-sm text-dashboard-danger">
+        <p className="font-medium">Could not load pipeline config</p>
+        <p className="mt-1 text-dashboard-danger/90">
+          {(error as Error).message.replace(/^validation error:\s*/i, '')}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div className="rounded-lg border border-naturals-n4 overflow-hidden">
