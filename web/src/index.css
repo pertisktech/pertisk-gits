@@ -1174,3 +1174,311 @@ textarea.gogs-field {
   }
 }
 
+/* CI pipeline terminal shell */
+.ci-terminal {
+  border: 1px solid color-mix(in srgb, var(--color-border) 80%, black 20%);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--color-naturals-n0);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--color-border) 40%, transparent),
+    0 12px 32px color-mix(in srgb, black 28%, transparent);
+}
+
+.ci-terminal-chrome {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, black 30%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-naturals-n2) 92%, black 8%),
+    color-mix(in srgb, var(--color-naturals-n1) 96%, black 4%)
+  );
+}
+
+.ci-terminal-lights {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.ci-terminal-light {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in srgb, black 35%, transparent);
+}
+
+.ci-terminal-light-red {
+  background: #ff5f57;
+}
+
+.ci-terminal-light-yellow {
+  background: #febc2e;
+}
+
+.ci-terminal-light-green {
+  background: #28c840;
+}
+
+.ci-terminal-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-naturals-n11);
+}
+
+.ci-terminal-subtitle {
+  color: var(--color-naturals-n9);
+}
+
+.ci-terminal-subtitle::before {
+  content: '—';
+  margin: 0 0.35rem;
+  opacity: 0.5;
+}
+
+.ci-terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.ci-terminal-body {
+  background: var(--color-naturals-n0);
+  color: var(--color-naturals-n12);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.55;
+}
+
+.ci-terminal-prompt {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0;
+  padding: 0.65rem 1rem 0.35rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 35%, transparent);
+  background: color-mix(in srgb, var(--color-naturals-n1) 55%, transparent);
+}
+
+.ci-terminal-prompt-user {
+  color: #7ee787;
+}
+
+.ci-terminal-prompt-at,
+.ci-terminal-prompt-colon {
+  color: var(--color-naturals-n9);
+}
+
+.ci-terminal-prompt-host {
+  color: #79c0ff;
+}
+
+.ci-terminal-prompt-path {
+  color: #d2a8ff;
+}
+
+.ci-terminal-prompt-bang {
+  color: var(--color-naturals-n11);
+  margin: 0 0.35rem 0 0.15rem;
+}
+
+.ci-terminal-prompt-cmd {
+  color: var(--color-naturals-n13);
+}
+
+.ci-log-viewer {
+  padding: 0.75rem 1rem 1rem;
+  overflow: auto;
+  max-height: 28rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ci-log-line {
+  min-height: 1.55em;
+}
+
+.ci-log-line-muted {
+  color: var(--color-naturals-n8);
+  font-style: italic;
+}
+
+.ci-log-line-step {
+  margin-top: 0.35rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ci-log-line-step-ok {
+  color: #7ee787;
+}
+
+.ci-log-line-step-fail {
+  color: #ff7b72;
+}
+
+.ci-log-line-error {
+  color: #ff7b72;
+}
+
+.ci-log-line-warn {
+  color: #d29922;
+}
+
+.ci-log-line-ok {
+  color: #7ee787;
+}
+
+.ci-status-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--color-naturals-n7);
+  flex-shrink: 0;
+}
+
+.ci-status-dot-success {
+  background: #3fb950;
+  box-shadow: 0 0 6px color-mix(in srgb, #3fb950 55%, transparent);
+}
+
+.ci-status-dot-failure {
+  background: #f85149;
+  box-shadow: 0 0 6px color-mix(in srgb, #f85149 55%, transparent);
+}
+
+.ci-status-dot-active {
+  background: #d29922;
+  animation: ci-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes ci-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.ci-run-line {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 1rem;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--color-naturals-n12);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 25%, transparent);
+}
+
+.ci-run-line-clickable {
+  cursor: pointer;
+}
+
+.ci-run-line-clickable:hover,
+.ci-run-line-active {
+  background: color-mix(in srgb, var(--color-naturals-n3) 65%, transparent);
+}
+
+.ci-run-line-label {
+  color: var(--color-naturals-n13);
+  font-weight: 600;
+}
+
+.ci-run-line-meta {
+  color: var(--color-naturals-n9);
+}
+
+.ci-run-line-hint {
+  margin-left: auto;
+  max-width: 42%;
+  color: #ff7b72;
+  font-size: 0.6875rem;
+}
+
+.ci-run-line-chevron {
+  color: var(--color-naturals-n8);
+}
+
+.ci-terminal-split {
+  display: grid;
+  grid-template-columns: minmax(10rem, 13rem) 1fr;
+}
+
+@media (max-width: 640px) {
+  .ci-terminal-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ci-terminal-sidebar {
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 35%, transparent);
+  background: color-mix(in srgb, var(--color-naturals-n1) 40%, transparent);
+  max-height: 28rem;
+  overflow: auto;
+}
+
+.ci-terminal-meta-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 35%, transparent);
+  background: color-mix(in srgb, var(--color-naturals-n1) 35%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-naturals-n9);
+}
+
+.ci-terminal-meta-bar strong {
+  color: var(--color-naturals-n12);
+  font-weight: 600;
+}
+
+html.light .ci-terminal {
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--color-border) 60%, transparent),
+    0 8px 24px color-mix(in srgb, black 8%, transparent);
+}
+
+html.light .ci-terminal-body {
+  color: var(--color-naturals-n12);
+}
+
+html.light .ci-terminal-prompt-user {
+  color: #116329;
+}
+
+html.light .ci-terminal-prompt-host {
+  color: #0550ae;
+}
+
+html.light .ci-terminal-prompt-path {
+  color: #6639ba;
+}
+
+html.light .ci-log-line-step-ok,
+html.light .ci-log-line-ok {
+  color: #116329;
+}
+
+html.light .ci-log-line-step-fail,
+html.light .ci-log-line-error {
+  color: #cf222e;
+}
+
+html.light .ci-log-line-warn {
+  color: #9a6700;
+}
+

@@ -1,39 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Loader2, RefreshCw, Workflow } from 'lucide-react'
-import { useState } from 'react'
+import { ArrowLeft, Loader2, RefreshCw } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { JobRun, PipelineRun } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import {
+  CiLogViewer,
+  CiPrompt,
+  CiRunLine,
+  CiTerminal,
+} from '../components/PipelineTerminal'
 import { pipelineUrl, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
 import { StatusBadge } from '../components/StatusBadge'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
-import { cn } from '../utils/cn'
-
-function jobStatusVariant(status: JobRun['status']) {
-  if (status === 'success') return 'green' as const
-  if (status === 'failure') return 'red' as const
-  if (status === 'running' || status === 'queued') return 'yellow' as const
-  return 'gray' as const
-}
-
-function JobMetricsPanel({ metrics }: { metrics: JobRun['metrics_json'] }) {
-  if (!metrics) return null
-  return (
-    <div className="text-xs text-text-secondary grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
-      <div>Queue: {metrics.queue_wait_ms}ms</div>
-      <div>Execute: {metrics.execution_ms}ms</div>
-      <div>Total: {metrics.total_ms}ms</div>
-      <div>Steps: {metrics.steps.length}</div>
-    </div>
-  )
-}
 
 export function PipelineRunDetailPage() {
   const { slug: orgSlug = '', projectSlug = '', runId = '' } = useParams()
   const { token } = useAuth()
   const queryClient = useQueryClient()
+  const [activeJobId, setActiveJobId] = useState<string | null>(null)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -53,6 +39,14 @@ export function PipelineRunDetailPage() {
         : false
     },
   })
+
+  const activeJob = useMemo(() => {
+    if (!run) return null
+    if (activeJobId) {
+      return run.jobs.find((job) => job.id === activeJobId) ?? run.jobs[0] ?? null
+    }
+    return run.jobs[0] ?? null
+  }, [run, activeJobId])
 
   const rerunMutation = useMutation({
     mutationFn: () =>
@@ -90,13 +84,16 @@ export function PipelineRunDetailPage() {
     )
   }
 
+  const passed = run.jobs.filter((j) => j.status === 'success').length
+  const branch = refLabel(run.ref_name)
+
   return (
     <>
       <Breadcrumbs
         items={[
           { label: 'Repositories', to: '/groups' },
           { label: repoName, to: `/groups/${orgSlug}/projects/${projectSlug}?tab=pipelines` },
-          { label: `Pipeline ${shortSha(run.commit_sha)}` },
+          { label: `run ${shortSha(run.commit_sha)}` },
         ]}
       />
 
@@ -109,23 +106,20 @@ export function PipelineRunDetailPage() {
             <ArrowLeft size={14} />
             Back to pipelines
           </Link>
-          <h1 className="text-xl font-semibold text-text flex items-center gap-2">
-            <Workflow size={20} />
-            Pipeline run
-          </h1>
-          <p className="text-sm text-text-secondary mt-1 flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-semibold text-text font-mono">pipeline run</h1>
             <StatusBadge variant={runStatusVariant(run.status)}>{run.status}</StatusBadge>
-            <span>·</span>
+          </div>
+          <p className="text-sm text-text-secondary mt-1 font-mono">
+            {run.event_type} ·{' '}
             <Link
               to={`/groups/${orgSlug}/projects/${projectSlug}/commit/${run.commit_sha}`}
-              className="font-mono hover:text-primary"
+              className="text-primary hover:underline"
             >
               {shortSha(run.commit_sha)}
             </Link>
-            <span>·</span>
-            <span>{refLabel(run.ref_name)}</span>
-            <span>·</span>
-            <span>{run.event_type}</span>
+            {' · '}
+            {branch}
           </p>
         </div>
         <PrimaryButton
@@ -148,72 +142,89 @@ export function PipelineRunDetailPage() {
         </div>
       )}
 
-      <RunSummary run={run} />
-
-      <div className="space-y-4 mt-4">
-        {run.jobs.map((job) => (
-          <JobCard key={job.id} job={job} />
-        ))}
-      </div>
-    </>
-  )
-}
-
-function RunSummary({ run }: { run: PipelineRun }) {
-  return (
-    <div className="gogs-panel p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
-      <div>
-        <div className="text-text-secondary text-xs">Created</div>
-        <div>{formatDateTime(run.created_at)}</div>
-      </div>
-      <div>
-        <div className="text-text-secondary text-xs">Started</div>
-        <div>{run.started_at ? formatDateTime(run.started_at) : '—'}</div>
-      </div>
-      <div>
-        <div className="text-text-secondary text-xs">Finished</div>
-        <div>{run.finished_at ? formatDateTime(run.finished_at) : '—'}</div>
-      </div>
-      <div>
-        <div className="text-text-secondary text-xs">Jobs</div>
-        <div>
-          {run.jobs.filter((j) => j.status === 'success').length}/{run.jobs.length} passed
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function JobCard({ job }: { job: JobRun }) {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="gogs-panel overflow-hidden">
-      <button
-        type="button"
-        className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-hover/40"
-        onClick={() => setOpen((v) => !v)}
+      <CiTerminal
+        title="pertisk-ci"
+        subtitle={`${projectSlug}@${shortSha(run.commit_sha)}`}
+        actions={
+          <span className="text-[10px] font-mono text-naturals-n9">
+            {passed}/{run.jobs.length} jobs ok
+          </span>
+        }
       >
-        <div className="min-w-0">
-          <div className="font-medium text-text">{job.job_name}</div>
-          <JobMetricsPanel metrics={job.metrics_json} />
+        <div className="ci-terminal-meta-bar">
+          <span>
+            started <strong>{formatDateTime(run.started_at ?? run.created_at)}</strong>
+          </span>
+          <span>
+            finished <strong>{run.finished_at ? formatDateTime(run.finished_at) : '—'}</strong>
+          </span>
+          <span>
+            event <strong>{run.event_type}</strong>
+          </span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <StatusBadge variant={jobStatusVariant(job.status)}>{job.status}</StatusBadge>
-          <span className="text-xs text-text-secondary">{job.runs_on}</span>
-        </div>
-      </button>
-      {open && (
-        <div className="border-t border-border">
-          <pre
-            className={cn(
-              'p-4 text-xs font-mono overflow-x-auto max-h-[28rem] overflow-y-auto',
-              'bg-naturals-n1 text-text-secondary whitespace-pre-wrap break-words',
+
+        <CiPrompt
+          user="runner"
+          host="self-hosted"
+          path={`${orgSlug}/${projectSlug}`}
+          command={`pipeline run --ref ${branch} --sha ${shortSha(run.commit_sha)}`}
+        />
+
+        <div className="ci-terminal-split">
+          <div className="ci-terminal-sidebar">
+            {run.jobs.map((job) => (
+              <CiRunLine
+                key={job.id}
+                status={job.status}
+                label={job.job_name}
+                meta={job.runs_on}
+                active={activeJob?.id === job.id}
+                onClick={() => setActiveJobId(job.id)}
+              />
+            ))}
+          </div>
+
+          <div className="min-w-0">
+            {activeJob ? (
+              <>
+                <CiPrompt
+                  user="runner"
+                  host={activeJob.runs_on}
+                  path={activeJob.job_name}
+                  command={activeJob.metrics_json ? `exit ${activeJob.status === 'success' ? 0 : 1}` : 'running…'}
+                />
+                <CiLogViewer
+                  text={activeJob.log_text}
+                  emptyMessage={
+                    activeJob.status === 'queued' || activeJob.status === 'running'
+                      ? '(job running…)'
+                      : '(no log output)'
+                  }
+                  maxHeight="32rem"
+                />
+                {activeJob.metrics_json && (
+                  <div className="ci-terminal-meta-bar border-t border-border/30">
+                    <span>
+                      queue <strong>{activeJob.metrics_json.queue_wait_ms}ms</strong>
+                    </span>
+                    <span>
+                      execute <strong>{activeJob.metrics_json.execution_ms}ms</strong>
+                    </span>
+                    <span>
+                      total <strong>{activeJob.metrics_json.total_ms}ms</strong>
+                    </span>
+                    <span>
+                      steps <strong>{activeJob.metrics_json.steps.length}</strong>
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <CiLogViewer text="" emptyMessage="(no jobs in this run)" />
             )}
-          >
-            {job.log_text.trim() || '(no log output yet)'}
-          </pre>
+          </div>
         </div>
-      )}
-    </div>
+      </CiTerminal>
+    </>
   )
 }
