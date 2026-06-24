@@ -1,4 +1,23 @@
-import type { AuthResponse, CommitDetail, CommitInfo, Organization, RepoBrowser, Repository, RepositoryDetail, TreeEntry, User, UserSshKey } from './types'
+import type {
+  AuthResponse,
+  CommitDetail,
+  CommitInfo,
+  IssueCommentDetail,
+  IssueDetail,
+  Label,
+  Milestone,
+  Organization,
+  OrgMember,
+  PullRequestCommentDetail,
+  PullRequestDetail,
+  PullRequestReview,
+  RepoBrowser,
+  Repository,
+  RepositoryDetail,
+  TreeEntry,
+  User,
+  UserSshKey,
+} from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
@@ -66,6 +85,9 @@ export const api = {
 
   listOrganizations: (token: string) =>
     request<Organization[]>('/organizations', {}, token),
+
+  listOrganizationMembers: (token: string, orgSlug: string) =>
+    request<OrgMember[]>(`/organizations/${orgSlug}/members`, {}, token),
 
   createOrganization: (
     token: string,
@@ -186,6 +208,161 @@ export const api = {
     request<{ commit: CommitDetail }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/commits/${commitSha}`,
       {},
+      token,
+    ),
+
+  listLabels: (orgSlug: string, repoSlug: string, token?: string | null) =>
+    request<Label[]>(`/organizations/${orgSlug}/repositories/${repoSlug}/labels`, {}, token),
+
+  createLabel: (token: string, orgSlug: string, repoSlug: string, payload: { name: string; color?: string; description?: string }) =>
+    request<Label>(`/organizations/${orgSlug}/repositories/${repoSlug}/labels`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  listMilestones: (orgSlug: string, repoSlug: string, token?: string | null) =>
+    request<Milestone[]>(`/organizations/${orgSlug}/repositories/${repoSlug}/milestones`, {}, token),
+
+  listIssues: (
+    orgSlug: string,
+    repoSlug: string,
+    params?: { state?: string; label?: string; q?: string },
+    token?: string | null,
+  ) => {
+    const search = new URLSearchParams()
+    if (params?.state) search.set('state', params.state)
+    if (params?.label) search.set('label', params.label)
+    if (params?.q) search.set('q', params.q)
+    const qs = search.toString()
+    return request<{ issues: IssueDetail[]; open_count: number; closed_count: number }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/issues${qs ? `?${qs}` : ''}`,
+      {},
+      token,
+    )
+  },
+
+  getIssue: (orgSlug: string, repoSlug: string, issueNumber: number, token?: string | null) =>
+    request<IssueDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}`,
+      {},
+      token,
+    ),
+
+  createIssue: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: {
+      title: string
+      body?: string
+      assignee_id?: string | null
+      milestone_id?: string | null
+      label_ids?: string[]
+    },
+  ) =>
+    request<IssueDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/issues`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  updateIssue: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    issueNumber: number,
+    payload: {
+      title?: string
+      body?: string
+      state?: 'open' | 'closed'
+      assignee_id?: string | null
+      milestone_id?: string | null
+      label_ids?: string[]
+    },
+  ) =>
+    request<IssueDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
+  listIssueComments: (orgSlug: string, repoSlug: string, issueNumber: number, token?: string | null) =>
+    request<IssueCommentDetail[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}/comments`,
+      {},
+      token,
+    ),
+
+  createIssueComment: (token: string, orgSlug: string, repoSlug: string, issueNumber: number, body: string) =>
+    request<IssueCommentDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}/comments`,
+      { method: 'POST', body: JSON.stringify({ body }) },
+      token,
+    ),
+
+  listPullRequests: (
+    orgSlug: string,
+    repoSlug: string,
+    params?: { state?: string },
+    token?: string | null,
+  ) => {
+    const search = new URLSearchParams()
+    if (params?.state) search.set('state', params.state)
+    const qs = search.toString()
+    return request<{ pull_requests: PullRequestDetail[]; open_count: number; closed_count: number }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls${qs ? `?${qs}` : ''}`,
+      {},
+      token,
+    )
+  },
+
+  getPullRequest: (orgSlug: string, repoSlug: string, pullNumber: number, token?: string | null) =>
+    request<PullRequestDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}`,
+      {},
+      token,
+    ),
+
+  createPullRequest: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { title: string; body?: string; source_branch: string; target_branch: string },
+  ) =>
+    request<PullRequestDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/pulls`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  mergePullRequest: (token: string, orgSlug: string, repoSlug: string, pullNumber: number) =>
+    request<{ merge_commit_sha: string; pull_request: PullRequestDetail['pull_request'] }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/merge`,
+      { method: 'POST', body: JSON.stringify({}) },
+      token,
+    ),
+
+  listPullRequestComments: (orgSlug: string, repoSlug: string, pullNumber: number, token?: string | null) =>
+    request<PullRequestCommentDetail[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
+      {},
+      token,
+    ),
+
+  createPullRequestComment: (token: string, orgSlug: string, repoSlug: string, pullNumber: number, body: string) =>
+    request<PullRequestCommentDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
+      { method: 'POST', body: JSON.stringify({ body }) },
+      token,
+    ),
+
+  createPullRequestReview: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    pullNumber: number,
+    payload: { state: 'approved' | 'changes_requested' | 'commented'; body?: string },
+  ) =>
+    request<{ review: PullRequestReview; reviewer: User }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/reviews`,
+      { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
 }

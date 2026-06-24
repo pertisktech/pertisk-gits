@@ -83,7 +83,130 @@ export interface RepoBrowser {
   empty: boolean
 }
 
+export interface OrgMember {
+  user: User
+  role: 'owner' | 'admin' | 'member'
+}
+
 export interface AuthResponse {
   token: string
   user: User
+}
+
+export interface Label {
+  id: string
+  repository_id: string
+  name: string
+  color: string
+  description: string | null
+  created_at: string
+}
+
+export interface Milestone {
+  id: string
+  repository_id: string
+  title: string
+  description: string | null
+  due_on: string | null
+  state: 'open' | 'closed'
+  created_at: string
+  updated_at: string
+}
+
+export interface Issue {
+  id: string
+  repository_id: string
+  number: number
+  author_id: string
+  assignee_id: string | null
+  milestone_id: string | null
+  title: string
+  body: string
+  state: 'open' | 'closed'
+  created_at: string
+  updated_at: string
+  closed_at: string | null
+}
+
+export interface IssueDetail {
+  issue: Issue
+  author: User
+  assignee: User | null
+  milestone: Milestone | null
+  labels: Label[]
+}
+
+export interface IssueComment {
+  id: string
+  issue_id: string
+  author_id: string
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+export interface IssueCommentDetail {
+  comment: IssueComment
+  author: User
+}
+
+export interface PullRequest {
+  id: string
+  repository_id: string
+  number: number
+  author_id: string
+  title: string
+  body: string
+  source_branch: string
+  target_branch: string
+  state: 'open' | 'closed' | 'merged'
+  merge_commit_sha: string | null
+  created_at: string
+  updated_at: string
+  merged_at: string | null
+  closed_at: string | null
+}
+
+export interface CompareResult {
+  base: string
+  head: string
+  merge_base: string
+  diff: string
+  commits: CommitInfo[]
+  files_changed: number
+  insertions: number
+  deletions: number
+  mergeable: boolean
+}
+
+export interface PullRequestDetail {
+  pull_request: PullRequest
+  author: User
+  compare: CompareResult | null
+}
+
+export interface PullRequestComment {
+  id: string
+  pull_request_id: string
+  author_id: string
+  body: string
+  path: string | null
+  line: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PullRequestCommentDetail {
+  comment: PullRequestComment
+  author: User
+}
+
+export interface PullRequestReview {
+  id: string
+  pull_request_id: string
+  reviewer_id: string
+  state: 'pending' | 'approved' | 'changes_requested' | 'commented'
+  body: string | null
+  commit_sha: string | null
+  created_at: string
 }

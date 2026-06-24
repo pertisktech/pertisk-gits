@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Code2, GitCommit, Settings } from 'lucide-react'
+import { Code2, CircleDot, GitCommit, GitPullRequest, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
@@ -8,10 +8,12 @@ import { GogsSegment } from '../components/GogsSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
+import { RepoIssues } from '../components/RepoIssues'
+import { RepoPullRequests } from '../components/RepoPullRequests'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
 
-type Tab = 'code' | 'commits' | 'settings'
+type Tab = 'code' | 'issues' | 'pulls' | 'commits' | 'settings'
 
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
@@ -21,7 +23,7 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     const requested = searchParams.get('tab')
-    if (requested === 'commits' || requested === 'code') {
+    if (requested === 'commits' || requested === 'code' || requested === 'issues' || requested === 'pulls') {
       setTab(requested)
     } else if (requested === 'settings' && token) {
       setTab('settings')
@@ -57,6 +59,8 @@ export function ProjectDetailPage() {
 
   const tabs = [
     { id: 'code', label: 'Code', icon: Code2 },
+    { id: 'issues', label: 'Issues', icon: CircleDot },
+    { id: 'pulls', label: 'Pull requests', icon: GitPullRequest },
     { id: 'commits', label: 'Commits', icon: GitCommit },
     ...(token ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
   ]
@@ -107,6 +111,19 @@ export function ProjectDetailPage() {
       <div className="min-w-0 space-y-4">
         {tab === 'code' && (
           <RepoBrowser
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            defaultBranch={project.default_branch}
+          />
+        )}
+
+        {tab === 'issues' && (
+          <RepoIssues token={token} orgSlug={orgSlug} repoSlug={projectSlug} />
+        )}
+
+        {tab === 'pulls' && (
+          <RepoPullRequests
             token={token}
             orgSlug={orgSlug}
             repoSlug={projectSlug}

@@ -44,20 +44,30 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 
 ---
 
-## Phase 2 — Collaboration Core
+## Phase 2 — Collaboration Core (in progress)
 
 **Goal:** Issues and Pull/Merge Requests.
 
 ### Issue Tracking
-- Issues, labels, milestones, assignees, comments
-- Markdown body, `@mentions`, cross-links
-- Filters and repo-scoped search
+| Feature | Status |
+|---------|--------|
+| Issues CRUD + comments | Done |
+| Labels | Done |
+| Milestones | Done |
+| Assignees | Done |
+| Markdown body | Done |
+| `@mentions`, cross-links | Done (#issues, !PRs) |
+| Filters and repo search | Done (state + text search) |
 
 ### Pull/Merge Requests
-- Branch compare, diff view, review comments
-- Approve / request changes, merge strategies
-- Merge conflict detection
-- PR status checks (wired in Phase 4)
+| Feature | Status |
+|---------|--------|
+| Branch compare + diff | Done |
+| Review comments | Done |
+| Approve / request changes | Done |
+| Merge (no-ff) | Done |
+| Merge conflict detection | Partial (`git merge-tree`) |
+| PR status checks | Phase 4 |
 
 **Tables:** `issues`, `issue_comments`, `labels`, `milestones`, `pull_requests`, `pr_reviews`, `pr_comments`
 

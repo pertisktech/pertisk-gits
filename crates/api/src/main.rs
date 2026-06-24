@@ -31,6 +31,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 use validator::Validate;
 
+mod collaboration;
 mod config;
 mod db;
 mod password;
@@ -124,6 +125,7 @@ async fn main() -> anyhow::Result<()> {
             "/organizations/{org_slug}/repositories/{repo_slug}/commits/{commit_sha}",
             get(get_repo_commit),
         )
+        .merge(collaboration::collaboration_read_routes())
         .layer(from_fn_with_state(state.clone(), optional_auth_middleware));
 
     let protected_routes = Router::new()
@@ -134,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
         .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
         .route("/organizations", get(list_organizations).post(create_organization))
+        .route("/organizations/{org_slug}/members", get(list_organization_members))
         .route(
             "/organizations/{org_slug}/repositories",
             get(list_repositories).post(create_repository),
@@ -142,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
             "/organizations/{org_slug}/repositories/{repo_slug}",
             patch(update_repository),
         )
+        .merge(collaboration::collaboration_write_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
     let api_routes = Router::new()
@@ -489,6 +493,60 @@ async fn list_organizations(
     Ok(Json(orgs))
 }
 
+#[derive(Serialize)]
+struct OrgMemberResponse {
+    user: UserPublic,
+    role: OrgRole,
+}
+
+#[derive(sqlx::FromRow)]
+struct OrgMemberRow {
+    id: Uuid,
+    username: String,
+    email: String,
+    display_name: Option<String>,
+    created_at: chrono::DateTime<chrono::Utc>,
+    role: OrgRole,
+}
+
+async fn list_organization_members(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(org_slug): Path<String>,
+) -> Result<Json<Vec<OrgMemberResponse>>, ApiError> {
+    find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+
+    let rows = sqlx::query_as::<_, OrgMemberRow>(
+        r#"
+        SELECT u.id, u.username, u.email, u.display_name, u.created_at, m.role
+        FROM organization_members m
+        INNER JOIN users u ON u.id = m.user_id
+        INNER JOIN organizations o ON o.id = m.organization_id
+        WHERE o.slug = $1
+        ORDER BY u.username
+        "#,
+    )
+    .bind(&org_slug)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|row| OrgMemberResponse {
+                user: UserPublic {
+                    id: row.id,
+                    username: row.username,
+                    email: row.email,
+                    display_name: row.display_name,
+                    created_at: row.created_at,
+                },
+                role: row.role,
+            })
+            .collect(),
+    ))
+}
+
 async fn create_organization(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -724,7 +782,7 @@ async fn update_repository(
     Ok(Json(repo_response(&state.config, &org_slug, updated)))
 }
 
-async fn ensure_can_write_repo(
+pub(crate) async fn ensure_can_write_repo(
     state: &AppState,
     org_slug: &str,
     repo: &Repository,
@@ -846,7 +904,7 @@ struct CommitResponse {
     commit: CommitDetail,
 }
 
-async fn load_repo_for_read(
+pub(crate) async fn load_repo_for_read(
     state: &AppState,
     org_slug: &str,
     repo_slug: &str,
@@ -925,7 +983,7 @@ async fn find_org_by_slug(pool: &PgPool, org_slug: &str) -> Result<Organization,
     .ok_or(DomainError::NotFound.into())
 }
 
-fn map_explorer_error(err: anyhow::Error) -> ApiError {
+pub(crate) fn map_explorer_error(err: anyhow::Error) -> ApiError {
     let msg = err.to_string().to_lowercase();
     if msg.contains("not found") || msg.contains("unknown revision") || msg.contains("bad revision") {
         ApiError::from(DomainError::NotFound)

@@ -473,3 +473,160 @@ pub async fn create_archive(
     )
     .await
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CompareResult {
+    pub base: String,
+    pub head: String,
+    pub merge_base: String,
+    pub diff: String,
+    pub commits: Vec<CommitInfo>,
+    pub files_changed: u32,
+    pub insertions: u32,
+    pub deletions: u32,
+    pub mergeable: bool,
+}
+
+pub async fn compare_branches(
+    repo_path: &Path,
+    base_branch: &str,
+    head_branch: &str,
+) -> anyhow::Result<CompareResult> {
+    if !ref_exists(repo_path, base_branch).await? {
+        anyhow::bail!("branch '{base_branch}' not found");
+    }
+    if !ref_exists(repo_path, head_branch).await? {
+        anyhow::bail!("branch '{head_branch}' not found");
+    }
+
+    let base_ref = format!("refs/heads/{base_branch}");
+    let head_ref = format!("refs/heads/{head_branch}");
+
+    let merge_base = git(
+        repo_path,
+        &["merge-base", &base_ref, &head_ref],
+    )
+    .await?;
+
+    let diff = git(
+        repo_path,
+        &["diff", "--patch", "--no-color", &format!("{merge_base}...{head_ref}")],
+    )
+    .await
+    .unwrap_or_default();
+
+    let shortstat = git(
+        repo_path,
+        &["diff", "--shortstat", &format!("{merge_base}...{head_ref}")],
+    )
+    .await
+    .unwrap_or_default();
+    let (files_changed, insertions, deletions) = parse_shortstat(&shortstat);
+
+    let log_output = git(
+        repo_path,
+        &[
+            "log",
+            &format!("{merge_base}..{head_ref}"),
+            "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%s",
+        ],
+    )
+    .await
+    .unwrap_or_default();
+
+    let commits: Vec<CommitInfo> = log_output
+        .lines()
+        .filter(|line| !line.is_empty())
+        .filter_map(|line| {
+            let parts: Vec<&str> = line.split('\x1f').collect();
+            if parts.len() < 5 {
+                return None;
+            }
+            let sha = parts[0].to_string();
+            Some(CommitInfo {
+                short_sha: sha.chars().take(7).collect(),
+                sha,
+                author_name: parts[1].to_string(),
+                author_email: parts[2].to_string(),
+                committed_at: parts[3].parse().unwrap_or(0),
+                message: parts[4].to_string(),
+            })
+        })
+        .collect();
+
+    let merge_tree = git(
+        repo_path,
+        &["merge-tree", &merge_base, &base_ref, &head_ref],
+    )
+    .await
+    .unwrap_or_default();
+    let mergeable = !merge_tree.contains("CONFLICT");
+
+    Ok(CompareResult {
+        base: base_branch.to_string(),
+        head: head_branch.to_string(),
+        merge_base,
+        diff,
+        commits,
+        files_changed,
+        insertions,
+        deletions,
+        mergeable,
+    })
+}
+
+pub async fn merge_branches(
+    repo_path: &Path,
+    target_branch: &str,
+    source_branch: &str,
+    message: &str,
+) -> anyhow::Result<String> {
+    if target_branch == source_branch {
+        anyhow::bail!("source and target branches must differ");
+    }
+    if !ref_exists(repo_path, target_branch).await? {
+        anyhow::bail!("branch '{target_branch}' not found");
+    }
+    if !ref_exists(repo_path, source_branch).await? {
+        anyhow::bail!("branch '{source_branch}' not found");
+    }
+
+    let compare = compare_branches(repo_path, target_branch, source_branch).await?;
+    if !compare.mergeable {
+        anyhow::bail!("merge conflict detected");
+    }
+
+    let target_ref = format!("refs/heads/{target_branch}");
+    let source_ref = format!("refs/heads/{source_branch}");
+
+    git(repo_path, &["symbolic-ref", "HEAD", &target_ref]).await?;
+
+    let output = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args([
+            "-c",
+            "user.name=pertisk-gits",
+            "-c",
+            "user.email=pertisk-gits@localhost",
+            "merge",
+            "--no-ff",
+            "-m",
+            message,
+            &source_ref,
+        ])
+        .output()
+        .await
+        .context("spawn git merge")?;
+
+    if !output.status.success() {
+        let _ = Command::new("git")
+            .arg(format!("--git-dir={}", repo_path.display()))
+            .args(["merge", "--abort"])
+            .output()
+            .await;
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("merge failed: {stderr}");
+    }
+
+    git(repo_path, &["rev-parse", &target_ref]).await
+}

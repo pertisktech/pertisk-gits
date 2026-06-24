@@ -1139,3 +1139,27 @@ textarea.gogs-field {
   cursor: not-allowed;
 }
 
+.gogs-issue-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (min-width: 1024px) {
+  .gogs-issue-grid {
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+}
+
+.gogs-issue-sidebar {
+  min-width: 0;
+}
+
+@media (min-width: 1024px) {
+  .gogs-issue-sidebar {
+    position: sticky;
+    top: 1rem;
+  }
+}
+

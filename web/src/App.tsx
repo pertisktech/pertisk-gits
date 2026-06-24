@@ -4,6 +4,8 @@ import { AuthProvider } from './auth/AuthContext'
 import { AppLayout } from './components/AppLayout'
 import { ThemeProvider } from './context/ThemeContext'
 import { CommitDetailPage } from './pages/CommitDetailPage'
+import { IssueDetailPage } from './pages/IssueDetailPage'
+import { PullRequestDetailPage } from './pages/PullRequestDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupsPage } from './pages/GroupsPage'
@@ -35,6 +37,14 @@ export default function App() {
                 <Route
                   path="/groups/:slug/projects/:projectSlug/commit/:commitSha"
                   element={<CommitDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/issues/:issueNumber"
+                  element={<IssueDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/pulls/:pullNumber"
+                  element={<PullRequestDetailPage />}
                 />
                 <Route path="/groups/:slug/projects/:projectSlug" element={<ProjectDetailPage />} />
                 <Route element={<ProtectedRoute />}>
