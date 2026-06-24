@@ -10,6 +10,7 @@ import {
   CiRunLine,
   CiTerminal,
 } from '../components/PipelineTerminal'
+import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
 import { pipelineUrl, displayRunStatus, isRunInProgress, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
 import { StatusBadge } from '../components/StatusBadge'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
@@ -170,6 +171,16 @@ export function PipelineRunDetailPage() {
           host="self-hosted"
           path={`${orgSlug}/${projectSlug}`}
           command={`pipeline run --ref ${branch} --sha ${shortSha(run.commit_sha)}`}
+        />
+
+        <PipelineGraph
+          className="pipeline-graph-panel--inline"
+          jobs={jobsFromRun(run.jobs)}
+          selectedJob={activeJob?.id ?? null}
+          onJobSelect={(jobKey) => {
+            const match = run.jobs.find((job) => job.id === jobKey || job.job_name === jobKey)
+            if (match) setActiveJobId(match.id)
+          }}
         />
 
         <div className="ci-terminal-split ci-terminal-split--detail">

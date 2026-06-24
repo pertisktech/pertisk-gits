@@ -9,6 +9,7 @@ import type {
   Milestone,
   Organization,
   OrgMember,
+  PipelineConfigPreview,
   PipelineRun,
   PullRequestCommentDetail,
   PullRequestDetail,
@@ -504,6 +505,20 @@ export const api = {
   getPipelineRun: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
     request<PipelineRun>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}`,
+      {},
+      token,
+    ),
+
+  getPipelineConfig: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    ref?: string,
+  ) =>
+    request<PipelineConfigPreview>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/config${
+        ref ? `?ref=${encodeURIComponent(ref)}` : ''
+      }`,
       {},
       token,
     ),

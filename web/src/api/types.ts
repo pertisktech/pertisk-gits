@@ -247,11 +247,26 @@ export interface JobRun {
   job_name: string
   status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled'
   runs_on: string
+  needs: string[]
   metrics_json: JobMetrics | null
   log_text: string
   queued_at: string
   started_at: string | null
   finished_at: string | null
+}
+
+export interface PipelineJobPreview {
+  name: string
+  runs_on: string
+  needs: string[]
+  step_count: number
+}
+
+export interface PipelineConfigPreview {
+  config_path: string
+  commit_sha: string
+  ref: string
+  jobs: PipelineJobPreview[]
 }
 
 export interface PipelineRun {

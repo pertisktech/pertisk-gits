@@ -22,6 +22,7 @@ use uuid::Uuid;
 use crate::{
     ensure_can_write_repo, load_repo_for_read, ApiError, AppState, AuthUser,
 };
+use pertisk_domain::DomainError;
 
 fn sqlx_error(err: sqlx::Error) -> ApiError {
     pertisk_domain::DomainError::Internal(err.to_string()).into()
@@ -32,6 +33,10 @@ pub fn cicd_read_routes() -> Router<AppState> {
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/pipelines",
             get(list_pipeline_runs),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/config",
+            get(get_pipeline_config_preview),
         )
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}",
@@ -112,11 +117,33 @@ struct JobRunResponse {
     job_name: String,
     status: String,
     runs_on: String,
+    needs: Vec<String>,
     metrics_json: Option<Value>,
     log_text: String,
     queued_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
     finished_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Deserialize)]
+struct PipelineConfigQuery {
+    r#ref: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PipelineConfigPreviewResponse {
+    config_path: String,
+    commit_sha: String,
+    r#ref: String,
+    jobs: Vec<PipelineJobPreview>,
+}
+
+#[derive(Serialize)]
+struct PipelineJobPreview {
+    name: String,
+    runs_on: String,
+    needs: Vec<String>,
+    step_count: usize,
 }
 
 #[derive(Serialize)]
@@ -185,6 +212,54 @@ struct CompleteJobRequest {
     status: String,
     log_text: Option<String>,
     metrics_json: Option<Value>,
+}
+
+async fn get_pipeline_config_preview(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<PipelineConfigQuery>,
+) -> Result<Json<PipelineConfigPreviewResponse>, ApiError> {
+    let (_org, repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+
+    let ref_name = query
+        .r#ref
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or_else(|| repo.default_branch.clone());
+    let commit_sha = resolve_git_ref(&repo_path, &ref_name).await?;
+    let normalized_ref = if ref_name.starts_with("refs/") {
+        ref_name
+    } else {
+        format!("refs/heads/{ref_name}")
+    };
+
+    let Some((config_yaml, config_path)) = read_pipeline_config(&repo_path, &commit_sha).await else {
+        return Err(DomainError::NotFound.into());
+    };
+
+    let config = parse_pipeline_yaml(&config_yaml).map_err(|e| {
+        ApiError::from(DomainError::Validation(format!("invalid pipeline config: {e}")))
+    })?;
+
+    let mut jobs: Vec<PipelineJobPreview> = config
+        .jobs
+        .into_iter()
+        .map(|(name, job)| PipelineJobPreview {
+            name,
+            runs_on: job.runs_on,
+            needs: job.needs,
+            step_count: job.steps.len(),
+        })
+        .collect();
+    jobs.sort_by(|a, b| a.name.cmp(&b.name));
+
+    Ok(Json(PipelineConfigPreviewResponse {
+        config_path,
+        commit_sha,
+        r#ref: normalized_ref,
+        jobs,
+    }))
 }
 
 async fn list_pipeline_runs(
@@ -986,6 +1061,27 @@ async fn process_trigger_now(
     Ok(run_id)
 }
 
+async fn resolve_git_ref(repo_path: &FsPath, ref_name: &str) -> Result<String, ApiError> {
+    let normalized = if ref_name.starts_with("refs/") {
+        ref_name.to_string()
+    } else {
+        format!("refs/heads/{ref_name}")
+    };
+
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["rev-parse", "--verify", &normalized])
+        .output()
+        .await
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(DomainError::NotFound.into());
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
 async fn read_pipeline_config(repo_path: &FsPath, commit_sha: &str) -> Option<(String, String)> {
     for path in CONFIG_PATHS {
         let output = Command::new("git")
@@ -1212,6 +1308,7 @@ struct JobRunRow {
     job_name: String,
     status: String,
     runs_on: String,
+    needs: Vec<String>,
     metrics_json: Option<Value>,
     log_text: String,
     queued_at: DateTime<Utc>,
@@ -1222,7 +1319,7 @@ struct JobRunRow {
 async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobRunResponse>, sqlx::Error> {
     let rows = sqlx::query_as::<_, JobRunRow>(
         r#"
-        SELECT id, job_name, status::text, runs_on, metrics_json, log_text, queued_at, started_at, finished_at
+        SELECT id, job_name, status::text, runs_on, needs, metrics_json, log_text, queued_at, started_at, finished_at
         FROM job_runs
         WHERE pipeline_run_id = $1
         ORDER BY queued_at ASC
@@ -1239,6 +1336,7 @@ async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobR
             job_name: row.job_name,
             status: row.status,
             runs_on: row.runs_on,
+            needs: row.needs,
             metrics_json: row.metrics_json,
             log_text: row.log_text,
             queued_at: row.queued_at,

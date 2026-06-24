@@ -3,6 +3,8 @@ import { Loader2, Play } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { JobRun, PipelineRun } from '../api/types'
+import { PipelineGraph } from './PipelineGraph'
+import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
 import {
   CiPrompt,
   CiRunLine,
@@ -174,6 +176,13 @@ export function RepoPipelines({
         </div>
       )}
 
+      <PipelineConfigGraph
+        token={token}
+        orgSlug={orgSlug}
+        repoSlug={repoSlug}
+        defaultBranch={defaultBranch}
+      />
+
       <CiTerminal
         title="pertisk-ci"
         subtitle={`${repoSlug} — ${runs.length} run${runs.length === 1 ? '' : 's'}`}
@@ -229,3 +238,47 @@ function PipelineRow({
 }
 
 export { pipelineUrl, runStatusVariant, shortSha, refLabel }
+
+function PipelineConfigGraph({
+  token,
+  orgSlug,
+  repoSlug,
+  defaultBranch,
+}: {
+  token: string
+  orgSlug: string
+  repoSlug: string
+  defaultBranch: string
+}) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, defaultBranch],
+    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, defaultBranch),
+    enabled: Boolean(token && orgSlug && repoSlug && defaultBranch),
+  })
+
+  const jobs: PipelineGraphJob[] =
+    data?.jobs.map((job) => ({
+      name: job.name,
+      runs_on: job.runs_on,
+      needs: job.needs,
+      step_count: job.step_count,
+    })) ?? []
+
+  if (isError) return null
+
+  return (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <div className="px-3 py-2 border-b border-border bg-surface-secondary flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-text font-mono">pipeline graph</h3>
+          {data && (
+            <p className="text-xs text-text-secondary font-mono mt-0.5">
+              {data.config_path} @ {shortSha(data.commit_sha)} ({refLabel(data.ref)})
+            </p>
+          )}
+        </div>
+      </div>
+      <PipelineGraph jobs={jobs} loading={isLoading} emptyMessage="No jobs in pipeline config" />
+    </div>
+  )
+}
