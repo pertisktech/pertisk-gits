@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import type { PullRequest, PullRequestReviewDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { PullRequestDiff } from '../components/PullRequestDiff'
+import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
@@ -145,6 +146,7 @@ export function PullRequestDetailPage() {
 
   const { pull_request: pr, author, compare, review_summary: reviewSummary } = data
   const repoName = repoData?.repository.name ?? projectSlug
+  const headCommitSha = compare?.commits.at(-1)?.sha ?? null
   const approvedCount = reviewSummary.approved_count
   const hasChangesRequested = reviewSummary.changes_requested_count > 0
 
@@ -233,6 +235,15 @@ export function PullRequestDetailPage() {
               <span className="text-dashboard-danger">−{compare.deletions}</span>
               {reviews.length > 0 && <span>{approvedCount} approval{approvedCount === 1 ? '' : 's'}</span>}
             </div>
+          )}
+
+          {headCommitSha && (
+            <CommitStatuses
+              orgSlug={orgSlug}
+              repoSlug={projectSlug}
+              commitSha={headCommitSha}
+              token={token}
+            />
           )}
 
           {pr.body && (

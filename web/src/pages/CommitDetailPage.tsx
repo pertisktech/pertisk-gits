@@ -4,6 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { commitUrl } from '../components/RepoCommits'
+import { CommitStatuses } from '../components/CommitStatuses'
 import { Breadcrumbs } from '../components/ui'
 
 function formatDate(ts: number) {
@@ -117,6 +118,13 @@ export function CommitDetailPage() {
               {commit.body}
             </pre>
           )}
+
+          <CommitStatuses
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            commitSha={commit.sha}
+            token={token}
+          />
         </div>
       </div>
 

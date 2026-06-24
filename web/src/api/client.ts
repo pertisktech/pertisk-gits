@@ -2,12 +2,14 @@ import type {
   AuthResponse,
   CommitDetail,
   CommitInfo,
+  CommitStatus,
   IssueCommentDetail,
   IssueDetail,
   Label,
   Milestone,
   Organization,
   OrgMember,
+  PipelineRun,
   PullRequestCommentDetail,
   PullRequestDetail,
   PullRequestReview,
@@ -486,6 +488,44 @@ export const api = {
     request<{ review: PullRequestReview; reviewer: User }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/reviews`,
       { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  listPipelineRuns: (token: string, orgSlug: string, repoSlug: string) =>
+    request<PipelineRun[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines`,
+      {},
+      token,
+    ),
+
+  getPipelineRun: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
+    request<PipelineRun>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}`,
+      {},
+      token,
+    ),
+
+  triggerPipeline: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { commit_sha: string; ref_name: string; event_type?: string },
+  ) =>
+    request<PipelineRun>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/trigger`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  listCommitStatuses: (
+    orgSlug: string,
+    repoSlug: string,
+    commitSha: string,
+    token?: string | null,
+  ) =>
+    request<CommitStatus[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/commits/${commitSha}/statuses`,
+      {},
       token,
     ),
 }

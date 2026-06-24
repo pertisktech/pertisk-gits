@@ -13,6 +13,7 @@ import { GroupsPage } from './pages/GroupsPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewGroupPage } from './pages/NewGroupPage'
 import { NewProjectPage } from './pages/NewProjectPage'
+import { PipelineRunDetailPage } from './pages/PipelineRunDetailPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -46,6 +47,10 @@ export default function App() {
                 <Route
                   path="/groups/:slug/projects/:projectSlug/pulls/:pullNumber"
                   element={<PullRequestDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/pipelines/:runId"
+                  element={<PipelineRunDetailPage />}
                 />
                 <Route path="/groups/:slug/projects/:projectSlug" element={<ProjectDetailPage />} />
                 <Route element={<ProtectedRoute />}>

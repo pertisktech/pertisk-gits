@@ -1,0 +1,49 @@
+# Rust performance CI pipeline for Pertisk Gits
+# Place at repo root as `.pertisk-ci.yaml`
+
+on:
+  push:
+    branches: [main, release/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  fmt:
+    runs-on: self-hosted
+    steps:
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+  clippy:
+    runs-on: self-hosted
+    needs: [fmt]
+    steps:
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test:
+    runs-on: self-hosted
+    needs: [clippy]
+    steps:
+      - name: Unit tests
+        run: cargo test --workspace --release
+      - name: CI crate tests
+        run: cargo test -p pertisk-cicd
+
+  bench:
+    runs-on: self-hosted
+    needs: [test]
+    steps:
+      - name: Pipeline parse/schedule benches
+        run: cargo bench -p pertisk-cicd --bench pipeline
+      - name: Runner noop bench
+        run: cargo run -p pertisk-runner -- bench --iterations 50
+
+  perf-report:
+    runs-on: self-hosted
+    needs: [bench]
+    steps:
+      - name: Build release binary
+        run: cargo build --release -p pertisk-api
+      - name: Measure binary size
+        run: ls -lh target/release/pertisk-api

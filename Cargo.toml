@@ -5,6 +5,9 @@ members = [
     "crates/api",
     "crates/gateway",
     "crates/git",
+    "crates/cicd",
+    "crates/runner",
+    "crates/worker",
 ]
 default-members = ["crates/api"]
 
@@ -33,3 +36,4 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 validator = { version = "0.20", features = ["derive"] }
+serde_yaml = "0.9"

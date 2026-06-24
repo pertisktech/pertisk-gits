@@ -1,4 +1,7 @@
+use std::future::Future;
 use std::path::PathBuf;
+use std::pin::Pin;
+use std::sync::Arc;
 
 use axum::{
     body::Body,
@@ -10,6 +13,7 @@ use axum::{
 };
 use serde::Deserialize;
 use sqlx::PgPool;
+use uuid::Uuid;
 
 use crate::access::{self, AuthUser};
 use crate::config::repo_disk_path;
@@ -20,7 +24,12 @@ use crate::storage::ensure_bare_repo;
 pub struct GitHttpState {
     pub pool: PgPool,
     pub repos_root: PathBuf,
+    pub post_receive: Option<PostReceiveHook>,
 }
+
+pub type PostReceiveHook = Arc<
+    dyn Fn(Uuid, PathBuf) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>> + Send + Sync,
+>;
 
 #[derive(Debug, Deserialize)]
 struct InfoRefsQuery {
@@ -142,6 +151,15 @@ async fn receive_pack(
     let response_body = protocol::stateless_rpc(&disk_path, "git-receive-pack", &request_body)
         .await
         .map_err(|e| GitHttpError::Internal(e.to_string()))?;
+
+    if let Some(hook) = &state.post_receive {
+        let hook = hook.clone();
+        let repo_id = repo.id;
+        let path = disk_path.clone();
+        tokio::spawn(async move {
+            hook(repo_id, path).await;
+        });
+    }
 
     Ok((
         StatusCode::OK,

@@ -32,6 +32,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 mod collaboration;
+mod cicd;
 mod config;
 mod db;
 mod password;
@@ -127,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
             get(get_repo_commit),
         )
         .merge(collaboration::collaboration_read_routes())
+        .merge(cicd::cicd_read_routes())
         .layer(from_fn_with_state(state.clone(), optional_auth_middleware));
 
     let protected_routes = Router::new()
@@ -149,15 +151,18 @@ async fn main() -> anyhow::Result<()> {
         )
         .merge(permissions::permissions_routes())
         .merge(collaboration::collaboration_write_routes())
+        .merge(cicd::cicd_write_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
     let api_routes = Router::new()
         .merge(repo_read_routes)
-        .merge(protected_routes);
+        .merge(protected_routes)
+        .merge(cicd::runner_routes());
 
     let git_state = GitHttpState {
         pool: state.pool.clone(),
         repos_root: state.config.repos_root.clone(),
+        post_receive: Some(cicd::post_receive_hook(state.clone())),
     };
 
     if let Some(ssh_port) = config.git_ssh_port {

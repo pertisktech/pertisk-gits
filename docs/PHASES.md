@@ -93,20 +93,24 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 
 ---
 
-## Phase 4 — CI/CD
+## Phase 4 — CI/CD (In progress)
 
 **Goal:** Pipelines on push/PR with status on commits and PRs.
 
-| Component | Approach |
-|-----------|----------|
-| Pipeline config | `.yaml` in repo |
-| Scheduler | Worker parses config, enqueues jobs |
-| Runners | Container-based executor |
-| Artifacts | Object storage |
-| Status API | Commit status + PR merge gate |
-| UI | Pipeline list, streaming logs, rerun |
+| Component | Approach | Status |
+|-----------|----------|--------|
+| Pipeline config | `.pertisk-ci.yaml` in repo | Done |
+| Scheduler | `pertisk-worker` processes triggers | Done |
+| Runners | `pertisk-runner` shell executor + metrics | Done (MVP) |
+| Artifacts | Object storage | Todo |
+| Status API | Commit status + PR merge gate | Done (API) |
+| UI | Pipeline list, logs, rerun | Done |
 
 **MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, self-hosted runners
+
+Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
+
+**Tables:** `runners`, `pipeline_runs`, `job_runs`, `commit_statuses`, `pipeline_triggers`
 
 ---
 
@@ -204,11 +208,10 @@ pertisk-gits/
 │   ├── domain/           # Shared models
 │   ├── api/              # axum REST API
 │   ├── gateway/          # Pingora reverse proxy
-│   ├── git-http/         # Phase 1
-│   ├── git-ssh/          # Phase 1
-│   ├── h3-gateway/       # Phase 3 (Quiche)
-│   ├── registry/         # Phase 5
-│   └── worker/           # Phase 3+
+│   ├── git/              # Phase 1 (git-http, git-ssh)
+│   ├── cicd/             # Phase 4 pipeline engine
+│   ├── runner/           # Phase 4 self-hosted runner
+│   ├── worker/           # Phase 4 scheduler
 ├── web/                  # React app
 ├── migrations/           # SQLx migrations
 ├── deploy/               # Docker Compose, Helm

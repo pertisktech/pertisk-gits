@@ -227,3 +227,49 @@ export interface PullRequestReviewDetail {
   review: PullRequestReview
   reviewer: User
 }
+
+export interface JobMetrics {
+  job_name: string
+  steps: Array<{
+    name: string
+    duration_ms: number
+    exit_code: number
+    started_at: string
+    finished_at: string
+  }>
+  queue_wait_ms: number
+  execution_ms: number
+  total_ms: number
+}
+
+export interface JobRun {
+  id: string
+  job_name: string
+  status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled'
+  runs_on: string
+  metrics_json: JobMetrics | null
+  log_text: string
+  queued_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface PipelineRun {
+  id: string
+  commit_sha: string
+  ref_name: string
+  event_type: 'push' | 'pull_request' | 'manual'
+  status: 'pending' | 'queued' | 'running' | 'success' | 'failure' | 'cancelled'
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  jobs: JobRun[]
+}
+
+export interface CommitStatus {
+  context: string
+  state: 'pending' | 'success' | 'failure' | 'error'
+  description: string | null
+  target_url: string | null
+  updated_at: string
+}

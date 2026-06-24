@@ -1,29 +1,22 @@
 [package]
-name = "pertisk-api"
+name = "pertisk-worker"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "pertisk-api"
+name = "pertisk-worker"
 path = "src/main.rs"
 
 [dependencies]
-pertisk-domain = { path = "../domain" }
-pertisk-git = { path = "../git" }
 pertisk-cicd = { path = "../cicd" }
 anyhow = { workspace = true }
-argon2 = { workspace = true }
-axum = { workspace = true }
 chrono = { workspace = true }
+clap = { version = "4", features = ["derive", "env"] }
 dotenvy = { workspace = true }
-jsonwebtoken = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
-thiserror = { workspace = true }
 tokio = { workspace = true }
-tower-http = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
-validator = { workspace = true }
