@@ -8,6 +8,7 @@ import { IssueDetailPage } from './pages/IssueDetailPage'
 import { PullRequestDetailPage } from './pages/PullRequestDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
+import { GroupMembersPage } from './pages/GroupMembersPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewGroupPage } from './pages/NewGroupPage'
@@ -52,6 +53,7 @@ export default function App() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   <Route path="/groups/new" element={<NewGroupPage />} />
+                  <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
                   <Route path="/profile" element={<ProfilePage />} />

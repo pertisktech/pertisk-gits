@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { Repository } from '../api/types'
 import { PrimaryButton } from './ui'
+import { RepoCollaborators } from './RepoCollaborators'
 
 interface RepoSettingsProps {
   token: string
@@ -76,7 +77,8 @@ export function RepoSettings({
   }
 
   return (
-    <div className="gogs-panel max-w-2xl">
+    <div className="space-y-5">
+      <div className="gogs-panel max-w-2xl">
       <div className="gogs-panel-header">Repository settings</div>
       <form className="gogs-panel-body space-y-5" onSubmit={onSubmit}>
         <div className="space-y-2">
@@ -167,6 +169,9 @@ export function RepoSettings({
           </PrimaryButton>
         </div>
       </form>
+      </div>
+
+      <RepoCollaborators token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
     </div>
   )
 }

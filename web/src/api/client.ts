@@ -12,6 +12,7 @@ import type {
   PullRequestDetail,
   PullRequestReview,
   RepoBrowser,
+  RepoCollaborator,
   Repository,
   RepositoryDetail,
   TreeEntry,
@@ -88,6 +89,92 @@ export const api = {
 
   listOrganizationMembers: (token: string, orgSlug: string) =>
     request<OrgMember[]>(`/organizations/${orgSlug}/members`, {}, token),
+
+  addOrganizationMember: (
+    token: string,
+    orgSlug: string,
+    payload: { username: string; role?: 'owner' | 'admin' | 'member' },
+  ) =>
+    request<OrgMember>(`/organizations/${orgSlug}/members`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  updateOrganizationMember: (
+    token: string,
+    orgSlug: string,
+    userId: string,
+    payload: { role: 'owner' | 'admin' | 'member' },
+  ) =>
+    request<OrgMember>(`/organizations/${orgSlug}/members/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
+  removeOrganizationMember: async (token: string, orgSlug: string, userId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/members/${userId}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listRepositoryCollaborators: (token: string, orgSlug: string, repoSlug: string) =>
+    request<RepoCollaborator[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/collaborators`,
+      {},
+      token,
+    ),
+
+  addRepositoryCollaborator: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { username: string; role?: 'admin' | 'write' | 'read' },
+  ) =>
+    request<RepoCollaborator>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/collaborators`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  updateRepositoryCollaborator: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    userId: string,
+    payload: { role: 'admin' | 'write' | 'read' },
+  ) =>
+    request<RepoCollaborator>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/collaborators/${userId}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  removeRepositoryCollaborator: async (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    userId: string,
+  ) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/collaborators/${userId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
 
   createOrganization: (
     token: string,

@@ -88,6 +88,11 @@ export interface OrgMember {
   role: 'owner' | 'admin' | 'member'
 }
 
+export interface RepoCollaborator {
+  user: User
+  role: 'admin' | 'write' | 'read'
+}
+
 export interface AuthResponse {
   token: string
   user: User

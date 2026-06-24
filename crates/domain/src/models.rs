@@ -175,6 +175,30 @@ pub struct UpdateRepositoryRequest {
     pub default_branch: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct AddOrganizationMemberRequest {
+    #[validate(length(min = 1, max = 39))]
+    pub username: String,
+    pub role: Option<OrgRole>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateOrganizationMemberRequest {
+    pub role: OrgRole,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct AddRepositoryCollaboratorRequest {
+    #[validate(length(min = 1, max = 39))]
+    pub username: String,
+    pub role: Option<RepoRole>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateRepositoryCollaboratorRequest {
+    pub role: RepoRole,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "issue_state", rename_all = "snake_case")]
 #[serde(rename_all = "snake_case")]

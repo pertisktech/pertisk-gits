@@ -35,6 +35,7 @@ mod collaboration;
 mod config;
 mod db;
 mod password;
+mod permissions;
 mod version;
 
 use config::Config;
@@ -145,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
             "/organizations/{org_slug}/repositories/{repo_slug}",
             patch(update_repository),
         )
+        .merge(permissions::permissions_routes())
         .merge(collaboration::collaboration_write_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
@@ -1156,7 +1158,7 @@ async fn get_repo_commit(
     Ok(Json(CommitResponse { commit }))
 }
 
-async fn find_org_for_member(
+pub(crate) async fn find_org_for_member(
     pool: &PgPool,
     org_slug: &str,
     user_id: Uuid,
