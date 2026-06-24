@@ -14,10 +14,13 @@ import type {
   PullRequestDetail,
   PullRequestReview,
   PullRequestReviewDetail,
+  RegisterRunnerResponse,
   RepoBrowser,
   RepoCollaborator,
   Repository,
   RepositoryDetail,
+  RotateRunnerTokenResponse,
+  Runner,
   TreeEntry,
   User,
   UserSshKey,
@@ -528,4 +531,32 @@ export const api = {
       {},
       token,
     ),
+
+  listRunners: (token: string) => request<Runner[]>('/runners', {}, token),
+
+  registerRunner: (token: string, payload: { name: string; labels?: string[] }) =>
+    request<RegisterRunnerResponse>('/runners/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteRunner: async (token: string, runnerId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/runners/${runnerId}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  rotateRunnerToken: (token: string, runnerId: string) =>
+    request<RotateRunnerTokenResponse>(`/runners/${runnerId}/rotate-token`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    }, token),
 }

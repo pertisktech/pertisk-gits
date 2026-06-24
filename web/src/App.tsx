@@ -17,6 +17,7 @@ import { PipelineRunDetailPage } from './pages/PipelineRunDetailPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { RunnersPage } from './pages/RunnersPage'
 import { ProtectedRoute } from './routes/ProtectedRoute'
 
 const queryClient = new QueryClient()
@@ -61,6 +62,7 @@ export default function App() {
                   <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
+                  <Route path="/runners" element={<RunnersPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/organizations" element={<Navigate to="/groups" replace />} />
                   <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />

@@ -273,3 +273,21 @@ export interface CommitStatus {
   target_url: string | null
   updated_at: string
 }
+
+export interface Runner {
+  id: string
+  name: string
+  labels: string[]
+  status: 'online' | 'offline' | 'busy'
+  last_seen_at: string | null
+  created_at: string
+}
+
+export interface RegisterRunnerResponse {
+  runner_id: string
+  token: string
+}
+
+export interface RotateRunnerTokenResponse {
+  token: string
+}

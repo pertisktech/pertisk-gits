@@ -4,7 +4,7 @@ use std::sync::Arc;
 use axum::{
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -43,11 +43,14 @@ pub fn cicd_read_routes() -> Router<AppState> {
 
 pub fn cicd_write_routes() -> Router<AppState> {
     Router::new()
+        .route("/runners", get(list_runners))
         .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/trigger",
             post(trigger_pipeline),
         )
         .route("/runners/register", post(register_runner))
+        .route("/runners/{runner_id}", delete(delete_runner))
+        .route("/runners/{runner_id}/rotate-token", post(rotate_runner_token))
 }
 
 pub fn runner_routes() -> Router<AppState> {
@@ -120,11 +123,27 @@ struct TriggerPipelineRequest {
 #[derive(Deserialize)]
 struct RegisterRunnerRequest {
     name: String,
+    labels: Option<Vec<String>>,
 }
 
 #[derive(Serialize)]
 struct RegisterRunnerResponse {
     runner_id: Uuid,
+    token: String,
+}
+
+#[derive(Serialize)]
+struct RunnerResponse {
+    id: Uuid,
+    name: String,
+    labels: Vec<String>,
+    status: String,
+    last_seen_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct RotateRunnerTokenResponse {
     token: String,
 }
 
@@ -270,28 +289,109 @@ async fn trigger_pipeline(
     Ok(Json(run.into_response(jobs)))
 }
 
+async fn list_runners(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+) -> Result<Json<Vec<RunnerResponse>>, ApiError> {
+    let rows = sqlx::query_as::<_, RunnerRow>(
+        r#"
+        SELECT id, name, labels, status::text, last_seen_at, created_at
+        FROM runners
+        ORDER BY created_at DESC
+        "#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(sqlx_error)?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|row| RunnerResponse {
+                id: row.id,
+                name: row.name,
+                labels: row.labels,
+                status: row.status,
+                last_seen_at: row.last_seen_at,
+                created_at: row.created_at,
+            })
+            .collect(),
+    ))
+}
+
 async fn register_runner(
     State(state): State<AppState>,
     _auth: AuthUser,
     Json(body): Json<RegisterRunnerRequest>,
 ) -> Result<Json<RegisterRunnerResponse>, ApiError> {
+    let name = body.name.trim();
+    if name.is_empty() {
+        return Err(pertisk_domain::DomainError::Validation("runner name is required".into()).into());
+    }
+
+    let labels = body.labels.unwrap_or_else(|| vec!["self-hosted".into()]);
     let token = format!("ptr_{}", Uuid::new_v4().simple());
     let token_hash = hash_runner_token(&token);
 
     let runner_id = sqlx::query_scalar::<_, Uuid>(
         r#"
-        INSERT INTO runners (name, token_hash, status)
-        VALUES ($1, $2, 'offline')
+        INSERT INTO runners (name, token_hash, labels, status)
+        VALUES ($1, $2, $3, 'offline')
         RETURNING id
         "#,
     )
-    .bind(&body.name)
+    .bind(name)
     .bind(token_hash)
+    .bind(&labels)
     .fetch_one(&state.pool)
     .await
     .map_err(sqlx_error)?;
 
     Ok(Json(RegisterRunnerResponse { runner_id, token }))
+}
+
+async fn delete_runner(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path(runner_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    let result = sqlx::query("DELETE FROM runners WHERE id = $1")
+        .bind(runner_id)
+        .execute(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+    if result.rows_affected() == 0 {
+        return Err(pertisk_domain::DomainError::NotFound.into());
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn rotate_runner_token(
+    State(state): State<AppState>,
+    _auth: AuthUser,
+    Path(runner_id): Path<Uuid>,
+) -> Result<Json<RotateRunnerTokenResponse>, ApiError> {
+    let token = format!("ptr_{}", Uuid::new_v4().simple());
+    let token_hash = hash_runner_token(&token);
+
+    let updated = sqlx::query(
+        r#"
+        UPDATE runners
+        SET token_hash = $2, status = 'offline', last_seen_at = NULL
+        WHERE id = $1
+        "#,
+    )
+    .bind(runner_id)
+    .bind(token_hash)
+    .execute(&state.pool)
+    .await
+    .map_err(sqlx_error)?;
+
+    if updated.rows_affected() == 0 {
+        return Err(pertisk_domain::DomainError::NotFound.into());
+    }
+
+    Ok(Json(RotateRunnerTokenResponse { token }))
 }
 
 async fn poll_runner_job(
@@ -819,6 +919,16 @@ async fn fetch_pipeline_run(
     .bind(repository_id)
     .fetch_optional(pool)
     .await
+}
+
+#[derive(sqlx::FromRow)]
+struct RunnerRow {
+    id: Uuid,
+    name: String,
+    labels: Vec<String>,
+    status: String,
+    last_seen_at: Option<DateTime<Utc>>,
+    created_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]

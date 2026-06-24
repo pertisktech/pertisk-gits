@@ -1,5 +1,5 @@
 use std::path::PathBuf;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -91,6 +91,14 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             .send()
             .await
             .context("poll jobs")?;
+
+        if poll.status() == reqwest::StatusCode::UNAUTHORIZED {
+            tracing::error!(
+                "invalid runner token (401 Unauthorized); update PERTISK_RUNNER_TOKEN and restart"
+            );
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            continue;
+        }
 
         if !poll.status().is_success() {
             anyhow::bail!("poll failed: {}", poll.status());

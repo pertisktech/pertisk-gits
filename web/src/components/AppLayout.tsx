@@ -1,4 +1,4 @@
-import { LayoutDashboard, Moon, Plus, Sun, Users } from 'lucide-react'
+import { LayoutDashboard, Moon, Plus, Server, Sun, Users } from 'lucide-react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
@@ -33,6 +33,12 @@ export function AppLayout() {
               <span className="inline-flex items-center gap-1.5">
                 <Users size={15} />
                 Repositories
+              </span>
+            </NavLink>
+            <NavLink to="/runners" className={topNavClass}>
+              <span className="inline-flex items-center gap-1.5">
+                <Server size={15} />
+                Runners
               </span>
             </NavLink>
           </nav>
