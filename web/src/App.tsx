@@ -22,9 +22,41 @@ import { ProtectedRoute } from './routes/ProtectedRoute'
 
 const queryClient = new QueryClient()
 
+const RESERVED_PATHS = new Set([
+  'login',
+  'register',
+  'dashboard',
+  'groups',
+  'runners',
+  'profile',
+  'organizations',
+  'api',
+  'health',
+  'assets',
+])
+
 function RedirectLegacyOrg() {
   const { slug } = useParams()
   return <Navigate to={`/groups/${slug}`} replace />
+}
+
+/** /{org}/{repo}.git → project page (browser-friendly clone URL). */
+function RedirectShortRepo() {
+  const { orgSlug, repoSlug } = useParams()
+  if (!orgSlug || !repoSlug || RESERVED_PATHS.has(orgSlug)) {
+    return <Navigate to="/dashboard" replace />
+  }
+  const repo = repoSlug.replace(/\.git$/i, '')
+  return <Navigate to={`/groups/${orgSlug}/projects/${repo}`} replace />
+}
+
+/** /{org} → group page. */
+function RedirectShortOrg() {
+  const { orgSlug } = useParams()
+  if (!orgSlug || RESERVED_PATHS.has(orgSlug)) {
+    return <Navigate to="/dashboard" replace />
+  }
+  return <Navigate to={`/groups/${orgSlug}`} replace />
 }
 
 export default function App() {
@@ -54,6 +86,8 @@ export default function App() {
                   element={<PipelineRunDetailPage />}
                 />
                 <Route path="/groups/:slug/projects/:projectSlug" element={<ProjectDetailPage />} />
+                <Route path="/:orgSlug/:repoSlug" element={<RedirectShortRepo />} />
+                <Route path="/:orgSlug" element={<RedirectShortOrg />} />
                 <Route element={<ProtectedRoute />}>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
