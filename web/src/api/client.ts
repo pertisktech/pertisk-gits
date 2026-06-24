@@ -11,6 +11,7 @@ import type {
   PullRequestCommentDetail,
   PullRequestDetail,
   PullRequestReview,
+  PullRequestReviewDetail,
   RepoBrowser,
   RepoCollaborator,
   Repository,
@@ -442,6 +443,13 @@ export const api = {
     request<PullRequestCommentDetail>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
       { method: 'POST', body: JSON.stringify({ body }) },
+      token,
+    ),
+
+  listPullRequestReviews: (orgSlug: string, repoSlug: string, pullNumber: number, token?: string | null) =>
+    request<PullRequestReviewDetail[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/reviews`,
+      {},
       token,
     ),
 

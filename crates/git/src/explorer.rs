@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::process::Output;
 
 use anyhow::Context;
 use serde::Serialize;
@@ -449,6 +450,44 @@ async fn git_bytes(repo_path: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {
     Ok(output.stdout)
 }
 
+fn format_git_failure(output: &Output, action: &str) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+
+    match (stderr.is_empty(), stdout.is_empty()) {
+        (false, false) => format!("{action}: {stderr}; {stdout}"),
+        (false, true) => format!("{action}: {stderr}"),
+        (true, false) => format!("{action}: {stdout}"),
+        (true, true) => format!("{action}: git exited with {}", output.status),
+    }
+}
+
+fn git_output_indicates_conflict(output: &Output) -> bool {
+    let combined = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stderr),
+        String::from_utf8_lossy(&output.stdout),
+    );
+    combined.contains("CONFLICT")
+        || combined.contains("changed in both")
+        || combined.contains("<<<<<<<")
+}
+
+async fn is_mergeable_write_tree(
+    repo_path: &Path,
+    base_ref: &str,
+    head_ref: &str,
+) -> anyhow::Result<bool> {
+    let output = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["merge-tree", "--write-tree", base_ref, head_ref])
+        .output()
+        .await
+        .context("spawn git merge-tree")?;
+
+    Ok(output.status.success())
+}
+
 pub async fn create_archive(
     repo_path: &Path,
     ref_name: &str,
@@ -554,13 +593,7 @@ pub async fn compare_branches(
         })
         .collect();
 
-    let merge_tree = git(
-        repo_path,
-        &["merge-tree", &merge_base, &base_ref, &head_ref],
-    )
-    .await
-    .unwrap_or_default();
-    let mergeable = !merge_tree.contains("CONFLICT");
+    let mergeable = is_mergeable_write_tree(repo_path, &base_ref, &head_ref).await?;
 
     Ok(CompareResult {
         base: base_branch.to_string(),
@@ -599,34 +632,58 @@ pub async fn merge_branches(
     let target_ref = format!("refs/heads/{target_branch}");
     let source_ref = format!("refs/heads/{source_branch}");
 
-    git(repo_path, &["symbolic-ref", "HEAD", &target_ref]).await?;
+    let target_sha = git(repo_path, &["rev-parse", &target_ref]).await?;
+    let source_sha = git(repo_path, &["rev-parse", &source_ref]).await?;
 
-    let output = Command::new("git")
+    // Bare repos have no work tree — build the merge commit via merge-tree + commit-tree.
+    let merge_tree = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["merge-tree", "--write-tree", &target_ref, &source_ref])
+        .output()
+        .await
+        .context("spawn git merge-tree")?;
+
+    if !merge_tree.status.success() {
+        if git_output_indicates_conflict(&merge_tree) {
+            anyhow::bail!("merge conflict detected");
+        }
+        anyhow::bail!(format_git_failure(&merge_tree, "merge failed"));
+    }
+
+    let tree_sha = String::from_utf8_lossy(&merge_tree.stdout).trim().to_string();
+    if tree_sha.is_empty() || tree_sha.contains('\n') {
+        anyhow::bail!(format_git_failure(&merge_tree, "merge failed"));
+    }
+
+    let commit_output = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
         .args([
             "-c",
             "user.name=pertisk-gits",
             "-c",
             "user.email=pertisk-gits@localhost",
-            "merge",
-            "--no-ff",
+            "commit-tree",
+            &tree_sha,
+            "-p",
+            &target_sha,
+            "-p",
+            &source_sha,
             "-m",
             message,
-            &source_ref,
         ])
         .output()
         .await
-        .context("spawn git merge")?;
+        .context("spawn git commit-tree")?;
 
-    if !output.status.success() {
-        let _ = Command::new("git")
-            .arg(format!("--git-dir={}", repo_path.display()))
-            .args(["merge", "--abort"])
-            .output()
-            .await;
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        anyhow::bail!("merge failed: {stderr}");
+    if !commit_output.status.success() {
+        anyhow::bail!(format_git_failure(&commit_output, "merge failed"));
     }
 
-    git(repo_path, &["rev-parse", &target_ref]).await
+    let merge_sha = String::from_utf8_lossy(&commit_output.stdout)
+        .trim()
+        .to_string();
+
+    git(repo_path, &["update-ref", &target_ref, &merge_sha]).await?;
+
+    Ok(merge_sha)
 }

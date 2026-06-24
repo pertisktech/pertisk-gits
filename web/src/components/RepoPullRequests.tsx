@@ -157,7 +157,7 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
           </div>
         ) : (
           <ul className="divide-y divide-border">
-            {pulls.map(({ pull_request: pr, author }) => (
+            {pulls.map(({ pull_request: pr, author, review_summary: reviewSummary }) => (
               <li key={pr.id}>
                 <Link
                   to={pullUrl(orgSlug, repoSlug, pr.number)}
@@ -167,7 +167,9 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
                     size={16}
                     className={
                       pr.state === 'open'
-                        ? 'text-dashboard-success shrink-0 mt-0.5'
+                        ? reviewSummary.approved_count > 0
+                          ? 'text-primary shrink-0 mt-0.5'
+                          : 'text-dashboard-success shrink-0 mt-0.5'
                         : pr.state === 'merged'
                           ? 'text-primary shrink-0 mt-0.5'
                           : 'text-muted shrink-0 mt-0.5'
@@ -177,6 +179,12 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-text">{pr.title}</span>
                       <span className="text-xs text-muted">#{pr.number}</span>
+                      {pr.state === 'open' && reviewSummary.approved_count > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full status-green">Approved</span>
+                      )}
+                      {pr.state === 'open' && reviewSummary.changes_requested_count > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full status-red">Changes requested</span>
+                      )}
                     </div>
                     <div className="text-xs text-text-secondary mt-1">
                       {pr.source_branch} → {pr.target_branch} · {author.username}

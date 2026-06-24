@@ -17,8 +17,8 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{
-    ensure_can_write_repo, load_repo_for_read, map_explorer_error, ApiError, AppState, AuthUser,
-    OptionalAuth,
+    ensure_can_read_repo, ensure_can_write_repo, load_repo_for_read, map_explorer_error, ApiError,
+    AppState, AuthUser, OptionalAuth,
 };
 
 pub fn collaboration_read_routes() -> Router<AppState> {
@@ -130,6 +130,7 @@ struct PullRequestDetailResponse {
     pull_request: PullRequest,
     author: UserPublic,
     compare: Option<CompareResult>,
+    review_summary: PullRequestReviewSummary,
 }
 
 #[derive(Serialize)]
@@ -764,6 +765,7 @@ async fn build_pull_detail(
     include_compare: bool,
 ) -> Result<PullRequestDetailResponse, ApiError> {
     let author = fetch_user_public(pool, pull.author_id).await?;
+    let review_summary = fetch_review_summary(pool, pull.id).await?;
     let compare = if include_compare && pull.state == PullRequestState::Open {
         explorer::compare_branches(repo_path, &pull.target_branch, &pull.source_branch)
             .await
@@ -776,6 +778,60 @@ async fn build_pull_detail(
         pull_request: pull,
         author,
         compare,
+        review_summary,
+    })
+}
+
+async fn fetch_review_summary(
+    pool: &PgPool,
+    pull_id: Uuid,
+) -> Result<PullRequestReviewSummary, ApiError> {
+    let reviews = sqlx::query_as::<_, PullRequestReview>(
+        r#"
+        SELECT id, pull_request_id, reviewer_id, state, body, commit_sha, created_at
+        FROM pr_reviews
+        WHERE pull_request_id = $1
+        ORDER BY created_at DESC
+        "#,
+    )
+    .bind(pull_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let mut latest_by_reviewer: std::collections::HashMap<Uuid, ReviewState> =
+        std::collections::HashMap::new();
+    for review in reviews {
+        latest_by_reviewer
+            .entry(review.reviewer_id)
+            .or_insert(review.state);
+    }
+
+    let mut approved_count = 0i32;
+    let mut changes_requested_count = 0i32;
+    let mut approved_reviewer_ids = Vec::new();
+
+    for (reviewer_id, state) in latest_by_reviewer {
+        match state {
+            ReviewState::Approved => {
+                approved_count += 1;
+                approved_reviewer_ids.push(reviewer_id);
+            }
+            ReviewState::ChangesRequested => changes_requested_count += 1,
+            _ => {}
+        }
+    }
+
+    approved_reviewer_ids.sort();
+    let mut approved_by = Vec::with_capacity(approved_reviewer_ids.len());
+    for reviewer_id in approved_reviewer_ids {
+        approved_by.push(fetch_user_public(pool, reviewer_id).await?);
+    }
+
+    Ok(PullRequestReviewSummary {
+        approved_count,
+        changes_requested_count,
+        approved_by,
     })
 }
 
@@ -1115,23 +1171,54 @@ async fn create_pull_request_review(
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
     let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    ensure_can_read_repo(&state, &org_slug, &repo, Some(&auth)).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
-    let review = sqlx::query_as::<_, PullRequestReview>(
+    let review = if let Some(existing) = sqlx::query_as::<_, PullRequestReview>(
         r#"
-        INSERT INTO pr_reviews (pull_request_id, reviewer_id, state, body)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, pull_request_id, reviewer_id, state, body, commit_sha, created_at
+        SELECT id, pull_request_id, reviewer_id, state, body, commit_sha, created_at
+        FROM pr_reviews
+        WHERE pull_request_id = $1 AND reviewer_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1
         "#,
     )
     .bind(pull.id)
     .bind(auth.user_id)
-    .bind(body.state)
-    .bind(&body.body)
-    .fetch_one(&state.pool)
+    .fetch_optional(&state.pool)
     .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    {
+        sqlx::query_as::<_, PullRequestReview>(
+            r#"
+            UPDATE pr_reviews
+            SET state = $1, body = $2, created_at = NOW()
+            WHERE id = $3
+            RETURNING id, pull_request_id, reviewer_id, state, body, commit_sha, created_at
+            "#,
+        )
+        .bind(body.state)
+        .bind(&body.body)
+        .bind(existing.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    } else {
+        sqlx::query_as::<_, PullRequestReview>(
+            r#"
+            INSERT INTO pr_reviews (pull_request_id, reviewer_id, state, body)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, pull_request_id, reviewer_id, state, body, commit_sha, created_at
+            "#,
+        )
+        .bind(pull.id)
+        .bind(auth.user_id)
+        .bind(body.state)
+        .bind(&body.body)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    };
 
     Ok((
         StatusCode::CREATED,

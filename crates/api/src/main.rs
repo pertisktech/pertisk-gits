@@ -983,7 +983,7 @@ pub(crate) async fn load_repo_for_read(
     Ok((org, repo, repo_path))
 }
 
-async fn ensure_can_read_repo(
+pub(crate) async fn ensure_can_read_repo(
     state: &AppState,
     org_slug: &str,
     repo: &Repository,
@@ -1034,6 +1034,10 @@ pub(crate) fn map_explorer_error(err: anyhow::Error) -> ApiError {
     let msg = err.to_string().to_lowercase();
     if msg.contains("not found") || msg.contains("unknown revision") || msg.contains("bad revision") {
         ApiError::from(DomainError::NotFound)
+    } else if msg.contains("merge conflict") {
+        ApiError::from(DomainError::Validation(
+            "merge conflict: update the source branch with the latest target branch, resolve conflicts, then try again".into(),
+        ))
     } else {
         ApiError::from(DomainError::Internal(err.to_string()))
     }

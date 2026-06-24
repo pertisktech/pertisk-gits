@@ -1,18 +1,49 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { GitPullRequest, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { Check, GitPullRequest, Loader2, X } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import type { PullRequest, PullRequestReviewDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { cn } from '../utils/cn'
+
+function prStateVariant(state: PullRequest['state']) {
+  if (state === 'open') return 'yellow' as const
+  if (state === 'merged') return 'violet' as const
+  return 'gray' as const
+}
+
+function prStateLabel(state: PullRequest['state']) {
+  if (state === 'open') return 'Open'
+  if (state === 'merged') return 'Merged'
+  return 'Closed'
+}
+
+function reviewVariant(state: PullRequestReviewDetail['review']['state']) {
+  if (state === 'approved') return 'green' as const
+  if (state === 'changes_requested') return 'red' as const
+  return 'gray' as const
+}
+
+function reviewLabel(state: PullRequestReviewDetail['review']['state']) {
+  if (state === 'approved') return 'Approved'
+  if (state === 'changes_requested') return 'Changes requested'
+  if (state === 'commented') return 'Commented'
+  return 'Pending'
+}
 
 export function PullRequestDetailPage() {
   const { slug: orgSlug = '', projectSlug = '', pullNumber = '' } = useParams()
   const number = Number(pullNumber)
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const queryClient = useQueryClient()
   const [comment, setComment] = useState('')
+  const [reviewMessage, setReviewMessage] = useState<string | null>(null)
+  const [reviewError, setReviewError] = useState<string | null>(null)
+  const [mergeError, setMergeError] = useState<string | null>(null)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -32,19 +63,50 @@ export function PullRequestDetailPage() {
     enabled: Boolean(orgSlug && projectSlug && number),
   })
 
+  const { data: reviews = [] } = useQuery({
+    queryKey: ['pull-reviews', orgSlug, projectSlug, number, token ?? 'public'],
+    queryFn: () => api.listPullRequestReviews(orgSlug, projectSlug, number, token),
+    enabled: Boolean(orgSlug && projectSlug && number),
+  })
+
+  const myLatestReview = useMemo(() => {
+    if (!user) return null
+    return reviews.find((item) => item.reviewer.id === user.id) ?? null
+  }, [reviews, user])
+
+  const latestReviews = useMemo(() => {
+    const seen = new Set<string>()
+    return reviews.filter((item) => {
+      if (seen.has(item.reviewer.id)) return false
+      seen.add(item.reviewer.id)
+      return true
+    })
+  }, [reviews])
+
   const mergeMutation = useMutation({
     mutationFn: () => api.mergePullRequest(token!, orgSlug, projectSlug, number),
     onSuccess: () => {
+      setMergeError(null)
       queryClient.invalidateQueries({ queryKey: ['pull-request', orgSlug, projectSlug, number] })
       queryClient.invalidateQueries({ queryKey: ['repo-pulls', orgSlug, projectSlug] })
     },
+    onError: (err: Error) => setMergeError(err.message),
   })
 
   const reviewMutation = useMutation({
     mutationFn: (state: 'approved' | 'changes_requested') =>
       api.createPullRequestReview(token!, orgSlug, projectSlug, number, { state }),
-    onSuccess: () => {
+    onSuccess: (_data, state) => {
+      setReviewError(null)
+      setReviewMessage(state === 'approved' ? 'You approved this pull request.' : 'You requested changes.')
+      queryClient.invalidateQueries({ queryKey: ['pull-reviews', orgSlug, projectSlug, number] })
       queryClient.invalidateQueries({ queryKey: ['pull-request', orgSlug, projectSlug, number] })
+      queryClient.invalidateQueries({ queryKey: ['repo-pulls', orgSlug, projectSlug] })
+      window.setTimeout(() => setReviewMessage(null), 3000)
+    },
+    onError: (err: Error) => {
+      setReviewMessage(null)
+      setReviewError(err.message)
     },
   })
 
@@ -73,8 +135,10 @@ export function PullRequestDetailPage() {
     )
   }
 
-  const { pull_request: pr, author, compare } = data
+  const { pull_request: pr, author, compare, review_summary: reviewSummary } = data
   const repoName = repoData?.repository.name ?? projectSlug
+  const approvedCount = reviewSummary.approved_count
+  const hasChangesRequested = reviewSummary.changes_requested_count > 0
 
   return (
     <>
@@ -97,6 +161,25 @@ export function PullRequestDetailPage() {
                   {pr.title}{' '}
                   <span className="text-muted font-normal">#{pr.number}</span>
                 </h1>
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <StatusBadge variant={prStateVariant(pr.state)}>{prStateLabel(pr.state)}</StatusBadge>
+                  {approvedCount > 0 && (
+                    <StatusBadge variant="green">
+                      Approved{approvedCount > 1 ? ` (${approvedCount})` : ''}
+                    </StatusBadge>
+                  )}
+                  {hasChangesRequested && (
+                    <StatusBadge variant="red">Changes requested</StatusBadge>
+                  )}
+                  {pr.state === 'open' && approvedCount === 0 && !hasChangesRequested && (
+                    <StatusBadge variant="gray">Awaiting review</StatusBadge>
+                  )}
+                </div>
+                {pr.state === 'open' && approvedCount > 0 && (
+                  <p className="text-xs text-text-secondary mt-2">
+                    Approval recorded. The pull request stays <strong className="text-text">Open</strong> until someone merges it.
+                  </p>
+                )}
                 <p className="text-sm text-text-secondary mt-1">
                   {pr.source_branch} → {pr.target_branch} · {author.username} · {formatDateTime(pr.created_at)}
                 </p>
@@ -109,6 +192,12 @@ export function PullRequestDetailPage() {
             )}
           </div>
 
+          {mergeError && (
+            <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+              {mergeError}
+            </div>
+          )}
+
           {compare && !compare.mergeable && pr.state === 'open' && (
             <p className="text-sm text-dashboard-danger">This branch has merge conflicts.</p>
           )}
@@ -119,6 +208,7 @@ export function PullRequestDetailPage() {
               <span>{compare.files_changed} files changed</span>
               <span className="text-dashboard-success">+{compare.insertions}</span>
               <span className="text-dashboard-danger">−{compare.deletions}</span>
+              {reviews.length > 0 && <span>{approvedCount} approval{approvedCount === 1 ? '' : 's'}</span>}
             </div>
           )}
 
@@ -128,24 +218,76 @@ export function PullRequestDetailPage() {
             </div>
           )}
 
+          {latestReviews.length > 0 && (
+            <div className="border-t border-border pt-4 space-y-2">
+              <h2 className="text-sm font-medium text-text">Reviews</h2>
+              <ul className="space-y-2">
+                {latestReviews.map(({ review, reviewer }) => (
+                  <li
+                    key={review.id}
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span className="font-medium text-text">@{reviewer.username}</span>
+                    <StatusBadge variant={reviewVariant(review.state)}>{reviewLabel(review.state)}</StatusBadge>
+                    <span className="text-xs text-text-secondary">{formatDateTime(review.created_at)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {token && pr.state === 'open' && (
-            <div className="flex flex-wrap gap-2 border-t border-border pt-4">
-              <button
-                type="button"
-                className="px-3 py-1.5 rounded-md border border-border text-sm hover:bg-hover"
-                onClick={() => reviewMutation.mutate('approved')}
-                disabled={reviewMutation.isPending}
-              >
-                Approve
-              </button>
-              <button
-                type="button"
-                className="px-3 py-1.5 rounded-md border border-border text-sm hover:bg-hover"
-                onClick={() => reviewMutation.mutate('changes_requested')}
-                disabled={reviewMutation.isPending}
-              >
-                Request changes
-              </button>
+            <div className="border-t border-border pt-4 space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
+                    myLatestReview?.review.state === 'approved'
+                      ? 'border-green-g1/40 bg-dashboard-success-bg text-dashboard-success'
+                      : 'border-border hover:bg-hover',
+                  )}
+                  onClick={() => reviewMutation.mutate('approved')}
+                  disabled={reviewMutation.isPending}
+                >
+                  {reviewMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  {myLatestReview?.review.state === 'approved' ? 'Approved' : 'Approve'}
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
+                    myLatestReview?.review.state === 'changes_requested'
+                      ? 'border-red-r1/40 bg-dashboard-danger-bg text-dashboard-danger'
+                      : 'border-border hover:bg-hover',
+                  )}
+                  onClick={() => reviewMutation.mutate('changes_requested')}
+                  disabled={reviewMutation.isPending}
+                >
+                  {reviewMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <X size={14} />
+                  )}
+                  {myLatestReview?.review.state === 'changes_requested' ? 'Changes requested' : 'Request changes'}
+                </button>
+              </div>
+
+              {reviewMessage && (
+                <div className="p-3 rounded-md border border-green-g1/30 bg-dashboard-success-bg text-dashboard-success text-sm">
+                  {reviewMessage}
+                </div>
+              )}
+
+              {reviewError && (
+                <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+                  {reviewError}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -311,6 +311,13 @@ pub struct PullRequestReview {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct PullRequestReviewSummary {
+    pub approved_count: i32,
+    pub changes_requested_count: i32,
+    pub approved_by: Vec<UserPublic>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct PullRequestComment {
     pub id: Uuid,

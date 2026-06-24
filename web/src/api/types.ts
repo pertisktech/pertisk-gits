@@ -184,10 +184,17 @@ export interface CompareResult {
   mergeable: boolean
 }
 
+export interface PullRequestReviewSummary {
+  approved_count: number
+  changes_requested_count: number
+  approved_by: User[]
+}
+
 export interface PullRequestDetail {
   pull_request: PullRequest
   author: User
   compare: CompareResult | null
+  review_summary: PullRequestReviewSummary
 }
 
 export interface PullRequestComment {
@@ -214,4 +221,9 @@ export interface PullRequestReview {
   body: string | null
   commit_sha: string | null
   created_at: string
+}
+
+export interface PullRequestReviewDetail {
+  review: PullRequestReview
+  reviewer: User
 }
