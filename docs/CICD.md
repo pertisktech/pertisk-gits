@@ -56,11 +56,20 @@ curl -X POST http://localhost:8080/api/v1/runners/register \
 
 ```bash
 export PERTISK_RUNNER_TOKEN=ptr_...
-export PERTISK_REPOS_ROOT=data/repos
 export PERTISK_API_URL=http://127.0.0.1:8080
+
+# Optional: local bare-repo checkout (same host as pertisk-gits, or NFS mount).
+# If unset or the repo path is missing, the runner downloads the workspace from the API.
+export PERTISK_REPOS_ROOT=data/repos
 
 cargo run -p pertisk-runner
 ```
+
+### Distributed runners
+
+Runners do **not** need to live on the git server. Set `PERTISK_API_URL` to your pertisk-gits API (e.g. `https://git.example.com`). When `PERTISK_REPOS_ROOT` is unset or the bare repo is not on disk, checkout is served by the API from the server's `REPOS_ROOT`.
+
+For lowest latency on the git host, colocate the runner and set `PERTISK_REPOS_ROOT` to the same path as `REPOS_ROOT` (e.g. `/var/lib/pertisk-gits/repos`).
 
 ## Performance testing
 
@@ -141,6 +150,7 @@ jobs:
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/commits/{sha}/statuses` | User JWT |
 | POST | `/api/v1/runners/register` | User JWT |
 | GET | `/api/v1/runner/jobs?timeout_secs=25` | Runner token |
+| GET | `/api/v1/runner/repos/{org}/{repo}/workspace?commit_sha=` | Runner token |
 | POST | `/api/v1/runner/jobs/{id}/complete` | Runner token |
 
 ## Job metrics

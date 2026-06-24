@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -121,6 +122,9 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
         let work_root = TempDir::with_prefix("pertisk-ci-")?;
         let workspace = work_root.path().join(&job.repo_slug);
         if let Err(err) = materialize_workspace(
+            &client,
+            api,
+            &token,
             cli.repos_root.as_deref(),
             &job.org_slug,
             &job.repo_slug,
@@ -201,77 +205,100 @@ async fn complete_job(
 }
 
 async fn materialize_workspace(
+    client: &reqwest::Client,
+    api: &str,
+    token: &str,
     repos_root: Option<&std::path::Path>,
     org_slug: &str,
     repo_slug: &str,
     commit_sha: &str,
     workspace: &std::path::Path,
 ) -> anyhow::Result<()> {
-    let repo_path = if let Some(root) = repos_root {
-        root.join(org_slug).join(format!("{repo_slug}.git"))
+    if let Some(root) = repos_root {
+        let repo_path = root.join(org_slug).join(format!("{repo_slug}.git"));
+        if repo_path.is_dir() {
+            return pertisk_git::workspace::checkout_commit(&repo_path, commit_sha, workspace).await;
+        }
+        tracing::info!(
+            repo = %format!("{org_slug}/{repo_slug}"),
+            path = %repo_path.display(),
+            "local bare repo not found; fetching workspace from API"
+        );
     } else {
-        anyhow::bail!("PERTISK_REPOS_ROOT is required to checkout repository content");
-    };
-
-    if !repo_path.is_dir() {
-        anyhow::bail!("repository not found: {}", repo_path.display());
+        tracing::info!(
+            repo = %format!("{org_slug}/{repo_slug}"),
+            "PERTISK_REPOS_ROOT unset; fetching workspace from API"
+        );
     }
 
+    materialize_workspace_remote(
+        client,
+        api,
+        token,
+        org_slug,
+        repo_slug,
+        commit_sha,
+        workspace,
+    )
+    .await
+}
+
+async fn materialize_workspace_remote(
+    client: &reqwest::Client,
+    api: &str,
+    token: &str,
+    org_slug: &str,
+    repo_slug: &str,
+    commit_sha: &str,
+    workspace: &std::path::Path,
+) -> anyhow::Result<()> {
     tokio::fs::create_dir_all(workspace)
         .await
         .with_context(|| format!("create workspace {}", workspace.display()))?;
 
-    // Read-only checkout from bare repo: keep index in runner temp dir so we never
-    // write index.lock into the pertisk-gits-owned repository.
-    let index_file = workspace
-        .parent()
-        .map(|dir| dir.join("index"))
-        .unwrap_or_else(|| workspace.join(".git-index"));
+    let response = client
+        .get(format!(
+            "{api}/api/v1/runner/repos/{org_slug}/{repo_slug}/workspace"
+        ))
+        .query(&[("commit_sha", commit_sha)])
+        .bearer_auth(token)
+        .send()
+        .await
+        .context("download workspace")?;
 
-    let git_base = |command: &mut Command| {
-        command
-            .args(["-c", "safe.directory=*"])
-            .env("GIT_DIR", &repo_path)
-            .env("GIT_INDEX_FILE", &index_file)
-            .arg("--work-tree")
-            .arg(workspace);
-    };
-
-    let read_tree = {
-        let mut command = Command::new("git");
-        git_base(&mut command);
-        command
-            .args(["read-tree", commit_sha])
-            .output()
-            .await
-            .context("git read-tree")?
-    };
-
-    if !read_tree.status.success() {
-        anyhow::bail!(
-            "git read-tree failed: {}",
-            String::from_utf8_lossy(&read_tree.stderr)
-        );
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        anyhow::bail!("workspace download failed ({status}): {body}");
     }
 
-    let checkout = {
-        let mut command = Command::new("git");
-        git_base(&mut command);
-        command
-            .args(["checkout-index", "-a", "-f"])
-            .output()
-            .await
-            .context("git checkout-index")?
-    };
+    let bytes = response.bytes().await.context("read workspace archive")?;
 
-    if !checkout.status.success() {
+    let mut child = Command::new("tar")
+        .args(["xzf", "-", "-C"])
+        .arg(workspace)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .context("spawn tar")?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .context("tar stdin not available")?;
+    tokio::io::AsyncWriteExt::write_all(&mut stdin, &bytes)
+        .await
+        .context("write tar stdin")?;
+    drop(stdin);
+
+    let output = child.wait_with_output().await.context("tar extract")?;
+    if !output.status.success() {
         anyhow::bail!(
-            "git checkout-index failed: {}",
-            String::from_utf8_lossy(&checkout.stderr)
+            "tar extract failed: {}",
+            String::from_utf8_lossy(&output.stderr)
         );
     }
-
-    let _ = tokio::fs::remove_file(&index_file).await;
 
     let mut entries = tokio::fs::read_dir(workspace).await.context("read workspace")?;
     if entries.next_entry().await?.is_none() {

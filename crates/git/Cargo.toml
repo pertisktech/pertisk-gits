@@ -29,3 +29,4 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 russh = "0.61"
+tempfile = "3"

@@ -91,5 +91,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
       BUILD_FLAGS="--release --locked"; \
       TARGET_DIR="/app/target/release"; \
     fi; \
-    cargo build ${BUILD_FLAGS} -p pertisk-api; \
-    cp "${TARGET_DIR}/pertisk-api" /app/out/pertisk-gits
+    cargo build ${BUILD_FLAGS} -p pertisk-api -p pertisk-worker; \
+    cp "${TARGET_DIR}/pertisk-api" /app/out/pertisk-gits; \
+    cp "${TARGET_DIR}/pertisk-worker" /app/out/pertisk-worker

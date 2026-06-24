@@ -63,9 +63,10 @@ is_valid_linux_binary() {
 
 build_native() {
   echo "Using native cargo build for $PACKAGE_NAME (linux/$ARCH, version $VERSION)..."
-  CARGO_BUILD_JOBS="${CARGO_JOBS:-4}" PERTISK_VERSION="$VERSION" cargo build --release --locked -p "$CARGO_BIN"
+  CARGO_BUILD_JOBS="${CARGO_JOBS:-4}" PERTISK_VERSION="$VERSION" cargo build --release --locked -p "$CARGO_BIN" -p pertisk-worker
   cp "target/release/$CARGO_BIN" "./${artifact}"
-  chmod +x "./${artifact}"
+  cp "target/release/pertisk-worker" "./pertisk-worker-linux-${ARCH}"
+  chmod +x "./${artifact}" "./pertisk-worker-linux-${ARCH}"
 }
 
 build_binary_docker() {
@@ -108,8 +109,9 @@ build_binary_docker() {
 
   docker rm -f "extract-gits-$ARCH" 2>/dev/null || true
   docker create --name "extract-gits-$ARCH" "pertisk-gits-build:$ARCH"
-  docker cp "extract-gits-$ARCH:/app/out/${PACKAGE_NAME}" "./${artifact}"
-  chmod +x "./${artifact}"
+  docker cp "extract-gits-$ARCH:/app/out/pertisk-gits" "./${artifact}"
+  docker cp "extract-gits-$ARCH:/app/out/pertisk-worker" "./pertisk-worker-linux-${ARCH}"
+  chmod +x "./${artifact}" "./pertisk-worker-linux-${ARCH}"
   docker rm "extract-gits-$ARCH"
 }
 
@@ -171,6 +173,34 @@ NoNewPrivileges=true
 WantedBy=multi-user.target
 SVC
 
+cat > build/pertisk-worker.service << 'SVC'
+[Unit]
+Description=Pertisk Gits CI scheduler worker
+After=network.target postgresql.service pertisk-gits.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=pertisk-gits
+Group=pertisk-gits
+WorkingDirectory=/var/lib/pertisk-gits
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/pertisk-gits/pertisk-gits.conf
+ExecStart=/usr/bin/pertisk-worker
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65535
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/pertisk-gits
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
+SVC
+
 cat > build/pertisk-gits.conf << 'CONF'
 # Pertisk Gits — single-port (UI + API + Git HTTP)
 API_HOST=0.0.0.0
@@ -191,9 +221,11 @@ mkdir -p "pkg-${PACKAGE_NAME}/usr/bin" \
   "pkg-${PACKAGE_NAME}/lib/systemd/system"
 
 cp "$artifact" "pkg-${PACKAGE_NAME}/usr/bin/${PACKAGE_NAME}"
-chmod +x "pkg-${PACKAGE_NAME}/usr/bin/${PACKAGE_NAME}"
+cp "pertisk-worker-linux-${ARCH}" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-worker"
+chmod +x "pkg-${PACKAGE_NAME}/usr/bin/${PACKAGE_NAME}" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-worker"
 cp build/pertisk-gits.conf "pkg-${PACKAGE_NAME}/etc/pertisk-gits/pertisk-gits.conf"
 cp build/pertisk-gits.service "pkg-${PACKAGE_NAME}/lib/systemd/system/pertisk-gits.service"
+cp build/pertisk-worker.service "pkg-${PACKAGE_NAME}/lib/systemd/system/pertisk-worker.service"
 cp -r web/dist/. "pkg-${PACKAGE_NAME}/usr/share/pertisk-gits/web/"
 
 cat > preinstall.sh << 'PRE'
@@ -220,12 +252,15 @@ if [ -d /etc/pertisk-gits ]; then
   chmod 640 /etc/pertisk-gits/pertisk-gits.conf 2>/dev/null || true
 fi
 command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
+command -v systemctl >/dev/null 2>&1 && systemctl enable pertisk-worker --now 2>/dev/null || true
 POST
 
 cat > preremove.sh << 'PRE'
 #!/bin/sh
 set -e
 if command -v systemctl >/dev/null 2>&1; then
+  systemctl stop pertisk-worker 2>/dev/null || true
+  systemctl disable pertisk-worker 2>/dev/null || true
   systemctl stop pertisk-gits 2>/dev/null || true
   systemctl disable pertisk-gits 2>/dev/null || true
 fi

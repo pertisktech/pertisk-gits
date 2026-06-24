@@ -9,6 +9,7 @@ pub mod serve;
 pub mod ssh;
 pub mod ssh_keys;
 pub mod storage;
+pub mod workspace;
 
 pub use config::GitConfig;
 pub use http::GitHttpState;

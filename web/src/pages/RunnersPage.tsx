@@ -64,6 +64,7 @@ function TokenModal({
           <pre className="overflow-x-auto rounded-md border border-border bg-bg p-3 text-xs text-text">
 {`PERTISK_RUNNER_TOKEN=${token}
 PERTISK_API_URL=https://your-gits-host:8080
+# Optional — omit on remote runners; workspace is fetched from the API
 PERTISK_REPOS_ROOT=/var/lib/pertisk-gits/repos`}
           </pre>
           <p className="text-sm text-text-secondary">
@@ -98,6 +99,7 @@ export function RunnersPage() {
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
+  const [labels, setLabels] = useState('self-hosted')
   const [error, setError] = useState<string | null>(null)
   const [tokenModal, setTokenModal] = useState<{ title: string; token: string } | null>(null)
 
@@ -109,10 +111,18 @@ export function RunnersPage() {
   })
 
   const registerRunner = useMutation({
-    mutationFn: () => api.registerRunner(token!, { name: name.trim() }),
+    mutationFn: () =>
+      api.registerRunner(token!, {
+        name: name.trim(),
+        labels: labels
+          .split(',')
+          .map((label) => label.trim())
+          .filter(Boolean),
+      }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['runners'] })
       setName('')
+      setLabels('self-hosted')
       setError(null)
       setTokenModal({ title: 'Runner registered', token: data.token })
     },
@@ -173,21 +183,42 @@ export function RunnersPage() {
           <div className="gogs-panel-body space-y-4">
             <p className="text-sm text-text-secondary">
               Create a runner, copy the token, then configure it on the host running{' '}
-              <span className="font-mono text-text">pertisk-runner</span>.
+              <span className="font-mono text-text">pertisk-runner</span>. Labels must match{' '}
+              <span className="font-mono text-text">runs-on</span> in{' '}
+              <span className="font-mono text-text">.pertisk-ci.yaml</span>.
             </p>
-            <form className="flex flex-col gap-4 sm:flex-row sm:items-end" onSubmit={onSubmit}>
-              <div className="flex-1 space-y-2">
-                <label htmlFor="runner-name" className="text-sm font-medium text-text">
-                  Runner name
-                </label>
-                <input
-                  id="runner-name"
-                  className="gogs-field"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="pertisk-proxy"
-                  required
-                />
+            <form className="space-y-4" onSubmit={onSubmit}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="runner-name" className="text-sm font-medium text-text">
+                    Runner name
+                  </label>
+                  <input
+                    id="runner-name"
+                    className="gogs-field"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="pertisk-proxy"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label htmlFor="runner-labels" className="text-sm font-medium text-text">
+                    Labels
+                  </label>
+                  <input
+                    id="runner-labels"
+                    className="gogs-field font-mono text-sm"
+                    value={labels}
+                    onChange={(e) => setLabels(e.target.value)}
+                    placeholder="self-hosted, docker"
+                    required
+                  />
+                  <p className="text-xs text-text-secondary">
+                    Comma-separated. Example: <code>self-hosted</code> or{' '}
+                    <code>docker, self-hosted</code>
+                  </p>
+                </div>
               </div>
               <PrimaryButton type="submit" disabled={registerRunner.isPending}>
                 {registerRunner.isPending ? (

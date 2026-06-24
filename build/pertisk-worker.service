@@ -1,0 +1,25 @@
+[Unit]
+Description=Pertisk Gits CI scheduler worker
+After=network.target postgresql.service pertisk-gits.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=pertisk-gits
+Group=pertisk-gits
+WorkingDirectory=/var/lib/pertisk-gits
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+EnvironmentFile=-/etc/pertisk-gits/pertisk-gits.conf
+ExecStart=/usr/bin/pertisk-worker
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+LimitNOFILE=65535
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/pertisk-gits
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

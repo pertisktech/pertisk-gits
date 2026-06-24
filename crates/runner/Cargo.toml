@@ -9,6 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 pertisk-cicd = { path = "../cicd" }
+pertisk-git = { path = "../git" }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }

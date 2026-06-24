@@ -2,8 +2,10 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
     http::{header, HeaderMap, StatusCode},
+    response::Response,
     routing::{delete, get, post},
     Json, Router,
 };
@@ -59,6 +61,10 @@ pub fn runner_routes() -> Router<AppState> {
         .route("/runner/jobs/{job_id}/start", post(start_runner_job))
         .route("/runner/jobs/{job_id}/complete", post(complete_runner_job))
         .route("/runner/heartbeat", post(runner_heartbeat))
+        .route(
+            "/runner/repos/{org_slug}/{repo_slug}/workspace",
+            get(runner_workspace),
+        )
 }
 
 pub fn post_receive_hook(
@@ -540,6 +546,70 @@ async fn runner_heartbeat(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+struct WorkspaceQuery {
+    commit_sha: String,
+}
+
+async fn runner_workspace(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<WorkspaceQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+
+    let allowed = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM job_runs j
+            INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+            INNER JOIN repositories r ON r.id = p.repository_id
+            INNER JOIN organizations o ON o.id = r.organization_id
+            WHERE j.runner_id = $1
+              AND j.status IN ('queued', 'running')
+              AND o.slug = $2
+              AND r.slug = $3
+              AND p.commit_sha = $4
+        )
+        "#,
+    )
+    .bind(runner_id)
+    .bind(&org_slug)
+    .bind(&repo_slug)
+    .bind(&query.commit_sha)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
+    if !allowed {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "no active job for this repository and commit".into(),
+        ));
+    }
+
+    let repo_path =
+        pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
+    if !repo_path.is_dir() {
+        return Err((
+            StatusCode::NOT_FOUND,
+            format!("repository not found: {}", repo_path.display()),
+        ));
+    }
+
+    let archive = pertisk_git::workspace::archive_commit(&repo_path, &query.commit_sha)
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/gzip")
+        .body(Body::from(archive))
+        .map_err(|e| internal(e.to_string()))
+}
+
 pub async fn enqueue_push_triggers(
     state: &AppState,
     repository_id: Uuid,
@@ -726,8 +796,11 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
     let mut tx = pool.begin().await?;
     let job = sqlx::query_scalar::<_, Uuid>(
         r#"
-        SELECT j.id FROM job_runs j
+        SELECT j.id
+        FROM job_runs j
+        INNER JOIN runners r ON r.id = $1
         WHERE j.status = 'queued'
+          AND j.runs_on = ANY(r.labels)
           AND NOT EXISTS (
             SELECT 1
             FROM job_runs dep
@@ -736,10 +809,11 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
               AND dep.status <> 'success'
           )
         ORDER BY j.queued_at ASC
-        FOR UPDATE SKIP LOCKED
+        FOR UPDATE OF j SKIP LOCKED
         LIMIT 1
         "#,
     )
+    .bind(runner_id)
     .fetch_optional(&mut *tx)
     .await?;
 
