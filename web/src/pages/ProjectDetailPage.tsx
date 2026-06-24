@@ -1,17 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { Code2, FolderGit2, GitCommit, Settings } from 'lucide-react'
+import { Code2, GitCommit, Settings } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { GogsSegment } from '../components/GogsSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
-import { RepoClonePanel } from '../components/RepoClonePanel'
+import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
 
-type Tab = 'code' | 'commits' | 'clone' | 'settings'
+type Tab = 'code' | 'commits' | 'settings'
 
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
@@ -21,10 +21,12 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     const requested = searchParams.get('tab')
-    if (requested === 'commits' || requested === 'clone' || requested === 'code') {
+    if (requested === 'commits' || requested === 'code') {
       setTab(requested)
     } else if (requested === 'settings' && token) {
       setTab('settings')
+    } else if (requested === 'clone') {
+      setTab('code')
     }
   }, [searchParams, token])
 
@@ -41,15 +43,21 @@ export function ProjectDetailPage() {
     enabled: Boolean(orgSlug && projectSlug),
   })
 
+  const { data: browserData } = useQuery({
+    queryKey: ['repo-browser', orgSlug, projectSlug],
+    queryFn: () => api.getRepoBrowser(orgSlug, projectSlug, token),
+    enabled: Boolean(orgSlug && projectSlug),
+  })
+
   const project = data?.repository
   const cloneUrl = data?.clone_url_http ?? ''
   const cloneUrlSsh = data?.clone_url_ssh ?? null
   const authCloneUrl = user ? cloneUrl.replace('://', `://${user.username}@`) : cloneUrl
+  const repoEmpty = browserData?.browser.empty ?? false
 
   const tabs = [
     { id: 'code', label: 'Code', icon: Code2 },
     { id: 'commits', label: 'Commits', icon: GitCommit },
-    { id: 'clone', label: 'Clone', icon: FolderGit2 },
     ...(token ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
   ]
 
@@ -81,49 +89,50 @@ export function ProjectDetailPage() {
         active={tab}
         onChange={(id) => setTab(id as Tab)}
         tabs={tabs}
+        action={
+          <RepoCloneDropdown
+            cloneUrl={cloneUrl}
+            authCloneUrl={authCloneUrl}
+            cloneUrlSsh={cloneUrlSsh}
+            defaultBranch={project.default_branch}
+            isPrivate={project.visibility === 'private'}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            token={token}
+            empty={repoEmpty}
+          />
+        }
       />
 
-      {tab === 'code' && (
-        <RepoBrowser
-          token={token}
-          orgSlug={orgSlug}
-          repoSlug={projectSlug}
-          defaultBranch={project.default_branch}
-          cloneUrl={cloneUrl}
-          authCloneUrl={authCloneUrl}
-          cloneUrlSsh={cloneUrlSsh}
-          isPrivate={project.visibility === 'private'}
-        />
-      )}
+      <div className="min-w-0 space-y-4">
+        {tab === 'code' && (
+          <RepoBrowser
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            defaultBranch={project.default_branch}
+          />
+        )}
 
-      {tab === 'commits' && (
-        <RepoCommits
-          token={token}
-          orgSlug={orgSlug}
-          repoSlug={projectSlug}
-          defaultBranch={project.default_branch}
-        />
-      )}
+        {tab === 'commits' && (
+          <RepoCommits
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            defaultBranch={project.default_branch}
+          />
+        )}
 
-      {tab === 'clone' && (
-        <RepoClonePanel
-          cloneUrl={cloneUrl}
-          authCloneUrl={authCloneUrl}
-          cloneUrlSsh={cloneUrlSsh}
-          defaultBranch={project.default_branch}
-          isPrivate={project.visibility === 'private'}
-        />
-      )}
-
-      {tab === 'settings' && token && (
-        <RepoSettings
-          token={token}
-          orgSlug={orgSlug}
-          repoSlug={projectSlug}
-          project={project}
-          branches={[project.default_branch]}
-        />
-      )}
+        {tab === 'settings' && token && (
+          <RepoSettings
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            project={project}
+            branches={[project.default_branch]}
+          />
+        )}
+      </div>
     </>
   )
 }

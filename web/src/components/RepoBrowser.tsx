@@ -14,7 +14,6 @@ import { findReadmePath } from '../lib/readme'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
 import { CodeFileView } from './CodeFileView'
-import { RepoClonePanel } from './RepoClonePanel'
 import { RepoReadme } from './RepoReadme'
 
 interface RepoBrowserProps {
@@ -22,10 +21,6 @@ interface RepoBrowserProps {
   orgSlug: string
   repoSlug: string
   defaultBranch: string
-  cloneUrl?: string
-  authCloneUrl?: string
-  cloneUrlSsh?: string | null
-  isPrivate?: boolean
 }
 
 export function RepoBrowser({
@@ -33,10 +28,6 @@ export function RepoBrowser({
   orgSlug,
   repoSlug,
   defaultBranch,
-  cloneUrl,
-  authCloneUrl,
-  cloneUrlSsh,
-  isPrivate = false,
 }: RepoBrowserProps) {
   const [path, setPath] = useState('')
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
@@ -111,23 +102,14 @@ export function RepoBrowser({
   }
 
   if (browser?.empty) {
-    if (cloneUrl && authCloneUrl) {
-      return (
-        <RepoClonePanel
-          cloneUrl={cloneUrl}
-          authCloneUrl={authCloneUrl}
-          cloneUrlSsh={cloneUrlSsh}
-          defaultBranch={defaultBranch}
-          isPrivate={isPrivate}
-        />
-      )
-    }
-
     return (
       <div className="gogs-panel">
-        <div className="gogs-panel-body flex items-center gap-2 text-text-secondary text-sm">
-          <Loader2 size={16} className="animate-spin" />
-          Loading clone instructions…
+        <div className="gogs-panel-body text-center py-12">
+          <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
+          <p className="text-text font-medium">This repository is empty</p>
+          <p className="text-sm text-text-secondary mt-1 max-w-md mx-auto">
+            Push your first commit using the Code dropdown above, then files will appear here.
+          </p>
         </div>
       </div>
     )

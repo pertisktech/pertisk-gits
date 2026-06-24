@@ -448,3 +448,28 @@ async fn git_bytes(repo_path: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {
 
     Ok(output.stdout)
 }
+
+pub async fn create_archive(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+) -> anyhow::Result<Vec<u8>> {
+    if !ref_exists_kind(repo_path, ref_name, kind).await? {
+        let label = match kind {
+            RefKind::Branch => "branch",
+            RefKind::Tag => "tag",
+        };
+        anyhow::bail!("{label} '{ref_name}' not found");
+    }
+
+    let archive_ref = match kind {
+        RefKind::Branch => format!("refs/heads/{ref_name}"),
+        RefKind::Tag => format!("refs/tags/{ref_name}"),
+    };
+
+    git_bytes(
+        repo_path,
+        &["archive", "--format=zip", "--output=-", &archive_ref],
+    )
+    .await
+}

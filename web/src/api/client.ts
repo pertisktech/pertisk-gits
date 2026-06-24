@@ -156,6 +156,16 @@ export const api = {
     return `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/raw?${search}`
   },
 
+  repoArchiveUrl: (
+    orgSlug: string,
+    repoSlug: string,
+    params: { ref: string; ref_kind?: 'branch' | 'tag' },
+  ) => {
+    const search = new URLSearchParams({ ref: params.ref })
+    if (params.ref_kind) search.set('ref_kind', params.ref_kind)
+    return `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/archive?${search}`
+  },
+
   getRepoCommits: (
     orgSlug: string,
     repoSlug: string,

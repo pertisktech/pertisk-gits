@@ -113,6 +113,10 @@ async fn main() -> anyhow::Result<()> {
             get(get_repo_raw),
         )
         .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/archive",
+            get(get_repo_archive),
+        )
+        .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/commits",
             get(get_repo_commits),
         )
@@ -1024,6 +1028,34 @@ async fn get_repo_raw(
         StatusCode::OK,
         [
             (header::CONTENT_TYPE, content_type),
+            (header::CONTENT_DISPOSITION, disposition.as_str()),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+async fn get_repo_archive(
+    State(state): State<AppState>,
+    OptionalAuth(auth): OptionalAuth,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<TreeQuery>,
+) -> Result<Response, ApiError> {
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let ref_kind = parse_ref_kind(&query.ref_kind)?;
+
+    let bytes = explorer::create_archive(&repo_path, &query.r#ref, ref_kind)
+        .await
+        .map_err(map_explorer_error)?;
+
+    let filename = format!("{repo_slug}-{ref}.zip", ref = query.r#ref);
+    let disposition = format!("attachment; filename=\"{filename}\"");
+
+    Ok((
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "application/zip"),
             (header::CONTENT_DISPOSITION, disposition.as_str()),
         ],
         bytes,
