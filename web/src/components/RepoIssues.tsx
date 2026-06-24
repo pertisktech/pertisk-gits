@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { issueUrl } from '../lib/collaboration'
-import { RepoLabelsPanel } from './IssueSidebar'
+import { RepoLabelsPanel, RepoMilestonesPanel } from './IssueSidebar'
 import { LabelBadge } from './LabelBadge'
 import { PrimaryButton } from './ui'
 
@@ -130,13 +130,16 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
       </div>
 
       {token && (
-        <RepoLabelsPanel
-          token={token}
-          orgSlug={orgSlug}
-          repoSlug={repoSlug}
-          activeLabel={labelFilter}
-          onFilterLabel={setLabelFilter}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <RepoLabelsPanel
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={repoSlug}
+            activeLabel={labelFilter}
+            onFilterLabel={setLabelFilter}
+          />
+          <RepoMilestonesPanel token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
+        </div>
       )}
 
       {showNew && token && (

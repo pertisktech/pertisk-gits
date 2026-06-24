@@ -14,7 +14,7 @@ export function AppLayout() {
   const { user } = useAuth()
 
   return (
-    <div className="flex flex-col h-screen bg-bg text-text">
+    <div className="gogs-shell text-text">
       <header className="gogs-topbar shrink-0">
         <div className="gogs-topbar-inner">
           <NavLink to="/dashboard" className="gogs-brand">

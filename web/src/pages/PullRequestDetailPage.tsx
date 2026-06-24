@@ -5,6 +5,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { PullRequest, PullRequestReviewDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { PullRequestDiff } from '../components/PullRequestDiff'
 import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
@@ -44,6 +45,7 @@ export function PullRequestDetailPage() {
   const [reviewMessage, setReviewMessage] = useState<string | null>(null)
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [mergeError, setMergeError] = useState<string | null>(null)
+  const [mergeStrategy, setMergeStrategy] = useState<'merge' | 'squash'>('merge')
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -74,6 +76,11 @@ export function PullRequestDetailPage() {
     return reviews.find((item) => item.reviewer.id === user.id) ?? null
   }, [reviews, user])
 
+  const generalComments = useMemo(
+    () => comments.filter(({ comment: c }) => !c.path),
+    [comments],
+  )
+
   const latestReviews = useMemo(() => {
     const seen = new Set<string>()
     return reviews.filter((item) => {
@@ -84,7 +91,8 @@ export function PullRequestDetailPage() {
   }, [reviews])
 
   const mergeMutation = useMutation({
-    mutationFn: () => api.mergePullRequest(token!, orgSlug, projectSlug, number),
+    mutationFn: () =>
+      api.mergePullRequest(token!, orgSlug, projectSlug, number, { merge_strategy: mergeStrategy }),
     onSuccess: () => {
       setMergeError(null)
       queryClient.invalidateQueries({ queryKey: ['pull-request', orgSlug, projectSlug, number] })
@@ -111,7 +119,7 @@ export function PullRequestDetailPage() {
   })
 
   const commentMutation = useMutation({
-    mutationFn: () => api.createPullRequestComment(token!, orgSlug, projectSlug, number, comment),
+    mutationFn: () => api.createPullRequestComment(token!, orgSlug, projectSlug, number, { body: comment }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['pull-comments', orgSlug, projectSlug, number] })
       setComment('')
@@ -186,9 +194,24 @@ export function PullRequestDetailPage() {
               </div>
             </div>
             {token && pr.state === 'open' && compare?.mergeable && (
-              <PrimaryButton type="button" onClick={() => mergeMutation.mutate()} disabled={mergeMutation.isPending}>
-                {mergeMutation.isPending ? 'Merging…' : 'Merge pull request'}
-              </PrimaryButton>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  className="gogs-field !py-1.5 !text-sm"
+                  value={mergeStrategy}
+                  onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash')}
+                  disabled={mergeMutation.isPending}
+                >
+                  <option value="merge">Create merge commit</option>
+                  <option value="squash">Squash and merge</option>
+                </select>
+                <PrimaryButton
+                  type="button"
+                  onClick={() => mergeMutation.mutate()}
+                  disabled={mergeMutation.isPending}
+                >
+                  {mergeMutation.isPending ? 'Merging…' : 'Merge pull request'}
+                </PrimaryButton>
+              </div>
             )}
           </div>
 
@@ -297,15 +320,22 @@ export function PullRequestDetailPage() {
         <div className="gogs-panel mb-4">
           <div className="gogs-panel-header">Changes</div>
           <div className="gogs-panel-body flush">
-            <pre className="gogs-diff m-0">{compare.diff}</pre>
+            <PullRequestDiff
+              token={token}
+              orgSlug={orgSlug}
+              repoSlug={projectSlug}
+              pullNumber={number}
+              diff={compare.diff}
+              comments={comments}
+            />
           </div>
         </div>
       )}
 
       <div className="gogs-panel">
-        <div className="gogs-panel-header">{comments.length} comments</div>
+        <div className="gogs-panel-header">{generalComments.length} comments</div>
         <div className="gogs-panel-body space-y-4">
-          {comments.map(({ comment: c, author: commentAuthor }) => (
+          {generalComments.map(({ comment: c, author: commentAuthor }) => (
             <div key={c.id} className="border-b border-border pb-4 last:border-0 last:pb-0">
               <div className="text-xs text-text-secondary mb-2">
                 <span className="font-medium text-text">{commentAuthor.username}</span>

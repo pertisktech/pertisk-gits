@@ -316,6 +316,17 @@ export const api = {
   listMilestones: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<Milestone[]>(`/organizations/${orgSlug}/repositories/${repoSlug}/milestones`, {}, token),
 
+  createMilestone: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { title: string; description?: string; due_on?: string },
+  ) =>
+    request<Milestone>(`/organizations/${orgSlug}/repositories/${repoSlug}/milestones`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
   listIssues: (
     orgSlug: string,
     repoSlug: string,
@@ -425,10 +436,16 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  mergePullRequest: (token: string, orgSlug: string, repoSlug: string, pullNumber: number) =>
+  mergePullRequest: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    pullNumber: number,
+    payload?: { merge_strategy?: 'merge' | 'squash' },
+  ) =>
     request<{ merge_commit_sha: string; pull_request: PullRequestDetail['pull_request'] }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/merge`,
-      { method: 'POST', body: JSON.stringify({}) },
+      { method: 'POST', body: JSON.stringify(payload ?? {}) },
       token,
     ),
 
@@ -439,10 +456,16 @@ export const api = {
       token,
     ),
 
-  createPullRequestComment: (token: string, orgSlug: string, repoSlug: string, pullNumber: number, body: string) =>
+  createPullRequestComment: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    pullNumber: number,
+    payload: { body: string; path?: string; line?: number },
+  ) =>
     request<PullRequestCommentDetail>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
-      { method: 'POST', body: JSON.stringify({ body }) },
+      { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
 

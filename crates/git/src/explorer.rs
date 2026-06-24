@@ -614,6 +614,46 @@ pub async fn merge_branches(
     source_branch: &str,
     message: &str,
 ) -> anyhow::Result<String> {
+    let (tree_sha, target_ref, parents) =
+        prepare_merge(repo_path, target_branch, source_branch).await?;
+
+    let target_sha = parents[0].clone();
+    let source_sha = parents[1].clone();
+
+    create_commit_and_update_ref(
+        repo_path,
+        &target_ref,
+        &tree_sha,
+        &[target_sha.as_str(), source_sha.as_str()],
+        message,
+    )
+    .await
+}
+
+pub async fn squash_branches(
+    repo_path: &Path,
+    target_branch: &str,
+    source_branch: &str,
+    message: &str,
+) -> anyhow::Result<String> {
+    let (tree_sha, target_ref, parents) =
+        prepare_merge(repo_path, target_branch, source_branch).await?;
+
+    create_commit_and_update_ref(
+        repo_path,
+        &target_ref,
+        &tree_sha,
+        &[parents[0].as_str()],
+        message,
+    )
+    .await
+}
+
+async fn prepare_merge(
+    repo_path: &Path,
+    target_branch: &str,
+    source_branch: &str,
+) -> anyhow::Result<(String, String, Vec<String>)> {
     if target_branch == source_branch {
         anyhow::bail!("source and target branches must differ");
     }
@@ -635,7 +675,6 @@ pub async fn merge_branches(
     let target_sha = git(repo_path, &["rev-parse", &target_ref]).await?;
     let source_sha = git(repo_path, &["rev-parse", &source_ref]).await?;
 
-    // Bare repos have no work tree — build the merge commit via merge-tree + commit-tree.
     let merge_tree = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
         .args(["merge-tree", "--write-tree", &target_ref, &source_ref])
@@ -655,22 +694,34 @@ pub async fn merge_branches(
         anyhow::bail!(format_git_failure(&merge_tree, "merge failed"));
     }
 
+    Ok((tree_sha, target_ref, vec![target_sha, source_sha]))
+}
+
+async fn create_commit_and_update_ref(
+    repo_path: &Path,
+    target_ref: &str,
+    tree_sha: &str,
+    parents: &[&str],
+    message: &str,
+) -> anyhow::Result<String> {
+    let mut args = vec![
+        "-c",
+        "user.name=pertisk-gits",
+        "-c",
+        "user.email=pertisk-gits@localhost",
+        "commit-tree",
+        tree_sha,
+    ];
+    for parent in parents {
+        args.push("-p");
+        args.push(*parent);
+    }
+    args.push("-m");
+    args.push(message);
+
     let commit_output = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
-        .args([
-            "-c",
-            "user.name=pertisk-gits",
-            "-c",
-            "user.email=pertisk-gits@localhost",
-            "commit-tree",
-            &tree_sha,
-            "-p",
-            &target_sha,
-            "-p",
-            &source_sha,
-            "-m",
-            message,
-        ])
+        .args(args)
         .output()
         .await
         .context("spawn git commit-tree")?;
@@ -683,7 +734,7 @@ pub async fn merge_branches(
         .trim()
         .to_string();
 
-    git(repo_path, &["update-ref", &target_ref, &merge_sha]).await?;
+    git(repo_path, &["update-ref", target_ref, &merge_sha]).await?;
 
     Ok(merge_sha)
 }

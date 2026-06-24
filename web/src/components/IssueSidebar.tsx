@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Tag } from 'lucide-react'
+import { Tag, Target } from 'lucide-react'
 import { useState } from 'react'
 import { api } from '../api/client'
 import type { IssueDetail, Milestone } from '../api/types'
@@ -247,6 +247,119 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
             <PrimaryButton type="submit" disabled={createMutation.isPending || !name.trim()}>
               Create
             </PrimaryButton>
+          </form>
+        )}
+      </div>
+    </div>
+  )
+}
+
+interface RepoMilestonesPanelProps {
+  token: string
+  orgSlug: string
+  repoSlug: string
+}
+
+export function RepoMilestonesPanel({ token, orgSlug, repoSlug }: RepoMilestonesPanelProps) {
+  const queryClient = useQueryClient()
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [dueOn, setDueOn] = useState('')
+  const [showForm, setShowForm] = useState(false)
+
+  const { data: milestones = [] } = useQuery({
+    queryKey: ['repo-milestones', orgSlug, repoSlug],
+    queryFn: () => api.listMilestones(orgSlug, repoSlug, token),
+    enabled: Boolean(orgSlug && repoSlug),
+  })
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      api.createMilestone(token, orgSlug, repoSlug, {
+        title,
+        description: description.trim() ? description : undefined,
+        due_on: dueOn || undefined,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['repo-milestones', orgSlug, repoSlug] })
+      setTitle('')
+      setDescription('')
+      setDueOn('')
+      setShowForm(false)
+    },
+  })
+
+  return (
+    <div className="gogs-panel">
+      <div className="gogs-panel-header flex items-center justify-between gap-2">
+        <span className="flex items-center gap-1.5">
+          <Target size={14} />
+          Milestones
+        </span>
+        <button
+          type="button"
+          className="text-xs text-primary hover:underline"
+          onClick={() => setShowForm((v) => !v)}
+        >
+          {showForm ? 'Cancel' : 'New milestone'}
+        </button>
+      </div>
+      <div className="gogs-panel-body space-y-3">
+        {milestones.length === 0 && !showForm && (
+          <p className="text-xs text-text-secondary">No milestones yet.</p>
+        )}
+        {milestones.length > 0 && (
+          <ul className="space-y-2 text-sm">
+            {milestones.map((milestone) => (
+              <li key={milestone.id} className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="font-medium text-text">{milestone.title}</div>
+                  {milestone.description && (
+                    <div className="text-xs text-text-secondary mt-0.5">{milestone.description}</div>
+                  )}
+                </div>
+                {milestone.due_on && (
+                  <span className="text-xs text-muted whitespace-nowrap">due {milestone.due_on}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {showForm && (
+          <form
+            className="space-y-2 pt-2 border-t border-border"
+            onSubmit={(e) => {
+              e.preventDefault()
+              createMutation.mutate()
+            }}
+          >
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Milestone title"
+              required
+              className="gogs-field w-full !py-1.5 !text-sm"
+            />
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Description (optional)"
+              rows={2}
+              className="gogs-field w-full !py-1.5 !text-sm resize-y"
+            />
+            <input
+              type="date"
+              value={dueOn}
+              onChange={(e) => setDueOn(e.target.value)}
+              className="gogs-field w-full !py-1.5 !text-sm"
+            />
+            <PrimaryButton type="submit" disabled={createMutation.isPending || !title.trim()}>
+              Create milestone
+            </PrimaryButton>
+            {createMutation.error && (
+              <p className="text-xs text-dashboard-danger">{(createMutation.error as Error).message}</p>
+            )}
           </form>
         )}
       </div>

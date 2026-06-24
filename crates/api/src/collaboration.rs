@@ -1018,7 +1018,7 @@ async fn merge_pull_request(
     State(state): State<AppState>,
     auth: AuthUser,
     Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
-    Json(_body): Json<MergePullRequestRequest>,
+    Json(body): Json<MergePullRequestRequest>,
 ) -> Result<Json<MergePullRequestResponse>, ApiError> {
     let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
     ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
@@ -1028,19 +1028,42 @@ async fn merge_pull_request(
         return Err(DomainError::Validation("pull request is not open".into()).into());
     }
 
-    let message = format!(
-        "Merge pull request #{} from {} into {}",
-        existing.number, existing.source_branch, existing.target_branch
-    );
+    let strategy = body.merge_strategy.as_deref().unwrap_or("merge");
+    let message = match strategy {
+        "squash" => format!(
+            "Squash merge pull request #{} from {}",
+            existing.number, existing.source_branch
+        ),
+        "merge" | "no-ff" => format!(
+            "Merge pull request #{} from {} into {}",
+            existing.number, existing.source_branch, existing.target_branch
+        ),
+        other => {
+            return Err(DomainError::Validation(format!(
+                "unsupported merge strategy '{other}' (use merge or squash)"
+            ))
+            .into());
+        }
+    };
 
-    let merge_sha = explorer::merge_branches(
-        &repo_path,
-        &existing.target_branch,
-        &existing.source_branch,
-        &message,
-    )
-    .await
-    .map_err(map_explorer_error)?;
+    let merge_sha = match strategy {
+        "squash" => explorer::squash_branches(
+            &repo_path,
+            &existing.target_branch,
+            &existing.source_branch,
+            &message,
+        )
+        .await
+        .map_err(map_explorer_error)?,
+        _ => explorer::merge_branches(
+            &repo_path,
+            &existing.target_branch,
+            &existing.source_branch,
+            &message,
+        )
+        .await
+        .map_err(map_explorer_error)?,
+    };
 
     let pull = sqlx::query_as::<_, PullRequest>(
         r#"
@@ -1103,7 +1126,7 @@ async fn create_pull_request_comment(
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
     let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    ensure_can_read_repo(&state, &org_slug, &repo, Some(&auth)).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let comment = sqlx::query_as::<_, PullRequestComment>(
