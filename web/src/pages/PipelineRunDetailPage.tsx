@@ -205,7 +205,7 @@ export function PipelineRunDetailPage() {
                   }
                 />
                 {activeJob.metrics_json && (
-                  <div className="ci-terminal-meta-bar border-t border-border/30">
+                  <div className="ci-terminal-meta-bar ci-terminal-meta-bar--footer">
                     <span>
                       queue <strong>{activeJob.metrics_json.queue_wait_ms}ms</strong>
                     </span>

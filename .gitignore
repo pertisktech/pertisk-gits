@@ -17,3 +17,4 @@ pertisk-gits-linux-*
 pkg-pertisk-runner/
 pertisk-runner-linux-*
 pertisk-worker-linux-*
+pertisk-worker-linux-amd64

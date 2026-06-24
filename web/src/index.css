@@ -719,20 +719,7 @@ body,
   max-width: 1280px;
   margin: 0 auto;
   padding: 1.25rem 1rem 2rem;
-}
-
-.gogs-main:has(.pipeline-run-page) {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.gogs-main:has(.pipeline-run-page) .gogs-container {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-height: 0;
-  padding-bottom: 0;
+  width: 100%;
 }
 
 .gogs-repo-header {
@@ -1430,34 +1417,43 @@ textarea.gogs-field {
   grid-template-columns: minmax(10rem, 13rem) 1fr;
 }
 
-.ci-terminal--detail {
+/* Pipeline run detail — same fluid width as other pages (gogs-container 1280px) */
+.pipeline-run-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  width: 100%;
+}
+
+.pipeline-run-page .ci-terminal--detail {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: min(72vh, 56rem);
+}
+
+.pipeline-run-page .ci-terminal-body--detail {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 0;
+  min-height: 18rem;
 }
 
-.ci-terminal-body--detail {
-  display: flex;
-  flex-direction: column;
+.pipeline-run-page .ci-terminal-split--detail {
   flex: 1;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.ci-terminal-split--detail {
-  flex: 1;
-  min-height: 0;
+  min-height: 14rem;
+  width: 100%;
   align-items: stretch;
+  grid-template-columns: minmax(11rem, 16rem) minmax(0, 1fr);
 }
 
-.ci-terminal-split--detail .ci-terminal-sidebar {
+.pipeline-run-page .ci-terminal-split--detail .ci-terminal-sidebar {
   max-height: none;
   min-height: 0;
   overflow-y: auto;
 }
 
-.ci-terminal-log-pane {
+.pipeline-run-page .ci-terminal-log-pane {
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -1465,27 +1461,11 @@ textarea.gogs-field {
   overflow: hidden;
 }
 
-.ci-log-viewer--fill {
+.pipeline-run-page .ci-log-viewer--fill {
   flex: 1;
   min-height: 0;
   max-height: none;
   overflow-y: auto;
-}
-
-.pipeline-run-page {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  flex: 1;
-  min-height: 0;
-}
-
-.pipeline-run-page .ci-terminal--detail {
-  flex: 1;
-  min-height: 0;
-  margin-bottom: 0;
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
 }
 
 @media (max-width: 640px) {
@@ -1516,6 +1496,12 @@ textarea.gogs-field {
 .ci-terminal-meta-bar strong {
   color: var(--color-naturals-n12);
   font-weight: 600;
+}
+
+.ci-terminal-meta-bar--footer {
+  flex-shrink: 0;
+  border-top: 1px solid color-mix(in srgb, var(--color-naturals-n5) 65%, transparent);
+  border-bottom: none;
 }
 
 html.light .ci-terminal {
