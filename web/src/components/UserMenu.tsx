@@ -34,7 +34,7 @@ export function UserMenu() {
         data-no-global-button-hover="true"
         onClick={() => setOpen((v) => !v)}
       >
-        <span className="w-7 h-7 rounded-full bg-primary text-bg font-semibold text-xs inline-flex items-center justify-center">
+        <span className="w-7 h-7 rounded-full bg-primary-p4 text-naturals-n14 font-semibold text-xs inline-flex items-center justify-center">
           {initials(user.username)}
         </span>
         <span className="text-sm text-text hidden sm:inline">@{user.username}</span>

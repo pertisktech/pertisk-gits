@@ -121,7 +121,8 @@ export function RunnersPage() {
         subtitle="Self-hosted runners with live host metrics and job history"
       />
 
-      <div className="space-y-5 max-w-5xl">
+      <div className="space-y-5">
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,24rem)_1fr] xl:items-start">
         <div className="app-panel">
           <div className="app-panel-header flex items-center gap-2">
             <Server size={15} className="text-primary" />
@@ -135,7 +136,7 @@ export function RunnersPage() {
               <span className="font-mono text-text">.pertisk-ci.yaml</span>.
             </p>
             <form className="space-y-4" onSubmit={onSubmit}>
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4">
                 <div className="space-y-2">
                   <label htmlFor="runner-name" className="text-sm font-medium text-text">
                     Runner name
@@ -181,6 +182,7 @@ export function RunnersPage() {
           </div>
         </div>
 
+        <div className="space-y-4 min-w-0">
         {error && (
           <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
             {error}
@@ -195,7 +197,7 @@ export function RunnersPage() {
             ) : runners.length === 0 ? (
               <p className="text-sm text-text-secondary">No runners registered yet.</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
                 {runners.map((runner) => (
                   <RunnerCard
                     key={runner.id}
@@ -208,6 +210,8 @@ export function RunnersPage() {
               </ul>
             )}
           </div>
+        </div>
+        </div>
         </div>
       </div>
     </>

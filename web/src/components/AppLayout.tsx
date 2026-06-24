@@ -1,55 +1,59 @@
-import { LayoutDashboard, Moon, Plus, Server, Sun, Users } from 'lucide-react'
-import { Link, NavLink, Outlet } from 'react-router-dom'
+import { Menu, Moon, Plus, Sun, X } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
-import { cn } from '../utils/cn'
-import { AppVersion } from './AppVersion'
+import { AppSidebar } from './AppSidebar'
 import { GlobalSearch } from './GlobalSearch'
 import { UserMenu } from './UserMenu'
-
-const topNavClass = ({ isActive }: { isActive: boolean }) => cn(isActive && 'active')
 
 export function AppLayout() {
   const { isDark, toggleTheme } = useTheme()
   const { user } = useAuth()
+  const location = useLocation()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
 
   return (
-    <div className="app-shell text-text">
+    <div className="app-shell">
       <header className="app-topbar shrink-0">
         <div className="app-topbar-inner">
+          <button
+            type="button"
+            className="app-topbar-menu-btn md:hidden"
+            aria-controls="app-sidebar"
+            aria-expanded={sidebarOpen}
+            aria-label={sidebarOpen ? 'Close navigation' : 'Open navigation'}
+            data-no-global-button-hover="true"
+            onClick={() => setSidebarOpen((open) => !open)}
+          >
+            <Menu
+              size={18}
+              className={sidebarOpen ? 'opacity-0 scale-90' : 'opacity-100'}
+              aria-hidden={sidebarOpen}
+            />
+            <X
+              size={18}
+              className={sidebarOpen ? 'opacity-100' : 'opacity-0 scale-90'}
+              aria-hidden={!sidebarOpen}
+            />
+          </button>
+
           <NavLink to="/dashboard" className="app-brand">
             <img src="/favicon.svg" alt="" className="w-7 h-7" />
-            <span>Pertisk Gits</span>
+            <span className="hidden sm:inline">Pertisk Gits</span>
           </NavLink>
-
-          <nav className="app-topnav hidden sm:flex">
-            <NavLink to="/dashboard" className={topNavClass}>
-              <span className="inline-flex items-center gap-1.5">
-                <LayoutDashboard size={15} />
-                Dashboard
-              </span>
-            </NavLink>
-            <NavLink to="/groups" className={topNavClass}>
-              <span className="inline-flex items-center gap-1.5">
-                <Users size={15} />
-                Repositories
-              </span>
-            </NavLink>
-            <NavLink to="/runners" className={topNavClass}>
-              <span className="inline-flex items-center gap-1.5">
-                <Server size={15} />
-                Runners
-              </span>
-            </NavLink>
-          </nav>
 
           <GlobalSearch />
 
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-1.5 shrink-0">
             {user && (
               <NavLink
                 to="/groups/new"
-                className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-text-secondary hover:bg-hover hover:text-primary"
+                className="app-topbar-icon-btn"
                 title="New group"
               >
                 <Plus size={16} />
@@ -58,7 +62,7 @@ export function AppLayout() {
             <button
               type="button"
               onClick={toggleTheme}
-              className="inline-flex items-center justify-center w-8 h-8 rounded-md border border-border text-text-secondary hover:bg-hover"
+              className="app-topbar-icon-btn"
               data-no-global-button-hover="true"
               title={isDark ? 'Light mode' : 'Dark mode'}
             >
@@ -67,10 +71,7 @@ export function AppLayout() {
             {user ? (
               <UserMenu />
             ) : (
-              <Link
-                to="/login"
-                className="px-3 py-1.5 rounded-md border border-border text-sm text-text-secondary hover:bg-hover hover:text-primary"
-              >
+              <Link to="/login" className="app-topbar-sign-in">
                 Sign in
               </Link>
             )}
@@ -78,15 +79,21 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main className="app-main">
-        <div className="app-container">
-          <Outlet />
-        </div>
-      </main>
+      <div className="app-body">
+        <div
+          className={sidebarOpen ? 'app-sidebar-backdrop open' : 'app-sidebar-backdrop'}
+          aria-hidden={!sidebarOpen}
+          onClick={() => setSidebarOpen(false)}
+        />
 
-      <footer className="shrink-0 border-t border-border bg-surface px-4 py-2 text-center text-xs text-muted">
-        <AppVersion />
-      </footer>
+        <AppSidebar open={sidebarOpen} />
+
+        <main className="app-main">
+          <div className="app-container">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
   )
 }

@@ -36,10 +36,10 @@ export function PageHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
+    <div className="flex items-start justify-between gap-4 flex-wrap mb-6 md:mb-7">
       <div>
-        <h1 className="text-xl font-semibold text-text">{title}</h1>
-        {subtitle && <p className="text-base text-text-secondary mt-1">{subtitle}</p>}
+        <h1 className="text-xl font-medium text-naturals-n14">{title}</h1>
+        {subtitle && <p className="text-sm text-naturals-n13 mt-1">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -55,7 +55,7 @@ export function PrimaryButton({
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-bg text-sm font-medium hover:opacity-90 disabled:opacity-60',
+        'inline-flex items-center gap-2 px-4 py-1.5 rounded-md bg-primary-p4 text-naturals-n14 text-sm font-medium hover:bg-primary-p3 disabled:opacity-60 transition-colors',
         className,
       )}
       data-no-global-button-hover="true"
@@ -75,7 +75,7 @@ export function SecondaryButton({
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-text-secondary hover:text-text hover:bg-hover text-sm font-medium disabled:opacity-60',
+        'inline-flex items-center gap-2 px-4 py-1.5 rounded-md border border-naturals-n4 text-naturals-n13 hover:text-naturals-n14 hover:bg-naturals-n3 text-sm font-medium disabled:opacity-60 transition-colors',
         className,
       )}
       data-no-global-button-hover="true"
@@ -102,8 +102,8 @@ export function LinkButton({
       to={to}
       className={cn(
         primary
-          ? 'inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-bg text-sm font-medium hover:opacity-90'
-          : 'inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-border text-text-secondary hover:text-text hover:bg-hover text-sm font-medium',
+          ? 'inline-flex items-center gap-2 px-4 py-1.5 rounded-md bg-primary-p4 text-naturals-n14 text-sm font-medium hover:bg-primary-p3 transition-colors'
+          : 'inline-flex items-center gap-2 px-4 py-1.5 rounded-md border border-naturals-n4 text-naturals-n13 hover:text-naturals-n14 hover:bg-naturals-n3 text-sm font-medium transition-colors',
         className,
       )}
     >
@@ -126,7 +126,7 @@ export function EmptyState({
   return (
     <div className="text-center py-12 px-6">
       {icon && <div className="flex justify-center mb-3 text-muted opacity-50">{icon}</div>}
-      <h3 className="text-text font-semibold mb-2">{title}</h3>
+      <h3 className="text-naturals-n14 font-medium mb-2">{title}</h3>
       {description && <p className="text-text-secondary text-sm max-w-md mx-auto">{description}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
