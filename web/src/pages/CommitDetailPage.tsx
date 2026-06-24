@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext'
 import { commitUrl } from '../components/RepoCommits'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { Breadcrumbs } from '../components/ui'
+import { projectTabPath } from '../lib/projectRoute'
 
 function formatDate(ts: number) {
   return new Date(ts * 1000).toLocaleString()
@@ -63,7 +64,7 @@ export function CommitDetailPage() {
           { label: 'Groups', to: '/groups' },
           { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
           { label: repoName, to: `/groups/${orgSlug}/projects/${projectSlug}` },
-          { label: 'Commits', to: `/groups/${orgSlug}/projects/${projectSlug}?tab=commits` },
+          { label: 'Commits', to: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'commits') },
           { label: commit.short_sha },
         ]}
       />

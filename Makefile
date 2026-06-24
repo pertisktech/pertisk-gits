@@ -89,7 +89,9 @@ web-dist:
 	fi; \
 	if [ $$skip -eq 0 ]; then \
 		echo "Building web UI (v$(VERSION))..."; \
-		if [ ! -d web/node_modules ]; then $(MAKE) install-web; fi; \
+		if [ ! -d web/node_modules ] || [ ! -f web/node_modules/.package-lock.json ] || [ web/package-lock.json -nt web/node_modules/.package-lock.json ]; then \
+			$(MAKE) install-web; \
+		fi; \
 		rm -rf web/dist 2>/dev/null || { \
 			echo "Cannot clean web/dist. Run: sudo make fix-perms"; exit 1; \
 		}; \

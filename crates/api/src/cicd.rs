@@ -1,5 +1,6 @@
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{
     body::Body,
@@ -26,6 +27,45 @@ use pertisk_domain::DomainError;
 
 fn sqlx_error(err: sqlx::Error) -> ApiError {
     pertisk_domain::DomainError::Internal(err.to_string()).into()
+}
+
+/// No heartbeat for this long ⇒ runner is treated as offline (runner polls ~every 25s).
+const RUNNER_OFFLINE_AFTER_SECS: i64 = 75;
+
+pub fn spawn_runner_stale_checker(pool: PgPool) {
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(30));
+        loop {
+            interval.tick().await;
+            if let Err(err) = mark_stale_runners_offline(&pool).await {
+                tracing::warn!(%err, "failed to mark stale runners offline");
+            }
+        }
+    });
+}
+
+async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE runners r
+        SET status = 'offline'
+        WHERE r.status IN ('online', 'busy')
+          AND (
+            r.last_seen_at IS NULL
+            OR r.last_seen_at < NOW() - make_interval(secs => $1)
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM job_runs j
+            WHERE j.runner_id = r.id
+              AND j.status = 'running'
+          )
+        "#,
+    )
+    .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 pub fn cicd_read_routes() -> Router<AppState> {
@@ -483,6 +523,10 @@ async fn list_runners(
     State(state): State<AppState>,
     _auth: AuthUser,
 ) -> Result<Json<Vec<RunnerResponse>>, ApiError> {
+    mark_stale_runners_offline(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+
     let rows = sqlx::query_as::<_, RunnerRow>(
         r#"
         SELECT
@@ -604,6 +648,9 @@ async fn poll_runner_job(
     Query(query): Query<PollQuery>,
 ) -> Result<Json<Option<PollJobResponse>>, (StatusCode, String)> {
     let runner_id = authenticate_runner(&state.pool, &headers).await?;
+    if let Err(err) = mark_stale_runners_offline(&state.pool).await {
+        tracing::warn!(%err, "failed to mark stale runners offline during poll");
+    }
     let timeout = query.timeout_secs.unwrap_or(25).min(60);
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout);
 
@@ -786,7 +833,15 @@ async fn runner_heartbeat(
     sqlx::query(
         r#"
         UPDATE runners
-        SET status = 'online',
+        SET status = CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM job_runs j
+                    WHERE j.runner_id = $1
+                      AND j.status = 'running'
+                ) THEN 'busy'::runner_status
+                ELSE 'online'::runner_status
+            END,
             last_seen_at = NOW(),
             version = COALESCE($2, version),
             host_ip = COALESCE($3, host_ip),

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { RepoBrowser } from '../components/RepoBrowser'
@@ -13,12 +13,15 @@ import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
 import { useProjectNav } from '../hooks/useProjectNav'
 import type { ProjectTab } from '../lib/projectRoute'
+import { projectTabPath } from '../lib/projectRoute'
 
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
-  const [searchParams, setSearchParams] = useSearchParams()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
   const { token, user } = useAuth()
   const projectNav = useProjectNav()
+  const basePath = `/groups/${orgSlug}/projects/${projectSlug}`
 
   const tab: ProjectTab = projectNav?.tab ?? 'code'
 
@@ -67,17 +70,40 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     const requested = searchParams.get('tab')
+    if (!requested || requested === 'code') return
     if (requested === 'clone') {
-      setSearchParams({}, { replace: true })
+      navigate(basePath, { replace: true })
       return
     }
-    if (requested === 'pipelines' && !showPipelinesTab && !pipelineConfigLoading) {
-      setSearchParams({}, { replace: true })
+
+    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'pipelines', 'settings']
+    if (!legacyTabs.includes(requested as ProjectTab)) {
+      navigate(basePath, { replace: true })
+      return
     }
-    if (requested === 'settings' && !token) {
-      setSearchParams({}, { replace: true })
+
+    const tab = requested as ProjectTab
+    if (tab === 'pipelines') {
+      if (pipelineConfigLoading) return
+      if (!showPipelinesTab) {
+        navigate(basePath, { replace: true })
+        return
+      }
     }
-  }, [searchParams, token, showPipelinesTab, pipelineConfigLoading, setSearchParams])
+    if (tab === 'settings' && !token) {
+      navigate(basePath, { replace: true })
+      return
+    }
+
+    navigate(projectTabPath(basePath, tab), { replace: true })
+  }, [
+    searchParams,
+    token,
+    showPipelinesTab,
+    pipelineConfigLoading,
+    navigate,
+    basePath,
+  ])
 
   if (isLoading) {
     return <div className="text-text-secondary text-sm py-8">Loading repository…</div>

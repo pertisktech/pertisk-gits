@@ -12,15 +12,17 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
   const basePath = `/groups/${orgSlug}/projects/${projectSlug}`
 
   let tab: ProjectTab = 'code'
-  if (rest.startsWith('issues/')) {
+  if (rest.startsWith('issues')) {
     tab = 'issues'
-  } else if (rest.startsWith('pulls/')) {
+  } else if (rest.startsWith('pulls')) {
     tab = 'pulls'
-  } else if (rest.startsWith('commit/')) {
+  } else if (rest.startsWith('commit/') || rest === 'commits') {
     tab = 'commits'
-  } else if (rest.startsWith('pipelines/')) {
+  } else if (rest.startsWith('pipelines')) {
     tab = 'pipelines'
-  } else {
+  } else if (rest === 'settings') {
+    tab = 'settings'
+  } else if (!rest) {
     const requested = searchParams.get('tab')
     if (
       requested === 'issues' ||
@@ -38,5 +40,5 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
 
 export function projectTabPath(basePath: string, tab: ProjectTab) {
   if (tab === 'code') return basePath
-  return `${basePath}?tab=${tab}`
+  return `${basePath}/${tab}`
 }

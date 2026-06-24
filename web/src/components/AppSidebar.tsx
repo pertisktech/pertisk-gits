@@ -91,7 +91,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
                   key={id}
                   to={projectTabPath(project.basePath, id)}
                   end={id === 'code'}
-                  className={() => projectLinkClass(project.tab === id, false)}
+                  className={({ isActive }) => projectLinkClass(isActive, false)}
                 >
                   <Icon size={16} className="shrink-0" aria-hidden />
                   <span>{label}</span>

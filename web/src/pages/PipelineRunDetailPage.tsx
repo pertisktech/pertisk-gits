@@ -13,6 +13,7 @@ import {
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
 import { displayRunStatus, isRunInProgress, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
 import { StatusBadge } from '../components/StatusBadge'
+import { projectTabPath } from '../lib/projectRoute'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
 import {
@@ -107,12 +108,15 @@ export function PipelineRunDetailPage() {
   const passed = run.jobs.filter((j) => j.status === 'success').length
   const branch = refLabel(run.ref_name)
 
+  const repoPath = `/groups/${orgSlug}/projects/${projectSlug}`
+  const pipelinesPath = projectTabPath(repoPath, 'pipelines')
+
   return (
     <div className="pipeline-run-page">
       <Breadcrumbs
         items={[
           { label: 'Repositories', to: '/groups' },
-          { label: repoName, to: `/groups/${orgSlug}/projects/${projectSlug}?tab=pipelines` },
+          { label: repoName, to: pipelinesPath },
           { label: `run ${shortSha(run.commit_sha)}` },
         ]}
       />
@@ -120,7 +124,7 @@ export function PipelineRunDetailPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <Link
-            to={`/groups/${orgSlug}/projects/${projectSlug}?tab=pipelines`}
+            to={pipelinesPath}
             className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary mb-2"
           >
             <ArrowLeft size={14} />

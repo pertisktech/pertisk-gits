@@ -88,6 +88,7 @@ async fn main() -> anyhow::Result<()> {
     std::fs::create_dir_all(&config.repos_root)?;
     let pool = db::connect(&config.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
+    cicd::spawn_runner_stale_checker(pool.clone());
 
     let state = AppState {
         pool,

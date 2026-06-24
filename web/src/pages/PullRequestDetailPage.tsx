@@ -10,6 +10,7 @@ import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { projectTabPath } from '../lib/projectRoute'
 import { cn } from '../utils/cn'
 
 function prStateVariant(state: PullRequest['state']) {
@@ -173,7 +174,7 @@ export function PullRequestDetailPage() {
         items={[
           { label: 'Groups', to: '/groups' },
           { label: orgSlug, to: `/groups/${orgSlug}` },
-          { label: repoName, to: `/groups/${orgSlug}/projects/${projectSlug}?tab=pulls` },
+          { label: repoName, to: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'pulls') },
           { label: `#${pr.number}` },
         ]}
       />

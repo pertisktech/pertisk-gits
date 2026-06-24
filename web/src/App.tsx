@@ -85,6 +85,26 @@ export default function App() {
                   path="/groups/:slug/projects/:projectSlug/pipelines/:runId"
                   element={<PipelineRunDetailPage />}
                 />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/settings"
+                  element={<ProjectDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/commits"
+                  element={<ProjectDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/issues"
+                  element={<ProjectDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/pulls"
+                  element={<ProjectDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/pipelines"
+                  element={<ProjectDetailPage />}
+                />
                 <Route path="/groups/:slug/projects/:projectSlug" element={<ProjectDetailPage />} />
                 <Route path="/:orgSlug/:repoSlug" element={<RedirectShortRepo />} />
                 <Route path="/:orgSlug" element={<RedirectShortOrg />} />

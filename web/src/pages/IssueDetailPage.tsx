@@ -8,6 +8,7 @@ import { IssueSidebar } from '../components/IssueSidebar'
 import { LabelBadge } from '../components/LabelBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { projectTabPath } from '../lib/projectRoute'
 
 export function IssueDetailPage() {
   const { slug: orgSlug = '', projectSlug = '', issueNumber = '' } = useParams()
@@ -77,7 +78,7 @@ export function IssueDetailPage() {
         items={[
           { label: 'Groups', to: '/groups' },
           { label: orgSlug, to: `/groups/${orgSlug}` },
-          { label: repoName, to: `/groups/${orgSlug}/projects/${projectSlug}?tab=issues` },
+          { label: repoName, to: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'issues') },
           { label: `#${issue.number}` },
         ]}
       />
