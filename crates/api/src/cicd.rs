@@ -68,6 +68,7 @@ pub fn runner_routes() -> Router<AppState> {
     Router::new()
         .route("/runner/jobs", get(poll_runner_job))
         .route("/runner/jobs/{job_id}/start", post(start_runner_job))
+        .route("/runner/jobs/{job_id}/log", post(append_runner_job_log))
         .route("/runner/jobs/{job_id}/complete", post(complete_runner_job))
         .route("/runner/heartbeat", post(runner_heartbeat))
         .route(
@@ -164,6 +165,7 @@ struct CommitStatusResponse {
     state: String,
     description: Option<String>,
     target_url: Option<String>,
+    required: bool,
     updated_at: DateTime<Utc>,
 }
 
@@ -192,6 +194,17 @@ struct RunnerResponse {
     name: String,
     labels: Vec<String>,
     status: String,
+    version: Option<String>,
+    host_ip: Option<String>,
+    host_name: Option<String>,
+    cpu_cores: Option<i32>,
+    memory_total_mb: Option<i64>,
+    memory_used_mb: Option<i64>,
+    disk_total_mb: Option<i64>,
+    disk_free_mb: Option<i64>,
+    last_job_name: Option<String>,
+    last_job_status: Option<String>,
+    last_job_at: Option<DateTime<Utc>>,
     last_seen_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }
@@ -224,6 +237,11 @@ struct CompleteJobRequest {
     status: String,
     log_text: Option<String>,
     metrics_json: Option<Value>,
+}
+
+#[derive(Deserialize)]
+struct AppendLogRequest {
+    append: String,
 }
 
 async fn get_pipeline_config_preview(
@@ -339,7 +357,7 @@ async fn list_commit_statuses(
 
     let rows = sqlx::query_as::<_, CommitStatusRow>(
         r#"
-        SELECT context, state::text, description, target_url, updated_at
+        SELECT context, state::text, description, target_url, required, updated_at
         FROM commit_statuses
         WHERE repository_id = $1 AND commit_sha = $2
         ORDER BY context
@@ -358,6 +376,7 @@ async fn list_commit_statuses(
                 state: row.state,
                 description: row.description,
                 target_url: row.target_url,
+                required: row.required,
                 updated_at: row.updated_at,
             })
             .collect(),
@@ -461,7 +480,10 @@ async fn list_runners(
 ) -> Result<Json<Vec<RunnerResponse>>, ApiError> {
     let rows = sqlx::query_as::<_, RunnerRow>(
         r#"
-        SELECT id, name, labels, status::text, last_seen_at, created_at
+        SELECT
+            id, name, labels, status::text, version, host_ip, host_name,
+            cpu_cores, memory_total_mb, memory_used_mb, disk_total_mb, disk_free_mb,
+            last_job_name, last_job_status, last_job_at, last_seen_at, created_at
         FROM runners
         ORDER BY created_at DESC
         "#,
@@ -477,6 +499,17 @@ async fn list_runners(
                 name: row.name,
                 labels: row.labels,
                 status: row.status,
+                version: row.version,
+                host_ip: row.host_ip,
+                host_name: row.host_name,
+                cpu_cores: row.cpu_cores,
+                memory_total_mb: row.memory_total_mb,
+                memory_used_mb: row.memory_used_mb,
+                disk_total_mb: row.disk_total_mb,
+                disk_free_mb: row.disk_free_mb,
+                last_job_name: row.last_job_name,
+                last_job_status: row.last_job_status,
+                last_job_at: row.last_job_at,
                 last_seen_at: row.last_seen_at,
                 created_at: row.created_at,
             })
@@ -640,6 +673,37 @@ async fn start_runner_job(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn append_runner_job_log(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+    Json(body): Json<AppendLogRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    if body.append.is_empty() {
+        return Ok(StatusCode::NO_CONTENT);
+    }
+
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+    let updated = sqlx::query(
+        r#"
+        UPDATE job_runs
+        SET log_text = log_text || $3
+        WHERE id = $1 AND runner_id = $2 AND status IN ('queued', 'running')
+        "#,
+    )
+    .bind(job_id)
+    .bind(runner_id)
+    .bind(&body.append)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
+    if updated.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "job not found".into()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn complete_runner_job(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -684,11 +748,23 @@ async fn complete_runner_job(
         .await
         .map_err(|e| internal(e.to_string()))?;
 
-    sqlx::query("UPDATE runners SET status = 'online', last_seen_at = NOW() WHERE id = $1")
-        .bind(runner_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| internal(e.to_string()))?;
+    sqlx::query(
+        r#"
+        UPDATE runners
+        SET status = 'online',
+            last_seen_at = NOW(),
+            last_job_name = $2,
+            last_job_status = $3,
+            last_job_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(runner_id)
+    .bind(&job_name)
+    .bind(status)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -696,14 +772,62 @@ async fn complete_runner_job(
 async fn runner_heartbeat(
     State(state): State<AppState>,
     headers: HeaderMap,
+    body: Option<Json<RunnerHeartbeatRequest>>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let runner_id = authenticate_runner(&state.pool, &headers).await?;
-    sqlx::query("UPDATE runners SET status = 'online', last_seen_at = NOW() WHERE id = $1")
-        .bind(runner_id)
-        .execute(&state.pool)
-        .await
-        .map_err(|e| internal(e.to_string()))?;
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let host_ip = request_client_ip(&headers).or(body.host_ip);
+
+    sqlx::query(
+        r#"
+        UPDATE runners
+        SET status = 'online',
+            last_seen_at = NOW(),
+            version = COALESCE($2, version),
+            host_ip = COALESCE($3, host_ip),
+            host_name = COALESCE($4, host_name),
+            cpu_cores = COALESCE($5, cpu_cores),
+            memory_total_mb = COALESCE($6, memory_total_mb),
+            memory_used_mb = COALESCE($7, memory_used_mb),
+            disk_total_mb = COALESCE($8, disk_total_mb),
+            disk_free_mb = COALESCE($9, disk_free_mb)
+        WHERE id = $1
+        "#,
+    )
+    .bind(runner_id)
+    .bind(body.version)
+    .bind(host_ip)
+    .bind(body.host_name)
+    .bind(body.cpu_cores)
+    .bind(body.memory_total_mb)
+    .bind(body.memory_used_mb)
+    .bind(body.disk_total_mb)
+    .bind(body.disk_free_mb)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct RunnerHeartbeatRequest {
+    version: Option<String>,
+    host_name: Option<String>,
+    host_ip: Option<String>,
+    cpu_cores: Option<i32>,
+    memory_total_mb: Option<i64>,
+    memory_used_mb: Option<i64>,
+    disk_total_mb: Option<i64>,
+    disk_free_mb: Option<i64>,
+}
+
+fn request_client_ip(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get("x-forwarded-for")
+        .or_else(|| headers.get("x-real-ip"))
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.split(',').next().unwrap_or(value).trim().to_string())
+        .filter(|ip| !ip.is_empty())
 }
 
 #[derive(Deserialize)]
@@ -896,7 +1020,7 @@ pub async fn enqueue_pull_request_triggers_for_branch(
     Ok(())
 }
 
-/// Block merge when CI statuses exist and any are pending or failed.
+/// Block merge when required CI checks exist and any are pending or failed.
 pub async fn ensure_ci_passed_for_commit(
     pool: &PgPool,
     repository_id: Uuid,
@@ -906,7 +1030,7 @@ pub async fn ensure_ci_passed_for_commit(
         r#"
         SELECT context, state::text
         FROM commit_statuses
-        WHERE repository_id = $1 AND commit_sha = $2
+        WHERE repository_id = $1 AND commit_sha = $2 AND required = TRUE
         "#,
     )
     .bind(repository_id)
@@ -1163,16 +1287,22 @@ async fn materialize_jobs_for_run(
 
         sqlx::query(
             r#"
-            INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id)
-            VALUES ($1, $2, $3, 'pending', 'Queued', $4)
+            INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id, required)
+            VALUES ($1, $2, $3, 'pending', 'Queued', $4, $5)
             ON CONFLICT (repository_id, commit_sha, context)
-            DO UPDATE SET state = 'pending', description = 'Queued', updated_at = NOW(), pipeline_run_id = EXCLUDED.pipeline_run_id
+            DO UPDATE SET
+                state = 'pending',
+                description = 'Queued',
+                updated_at = NOW(),
+                pipeline_run_id = EXCLUDED.pipeline_run_id,
+                required = EXCLUDED.required
             "#,
         )
         .bind(repository_id)
         .bind(commit_sha)
         .bind(format!("ci/{}", job.name))
         .bind(run_id)
+        .bind(job.job.required)
         .execute(pool)
         .await?;
     }
@@ -1535,6 +1665,17 @@ struct RunnerRow {
     name: String,
     labels: Vec<String>,
     status: String,
+    version: Option<String>,
+    host_ip: Option<String>,
+    host_name: Option<String>,
+    cpu_cores: Option<i32>,
+    memory_total_mb: Option<i64>,
+    memory_used_mb: Option<i64>,
+    disk_total_mb: Option<i64>,
+    disk_free_mb: Option<i64>,
+    last_job_name: Option<String>,
+    last_job_status: Option<String>,
+    last_job_at: Option<DateTime<Utc>>,
     last_seen_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }
@@ -1545,6 +1686,7 @@ struct CommitStatusRow {
     state: String,
     description: Option<String>,
     target_url: Option<String>,
+    required: bool,
     updated_at: DateTime<Utc>,
 }
 

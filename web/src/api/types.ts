@@ -288,6 +288,7 @@ export interface CommitStatus {
   state: 'pending' | 'success' | 'failure' | 'error'
   description: string | null
   target_url: string | null
+  required: boolean
   updated_at: string
 }
 
@@ -296,6 +297,17 @@ export interface Runner {
   name: string
   labels: string[]
   status: 'online' | 'offline' | 'busy'
+  version: string | null
+  host_ip: string | null
+  host_name: string | null
+  cpu_cores: number | null
+  memory_total_mb: number | null
+  memory_used_mb: number | null
+  disk_total_mb: number | null
+  disk_free_mb: number | null
+  last_job_name: string | null
+  last_job_status: string | null
+  last_job_at: string | null
   last_seen_at: string | null
   created_at: string
 }

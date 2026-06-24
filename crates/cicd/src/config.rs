@@ -32,9 +32,15 @@ pub struct Job {
     pub runs_on: String,
     #[serde(default)]
     pub needs: Vec<String>,
+    #[serde(default = "default_true")]
+    pub required: bool,
     pub steps: Vec<Step>,
     #[serde(default)]
     pub timeout_minutes: Option<u32>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
@@ -84,10 +90,18 @@ jobs:
 
   bench:
     runs-on: self-hosted
+    required: false
     needs: [test]
     steps:
       - run: cargo bench --no-run
 "#;
+
+    #[test]
+    fn parses_optional_required_job() {
+        let cfg = parse_pipeline_yaml(SAMPLE).unwrap();
+        assert!(cfg.jobs["test"].required);
+        assert!(!cfg.jobs["bench"].required);
+    }
 
     #[test]
     fn parses_pipeline_config() {

@@ -50,8 +50,10 @@ export function CommitStatuses({
 
   if (statuses.length === 0) return null
 
-  const allPassed = statuses.every((s) => s.state === 'success')
-  const anyFailed = statuses.some((s) => s.state === 'failure' || s.state === 'error')
+  const requiredStatuses = statuses.filter((status) => status.required)
+  const summaryStatuses = requiredStatuses.length > 0 ? requiredStatuses : statuses
+  const allPassed = summaryStatuses.every((s) => s.state === 'success')
+  const anyFailed = summaryStatuses.some((s) => s.state === 'failure' || s.state === 'error')
 
   return (
     <div className="app-panel p-4 space-y-3">
@@ -70,6 +72,9 @@ export function CommitStatuses({
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-text-secondary">{statusIcon(status.state)}</span>
               <span className="font-medium text-text truncate">{status.context}</span>
+              {!status.required && (
+                <span className="text-[10px] font-mono text-text-secondary uppercase">optional</span>
+              )}
             </div>
             <div className="text-right shrink-0">
               <StatusBadge variant={statusVariant(status.state)}>

@@ -39,7 +39,7 @@ impl ShellExecutor {
         }
     }
 
-    async fn run_step(
+    pub async fn run_step(
         &self,
         workspace: &Path,
         index: usize,

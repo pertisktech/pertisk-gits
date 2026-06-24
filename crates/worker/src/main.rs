@@ -155,16 +155,22 @@ async fn process_trigger_now(
 
         sqlx::query(
             r#"
-            INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id)
-            VALUES ($1, $2, $3, 'pending', 'Queued', $4)
+            INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id, required)
+            VALUES ($1, $2, $3, 'pending', 'Queued', $4, $5)
             ON CONFLICT (repository_id, commit_sha, context)
-            DO UPDATE SET state = 'pending', description = 'Queued', updated_at = NOW(), pipeline_run_id = EXCLUDED.pipeline_run_id
+            DO UPDATE SET
+                state = 'pending',
+                description = 'Queued',
+                updated_at = NOW(),
+                pipeline_run_id = EXCLUDED.pipeline_run_id,
+                required = EXCLUDED.required
             "#,
         )
         .bind(repository_id)
         .bind(commit_sha)
         .bind(format!("ci/{}", job.name))
         .bind(run_id)
+        .bind(job.job.required)
         .execute(&state.pool)
         .await?;
     }

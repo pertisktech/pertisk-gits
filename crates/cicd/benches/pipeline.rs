@@ -64,6 +64,7 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
             Job {
                 runs_on: "self-hosted".into(),
                 needs,
+                required: true,
                 steps: vec![Step {
                     name: Some("noop".into()),
                     run: "true".into(),

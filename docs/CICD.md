@@ -161,6 +161,7 @@ jobs:
   test:
     runs-on: self-hosted
     needs: []          # optional DAG deps
+    required: true     # default; set false for optional jobs (excluded from merge gate)
     timeout_minutes: 30  # optional
     steps:
       - name: Build
@@ -177,10 +178,13 @@ jobs:
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines` | User JWT |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}` | User JWT |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/trigger` | User JWT (write) |
+| GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/config` | User JWT |
+| POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/rerun` | User JWT (write) |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/commits/{sha}/statuses` | User JWT |
 | POST | `/api/v1/runners/register` | User JWT |
 | GET | `/api/v1/runner/jobs?timeout_secs=25` | Runner token |
-| GET | `/api/v1/runner/repos/{org}/{repo}/workspace?commit_sha=` | Runner token |
+| POST | `/api/v1/runner/jobs/{id}/log` | Runner token (append live log) |
+| GET | `/api/v1/runner/jobs/{id}/workspace` | Runner token |
 | POST | `/api/v1/runner/jobs/{id}/complete` | Runner token |
 
 ## Job metrics
@@ -218,13 +222,21 @@ Pipelines with `on.pull_request` run when:
 
 ### Merge gate
 
-If the PR head commit has `commit_statuses` (from CI jobs), merge is blocked until every `ci/*` check is `success`. Pending or failed checks return a validation error from the merge API; the PR page hides the merge button while checks are in progress or failed.
+If the PR head commit has **required** `commit_statuses` (from CI jobs with `required: true`), merge is blocked until every required `ci/*` check is `success`. Jobs with `required: false` still run and appear on the commit/PR, but failures do not block merge.
+
+### Live logs
+
+While a job runs, the runner appends log output to the API after **each step** completes (`POST /runner/jobs/{id}/log`). The pipeline detail page polls every few seconds, so logs update during the run without waiting for job completion.
+
+### Re-run
+
+Re-run resets the **same** pipeline run (same run ID and job rows) instead of creating a duplicate entry in the pipeline list.
 
 ## Not yet implemented
 
 - Container-isolated runners (currently shell on host)
 - Artifact upload to MinIO
-- Streaming logs (batch on complete today)
-- Required checks configuration per branch (merge gate uses all `ci/*` statuses on the commit)
+- Intra-step log streaming (stdout/stderr while a step is running)
+- Per-branch required checks configuration in repo settings (merge gate uses `required` per job in YAML today)
 
 See `docs/PHASES.md` Phase 4 for the full roadmap.

@@ -1,99 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Loader2, RefreshCw, Server, Trash2 } from 'lucide-react'
+import { Loader2, Server } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { Runner } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { StatusBadge } from '../components/StatusBadge'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
+import { DeleteRunnerConfirm, RotateRunnerConfirm } from '../components/ConfirmModal'
+import { RunnerCard, TokenModal } from '../components/RunnerCard'
+import { Breadcrumbs, PageHeader, PrimaryButton } from '../components/ui'
 
-function runnerStatusVariant(status: Runner['status']) {
-  if (status === 'online') return 'green' as const
-  if (status === 'busy') return 'yellow' as const
-  return 'gray' as const
-}
-
-function formatLastSeen(lastSeen: string | null) {
-  if (!lastSeen) return 'Never'
-  const date = new Date(lastSeen)
-  const delta = Date.now() - date.getTime()
-  if (delta < 60_000) return 'Just now'
-  if (delta < 3_600_000) return `${Math.floor(delta / 60_000)}m ago`
-  if (delta < 86_400_000) return `${Math.floor(delta / 3_600_000)}h ago`
-  return date.toLocaleString()
-}
-
-function TokenModal({
-  title,
-  token,
-  onClose,
-}: {
-  title: string
-  token: string
-  onClose: () => void
-}) {
-  const [copied, setCopied] = useState(false)
-
-  async function copyToken() {
-    try {
-      await navigator.clipboard.writeText(token)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // clipboard may be unavailable
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-lg border border-border bg-surface shadow-lg">
-        <div className="border-b border-border px-5 py-4">
-          <h2 className="text-lg font-semibold text-text">{title}</h2>
-          <p className="mt-1 text-sm text-text-secondary">
-            Copy this token now — it will not be shown again.
-          </p>
-        </div>
-        <div className="space-y-4 px-5 py-4">
-          <div className="rounded-md border border-border bg-bg px-3 py-2 font-mono text-sm text-text break-all">
-            {token}
-          </div>
-          <p className="text-sm text-text-secondary">
-            Set on the runner host in{' '}
-            <code className="rounded bg-bg px-1 py-0.5 text-xs">/etc/pertisk-runner/pertisk-runner.conf</code>:
-          </p>
-          <pre className="overflow-x-auto rounded-md border border-border bg-bg p-3 text-xs text-text">
-{`PERTISK_RUNNER_TOKEN=${token}
-PERTISK_API_URL=https://your-gits-host:8080
-# Optional — omit on remote runners; workspace is fetched from the API
-PERTISK_REPOS_ROOT=/var/lib/pertisk-gits/repos`}
-          </pre>
-          <p className="text-sm text-text-secondary">
-            Then restart:{' '}
-            <code className="rounded bg-bg px-1 py-0.5 text-xs">sudo systemctl restart pertisk-runner</code>
-          </p>
-        </div>
-        <div className="flex justify-end gap-2 border-t border-border px-5 py-4">
-          <SecondaryButton type="button" onClick={copyToken}>
-            {copied ? (
-              <>
-                <Check size={14} />
-                Copied
-              </>
-            ) : (
-              <>
-                <Copy size={14} />
-                Copy token
-              </>
-            )}
-          </SecondaryButton>
-          <PrimaryButton type="button" onClick={onClose}>
-            Done
-          </PrimaryButton>
-        </div>
-      </div>
-    </div>
-  )
-}
+type RunnerConfirm =
+  | { action: 'rotate'; runner: Runner }
+  | { action: 'delete'; runner: Runner }
 
 export function RunnersPage() {
   const { token } = useAuth()
@@ -102,6 +19,7 @@ export function RunnersPage() {
   const [labels, setLabels] = useState('self-hosted')
   const [error, setError] = useState<string | null>(null)
   const [tokenModal, setTokenModal] = useState<{ title: string; token: string } | null>(null)
+  const [confirm, setConfirm] = useState<RunnerConfirm | null>(null)
 
   const { data: runners = [], isLoading } = useQuery({
     queryKey: ['runners'],
@@ -134,6 +52,7 @@ export function RunnersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['runners'] })
       setError(null)
+      setConfirm(null)
     },
     onError: (err: Error) => setError(err.message),
   })
@@ -143,6 +62,7 @@ export function RunnersPage() {
     onSuccess: (data, runnerId) => {
       queryClient.invalidateQueries({ queryKey: ['runners'] })
       setError(null)
+      setConfirm(null)
       const runner = runners.find((r) => r.id === runnerId)
       setTokenModal({
         title: runner ? `New token for ${runner.name}` : 'New runner token',
@@ -151,6 +71,15 @@ export function RunnersPage() {
     },
     onError: (err: Error) => setError(err.message),
   })
+
+  function handleConfirm() {
+    if (!confirm) return
+    if (confirm.action === 'rotate') {
+      rotateToken.mutate(confirm.runner.id)
+      return
+    }
+    deleteRunner.mutate(confirm.runner.id)
+  }
 
   function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -168,13 +97,31 @@ export function RunnersPage() {
         />
       )}
 
+      {confirm?.action === 'rotate' && (
+        <RotateRunnerConfirm
+          runnerName={confirm.runner.name}
+          loading={rotateToken.isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+
+      {confirm?.action === 'delete' && (
+        <DeleteRunnerConfirm
+          runnerName={confirm.runner.name}
+          loading={deleteRunner.isPending}
+          onConfirm={handleConfirm}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+
       <Breadcrumbs items={[{ label: 'CI Runners' }]} />
       <PageHeader
         title="CI runners"
-        subtitle="Register self-hosted runners and manage authentication tokens"
+        subtitle="Self-hosted runners with live host metrics and job history"
       />
 
-      <div className="space-y-5 max-w-4xl">
+      <div className="space-y-5 max-w-5xl">
         <div className="app-panel">
           <div className="app-panel-header flex items-center gap-2">
             <Server size={15} className="text-primary" />
@@ -248,50 +195,15 @@ export function RunnersPage() {
             ) : runners.length === 0 ? (
               <p className="text-sm text-text-secondary">No runners registered yet.</p>
             ) : (
-              <ul className="divide-y divide-border border border-border rounded-lg overflow-hidden">
+              <ul className="space-y-3">
                 {runners.map((runner) => (
-                  <li key={runner.id} className="px-4 py-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-medium text-text">{runner.name}</span>
-                        <StatusBadge variant={runnerStatusVariant(runner.status)}>
-                          {runner.status}
-                        </StatusBadge>
-                      </div>
-                      <div className="text-xs text-text-secondary mt-1">
-                        Labels: {runner.labels.join(', ') || 'self-hosted'}
-                      </div>
-                      <div className="text-xs text-muted mt-1">
-                        Last seen {formatLastSeen(runner.last_seen_at)} · Registered{' '}
-                        {new Date(runner.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={() => rotateToken.mutate(runner.id)}
-                        disabled={rotateToken.isPending}
-                        className="p-2 rounded-md border border-border text-text-secondary hover:bg-hover hover:text-primary"
-                        title="Rotate token"
-                        data-no-global-button-hover="true"
-                      >
-                        <RefreshCw size={14} className={rotateToken.isPending ? 'animate-spin' : ''} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (window.confirm(`Delete runner "${runner.name}"?`)) {
-                            deleteRunner.mutate(runner.id)
-                          }
-                        }}
-                        className="p-2 rounded-md border border-border text-text-secondary hover:text-dashboard-danger hover:border-red-r1/30"
-                        title="Delete runner"
-                        data-no-global-button-hover="true"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  </li>
+                  <RunnerCard
+                    key={runner.id}
+                    runner={runner}
+                    rotating={rotateToken.isPending && confirm?.runner.id === runner.id}
+                    onRotate={() => setConfirm({ action: 'rotate', runner })}
+                    onDelete={() => setConfirm({ action: 'delete', runner })}
+                  />
                 ))}
               </ul>
             )}

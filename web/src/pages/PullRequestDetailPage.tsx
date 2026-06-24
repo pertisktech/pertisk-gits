@@ -72,10 +72,11 @@ export function PullRequestDetailPage() {
     },
   })
 
-  const ciRequired = ciStatuses.length > 0
+  const requiredCiStatuses = ciStatuses.filter((status) => status.required)
+  const ciRequired = requiredCiStatuses.length > 0
   const ciBlocking =
     ciRequired &&
-    ciStatuses.some((s) => s.state === 'pending' || s.state === 'failure' || s.state === 'error')
+    requiredCiStatuses.some((s) => s.state === 'pending' || s.state === 'failure' || s.state === 'error')
 
   const { data: comments = [] } = useQuery({
     queryKey: ['pull-comments', orgSlug, projectSlug, number, token ?? 'public'],
@@ -245,7 +246,7 @@ export function PullRequestDetailPage() {
 
           {pr.state === 'open' && compare?.mergeable && ciBlocking && (
             <p className="text-sm text-dashboard-danger">
-              {ciStatuses.some((s) => s.state === 'pending')
+              {ciStatuses.some((s) => s.required && s.state === 'pending')
                 ? 'CI checks are still running. Merge is disabled until they finish.'
                 : 'CI checks failed. Fix the pipeline before merging.'}
             </p>

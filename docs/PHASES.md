@@ -100,12 +100,14 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | Component | Approach | Status |
 |-----------|----------|--------|
 | Pipeline config | `.pertisk-ci.yaml` in repo | Done |
-| Scheduler | `pertisk-worker` processes triggers | Done |
+| Scheduler | `pertisk-worker` + API flush on push | Done |
 | Runners | `pertisk-runner` shell executor + metrics | Done (MVP) |
-| Artifacts | Object storage | Todo |
+| Live logs | Runner appends log after each step | Done |
+| Optional jobs | `required: false` skips merge gate | Done |
+| Artifacts | Object storage (MinIO) | Todo |
 | Status API | Commit status + PR merge gate | Done |
 | PR triggers | Auto-run on PR open + branch push | Done |
-| UI | Pipeline list, logs, rerun, PR checks | Done |
+| UI | Pipeline graph, step logs, rerun in-place, runner host metrics | Done |
 
 **MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, self-hosted runners
 

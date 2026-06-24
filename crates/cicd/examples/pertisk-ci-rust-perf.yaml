@@ -32,6 +32,7 @@ jobs:
 
   bench:
     runs-on: self-hosted
+    required: false
     needs: [test]
     steps:
       - name: Pipeline parse/schedule benches

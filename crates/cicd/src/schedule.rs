@@ -97,6 +97,7 @@ mod tests {
                     Job {
                         runs_on: "self-hosted".into(),
                         needs: vec!["test".into()],
+                        required: true,
                         steps: vec![Step {
                             name: None,
                             run: "true".into(),
@@ -111,6 +112,7 @@ mod tests {
                     Job {
                         runs_on: "self-hosted".into(),
                         needs: vec![],
+                        required: true,
                         steps: vec![Step {
                             name: None,
                             run: "true".into(),
