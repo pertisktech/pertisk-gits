@@ -198,6 +198,9 @@ fi
 if getent group pertisk-gits >/dev/null 2>&1; then
   usermod -a -G pertisk-gits pertisk-runner 2>/dev/null || true
 fi
+if getent group docker >/dev/null 2>&1; then
+  usermod -a -G docker pertisk-runner 2>/dev/null || true
+fi
 PRE
 
 cat > postinstall.sh << 'POST'
@@ -216,6 +219,9 @@ if [ -d /etc/pertisk-runner ]; then
   chown -R root:pertisk-runner /etc/pertisk-runner
   chmod 750 /etc/pertisk-runner
   chmod 640 /etc/pertisk-runner/pertisk-runner.conf 2>/dev/null || true
+fi
+if getent group docker >/dev/null 2>&1 && command -v systemctl >/dev/null 2>&1; then
+  systemctl try-restart pertisk-runner 2>/dev/null || true
 fi
 command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
 POST

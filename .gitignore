@@ -16,3 +16,4 @@ pertisk-gits-linux-*
 .buildx-cache/
 pkg-pertisk-runner/
 pertisk-runner-linux-*
+pertisk-worker-linux-*

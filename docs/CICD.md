@@ -71,6 +71,25 @@ Runners do **not** need to live on the git server. Set `PERTISK_API_URL` to your
 
 For lowest latency on the git host, colocate the runner and set `PERTISK_REPOS_ROOT` to the same path as `REPOS_ROOT` (e.g. `/var/lib/pertisk-gits/repos`).
 
+### Docker build jobs
+
+CI steps run as the **`pertisk-runner`** systemd user, not your SSH login user. Adding yourself to the `docker` group does not fix pipeline `docker build` failures.
+
+On the host that runs `build-docker` (runner label `devops-proxy-apps` or similar):
+
+```bash
+sudo usermod -aG docker pertisk-runner
+sudo systemctl restart pertisk-runner
+```
+
+Verify:
+
+```bash
+sudo -u pertisk-runner docker ps
+```
+
+The runner RPM postinstall also adds `pertisk-runner` to the `docker` group when Docker is installed.
+
 ## Performance testing
 
 Hard-test parser, scheduler, and runner overhead:

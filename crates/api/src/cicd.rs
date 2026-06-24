@@ -65,6 +65,7 @@ pub fn runner_routes() -> Router<AppState> {
             "/runner/repos/{org_slug}/{repo_slug}/workspace",
             get(runner_workspace),
         )
+        .route("/runner/jobs/{job_id}/workspace", get(runner_job_workspace))
 }
 
 pub fn post_receive_hook(
@@ -592,14 +593,66 @@ async fn runner_workspace(
 
     let repo_path =
         pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
-    if !repo_path.is_dir() {
+    serve_runner_workspace(&state, &repo_path, &org_slug, &repo_slug, &query.commit_sha).await
+}
+
+async fn runner_job_workspace(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+) -> Result<Response, (StatusCode, String)> {
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+
+    let meta = sqlx::query_as::<_, (String, String, String)>(
+        r#"
+        SELECT o.slug, r.slug, p.commit_sha
+        FROM job_runs j
+        INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+        INNER JOIN repositories r ON r.id = p.repository_id
+        INNER JOIN organizations o ON o.id = r.organization_id
+        WHERE j.id = $1
+          AND j.runner_id = $2
+          AND j.status IN ('queued', 'running')
+        "#,
+    )
+    .bind(job_id)
+    .bind(runner_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "job not found".into()))?;
+
+    let (org_slug, repo_slug, commit_sha) = meta;
+    let repo_path =
+        pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
+    serve_runner_workspace(&state, &repo_path, &org_slug, &repo_slug, &commit_sha).await
+}
+
+async fn serve_runner_workspace(
+    state: &AppState,
+    repo_path: &FsPath,
+    org_slug: &str,
+    repo_slug: &str,
+    commit_sha: &str,
+) -> Result<Response, (StatusCode, String)> {
+    if !pertisk_git::repo_exists_on_disk(&state.config.repos_root, org_slug, repo_slug) {
+        pertisk_git::storage::ensure_bare_repo(&state.config.repos_root, org_slug, repo_slug)
+            .await
+            .map_err(|e| internal(e.to_string()))?;
+    }
+
+    if !repo_path.join("HEAD").exists() {
         return Err((
             StatusCode::NOT_FOUND,
-            format!("repository not found: {}", repo_path.display()),
+            format!(
+                "bare repository not on server at {}; verify REPOS_ROOT={} on pertisk-api",
+                repo_path.display(),
+                state.config.repos_root.display()
+            ),
         ));
     }
 
-    let archive = pertisk_git::workspace::archive_commit(&repo_path, &query.commit_sha)
+    let archive = pertisk_git::workspace::archive_commit(repo_path, commit_sha)
         .await
         .map_err(|e| internal(e.to_string()))?;
 

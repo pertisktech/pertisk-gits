@@ -57,7 +57,15 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     match cli.command.clone().unwrap_or(Commands::Run) {
         Commands::Bench { iterations } => run_bench(iterations).await,
-        Commands::Run => run_loop(&cli).await,
+        Commands::Run => {
+            tracing::info!(
+                version = env!("CARGO_PKG_VERSION"),
+                api = %cli.api_url,
+                repos_root = ?cli.repos_root,
+                "pertisk-runner starting"
+            );
+            run_loop(&cli).await
+        }
     }
 }
 
@@ -125,6 +133,7 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             &client,
             api,
             &token,
+            job.job_id,
             cli.repos_root.as_deref(),
             &job.org_slug,
             &job.repo_slug,
@@ -208,6 +217,7 @@ async fn materialize_workspace(
     client: &reqwest::Client,
     api: &str,
     token: &str,
+    job_id: uuid::Uuid,
     repos_root: Option<&std::path::Path>,
     org_slug: &str,
     repo_slug: &str,
@@ -215,10 +225,12 @@ async fn materialize_workspace(
     workspace: &std::path::Path,
 ) -> anyhow::Result<()> {
     if let Some(root) = repos_root {
-        let repo_path = root.join(org_slug).join(format!("{repo_slug}.git"));
-        if repo_path.is_dir() {
+        if pertisk_git::repo_exists_on_disk(root, org_slug, repo_slug) {
+            let repo_path = pertisk_git::config::repo_disk_path(root, org_slug, repo_slug);
+            tracing::debug!(path = %repo_path.display(), "checking out from local bare repo");
             return pertisk_git::workspace::checkout_commit(&repo_path, commit_sha, workspace).await;
         }
+        let repo_path = pertisk_git::config::repo_disk_path(root, org_slug, repo_slug);
         tracing::info!(
             repo = %format!("{org_slug}/{repo_slug}"),
             path = %repo_path.display(),
@@ -231,25 +243,14 @@ async fn materialize_workspace(
         );
     }
 
-    materialize_workspace_remote(
-        client,
-        api,
-        token,
-        org_slug,
-        repo_slug,
-        commit_sha,
-        workspace,
-    )
-    .await
+    materialize_workspace_remote(client, api, token, job_id, workspace).await
 }
 
 async fn materialize_workspace_remote(
     client: &reqwest::Client,
     api: &str,
     token: &str,
-    org_slug: &str,
-    repo_slug: &str,
-    commit_sha: &str,
+    job_id: uuid::Uuid,
     workspace: &std::path::Path,
 ) -> anyhow::Result<()> {
     tokio::fs::create_dir_all(workspace)
@@ -257,19 +258,19 @@ async fn materialize_workspace_remote(
         .with_context(|| format!("create workspace {}", workspace.display()))?;
 
     let response = client
-        .get(format!(
-            "{api}/api/v1/runner/repos/{org_slug}/{repo_slug}/workspace"
-        ))
-        .query(&[("commit_sha", commit_sha)])
+        .get(format!("{api}/api/v1/runner/jobs/{job_id}/workspace"))
         .bearer_auth(token)
         .send()
         .await
-        .context("download workspace")?;
+        .context("download workspace from API")?;
 
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_default();
-        anyhow::bail!("workspace download failed ({status}): {body}");
+        anyhow::bail!(
+            "API workspace download failed ({status}): {body} \
+             (check PERTISK_API_URL points at pertisk-gits API, not 127.0.0.1 on a remote host)"
+        );
     }
 
     let bytes = response.bytes().await.context("read workspace archive")?;
@@ -302,10 +303,7 @@ async fn materialize_workspace_remote(
 
     let mut entries = tokio::fs::read_dir(workspace).await.context("read workspace")?;
     if entries.next_entry().await?.is_none() {
-        anyhow::bail!(
-            "checkout produced empty workspace for commit {commit_sha}; \
-             verify the commit has tracked files"
-        );
+        anyhow::bail!("API workspace was empty after extract");
     }
 
     Ok(())
