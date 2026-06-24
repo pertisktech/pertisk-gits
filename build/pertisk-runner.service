@@ -8,6 +8,10 @@ Type=simple
 User=pertisk-runner
 Group=pertisk-runner
 WorkingDirectory=/var/lib/pertisk-runner
+Environment=HOME=/var/lib/pertisk-runner
+Environment=GIT_CONFIG_COUNT=1
+Environment=GIT_CONFIG_KEY_0=safe.directory
+Environment=GIT_CONFIG_VALUE_0=*
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=-/etc/pertisk-runner/pertisk-runner.conf
 ExecStart=/usr/bin/pertisk-runner run

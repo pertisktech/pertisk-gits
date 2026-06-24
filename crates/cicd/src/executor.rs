@@ -23,6 +23,7 @@ pub trait JobExecutor {
         workspace: &Path,
         steps: &[Step],
         queue_wait: Duration,
+        job_env: &[(&str, String)],
     ) -> impl std::future::Future<Output = (JobMetrics, Vec<StepOutput>)> + Send;
 }
 
@@ -38,7 +39,13 @@ impl ShellExecutor {
         }
     }
 
-    async fn run_step(&self, workspace: &Path, index: usize, step: &Step) -> StepOutput {
+    async fn run_step(
+        &self,
+        workspace: &Path,
+        index: usize,
+        step: &Step,
+        job_env: &[(&str, String)],
+    ) -> StepOutput {
         let name = step
             .name
             .clone()
@@ -58,6 +65,10 @@ impl ShellExecutor {
             .current_dir(cwd)
             .env("CI", "true")
             .env("PERTISK_CI", "true");
+
+        for (key, value) in job_env {
+            command.env(key, value);
+        }
 
         for (key, value) in &step.env {
             command.env(key, value);
@@ -92,13 +103,14 @@ impl JobExecutor for ShellExecutor {
         workspace: &Path,
         steps: &[Step],
         queue_wait: Duration,
+        job_env: &[(&str, String)],
     ) -> (JobMetrics, Vec<StepOutput>) {
         let mut outputs = Vec::with_capacity(steps.len());
         let mut timings = Vec::with_capacity(steps.len());
 
         for (index, step) in steps.iter().enumerate() {
             let started_at = Utc::now();
-            let output = self.run_step(workspace, index, step).await;
+            let output = self.run_step(workspace, index, step, job_env).await;
             let finished_at = Utc::now();
             timings.push(StepTiming {
                 name: output.name.clone(),
@@ -133,7 +145,7 @@ pub async fn bench_noop_steps(
             working_directory: None,
             env: Default::default(),
         };
-        let output = executor.run_step(workspace, 0, &step).await;
+        let output = executor.run_step(workspace, 0, &step, &[]).await;
         durations.push(output.duration.as_millis() as u64);
     }
 

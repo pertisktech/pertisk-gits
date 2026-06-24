@@ -141,14 +141,15 @@ async fn process_trigger_now(
         let steps_json = serde_json::to_value(&job.job.steps)?;
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, status)
-            VALUES ($1, $2, $3, $4, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, needs, status)
+            VALUES ($1, $2, $3, $4, $5, 'queued')
             "#,
         )
         .bind(run_id)
         .bind(&job.name)
         .bind(&job.job.runs_on)
         .bind(steps_json)
+        .bind(&job.job.needs)
         .execute(&state.pool)
         .await?;
 

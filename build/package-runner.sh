@@ -148,6 +148,10 @@ Type=simple
 User=pertisk-runner
 Group=pertisk-runner
 WorkingDirectory=/var/lib/pertisk-runner
+Environment=HOME=/var/lib/pertisk-runner
+Environment=GIT_CONFIG_COUNT=1
+Environment=GIT_CONFIG_KEY_0=safe.directory
+Environment=GIT_CONFIG_VALUE_0=*
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 EnvironmentFile=-/etc/pertisk-runner/pertisk-runner.conf
 ExecStart=/usr/bin/pertisk-runner run
@@ -202,6 +206,12 @@ set -e
 mkdir -p /var/lib/pertisk-runner
 chown -R pertisk-runner:pertisk-runner /var/lib/pertisk-runner
 chmod 750 /var/lib/pertisk-runner
+gitconfig=/var/lib/pertisk-runner/.gitconfig
+if [ ! -f "$gitconfig" ] || ! grep -q 'directory = \*' "$gitconfig" 2>/dev/null; then
+  printf '%s\n' '[safe]' '	directory = *' > "$gitconfig"
+  chown pertisk-runner:pertisk-runner "$gitconfig"
+  chmod 600 "$gitconfig"
+fi
 if [ -d /etc/pertisk-runner ]; then
   chown -R root:pertisk-runner /etc/pertisk-runner
   chmod 750 /etc/pertisk-runner

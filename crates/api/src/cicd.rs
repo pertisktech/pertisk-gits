@@ -616,8 +616,8 @@ async fn process_trigger_now(
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
         let job_run_id = sqlx::query_scalar::<_, Uuid>(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, status)
-            VALUES ($1, $2, $3, $4, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, needs, status)
+            VALUES ($1, $2, $3, $4, $5, 'queued')
             RETURNING id
             "#,
         )
@@ -625,6 +625,7 @@ async fn process_trigger_now(
         .bind(&job.name)
         .bind(&job.job.runs_on)
         .bind(steps_json)
+        .bind(&job.job.needs)
         .fetch_one(&state.pool)
         .await?;
 
@@ -725,9 +726,16 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
     let mut tx = pool.begin().await?;
     let job = sqlx::query_scalar::<_, Uuid>(
         r#"
-        SELECT id FROM job_runs
-        WHERE status = 'queued'
-        ORDER BY queued_at ASC
+        SELECT j.id FROM job_runs j
+        WHERE j.status = 'queued'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM job_runs dep
+            WHERE dep.pipeline_run_id = j.pipeline_run_id
+              AND dep.job_name = ANY(j.needs)
+              AND dep.status <> 'success'
+          )
+        ORDER BY j.queued_at ASC
         FOR UPDATE SKIP LOCKED
         LIMIT 1
         "#,

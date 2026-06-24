@@ -118,13 +118,14 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             .send()
             .await?;
 
-        let workspace = TempDir::new()?;
+        let work_root = TempDir::with_prefix("pertisk-ci-")?;
+        let workspace = work_root.path().join(&job.repo_slug);
         if let Err(err) = materialize_workspace(
             cli.repos_root.as_deref(),
             &job.org_slug,
             &job.repo_slug,
             &job.commit_sha,
-            workspace.path(),
+            &workspace,
         )
         .await
         {
@@ -134,8 +135,22 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
 
         let executor = ShellExecutor::new();
         let queue_wait = queued_at.elapsed();
+        let job_env = [
+            ("CI_PROJECT_DIR", workspace.display().to_string()),
+            ("CI_COMMIT_SHA", job.commit_sha.clone()),
+            (
+                "CI_REPOSITORY_SLUG",
+                format!("{}/{}", job.org_slug, job.repo_slug),
+            ),
+        ];
         let (metrics, outputs) = executor
-            .execute_steps(&job.job_name, workspace.path(), &job.steps, queue_wait)
+            .execute_steps(
+                &job.job_name,
+                &workspace,
+                &job.steps,
+                queue_wait,
+                &job_env,
+            )
             .await;
 
         let mut log = String::new();
@@ -198,32 +213,73 @@ async fn materialize_workspace(
         anyhow::bail!("PERTISK_REPOS_ROOT is required to checkout repository content");
     };
 
-    let output = Command::new("git")
-        .current_dir(&repo_path)
-        .args(["archive", commit_sha])
-        .output()
+    if !repo_path.is_dir() {
+        anyhow::bail!("repository not found: {}", repo_path.display());
+    }
+
+    tokio::fs::create_dir_all(workspace)
         .await
-        .context("git archive")?;
+        .with_context(|| format!("create workspace {}", workspace.display()))?;
 
-    if !output.status.success() {
-        anyhow::bail!("git archive failed: {}", String::from_utf8_lossy(&output.stderr));
+    // Read-only checkout from bare repo: keep index in runner temp dir so we never
+    // write index.lock into the pertisk-gits-owned repository.
+    let index_file = workspace
+        .parent()
+        .map(|dir| dir.join("index"))
+        .unwrap_or_else(|| workspace.join(".git-index"));
+
+    let git_base = |command: &mut Command| {
+        command
+            .args(["-c", "safe.directory=*"])
+            .env("GIT_DIR", &repo_path)
+            .env("GIT_INDEX_FILE", &index_file)
+            .arg("--work-tree")
+            .arg(workspace);
+    };
+
+    let read_tree = {
+        let mut command = Command::new("git");
+        git_base(&mut command);
+        command
+            .args(["read-tree", commit_sha])
+            .output()
+            .await
+            .context("git read-tree")?
+    };
+
+    if !read_tree.status.success() {
+        anyhow::bail!(
+            "git read-tree failed: {}",
+            String::from_utf8_lossy(&read_tree.stderr)
+        );
     }
 
-    let mut tar = Command::new("tar")
-        .args(["-x", "-C"])
-        .arg(workspace)
-        .stdin(std::process::Stdio::piped())
-        .spawn()
-        .context("spawn tar")?;
+    let checkout = {
+        let mut command = Command::new("git");
+        git_base(&mut command);
+        command
+            .args(["checkout-index", "-a", "-f"])
+            .output()
+            .await
+            .context("git checkout-index")?
+    };
 
-    if let Some(mut stdin) = tar.stdin.take() {
-        use tokio::io::AsyncWriteExt;
-        stdin.write_all(&output.stdout).await?;
+    if !checkout.status.success() {
+        anyhow::bail!(
+            "git checkout-index failed: {}",
+            String::from_utf8_lossy(&checkout.stderr)
+        );
     }
 
-    let status = tar.wait().await?;
-    if !status.success() {
-        anyhow::bail!("tar extract failed");
+    let _ = tokio::fs::remove_file(&index_file).await;
+
+    let mut entries = tokio::fs::read_dir(workspace).await.context("read workspace")?;
+    if entries.next_entry().await?.is_none() {
+        anyhow::bail!(
+            "checkout produced empty workspace for commit {commit_sha}; \
+             verify the commit has tracked files"
+        );
     }
+
     Ok(())
 }

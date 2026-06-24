@@ -1,0 +1,2 @@
+ALTER TABLE job_runs
+    ADD COLUMN IF NOT EXISTS needs TEXT[] NOT NULL DEFAULT '{}';

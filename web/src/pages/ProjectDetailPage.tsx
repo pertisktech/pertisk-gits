@@ -10,7 +10,7 @@ import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
 import { RepoIssues } from '../components/RepoIssues'
 import { RepoPullRequests } from '../components/RepoPullRequests'
-import { RepoPipelines } from '../components/RepoPipelines'
+import { RepoPipelines, PIPELINE_CONFIG_FILES } from '../components/RepoPipelines'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
 
@@ -21,17 +21,6 @@ export function ProjectDetailPage() {
   const [searchParams] = useSearchParams()
   const { token, user } = useAuth()
   const [tab, setTab] = useState<Tab>('code')
-
-  useEffect(() => {
-    const requested = searchParams.get('tab')
-    if (requested === 'commits' || requested === 'code' || requested === 'issues' || requested === 'pulls' || requested === 'pipelines') {
-      setTab(requested)
-    } else if (requested === 'settings' && token) {
-      setTab('settings')
-    } else if (requested === 'clone') {
-      setTab('code')
-    }
-  }, [searchParams, token])
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -58,12 +47,49 @@ export function ProjectDetailPage() {
   const authCloneUrl = user ? cloneUrl.replace('://', `://${user.username}@`) : cloneUrl
   const repoEmpty = browserData?.browser.empty ?? false
 
+  const { data: hasPipelineConfig = false, isLoading: pipelineConfigLoading } = useQuery({
+    queryKey: ['pipeline-config', orgSlug, projectSlug, project?.default_branch],
+    queryFn: async () => {
+      const tree = await api.getRepoTree(
+        orgSlug,
+        projectSlug,
+        { ref: project!.default_branch },
+        token,
+      )
+      return tree.entries.some(
+        (entry) => PIPELINE_CONFIG_FILES.has(entry.name) && entry.kind === 'blob',
+      )
+    },
+    enabled: Boolean(token && orgSlug && projectSlug && project && browserData && !repoEmpty),
+  })
+
+  const showPipelinesTab = Boolean(token && !repoEmpty && hasPipelineConfig)
+
+  useEffect(() => {
+    const requested = searchParams.get('tab')
+    if (requested === 'commits' || requested === 'code' || requested === 'issues' || requested === 'pulls') {
+      setTab(requested)
+    } else if (requested === 'pipelines' && showPipelinesTab) {
+      setTab('pipelines')
+    } else if (requested === 'settings' && token) {
+      setTab('settings')
+    } else if (requested === 'clone') {
+      setTab('code')
+    }
+  }, [searchParams, token, showPipelinesTab])
+
+  useEffect(() => {
+    if (tab === 'pipelines' && !showPipelinesTab && !pipelineConfigLoading) {
+      setTab('code')
+    }
+  }, [tab, showPipelinesTab, pipelineConfigLoading])
+
   const tabs = [
     { id: 'code', label: 'Code', icon: Code2 },
     { id: 'issues', label: 'Issues', icon: CircleDot },
     { id: 'pulls', label: 'Pull requests', icon: GitPullRequest },
     { id: 'commits', label: 'Commits', icon: GitCommit },
-    ...(token ? [{ id: 'pipelines', label: 'Pipelines', icon: Workflow }] : []),
+    ...(showPipelinesTab ? [{ id: 'pipelines', label: 'Pipelines', icon: Workflow }] : []),
     ...(token ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
   ]
 
@@ -142,7 +168,7 @@ export function ProjectDetailPage() {
           />
         )}
 
-        {tab === 'pipelines' && token && (
+        {tab === 'pipelines' && showPipelinesTab && token && (
           <RepoPipelines
             token={token}
             orgSlug={orgSlug}
