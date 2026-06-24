@@ -100,7 +100,7 @@ export function GlobalSearch() {
   const showDropdown = open && query.trim().length > 0
 
   return (
-    <div ref={containerRef} className="relative flex-1 min-w-0 max-w-md">
+    <div ref={containerRef} className="relative flex-1 min-w-0 max-w-xl">
       <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
       <input
         ref={inputRef}

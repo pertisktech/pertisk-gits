@@ -1,10 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import { Code2, CircleDot, GitCommit, GitPullRequest, Settings, Workflow } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { AppSegment } from '../components/AppSegment'
 import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
@@ -13,14 +11,16 @@ import { RepoPullRequests } from '../components/RepoPullRequests'
 import { RepoPipelines, PIPELINE_CONFIG_FILES } from '../components/RepoPipelines'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
-
-type Tab = 'code' | 'issues' | 'pulls' | 'commits' | 'pipelines' | 'settings'
+import { useProjectNav } from '../hooks/useProjectNav'
+import type { ProjectTab } from '../lib/projectRoute'
 
 export function ProjectDetailPage() {
   const { slug: orgSlug = '', projectSlug = '' } = useParams()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { token, user } = useAuth()
-  const [tab, setTab] = useState<Tab>('code')
+  const projectNav = useProjectNav()
+
+  const tab: ProjectTab = projectNav?.tab ?? 'code'
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -67,31 +67,17 @@ export function ProjectDetailPage() {
 
   useEffect(() => {
     const requested = searchParams.get('tab')
-    if (requested === 'commits' || requested === 'code' || requested === 'issues' || requested === 'pulls') {
-      setTab(requested)
-    } else if (requested === 'pipelines' && showPipelinesTab) {
-      setTab('pipelines')
-    } else if (requested === 'settings' && token) {
-      setTab('settings')
-    } else if (requested === 'clone') {
-      setTab('code')
+    if (requested === 'clone') {
+      setSearchParams({}, { replace: true })
+      return
     }
-  }, [searchParams, token, showPipelinesTab])
-
-  useEffect(() => {
-    if (tab === 'pipelines' && !showPipelinesTab && !pipelineConfigLoading) {
-      setTab('code')
+    if (requested === 'pipelines' && !showPipelinesTab && !pipelineConfigLoading) {
+      setSearchParams({}, { replace: true })
     }
-  }, [tab, showPipelinesTab, pipelineConfigLoading])
-
-  const tabs = [
-    { id: 'code', label: 'Code', icon: Code2 },
-    { id: 'issues', label: 'Issues', icon: CircleDot },
-    { id: 'pulls', label: 'Pull requests', icon: GitPullRequest },
-    { id: 'commits', label: 'Commits', icon: GitCommit },
-    ...(showPipelinesTab ? [{ id: 'pipelines', label: 'Pipelines', icon: Workflow }] : []),
-    ...(token ? [{ id: 'settings', label: 'Settings', icon: Settings }] : []),
-  ]
+    if (requested === 'settings' && !token) {
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, token, showPipelinesTab, pipelineConfigLoading, setSearchParams])
 
   if (isLoading) {
     return <div className="text-text-secondary text-sm py-8">Loading repository…</div>
@@ -115,12 +101,6 @@ export function ProjectDetailPage() {
         repoName={project.name}
         description={project.description}
         visibility={project.visibility}
-      />
-
-      <AppSegment
-        active={tab}
-        onChange={(id) => setTab(id as Tab)}
-        tabs={tabs}
         action={
           <RepoCloneDropdown
             cloneUrl={cloneUrl}
