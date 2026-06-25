@@ -10,17 +10,32 @@ jobs:
     needs: []
     timeout_minutes: 30
     steps:
-      - name: Build  Runner
+      - name: Build runner RPM
         env:
           PERTISK_FORCE_DOCKER_BUILD: "1"
-        run: make package-runner-amd64 VERSION=1.0.0
+          VERSION: "1.0.0"
+        run: |
+          make package-runner-amd64 VERSION="$VERSION"
+          test -f "release/pertisk-runner-${VERSION}-1.x86_64.rpm"
+          ls -lh "release/pertisk-runner-${VERSION}-1.x86_64.rpm"
+    artifacts:
+      - name: pertisk-runner-rpm
+        path: release/pertisk-runner-1.0.0-1.x86_64.rpm
 
   build-package:
     runs-on: docker
     needs: []
     timeout_minutes: 30
     steps:
-      - name: Build  Package
+      - name: Build pertisk-gits RPM (includes worker)
         env:
           PERTISK_FORCE_DOCKER_BUILD: "1"
-        run: make package-amd64 VERSION=1.0.0
+          VERSION: "1.0.0"
+        run: |
+          make package-amd64 VERSION="$VERSION"
+          test -f "release/pertisk-gits-${VERSION}-1.x86_64.rpm"
+          test -f pertisk-worker-linux-amd64
+          ls -lh "release/pertisk-gits-${VERSION}-1.x86_64.rpm" pertisk-worker-linux-amd64
+    artifacts:
+      - name: pertisk-gits-rpm
+        path: release/pertisk-gits-1.0.0-1.x86_64.rpm
