@@ -38,6 +38,7 @@ mod config;
 mod db;
 mod password;
 mod permissions;
+mod registry;
 mod version;
 
 use config::Config;
@@ -136,6 +137,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .merge(collaboration::collaboration_read_routes())
         .merge(cicd::cicd_read_routes())
+        .merge(registry::registry_read_routes())
         .layer(from_fn_with_state(state.clone(), optional_auth_middleware));
 
     let protected_routes = Router::new()
@@ -159,6 +161,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(permissions::permissions_routes())
         .merge(collaboration::collaboration_write_routes())
         .merge(cicd::cicd_write_routes())
+        .merge(registry::registry_write_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
     let api_routes = Router::new()
@@ -196,6 +199,14 @@ async fn main() -> anyhow::Result<()> {
         .route("/health/live", get(health_live))
         .nest("/api/v1", api_routes)
         .merge(pertisk_git::http::router().with_state(git_state));
+
+    if std::env::var("REGISTRY_EMBEDDED").unwrap_or_else(|_| "1".into()) != "0" {
+        let registry_config = pertisk_registry::config::RegistryConfig::from_env()?;
+        let registry_state =
+            pertisk_registry::build_state(&registry_config, state.pool.clone()).await?;
+        app = app.merge(pertisk_registry::router().with_state(registry_state));
+        tracing::info!("embedded OCI registry routes at /v2 and /service/token");
+    }
 
     if let Some(web_dist) = &config.web_dist {
         let index = web_dist.join("index.html");

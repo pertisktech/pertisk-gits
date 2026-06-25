@@ -2,6 +2,7 @@
 **/*.rs.bk
 .env
 .env.local
+data/registry/repos
 data/repos
 web/.npm-cache
 web/node_modules

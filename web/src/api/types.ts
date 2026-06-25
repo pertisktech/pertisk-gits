@@ -333,3 +333,40 @@ export interface RotateRunnerTokenResponse {
   token: string
   api_url: string
 }
+
+export interface ContainerImageSummary {
+  id: string
+  name: string
+  description: string | null
+  linked_repository_id: string | null
+  linked_repository_slug: string | null
+  tag_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ContainerTag {
+  name: string
+  manifest_digest: string
+  commit_sha: string | null
+  media_type: string
+  size_bytes: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ContainerImageDetail {
+  id: string
+  name: string
+  description: string | null
+  linked_repository_id: string | null
+  linked_repository_slug: string | null
+  created_at: string
+  updated_at: string
+  tags: ContainerTag[]
+}
+
+export interface RegistryGcReport {
+  blobs_removed: number
+  upload_files_removed: number
+}

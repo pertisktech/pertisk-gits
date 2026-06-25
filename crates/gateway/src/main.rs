@@ -8,6 +8,7 @@ use pingora_proxy::{ProxyHttp, Session};
 struct GatewayProxy {
     api_upstream: (String, u16),
     git_upstream: (String, u16),
+    registry_upstream: (String, u16),
 }
 
 #[async_trait]
@@ -36,9 +37,9 @@ impl ProxyHttp for GatewayProxy {
         _ctx: &mut Self::CTX,
     ) -> Result<Box<HttpPeer>> {
         let path = session.req_header().uri.path();
-        // Git Smart HTTP is served by the API (same upstream). A dedicated git-http
-        // process on GIT_UPSTREAM is optional for production scale-out.
-        let (host, port) = if path.contains(".git") {
+        let (host, port) = if path.starts_with("/v2") || path.starts_with("/service/token") {
+            &self.registry_upstream
+        } else if path.contains(".git") {
             &self.git_upstream
         } else {
             &self.api_upstream
@@ -83,9 +84,12 @@ fn main() {
         std::env::var("API_UPSTREAM").unwrap_or_else(|_| "127.0.0.1:8081".into());
     let git_upstream =
         std::env::var("GIT_UPSTREAM").unwrap_or_else(|_| "127.0.0.1:8082".into());
+    let registry_upstream =
+        std::env::var("REGISTRY_UPSTREAM").unwrap_or_else(|_| "127.0.0.1:8083".into());
 
     let api_upstream = parse_upstream(&api_upstream, 8081);
     let git_upstream = parse_upstream(&git_upstream, 8082);
+    let registry_upstream = parse_upstream(&registry_upstream, 8083);
 
     let mut server = Server::new(None).unwrap();
     server.bootstrap();
@@ -93,17 +97,20 @@ fn main() {
     let proxy = GatewayProxy {
         api_upstream: api_upstream.clone(),
         git_upstream: git_upstream.clone(),
+        registry_upstream: registry_upstream.clone(),
     };
     let mut proxy_service = pingora_proxy::http_proxy_service(&server.configuration, proxy);
     proxy_service.add_tcp(&format!("{host}:{port}"));
 
     server.add_service(proxy_service);
     tracing::info!(
-        "pertisk-gateway listening on {host}:{port} (api {}:{}, git {}:{})",
+        "pertisk-gateway listening on {host}:{port} (api {}:{}, git {}:{}, registry {}:{})",
         api_upstream.0,
         api_upstream.1,
         git_upstream.0,
-        git_upstream.1
+        git_upstream.1,
+        registry_upstream.0,
+        registry_upstream.1
     );
     server.run_forever();
 }

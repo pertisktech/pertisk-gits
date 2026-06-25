@@ -17,6 +17,7 @@ import { PipelineRunDetailPage } from './pages/PipelineRunDetailPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { RegisterPage } from './pages/RegisterPage'
+import { RegistryPage } from './pages/RegistryPage'
 import { RunnersPage } from './pages/RunnersPage'
 import { ProtectedRoute } from './routes/ProtectedRoute'
 
@@ -113,6 +114,8 @@ export default function App() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   <Route path="/groups/new" element={<NewGroupPage />} />
+                  <Route path="/groups/:slug/registry" element={<RegistryPage />} />
+                  <Route path="/groups/:slug/registry/:imageName" element={<RegistryPage />} />
                   <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />

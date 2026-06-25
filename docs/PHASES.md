@@ -127,16 +127,28 @@ Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
 ---
 
-## Phase 5 — Container Registry
+## Phase 5 — Container Registry (In progress)
 
 **Goal:** OCI registry per org (`registry.host/org/image:tag`).
 
-- OCI distribution spec (push/pull manifest + layers)
-- Token auth, link images to repos/commits
-- Garbage collection worker
-- UI: tags, delete, metadata
+| Component | Approach | Status |
+|-----------|----------|--------|
+| OCI `/v2/*` API | `pertisk-registry` crate — manifest + blob push/pull | Done (MVP) |
+| Token auth | `/service/token` — Basic login → scoped Bearer JWT | Done (MVP) |
+| Org-scoped images | `{org}/{image}` path; org membership RBAC | Done (MVP) |
+| Blob storage | Local FS (`REGISTRY_ROOT`) or S3/MinIO (`REGISTRY_STORAGE=s3`) | Done |
+| Gateway route | `/v2/*`, `/service/token` → registry upstream | Done |
+| Embedded dev mode | Registry routes merged into `pertisk-api` | Done |
+| Registry UI | Group registry page — tags, delete, metadata, git repo link | Done |
+| GC worker | Background loop + manual trigger; unreferenced blob cleanup | Done |
+| Git repo link | `repository_id` on image; `commit_sha` on tags (push header) | Done |
+| Link images to commits UI | Tag commit links when repo linked | Done |
 
-**Gateway route:** `/v2/*` → `registry` service
+**Deferred:** catalog API, public pulls, Helm/K8s chart registry
+
+**Gateway route:** `/v2/*` → `registry` service (or embedded API)
+
+See [docs/REGISTRY.md](./REGISTRY.md)
 
 ---
 
@@ -225,7 +237,7 @@ pertisk-gits/
 │   ├── cicd/             # Phase 4 pipeline engine
 │   ├── runner/           # Phase 4 self-hosted runner
 │   ├── worker/           # Phase 4 scheduler
-│   └── registry/         # Phase 5 (planned)
+│   └── registry/         # Phase 5 OCI container registry
 ├── web/                  # React app
 ├── migrations/           # SQLx migrations
 ├── deploy/               # Docker Compose, Helm

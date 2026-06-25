@@ -8,6 +8,7 @@ members = [
     "crates/cicd",
     "crates/runner",
     "crates/worker",
+    "crates/registry",
 ]
 default-members = ["crates/api"]
 

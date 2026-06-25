@@ -22,6 +22,9 @@ import type {
   RepositoryDetail,
   RotateRunnerTokenResponse,
   Runner,
+  ContainerImageDetail,
+  ContainerImageSummary,
+  RegistryGcReport,
   TreeEntry,
   User,
   UserSshKey,
@@ -652,4 +655,54 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({}),
     }, token),
+
+  listContainerImages: (token: string, orgSlug: string) =>
+    request<ContainerImageSummary[]>(`/organizations/${orgSlug}/registry/images`, {}, token),
+
+  getContainerImage: (token: string, orgSlug: string, imageName: string) =>
+    request<ContainerImageDetail>(
+      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}`,
+      {},
+      token,
+    ),
+
+  updateContainerImage: (
+    token: string,
+    orgSlug: string,
+    imageName: string,
+    payload: { description?: string; linked_repository_id?: string | null },
+  ) =>
+    request<ContainerImageDetail>(
+      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteContainerImage: async (token: string, orgSlug: string, imageName: string) => {
+    await request<void>(
+      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}`,
+      { method: 'DELETE' },
+      token,
+    )
+  },
+
+  deleteContainerTag: async (
+    token: string,
+    orgSlug: string,
+    imageName: string,
+    tagName: string,
+  ) => {
+    await request<void>(
+      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}/tags/${encodeURIComponent(tagName)}`,
+      { method: 'DELETE' },
+      token,
+    )
+  },
+
+  runRegistryGc: (token: string, orgSlug: string) =>
+    request<RegistryGcReport>(
+      `/organizations/${orgSlug}/registry/gc`,
+      { method: 'POST', body: JSON.stringify({}) },
+      token,
+    ),
 }

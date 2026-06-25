@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { FolderGit2, Plus, Users } from 'lucide-react'
+import { FolderGit2, Package, Plus, Users } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -34,6 +34,10 @@ export function GroupDetailPage() {
       </div>
 
       <div className="mb-4 flex justify-end gap-2">
+        <LinkButton to={`/groups/${slug}/registry`}>
+          <Package size={14} />
+          Registry
+        </LinkButton>
         <LinkButton to={`/groups/${slug}/members`}>
           <Users size={14} />
           Members
