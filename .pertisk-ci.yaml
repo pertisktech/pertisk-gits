@@ -11,4 +11,6 @@ jobs:
     timeout_minutes: 30
     steps:
       - name: Build
-        run: export PATH="$PATH:/root/.cargo/bin" && make package-runner-amd64 VERSION=1.0.0
+        env:
+          PERTISK_FORCE_DOCKER_BUILD: "1"
+        run: make package-runner-amd64 VERSION=1.0.0

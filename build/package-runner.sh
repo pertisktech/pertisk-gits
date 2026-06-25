@@ -122,9 +122,15 @@ elif [ ! -f "$version_stamp" ] || [ "$(cat "$version_stamp")" != "$VERSION" ]; t
 fi
 
 if [ "$need_rebuild" -eq 1 ]; then
-  if [ "$ARCH" = "$HOST_ARCH" ] && [ "$HOST_OS" = "Linux" ]; then
+  force_docker="${PERTISK_FORCE_DOCKER_BUILD:-}"
+  if [ "$force_docker" = "1" ] || [ "$force_docker" = "true" ]; then
+    build_binary_docker
+  elif [ "$ARCH" = "$HOST_ARCH" ] && [ "$HOST_OS" = "Linux" ] && command -v cargo >/dev/null 2>&1; then
     build_native
   else
+    if [ "$ARCH" = "$HOST_ARCH" ] && [ "$HOST_OS" = "Linux" ]; then
+      echo "cargo not in PATH; using Docker buildx..."
+    fi
     build_binary_docker
   fi
   echo "$VERSION" > "$version_stamp"
