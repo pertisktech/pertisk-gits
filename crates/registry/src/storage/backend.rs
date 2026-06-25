@@ -32,6 +32,7 @@ impl StorageBackend {
 
     pub fn local(root: PathBuf) -> anyhow::Result<Self> {
         std::fs::create_dir_all(root.join("blobs"))?;
+        std::fs::create_dir_all(root.join("uploads"))?;
         Ok(Self::Local(LocalBackend { root }))
     }
 
@@ -62,6 +63,13 @@ impl StorageBackend {
             Self::S3(b) => b.delete(key).await,
         }
     }
+
+    pub async fn put_path(&self, key: &str, path: &std::path::Path) -> anyhow::Result<()> {
+        match self {
+            Self::Local(b) => b.put_path(key, path).await,
+            Self::S3(b) => b.put_path(key, path).await,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -72,6 +80,15 @@ pub struct LocalBackend {
 impl LocalBackend {
     fn path(&self, key: &str) -> PathBuf {
         self.root.join(key)
+    }
+
+    async fn put_path(&self, key: &str, src: &std::path::Path) -> anyhow::Result<()> {
+        let dest = self.path(key);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::copy(src, &dest).await?;
+        Ok(())
     }
 }
 
@@ -149,6 +166,21 @@ impl S3Backend {
             client: aws_sdk_s3::Client::from_conf(config),
             bucket,
         })
+    }
+
+    async fn put_path(&self, key: &str, path: &std::path::Path) -> anyhow::Result<()> {
+        let body = aws_sdk_s3::primitives::ByteStream::from_path(path)
+            .await
+            .with_context(|| format!("read {} for s3 upload", path.display()))?;
+        self.client
+            .put_object()
+            .bucket(&self.bucket)
+            .key(key)
+            .body(body)
+            .send()
+            .await
+            .with_context(|| format!("s3 put s3://{}/{}", self.bucket, key))?;
+        Ok(())
     }
 }
 

@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Context;
 use sha2::{Digest, Sha256};
+use tokio::io::AsyncReadExt;
 use tokio::io::AsyncWriteExt;
 use uuid::Uuid;
 
@@ -17,6 +18,7 @@ pub struct BlobStore {
 
 impl BlobStore {
     pub fn from_config(config: &crate::config::RegistryConfig) -> anyhow::Result<Self> {
+        std::fs::create_dir_all(config.registry_root.join("uploads"))?;
         let backend = StorageBackend::from_env(&config.registry_root)?;
         Ok(Self {
             backend,
@@ -79,18 +81,36 @@ impl BlobStore {
         expected_digest: &str,
     ) -> anyhow::Result<(String, i64)> {
         let upload_path = self.upload_path(upload_id);
-        let data = tokio::fs::read(&upload_path).await?;
-        let digest = sha256_digest(&data);
+        let meta = tokio::fs::metadata(&upload_path)
+            .await
+            .with_context(|| format!("upload {upload_id} not found"))?;
+        if meta.len() == 0 {
+            anyhow::bail!("upload file is empty");
+        }
+
+        let digest = sha256_digest_file(&upload_path).await?;
         if digest != expected_digest {
             anyhow::bail!("digest mismatch: got {digest}, expected {expected_digest}");
         }
-        let key = self.write_blob(expected_digest, &data).await?;
+
+        let key = Self::blob_key(expected_digest);
+        if !self.backend.exists(&key).await {
+            self.backend
+                .put_path(&key, &upload_path)
+                .await
+                .with_context(|| format!("store blob {expected_digest}"))?;
+        }
+
+        let size = meta.len() as i64;
         let _ = tokio::fs::remove_file(&upload_path).await;
-        Ok((key, data.len() as i64))
+        Ok((key, size))
     }
 
     pub async fn append_upload(&self, upload_id: &Uuid, chunk: &[u8]) -> anyhow::Result<()> {
         let path = self.upload_path(upload_id);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
         let mut file = tokio::fs::OpenOptions::new()
             .create(true)
             .append(true)
@@ -102,6 +122,7 @@ impl BlobStore {
     }
 
     pub fn create_upload(&self) -> Uuid {
+        let _ = std::fs::create_dir_all(self.root.join("uploads"));
         Uuid::new_v4()
     }
 
@@ -134,6 +155,20 @@ impl BlobStore {
 pub fn sha256_digest(data: &[u8]) -> String {
     let hash = Sha256::digest(data);
     format!("sha256:{}", hex::encode(hash))
+}
+
+pub async fn sha256_digest_file(path: &Path) -> anyhow::Result<String> {
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 1024 * 1024];
+    loop {
+        let n = file.read(&mut buf).await?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
 mod hex {

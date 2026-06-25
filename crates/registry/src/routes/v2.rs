@@ -344,7 +344,10 @@ pub async fn complete_upload(
         .storage
         .finalize_upload(&upload_id, &digest)
         .await
-        .map_err(|e| registry_err(StatusCode::BAD_REQUEST, &e.to_string()))?;
+        .map_err(|e| {
+            tracing::warn!(%upload_id, %digest, error = %e, "blob upload finalize failed");
+            registry_err(StatusCode::BAD_REQUEST, &e.to_string())
+        })?;
 
     record_blob(&state.pool, &digest, size, &storage_key).await?;
 
