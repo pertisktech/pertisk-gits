@@ -6,6 +6,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=docker-common.sh
+source "${SCRIPT_DIR}/docker-common.sh"
+
 ARCH="${1:?Usage: $0 <amd64|arm64> [VERSION] [all]}"
 VERSION="${2:-$(git describe --tags --always 2>/dev/null | sed 's/^v//' || echo '0.1.0')}"
 VERSION="${VERSION#v}"
@@ -85,13 +89,18 @@ build_binary_docker() {
 
   mkdir -p "$CACHE_DIR"
   local build_success=0
+  cache_from=()
+  if [ -f "${CACHE_DIR}/index.json" ]; then
+    cache_from=(--cache-from "type=local,src=${CACHE_DIR}")
+  fi
   for attempt in 1 2 3; do
     if docker buildx build --builder "$BUILDER_NAME" --platform "linux/$ARCH" \
       -f docker/Dockerfile.release \
-      --cache-from "type=local,src=${CACHE_DIR}" \
+      "${cache_from[@]}" \
       --cache-to "type=local,dest=${CACHE_DIR},mode=max" \
       --build-arg VERSION="$VERSION" \
       --build-arg CARGO_BUILD_JOBS="$CARGO_JOBS" \
+      --progress=plain \
       --load -t "pertisk-gits-build:$ARCH" .; then
       build_success=1
       break
@@ -282,15 +291,22 @@ fi
 [ "$(uname -s)" = "Darwin" ] && export COPYFILE_DISABLE=1
 
 build_deb_rpm_docker() {
-  echo "Building DEB and RPM in Linux container..."
-  docker build -q -f docker/Dockerfile.package -t pertisk-gits-package .
+  local workdir
+  workdir="$(pwd)"
+  echo "Building DEB and RPM in Linux container (workdir=${workdir})..."
+  if [ ! -d "pkg-${PACKAGE_NAME}" ]; then
+    echo "Error: pkg-${PACKAGE_NAME} not found in ${workdir}" >&2
+    exit 1
+  fi
+  docker build -f docker/Dockerfile.package -t pertisk-gits-package .
   docker run --rm \
-    -v "$(pwd):/work" -w /work \
+    -v "$(docker_work_volume "$workdir")" \
+    -w /work \
     -e PACKAGE_NAME="$PACKAGE_NAME" \
     -e VERSION="$VERSION" \
     -e deb_arch="$deb_arch" \
     -e rpm_arch="$rpm_arch" \
-    pertisk-gits-package bash /work/build/deb-rpm.sh
+    pertisk-gits-package /usr/local/bin/deb-rpm.sh
 }
 
 FPM_CMD=""
@@ -308,11 +324,10 @@ force_docker="${PERTISK_FORCE_DOCKER_BUILD:-}"
 use_docker_packaging=0
 if [ "$(uname -s)" = "Darwin" ]; then
   use_docker_packaging=1
-elif [ "$force_docker" = "1" ] || [ "$force_docker" = "true" ]; then
-  use_docker_packaging=1
 elif [ -z "$FPM_CMD" ]; then
   use_docker_packaging=1
 fi
+echo "Package build: use_docker_packaging=${use_docker_packaging} fpm=${FPM_CMD:-missing} PERTISK_FORCE_DOCKER_BUILD=${force_docker:-0}"
 
 if [ "$use_docker_packaging" -eq 1 ] && command -v docker >/dev/null 2>&1; then
   build_deb_rpm_docker

@@ -147,11 +147,11 @@ package-clean:
 	@echo "Removed Linux binaries; next package build will rebuild via Docker."
 
 package-amd64: web-dist
-	chmod +x build/package.sh build/deb-rpm.sh build/deploy-remote.sh build/deploy-deb.sh build/deploy-rpm.sh
+	chmod +x build/docker-common.sh build/package.sh build/deb-rpm.sh build/deploy-remote.sh build/deploy-deb.sh build/deploy-rpm.sh
 	PERTISK_FORCE_DOCKER_BUILD="$(PERTISK_FORCE_DOCKER_BUILD)" ./build/package.sh amd64 $(VERSION) $(PACKAGE_TARGET)
 
 package-arm64: web-dist
-	chmod +x build/package.sh build/deb-rpm.sh build/deploy-remote.sh build/deploy-deb.sh build/deploy-rpm.sh
+	chmod +x build/docker-common.sh build/package.sh build/deb-rpm.sh build/deploy-remote.sh build/deploy-deb.sh build/deploy-rpm.sh
 	PERTISK_FORCE_DOCKER_BUILD="$(PERTISK_FORCE_DOCKER_BUILD)" ./build/package.sh arm64 $(VERSION) $(PACKAGE_TARGET)
 
 package: package-amd64 package-arm64
@@ -228,11 +228,11 @@ package-runner-clean:
 	@echo "Removed runner Linux binaries; next package build will rebuild via Docker."
 
 package-runner-amd64:
-	chmod +x build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
+	chmod +x build/docker-common.sh build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
 	PERTISK_FORCE_DOCKER_BUILD="$(PERTISK_FORCE_DOCKER_BUILD)" ./build/package-runner.sh amd64 $(VERSION) $(PACKAGE_TARGET)
 
 package-runner-arm64:
-	chmod +x build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
+	chmod +x build/docker-common.sh build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
 	PERTISK_FORCE_DOCKER_BUILD="$(PERTISK_FORCE_DOCKER_BUILD)" ./build/package-runner.sh arm64 $(VERSION) $(PACKAGE_TARGET)
 
 package-runner: package-runner-amd64 package-runner-arm64

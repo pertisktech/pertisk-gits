@@ -4,6 +4,7 @@ FROM debian:bookworm-slim
 COPY docker/apt-bookworm-install.sh /usr/local/sbin/apt-bookworm-install
 RUN chmod +x /usr/local/sbin/apt-bookworm-install \
     && apt-bookworm-install \
+      bash \
       ca-certificates \
       curl \
       ruby \
@@ -13,5 +14,8 @@ RUN chmod +x /usr/local/sbin/apt-bookworm-install \
       cpio \
       zip \
     && gem install --no-document fpm
+
+COPY build/deb-rpm.sh build/deb-rpm-runner.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/deb-rpm.sh /usr/local/bin/deb-rpm-runner.sh
 
 WORKDIR /work

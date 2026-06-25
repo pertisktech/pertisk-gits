@@ -42,6 +42,14 @@ impl ShellExecutor {
         }
     }
 
+    fn shell_invocation(&self, script: &str) -> String {
+        if std::path::Path::new("/usr/bin/stdbuf").exists() {
+            format!("stdbuf -oL -eL {script}")
+        } else {
+            script.to_string()
+        }
+    }
+
     pub async fn run_step(
         &self,
         workspace: &Path,
@@ -64,10 +72,11 @@ impl ShellExecutor {
         let mut command = Command::new(&self.shell);
         command
             .arg("-lc")
-            .arg(&step.run)
+            .arg(self.shell_invocation(&step.run))
             .current_dir(cwd)
             .env("CI", "true")
-            .env("PERTISK_CI", "true");
+            .env("PERTISK_CI", "true")
+            .env("PYTHONUNBUFFERED", "1");
 
         for (key, value) in job_env {
             command.env(key, value);
@@ -121,12 +130,13 @@ impl ShellExecutor {
         let mut command = Command::new(&self.shell);
         command
             .arg("-lc")
-            .arg(&step.run)
+            .arg(self.shell_invocation(&step.run))
             .current_dir(cwd)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .env("CI", "true")
-            .env("PERTISK_CI", "true");
+            .env("PERTISK_CI", "true")
+            .env("PYTHONUNBUFFERED", "1");
 
         for (key, value) in job_env {
             command.env(key, value);

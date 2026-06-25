@@ -18,6 +18,7 @@ import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
 import {
   jobStepViews,
+  parseLogSteps,
   stepDisplayStatus,
   stepLogText,
   stepMeta,
@@ -50,7 +51,7 @@ export function PipelineRunDetailPage() {
     refetchInterval: (query) => {
       const item = query.state.data
       if (!item) return false
-      return isRunInProgress(item) ? 2000 : false
+      return isRunInProgress(item) ? 1000 : false
     },
   })
 
@@ -70,6 +71,14 @@ export function PipelineRunDetailPage() {
   useEffect(() => {
     setActiveStepKey(null)
   }, [activeJob?.id])
+
+  useEffect(() => {
+    if (!activeJob || activeJob.status !== 'running' || activeStepKey) return
+    const running = parseLogSteps(activeJob.log_text).find((step) => step.exitCode === null)
+    if (running) {
+      setActiveStepKey(running.name)
+    }
+  }, [activeJob, activeStepKey])
 
   const selectJob = (jobId: string) => {
     setActiveJobId(jobId)
