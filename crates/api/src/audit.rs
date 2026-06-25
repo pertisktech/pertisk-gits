@@ -80,6 +80,19 @@ fn default_audit_limit() -> i64 {
     50
 }
 
+/// Org-scoped events plus instance-level auth events from org members (login / SSO).
+const AUDIT_ORG_SCOPE_SQL: &str = r#"
+(
+  organization_id = $1
+  OR (
+    organization_id IS NULL
+    AND actor_user_id IN (
+      SELECT user_id FROM organization_members WHERE organization_id = $1
+    )
+  )
+)
+"#;
+
 #[derive(Serialize)]
 struct AuditEventResponse {
     id: Uuid,
@@ -113,17 +126,17 @@ async fn list_audit_events(
     let limit = query.limit.clamp(1, 200);
     let offset = query.offset.max(0);
 
-    let total: i64 = sqlx::query_scalar(
+    let total: i64 = sqlx::query_scalar(&format!(
         r#"
         SELECT COUNT(*)::bigint
         FROM audit_events
-        WHERE organization_id = $1
+        WHERE {AUDIT_ORG_SCOPE_SQL}
           AND ($2::audit_event_type IS NULL OR event_type = $2)
           AND ($3::uuid IS NULL OR actor_user_id = $3)
           AND ($4::timestamptz IS NULL OR created_at >= $4)
           AND ($5::timestamptz IS NULL OR created_at <= $5)
         "#,
-    )
+    ))
     .bind(org.id)
     .bind(query.event_type)
     .bind(query.actor_user_id)
@@ -133,7 +146,7 @@ async fn list_audit_events(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    let rows = sqlx::query_as::<_, AuditEvent>(
+    let rows = sqlx::query_as::<_, AuditEvent>(&format!(
         r#"
         SELECT
             id, organization_id, actor_user_id, event_type, action,
@@ -141,7 +154,7 @@ async fn list_audit_events(
             host(ip_address)::text AS ip_address,
             user_agent, created_at
         FROM audit_events
-        WHERE organization_id = $1
+        WHERE {AUDIT_ORG_SCOPE_SQL}
           AND ($2::audit_event_type IS NULL OR event_type = $2)
           AND ($3::uuid IS NULL OR actor_user_id = $3)
           AND ($4::timestamptz IS NULL OR created_at >= $4)
@@ -149,7 +162,7 @@ async fn list_audit_events(
         ORDER BY created_at DESC
         LIMIT $6 OFFSET $7
         "#,
-    )
+    ))
     .bind(org.id)
     .bind(query.event_type)
     .bind(query.actor_user_id)
@@ -174,7 +187,7 @@ async fn export_audit_events(
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
     ensure_can_view_audit(&state.pool, org.id, auth.user_id).await?;
 
-    let rows = sqlx::query_as::<_, AuditEvent>(
+    let rows = sqlx::query_as::<_, AuditEvent>(&format!(
         r#"
         SELECT
             id, organization_id, actor_user_id, event_type, action,
@@ -182,7 +195,7 @@ async fn export_audit_events(
             host(ip_address)::text AS ip_address,
             user_agent, created_at
         FROM audit_events
-        WHERE organization_id = $1
+        WHERE {AUDIT_ORG_SCOPE_SQL}
           AND ($2::audit_event_type IS NULL OR event_type = $2)
           AND ($3::uuid IS NULL OR actor_user_id = $3)
           AND ($4::timestamptz IS NULL OR created_at >= $4)
@@ -190,7 +203,7 @@ async fn export_audit_events(
         ORDER BY created_at DESC
         LIMIT 10000
         "#,
-    )
+    ))
     .bind(org.id)
     .bind(query.event_type)
     .bind(query.actor_user_id)

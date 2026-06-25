@@ -262,3 +262,40 @@ deploy-runner-rpm:
 		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
 		PACKAGE_BUILD="$(PACKAGE_BUILD)" RPM_ARCH="$(if $(filter arm64,$(DEPLOY_ARCH)),aarch64,x86_64)" \
 		./build/deploy-runner-rpm.sh
+
+# Delete a tag (local and remote).
+delete-tag:
+ifndef TAG
+	$(error TAG is not set. Usage: make delete-tag TAG=v1.0.0)
+endif
+	@echo "Deleting tag $(TAG)..."
+	git tag -d $(TAG)
+	git push origin -d $(TAG)
+
+# Create a new tag.
+create-tag:
+ifndef TAG
+	$(error TAG is not set. Usage: make create-tag TAG=v1.0.0)
+endif
+	@echo "Creating tag $(TAG)..."
+	git tag $(TAG)
+	git push origin $(TAG)
+
+# Delete and recreate a tag (force update). Use after amending a release commit.
+# Usage: make retag TAG=v1.0.0
+retag:
+ifndef TAG
+	$(error TAG is not set. Usage: make retag TAG=v1.0.0)
+endif
+	@echo "Recreating tag $(TAG)..."
+	@echo "Deleting local tag (if exists)..."
+	-git tag -d $(TAG) 2>/dev/null || true
+	@echo "Deleting remote tag (if exists)..."
+	-git push origin -d $(TAG) 2>/dev/null || true
+	@echo "Creating new tag $(TAG)..."
+	git tag $(TAG)
+	@echo "Pushing tag $(TAG) to origin..."
+	git push origin $(TAG)
+	@echo "✓ Tag $(TAG) created and pushed successfully"
+
+clean-tag: retag

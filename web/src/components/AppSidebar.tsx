@@ -96,7 +96,9 @@ export function AppSidebar({ open }: AppSidebarProps) {
               {group.groupName}
             </p>
 
-            {groupNavItems.map(({ id, label, icon: Icon }) => (
+            {groupNavItems
+              .filter((item) => item.id !== 'audit' || group.canViewAudit)
+              .map(({ id, label, icon: Icon }) => (
               <NavLink
                 key={id}
                 to={groupTabPath(group.basePath, id)}

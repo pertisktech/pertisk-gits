@@ -37,7 +37,7 @@ export function GroupAuditPage() {
   })
   const group = groups.find((g) => g.slug === slug)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['audit-events', slug, eventType],
     queryFn: () =>
       api.listAuditEvents(token!, slug, {
@@ -113,11 +113,17 @@ export function GroupAuditPage() {
       <div className="app-panel max-w-5xl">
         {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
 
-        {!isLoading && events.length === 0 && (
+        {isError && (
+          <div className="p-8 text-center text-sm text-dashboard-danger">
+            {error instanceof Error ? error.message : 'Failed to load audit log'}
+          </div>
+        )}
+
+        {!isLoading && !isError && events.length === 0 && (
           <div className="p-8 text-center text-text-secondary text-sm">No audit events yet.</div>
         )}
 
-        {!isLoading && events.length > 0 && (
+        {!isLoading && !isError && events.length > 0 && (
           <table className="app-list-table">
             <thead>
               <tr>
