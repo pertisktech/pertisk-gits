@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ContainerImageSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { GroupSubnav } from '../components/GroupNav'
 import {
   Breadcrumbs,
   EmptyState,
@@ -123,6 +124,8 @@ export function RegistryPage() {
           </div>
         }
       />
+
+      <GroupSubnav orgSlug={slug} activeTab="registry" />
 
       {error && (
         <div className="mb-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">

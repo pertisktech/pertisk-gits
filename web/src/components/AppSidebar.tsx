@@ -2,9 +2,11 @@ import {
   ArrowLeft,
   Code2,
   CircleDot,
+  FolderGit2,
   GitCommit,
   GitPullRequest,
   LayoutDashboard,
+  Package,
   Server,
   Settings,
   Users,
@@ -12,7 +14,10 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import { useGroupNav } from '../hooks/useGroupNav'
 import { useProjectNav } from '../hooks/useProjectNav'
+import type { GroupTab } from '../lib/groupRoute'
+import { groupTabPath } from '../lib/groupRoute'
 import type { ProjectTab } from '../lib/projectRoute'
 import { projectTabPath } from '../lib/projectRoute'
 import { cn } from '../utils/cn'
@@ -37,6 +42,12 @@ const projectNavItems: {
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
+const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
+  { id: 'repositories', label: 'Repositories', icon: FolderGit2 },
+  { id: 'registry', label: 'Registry', icon: Package },
+  { id: 'members', label: 'Members', icon: Users },
+]
+
 const globalLinkClass = ({ isActive }: { isActive: boolean }) =>
   cn('app-sidebar-link', isActive && 'active')
 
@@ -50,6 +61,7 @@ interface AppSidebarProps {
 
 export function AppSidebar({ open }: AppSidebarProps) {
   const project = useProjectNav()
+  const group = useGroupNav()
 
   return (
     <aside id="app-sidebar" className={cn('app-sidebar', open && 'open')} aria-label="Main navigation">
@@ -61,13 +73,38 @@ export function AppSidebar({ open }: AppSidebarProps) {
       </div>
 
       <nav className="app-sidebar-nav">
-        {!project &&
+        {!project && !group &&
           globalNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={globalLinkClass}>
               <Icon size={16} className="shrink-0" aria-hidden />
               <span>{label}</span>
             </NavLink>
           ))}
+
+        {group && !project && (
+          <div className="app-sidebar-section">
+            <p className="app-sidebar-section-label">Group</p>
+            <NavLink to="/groups" className="app-sidebar-back">
+              <ArrowLeft size={14} aria-hidden />
+              <span>Groups</span>
+            </NavLink>
+            <p className="app-sidebar-project-name" title={group.groupName}>
+              {group.groupName}
+            </p>
+
+            {groupNavItems.map(({ id, label, icon: Icon }) => (
+              <NavLink
+                key={id}
+                to={groupTabPath(group.basePath, id)}
+                end={id === 'repositories'}
+                className={({ isActive }) => projectLinkClass(isActive, false)}
+              >
+                <Icon size={16} className="shrink-0" aria-hidden />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        )}
 
         {project && (
           <div className="app-sidebar-section">

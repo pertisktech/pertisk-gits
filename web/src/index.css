@@ -970,6 +970,37 @@ body,
   margin-bottom: 0.75rem;
 }
 
+.app-group-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.125rem;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border, rgba(128, 128, 128, 0.25));
+}
+
+.app-group-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.app-group-nav-link:hover {
+  color: var(--color-text);
+}
+
+.app-group-nav-link.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 500;
+}
+
 .app-repo-title {
   font-size: 1.5rem;
   font-weight: 600;

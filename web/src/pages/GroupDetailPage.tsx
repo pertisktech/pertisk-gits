@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { FolderGit2, Package, Plus, Users } from 'lucide-react'
+import { FolderGit2, Plus } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { GroupSubnav } from '../components/GroupNav'
 import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
-import { EmptyState, LinkButton } from '../components/ui'
+import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
 
 export function GroupDetailPage() {
   const { slug = '' } = useParams()
@@ -25,7 +26,14 @@ export function GroupDetailPage() {
 
   return (
     <>
-      <div className="app-repo-header mb-5">
+      <Breadcrumbs
+        items={[
+          { label: 'Groups', to: '/groups' },
+          { label: group?.name ?? slug },
+        ]}
+      />
+
+      <div className="app-repo-header mb-2">
         <h1 className="app-repo-title">
           <span>{group?.name ?? slug}</span>
         </h1>
@@ -33,15 +41,9 @@ export function GroupDetailPage() {
         <p className="text-xs text-muted font-mono mt-1">@{slug}</p>
       </div>
 
-      <div className="mb-4 flex justify-end gap-2">
-        <LinkButton to={`/groups/${slug}/registry`}>
-          <Package size={14} />
-          Registry
-        </LinkButton>
-        <LinkButton to={`/groups/${slug}/members`}>
-          <Users size={14} />
-          Members
-        </LinkButton>
+      <GroupSubnav orgSlug={slug} activeTab="repositories" />
+
+      <div className="mb-4 flex justify-end">
         <LinkButton to={`/groups/${slug}/projects/new`} primary>
           <Plus size={14} />
           New repository

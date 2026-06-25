@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
+import { GroupSubnav } from '../components/GroupNav'
 import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
 
 function slugify(value: string) {
@@ -76,6 +77,8 @@ export function NewProjectPage() {
           </>
         }
       />
+
+      <GroupSubnav orgSlug={orgSlug} activeTab="repositories" />
 
       <Card className="max-w-xl">
         <form onSubmit={onSubmit} className="space-y-4">

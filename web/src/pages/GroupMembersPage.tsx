@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import type { OrgMember, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
+import { GroupSubnav } from '../components/GroupNav'
 import { UserPicker } from '../components/UserPicker'
 import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
 
@@ -116,6 +117,8 @@ export function GroupMembersPage() {
           </>
         }
       />
+
+      <GroupSubnav orgSlug={slug} activeTab="members" />
 
       {canManage && (
         <div className="app-panel max-w-3xl mb-5">
