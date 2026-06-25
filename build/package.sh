@@ -130,9 +130,15 @@ elif [ ! -f "$version_stamp" ] || [ "$(cat "$version_stamp")" != "$VERSION" ]; t
 fi
 
 if [ "$need_rebuild" -eq 1 ]; then
-  if [ "$ARCH" = "$HOST_ARCH" ] && [ "$HOST_OS" = "Linux" ]; then
+  force_docker="${PERTISK_FORCE_DOCKER_BUILD:-}"
+  if [ "$force_docker" = "1" ] || [ "$force_docker" = "true" ]; then
+    build_binary_docker
+  elif [ "$ARCH" = "$HOST_ARCH" ] && [ "$HOST_OS" = "Linux" ] && command -v cargo >/dev/null 2>&1; then
     build_native
   else
+    if [ "$ARCH" = "$HOST_ARCH" ] && [ "$HOST_OS" = "Linux" ]; then
+      echo "cargo not in PATH; using Docker buildx..."
+    fi
     build_binary_docker
   fi
   echo "$VERSION" > "$version_stamp"
@@ -274,7 +280,7 @@ fi
 
 [ "$(uname -s)" = "Darwin" ] && export COPYFILE_DISABLE=1
 
-if [ "$(uname -s)" = "Darwin" ]; then
+build_deb_rpm_docker() {
   echo "Building DEB and RPM in Linux container..."
   docker build -q -f docker/Dockerfile.package -t pertisk-gits-package .
   docker run --rm \
@@ -284,48 +290,60 @@ if [ "$(uname -s)" = "Darwin" ]; then
     -e deb_arch="$deb_arch" \
     -e rpm_arch="$rpm_arch" \
     pertisk-gits-package bash /work/build/deb-rpm.sh
-else
-  FPM_CMD=""
-  if command -v fpm >/dev/null 2>&1; then
-    FPM_CMD="fpm"
-  else
-    for dir in "$HOME/.gem/ruby/"*/bin "$HOME/.local/share/gem/ruby/"*/bin; do
-      [ -x "${dir}/fpm" ] 2>/dev/null || continue
-      FPM_CMD="${dir}/fpm"
-      break
-    done
-  fi
+}
 
-  if [ -n "$FPM_CMD" ]; then
-    $FPM_CMD -s dir -t deb --force \
-      -n "$PACKAGE_NAME" -v "$VERSION" -a "$deb_arch" \
+FPM_CMD=""
+if command -v fpm >/dev/null 2>&1; then
+  FPM_CMD="fpm"
+else
+  for dir in "$HOME/.gem/ruby/"*/bin "$HOME/.local/share/gem/ruby/"*/bin; do
+    [ -x "${dir}/fpm" ] 2>/dev/null || continue
+    FPM_CMD="${dir}/fpm"
+    break
+  done
+fi
+
+force_docker="${PERTISK_FORCE_DOCKER_BUILD:-}"
+use_docker_packaging=0
+if [ "$(uname -s)" = "Darwin" ]; then
+  use_docker_packaging=1
+elif [ "$force_docker" = "1" ] || [ "$force_docker" = "true" ]; then
+  use_docker_packaging=1
+elif [ -z "$FPM_CMD" ]; then
+  use_docker_packaging=1
+fi
+
+if [ "$use_docker_packaging" -eq 1 ] && command -v docker >/dev/null 2>&1; then
+  build_deb_rpm_docker
+elif [ -n "$FPM_CMD" ]; then
+  $FPM_CMD -s dir -t deb --force \
+    -n "$PACKAGE_NAME" -v "$VERSION" -a "$deb_arch" \
+    --description "Pertisk Gits — self-hosted Git platform" \
+    --url "https://github.com/pertisktech/pertisk-gits" \
+    --maintainer "Pertisk Team" --license "MIT" --vendor "Pertisk" \
+    --category "net" --depends git \
+    --before-install preinstall.sh --after-install postinstall.sh --before-remove preremove.sh \
+    --config-files "/etc/pertisk-gits/pertisk-gits.conf" \
+    --directories /var/lib/pertisk-gits \
+    --deb-systemd-enable --deb-no-default-config-files \
+    -p "$RELEASE_DIR" -C "pkg-${PACKAGE_NAME}" .
+
+  if command -v rpmbuild >/dev/null 2>&1; then
+    $FPM_CMD -s dir -t rpm --force \
+      -n "$PACKAGE_NAME" -v "$VERSION" -a "$rpm_arch" \
       --description "Pertisk Gits — self-hosted Git platform" \
       --url "https://github.com/pertisktech/pertisk-gits" \
       --maintainer "Pertisk Team" --license "MIT" --vendor "Pertisk" \
-      --category "net" --depends git \
+      --category "System Environment/Daemons" \
+      --depends git --depends shadow-utils \
       --before-install preinstall.sh --after-install postinstall.sh --before-remove preremove.sh \
       --config-files "/etc/pertisk-gits/pertisk-gits.conf" \
       --directories /var/lib/pertisk-gits \
-      --deb-systemd-enable --deb-no-default-config-files \
+      --rpm-os linux \
       -p "$RELEASE_DIR" -C "pkg-${PACKAGE_NAME}" .
-
-    if command -v rpmbuild >/dev/null 2>&1; then
-      $FPM_CMD -s dir -t rpm --force \
-        -n "$PACKAGE_NAME" -v "$VERSION" -a "$rpm_arch" \
-        --description "Pertisk Gits — self-hosted Git platform" \
-        --url "https://github.com/pertisktech/pertisk-gits" \
-        --maintainer "Pertisk Team" --license "MIT" --vendor "Pertisk" \
-        --category "System Environment/Daemons" \
-        --depends git --depends shadow-utils \
-        --before-install preinstall.sh --after-install postinstall.sh --before-remove preremove.sh \
-        --config-files "/etc/pertisk-gits/pertisk-gits.conf" \
-        --directories /var/lib/pertisk-gits \
-        --rpm-os linux \
-        -p "$RELEASE_DIR" -C "pkg-${PACKAGE_NAME}" .
-    fi
-  else
-    echo "fpm not found: skipping DEB/RPM (gem install fpm --user-install)"
   fi
+else
+  echo "fpm not found and docker unavailable: skipping DEB/RPM"
 fi
 
 tar -czvf "$RELEASE_DIR/${PACKAGE_NAME}-v${VERSION}-linux-${ARCH}.tar.gz" \
