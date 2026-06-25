@@ -187,6 +187,94 @@ pub fn auth_allows(auth: &RegistryAuth, repo_name: &str, action: &str) -> bool {
     })
 }
 
+/// Authenticate a registry request via Bearer token or HTTP Basic (docker login).
+pub async fn authorize_registry(
+    pool: &PgPool,
+    jwt_secret: &str,
+    token_url: &str,
+    service_name: &str,
+    headers: &HeaderMap,
+    repo_name: Option<&str>,
+    action: Option<&str>,
+) -> Result<RegistryAuth, (StatusCode, HeaderMap, String)> {
+    if let Some(token) = parse_bearer(headers) {
+        if let Ok(auth) = verify_registry_token(jwt_secret, &token) {
+            if let (Some(repo), Some(act)) = (repo_name, action) {
+                if auth_allows(&auth, repo, act) {
+                    return Ok(auth);
+                }
+                return Err(registry_err(
+                    StatusCode::FORBIDDEN,
+                    "insufficient scope",
+                ));
+            }
+            return Ok(auth);
+        }
+    }
+
+    if let Ok(Some(user)) = authenticate_basic(pool, headers).await {
+        if let (Some(repo), Some(act)) = (repo_name, action) {
+            return authorize_basic_repo(pool, user, repo, act).await;
+        }
+        return Ok(RegistryAuth {
+            user_id: user.id,
+            access: vec![],
+        });
+    }
+
+    let (repo, act) = match (repo_name, action) {
+        (Some(repo), Some(act)) => (repo, act),
+        _ => {
+            return Err((
+                StatusCode::UNAUTHORIZED,
+                unauthorized_headers(token_url, service_name, ""),
+                "Unauthorized".into(),
+            ));
+        }
+    };
+    Err(registry_unauthorized(token_url, service_name, repo, act))
+}
+
+async fn authorize_basic_repo(
+    pool: &PgPool,
+    user: AuthUser,
+    repo_name: &str,
+    action: &str,
+) -> Result<RegistryAuth, (StatusCode, HeaderMap, String)> {
+    let Some((org, _image)) = crate::access::parse_image_name(repo_name) else {
+        return Err(registry_err(
+            StatusCode::BAD_REQUEST,
+            "invalid repository name",
+        ));
+    };
+
+    let allowed = match action {
+        "pull" => crate::access::can_pull(pool, org, user.id)
+            .await
+            .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?,
+        "push" => crate::access::can_push(pool, org, user.id)
+            .await
+            .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?,
+        _ => false,
+    };
+
+    if !allowed {
+        return Err(registry_err(
+            StatusCode::FORBIDDEN,
+            "insufficient scope",
+        ));
+    }
+
+    Ok(RegistryAuth {
+        user_id: user.id,
+        access: vec![RegistryAccess {
+            access_type: "repository".into(),
+            name: repo_name.to_string(),
+            actions: vec![action.to_string()],
+        }],
+    })
+}
+
 pub async fn authenticate_basic(
     pool: &PgPool,
     headers: &HeaderMap,

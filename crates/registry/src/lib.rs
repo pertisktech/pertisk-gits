@@ -2,6 +2,7 @@ pub mod access;
 pub mod auth;
 pub mod config;
 pub mod gc;
+pub mod manifest;
 pub mod routes;
 pub mod storage;
 

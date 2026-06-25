@@ -10,10 +10,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::access::{find_repository, get_or_create_repository, parse_image_name, ContainerRepo};
-use crate::auth::{
-    auth_allows, parse_bearer, registry_err, registry_unauthorized, verify_registry_token,
-    RegistryAuth, RegistryResult,
-};
+use crate::auth::{authorize_registry, registry_err, RegistryAuth, RegistryResult};
 use crate::storage::{sha256_digest, BlobStore};
 
 #[derive(Clone)]
@@ -25,8 +22,21 @@ pub struct RegistryState {
     pub service_name: String,
 }
 
-pub async fn version_check() -> impl IntoResponse {
-    Json(serde_json::json!({}))
+pub async fn version_check(
+    State(state): State<RegistryState>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    authorize_registry(
+        &state.pool,
+        &state.jwt_secret,
+        &state.token_url,
+        &state.service_name,
+        &headers,
+        None,
+        None,
+    )
+    .await?;
+    Ok(Json(serde_json::json!({})).into_response())
 }
 
 pub async fn get_manifest(
@@ -510,19 +520,14 @@ async fn require_scope(
     repo_name: &str,
     action: &str,
 ) -> RegistryResult<RegistryAuth> {
-    let token = parse_bearer(headers).ok_or_else(|| {
-        registry_unauthorized(&state.token_url, &state.service_name, repo_name, action)
-    })?;
-
-    let auth = verify_registry_token(&state.jwt_secret, &token)
-        .map_err(|_| registry_err(StatusCode::UNAUTHORIZED, "invalid token"))?;
-
-    if !auth_allows(&auth, repo_name, action) {
-        return Err(registry_err(
-            StatusCode::FORBIDDEN,
-            "insufficient scope",
-        ));
-    }
-
-    Ok(auth)
+    authorize_registry(
+        &state.pool,
+        &state.jwt_secret,
+        &state.token_url,
+        &state.service_name,
+        headers,
+        Some(repo_name),
+        Some(action),
+    )
+    .await
 }

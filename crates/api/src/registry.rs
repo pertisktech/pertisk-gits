@@ -146,14 +146,14 @@ async fn get_container_image(
         .await?
         .ok_or(ApiError::from(DomainError::NotFound))?;
 
-    let tags = sqlx::query_as::<_, (String, String, Option<String>, String, i64, DateTime<Utc>, DateTime<Utc>)>(
+    let tags = sqlx::query_as::<_, (String, String, Option<String>, String, Vec<u8>, DateTime<Utc>, DateTime<Utc>)>(
         r#"
         SELECT
             t.name,
             t.manifest_digest,
             t.commit_sha,
             m.media_type,
-            m.size_bytes,
+            m.payload,
             t.created_at,
             t.updated_at
         FROM container_tags t
@@ -179,13 +179,13 @@ async fn get_container_image(
         tags: tags
             .into_iter()
             .map(
-                |(name, manifest_digest, commit_sha, media_type, size_bytes, created_at, updated_at)| {
+                |(name, manifest_digest, commit_sha, media_type, payload, created_at, updated_at)| {
                     ContainerTagResponse {
                         name,
                         manifest_digest,
                         commit_sha,
                         media_type,
-                        size_bytes,
+                        size_bytes: pertisk_registry::manifest::image_total_size_bytes(&payload),
                         created_at,
                         updated_at,
                     }

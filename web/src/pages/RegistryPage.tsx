@@ -221,40 +221,52 @@ export function RegistryPage() {
 
           {detail && (
             <>
-              <div className="app-panel p-4 space-y-3">
-                <h2 className="text-sm font-semibold text-text">Metadata</h2>
-                <label className="block text-xs text-text-secondary">
-                  Description
-                  <input
-                    className="mt-1 w-full max-w-lg app-input"
-                    defaultValue={detail.description ?? ''}
-                    onBlur={(e) => {
-                      const value = e.target.value.trim()
-                      if (value !== (detail.description ?? '')) {
-                        updateImage.mutate({ description: value })
-                      }
-                    }}
-                  />
-                </label>
-                <label className="block text-xs text-text-secondary">
-                  Linked git repository
-                  <select
-                    className="mt-1 w-full max-w-lg app-input font-mono text-sm"
-                    value={detail.linked_repository_id ?? ''}
-                    onChange={(e) => {
-                      const value = e.target.value || null
-                      updateImage.mutate({ linked_repository_id: value })
-                    }}
-                  >
-                    <option value="">— none —</option>
-                    {projects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.slug}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="flex gap-2 pt-1">
+              <div className="app-panel p-4 max-w-xl">
+                <h2 className="text-sm font-semibold text-text mb-4">Metadata</h2>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label htmlFor="registry-image-description" className="text-sm font-medium text-text">
+                      Description
+                    </label>
+                    <input
+                      id="registry-image-description"
+                      className="app-field"
+                      defaultValue={detail.description ?? ''}
+                      placeholder="Optional description"
+                      onBlur={(e) => {
+                        const value = e.target.value.trim()
+                        if (value !== (detail.description ?? '')) {
+                          updateImage.mutate({ description: value })
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="registry-linked-repo" className="text-sm font-medium text-text">
+                      Linked git repository
+                    </label>
+                    <select
+                      id="registry-linked-repo"
+                      className="app-field mono"
+                      value={detail.linked_repository_id ?? ''}
+                      onChange={(e) => {
+                        const value = e.target.value || null
+                        updateImage.mutate({ linked_repository_id: value })
+                      }}
+                    >
+                      <option value="">— none —</option>
+                      {projects.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.slug}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-text-secondary">
+                      Tag commit links use this repository when a commit SHA is set on push.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex gap-2 pt-4 mt-4 border-t border-naturals-n4">
                   <PrimaryButton
                     type="button"
                     disabled={deleteImage.isPending}
@@ -284,7 +296,7 @@ export function RegistryPage() {
                         <th>Tag</th>
                         <th>Digest</th>
                         <th>Commit</th>
-                        <th>Size</th>
+                        <th>Compressed size</th>
                         <th>Updated</th>
                         <th />
                       </tr>
@@ -298,12 +310,16 @@ export function RegistryPage() {
                           </td>
                           <td className="font-mono text-xs">
                             {tag.commit_sha ? (
-                              <Link
-                                to={`/groups/${slug}/projects/${detail.linked_repository_slug}/commit/${tag.commit_sha}`}
-                                className="text-primary hover:underline"
-                              >
-                                {tag.commit_sha.slice(0, 7)}
-                              </Link>
+                              detail.linked_repository_slug ? (
+                                <Link
+                                  to={`/groups/${slug}/projects/${detail.linked_repository_slug}/commit/${tag.commit_sha}`}
+                                  className="text-primary hover:underline"
+                                >
+                                  {tag.commit_sha.slice(0, 7)}
+                                </Link>
+                              ) : (
+                                tag.commit_sha.slice(0, 7)
+                              )
                             ) : (
                               '—'
                             )}

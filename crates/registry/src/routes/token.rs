@@ -51,11 +51,16 @@ pub async fn get_token(
         .ok_or((StatusCode::UNAUTHORIZED, www))?;
 
     let scopes = parse_scope_params(&query.scope);
-    let access = authorize_scopes(&state.pool, &user, &scopes)
-        .await
-        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, HeaderMap::new()))?;
+    let access = if scopes.is_empty() {
+        // Docker login probe — credentials validated above; scoped token fetched on pull/push.
+        vec![]
+    } else {
+        authorize_scopes(&state.pool, &user, &scopes)
+            .await
+            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, HeaderMap::new()))?
+    };
 
-    if access.is_empty() {
+    if !scopes.is_empty() && access.is_empty() {
         return Err((StatusCode::FORBIDDEN, HeaderMap::new()));
     }
 
