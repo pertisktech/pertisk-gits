@@ -98,8 +98,51 @@ async fn release_idle_runners(pool: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+/// Running job exceeded `timeout_minutes` — reclaimed as failure.
+async fn reclaim_timed_out_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let timed_out = sqlx::query_as::<_, (Uuid, Uuid, String, i32)>(
+        r#"
+        SELECT j.id, j.pipeline_run_id, j.job_name, j.timeout_minutes
+        FROM job_runs j
+        WHERE j.status = 'running'
+          AND j.timeout_minutes IS NOT NULL
+          AND j.started_at IS NOT NULL
+          AND j.started_at + make_interval(mins => j.timeout_minutes) < NOW()
+        "#,
+    )
+    .fetch_all(pool)
+    .await?;
+
+    for (job_id, pipeline_run_id, job_name, timeout_minutes) in timed_out {
+        sqlx::query(
+            r#"
+            UPDATE job_runs
+            SET status = 'failure',
+                finished_at = NOW(),
+                log_text = log_text || E'\n\n=== job timed out after ' || $2::text || ' minutes\n'
+            WHERE id = $1 AND status = 'running'
+            "#,
+        )
+        .bind(job_id)
+        .bind(timeout_minutes)
+        .execute(pool)
+        .await?;
+
+        if let Err(err) = update_commit_status_for_job(pool, job_id, "failure", &job_name).await {
+            tracing::warn!(%job_id, %err, "failed to update commit status for timed-out job");
+        }
+        if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
+            tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after timed-out job");
+        }
+        tracing::warn!(%job_id, job = %job_name, timeout_minutes, "reclaimed job after timeout");
+    }
+
+    Ok(())
+}
+
 /// Fail jobs left in `running` when the runner stops heartbeating (crash/kill).
 async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
+    reclaim_timed_out_jobs(pool).await?;
     let stale_jobs = sqlx::query_as::<_, (Uuid, Uuid, String)>(
         r#"
         SELECT j.id, j.pipeline_run_id, j.job_name
@@ -414,6 +457,7 @@ struct PollJobResponse {
     ref_name: String,
     steps: Value,
     artifacts: Value,
+    timeout_minutes: Option<i32>,
 }
 
 #[derive(Deserialize)]
@@ -962,6 +1006,7 @@ async fn poll_runner_job(
                     j.job_name,
                     j.steps_json,
                     j.artifacts_json,
+                    j.timeout_minutes,
                     p.repository_id,
                     p.commit_sha,
                     p.ref_name,
@@ -990,6 +1035,7 @@ async fn poll_runner_job(
                 ref_name: meta.ref_name,
                 steps: meta.steps_json,
                 artifacts: meta.artifacts_json,
+                timeout_minutes: meta.timeout_minutes,
             })));
         }
 
@@ -1734,14 +1780,15 @@ async fn materialize_jobs_for_run(
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, status)
-            VALUES ($1, $2, $3, $4, $5, $6, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued')
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
                 steps_json = EXCLUDED.steps_json,
                 artifacts_json = EXCLUDED.artifacts_json,
                 needs = EXCLUDED.needs,
+                timeout_minutes = EXCLUDED.timeout_minutes,
                 status = 'queued',
                 runner_id = NULL,
                 metrics_json = NULL,
@@ -1757,6 +1804,7 @@ async fn materialize_jobs_for_run(
         .bind(steps_json)
         .bind(artifacts_json)
         .bind(&job.job.needs)
+        .bind(job.job.timeout_minutes.map(|m| m as i32))
         .execute(pool)
         .await?;
 
@@ -2279,6 +2327,7 @@ struct JobPollRow {
     job_name: String,
     steps_json: Value,
     artifacts_json: Value,
+    timeout_minutes: Option<i32>,
     repository_id: Uuid,
     commit_sha: String,
     ref_name: String,
@@ -2471,6 +2520,7 @@ struct RunnerJobControlResponse {
     job_cancelled: bool,
     cancel_requested: bool,
     cancel_step_name: Option<String>,
+    timed_out: bool,
 }
 
 async fn runner_job_control(
@@ -2480,9 +2530,18 @@ async fn runner_job_control(
 ) -> Result<Json<RunnerJobControlResponse>, (StatusCode, String)> {
     let runner_id = authenticate_runner(&state.pool, &headers).await?;
 
-    let row = sqlx::query_as::<_, (String, String, Option<String>, Option<DateTime<Utc>>)>(
+    let row = sqlx::query_as::<_, (String, String, Option<String>, Option<DateTime<Utc>>, bool)>(
         r#"
-        SELECT p.status::text, j.status::text, j.cancel_step_name, j.cancel_requested_at
+        SELECT
+            p.status::text,
+            j.status::text,
+            j.cancel_step_name,
+            j.cancel_requested_at,
+            (
+                j.timeout_minutes IS NOT NULL
+                AND j.started_at IS NOT NULL
+                AND j.started_at + make_interval(mins => j.timeout_minutes) < NOW()
+            ) AS timed_out
         FROM job_runs j
         INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
         WHERE j.id = $1 AND j.runner_id = $2
@@ -2500,6 +2559,7 @@ async fn runner_job_control(
         job_cancelled: row.1 == "cancelled",
         cancel_requested: row.3.is_some(),
         cancel_step_name: row.2,
+        timed_out: row.4,
     }))
 }
 

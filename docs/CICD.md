@@ -166,7 +166,7 @@ jobs:
     runs-on: self-hosted
     needs: []          # optional DAG deps
     required: true     # default; set false for optional jobs (excluded from merge gate)
-    timeout_minutes: 30  # optional
+    timeout_minutes: 30  # optional; kills the job after N minutes (runner + API reclaim)
     steps:
       - name: Build
         run: cargo build --release

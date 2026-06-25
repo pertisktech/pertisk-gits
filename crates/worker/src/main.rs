@@ -139,17 +139,20 @@ async fn process_trigger_now(
 
     for job in Scheduler::schedule(&config)? {
         let steps_json = serde_json::to_value(&job.job.steps)?;
+        let artifacts_json = serde_json::to_value(&job.job.artifacts)?;
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, needs, status)
-            VALUES ($1, $2, $3, $4, $5, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued')
             "#,
         )
         .bind(run_id)
         .bind(&job.name)
         .bind(&job.job.runs_on)
         .bind(steps_json)
+        .bind(artifacts_json)
         .bind(&job.job.needs)
+        .bind(job.job.timeout_minutes.map(|m| m as i32))
         .execute(&state.pool)
         .await?;
 

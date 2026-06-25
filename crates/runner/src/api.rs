@@ -24,6 +24,8 @@ pub struct PollJobResponse {
     pub steps: Vec<Step>,
     #[serde(default)]
     pub artifacts: Vec<ArtifactDecl>,
+    #[serde(default)]
+    pub timeout_minutes: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -32,11 +34,13 @@ pub struct JobControlState {
     pub job_cancelled: bool,
     pub cancel_requested: bool,
     pub cancel_step_name: Option<String>,
+    #[serde(default)]
+    pub timed_out: bool,
 }
 
 impl JobControlState {
     pub fn should_cancel_job(&self) -> bool {
-        self.pipeline_cancelled || self.job_cancelled
+        self.pipeline_cancelled || self.job_cancelled || self.timed_out
     }
 
     pub fn should_cancel_step(&self, step_name: &str) -> bool {

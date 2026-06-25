@@ -21,11 +21,17 @@ pub async fn run_job(
     tracing::info!(
         job = %job.job_name,
         repo = %format!("{}/{}", job.org_slug, job.repo_slug),
+        timeout_minutes = ?job.timeout_minutes,
         "running job"
     );
     let queued_at = Instant::now();
 
     api.start_job(job.job_id).await?;
+
+    let job_timeout = job
+        .timeout_minutes
+        .map(|minutes| Duration::from_secs(u64::from(minutes) * 60));
+    let job_started = Instant::now();
 
     let work_root = TempDir::with_prefix("pertisk-ci-")?;
     let workspace = work_root.path().join(&job.repo_slug);
@@ -63,9 +69,21 @@ pub async fn run_job(
 
     let mut timings = Vec::with_capacity(job.steps.len());
     let mut cancelled = false;
+    let mut timed_out = false;
     let mut failed = false;
 
     for (index, step) in job.steps.iter().enumerate() {
+        if job_timed_out(job_started, job_timeout) || job_timed_out_remote(api, job.job_id).await {
+            timed_out = true;
+            let minutes = job.timeout_minutes.unwrap_or(0);
+            api.append_log(
+                job.job_id,
+                &format!("\n=== job timed out after {minutes} minutes\n"),
+            )
+            .await?;
+            break;
+        }
+
         let step_name = step.name.clone().unwrap_or_else(|| {
             if step.uses.as_deref() == Some("upload-artifact") {
                 format!("upload-artifact-{index}")
@@ -75,6 +93,16 @@ pub async fn run_job(
         });
 
         if let Ok(control) = api.fetch_job_control(job.job_id).await {
+            if control.timed_out {
+                timed_out = true;
+                let minutes = job.timeout_minutes.unwrap_or(0);
+                api.append_log(
+                    job.job_id,
+                    &format!("\n=== job timed out after {minutes} minutes\n"),
+                )
+                .await?;
+                break;
+            }
             if control.should_cancel_job() {
                 cancelled = true;
                 api.append_log(job.job_id, "=== job cancelled\n").await?;
@@ -136,9 +164,24 @@ pub async fn run_job(
         let poll_api = api.clone_for_poll();
         let poll_job_id = job.job_id;
         let poll_step = step_name.clone();
+        let poll_cancel_tx = cancel_tx.clone();
         let poll_handle: JoinHandle<()> = tokio::spawn(async move {
-            poll_cancel_signals(&poll_api, poll_job_id, poll_step, cancel_tx).await;
+            poll_cancel_signals(&poll_api, poll_job_id, poll_step, poll_cancel_tx).await;
         });
+
+        if let Some(timeout) = job_timeout {
+            let remaining = timeout.saturating_sub(job_started.elapsed());
+            if remaining.is_zero() {
+                timed_out = true;
+                poll_handle.abort();
+                break;
+            }
+            let cancel_tx_timeout = cancel_tx.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(remaining).await;
+                let _ = cancel_tx_timeout.send(true);
+            });
+        }
 
         let (log_tx, mut log_rx) = mpsc::unbounded_channel::<String>();
         let mut streamer = LogStreamer::new(api, job.job_id);
@@ -165,8 +208,12 @@ pub async fn run_job(
         poll_handle.abort();
         let finished_at = Utc::now();
 
-        let step_cancelled = output.exit_code == 130;
-        let exit_label = if step_cancelled {
+        let step_timed_out =
+            job_timed_out(job_started, job_timeout) || job_timed_out_remote(api, job.job_id).await;
+        let step_cancelled = output.exit_code == 130 && !step_timed_out;
+        let exit_label = if step_timed_out {
+            "timed out".to_string()
+        } else if step_cancelled {
             "cancelled".to_string()
         } else {
             output.exit_code.to_string()
@@ -185,6 +232,11 @@ pub async fn run_job(
             finished_at,
         });
 
+        if step_timed_out {
+            timed_out = true;
+            api.append_log(job.job_id, "=== job timed out\n").await?;
+            break;
+        }
         if step_cancelled {
             cancelled = true;
             api.append_log(job.job_id, "=== step cancelled by user\n")
@@ -197,8 +249,12 @@ pub async fn run_job(
         }
     }
 
-    if !failed && !cancelled {
+    if !failed && !cancelled && !timed_out {
         for artifact in &job.artifacts {
+            if job_timed_out(job_started, job_timeout) {
+                timed_out = true;
+                break;
+            }
             if let Err(err) = upload_declared_artifact(api, job.job_id, &workspace, artifact).await {
                 failed = true;
                 api.append_log(
@@ -220,10 +276,10 @@ pub async fn run_job(
     }
 
     let metrics = JobMetrics::from_step_timings(&job.job_name, timings, queue_wait);
-    let status = if cancelled {
-        "cancelled"
-    } else if failed {
+    let status = if timed_out || failed {
         "failure"
+    } else if cancelled {
+        "cancelled"
     } else {
         "success"
     };
@@ -238,6 +294,17 @@ pub async fn run_job(
     Ok(())
 }
 
+fn job_timed_out(started: Instant, timeout: Option<Duration>) -> bool {
+    timeout.is_some_and(|limit| started.elapsed() >= limit)
+}
+
+async fn job_timed_out_remote(api: &RunnerApi, job_id: uuid::Uuid) -> bool {
+    api.fetch_job_control(job_id)
+        .await
+        .map(|control| control.timed_out)
+        .unwrap_or(false)
+}
+
 async fn poll_cancel_signals(
     api: &RunnerApi,
     job_id: uuid::Uuid,
@@ -249,7 +316,7 @@ async fn poll_cancel_signals(
         let Ok(control) = api.fetch_job_control(job_id).await else {
             continue;
         };
-        if control.should_cancel_step(&step_name) {
+        if control.timed_out || control.should_cancel_step(&step_name) {
             let _ = cancel_tx.send(true);
             return;
         }

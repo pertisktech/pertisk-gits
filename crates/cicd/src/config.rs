@@ -311,6 +311,23 @@ jobs:
     }
 
     #[test]
+    fn parses_job_timeout_minutes() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  build:
+    runs-on: self-hosted
+    timeout_minutes: 30
+    steps:
+      - run: sleep 9999
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.jobs["build"].timeout_minutes, Some(30));
+    }
+
+    #[test]
     fn parses_misplaced_job_under_on() {
         let cfg = parse_pipeline_yaml(
             r#"
