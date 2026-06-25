@@ -101,6 +101,10 @@ sudo -u pertisk-runner docker ps
 
 The runner RPM postinstall also adds `pertisk-runner` to the `docker` group when Docker is installed.
 
+### Self-build pipeline (this repo)
+
+Root `.pertisk-ci.yaml` defines `build-runner` and `build-package` jobs (`runs-on: docker`) that produce RPM artifacts via `make package-runner-amd64` / `make package-amd64`. Set `PERTISK_FORCE_DOCKER_BUILD=1` in CI so binaries and fpm packaging use Docker on the runner host. Packaging copies `pkg-*` into the fpm image with `docker cp` (bind mounts from `/tmp/pertisk-ci-*` workspaces are unreliable).
+
 ## Performance testing
 
 Hard-test parser, scheduler, and runner overhead:
@@ -179,6 +183,9 @@ jobs:
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}` | User JWT |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/trigger` | User JWT (write) |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/config` | User JWT |
+| POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/cancel` | User JWT (write) |
+| POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/cancel-step` | User JWT (write) |
+| DELETE | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}` | User JWT (write) |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/rerun` | User JWT (write) |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/commits/{sha}/statuses` | User JWT |
 | POST | `/api/v1/runners/register` | User JWT |
@@ -229,6 +236,10 @@ If the PR head commit has **required** `commit_statuses` (from CI jobs with `req
 ### Live logs
 
 While a step runs, the runner streams stdout/stderr to the API in ~400ms chunks (`POST /runner/jobs/{id}/log`). Each step starts with `=== name (running)` and ends with `=== name (exit N)` or `=== name (exit cancelled)`. The pipeline detail page polls every 1 second while a run is in progress.
+
+### Fail-fast and runner status
+
+When any job in a pipeline run fails, remaining `queued` / `running` jobs are marked failed (`=== skipped: pipeline failed`) and are not claimed again. Runners return to **online** instead of staying **busy** while sibling jobs would have run. Parallel jobs without `needs` still follow this rule (first failure stops the run).
 
 ### Cancel pipeline / cancel step
 

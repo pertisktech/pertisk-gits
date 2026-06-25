@@ -107,13 +107,23 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | Artifacts | Local filesystem (`ARTIFACTS_ROOT`) + download UI | Done |
 | Status API | Commit status + PR merge gate | Done |
 | PR triggers | Auto-run on PR open + branch push | Done |
-| UI | Pipeline graph, step logs, artifacts download, rerun in-place, runner host metrics | Done |
+| Cancel pipeline / step | API + runner control poll; kills active step | Done |
+| Delete pipeline run | DB cascade + artifact files on disk removed | Done |
+| Re-run | Same run ID; **all jobs** or **failed only** (`scope: failed`) | Done |
+| Fail-fast | On first job failure, skip remaining jobs; runner returns online | Done |
+| UI — run list | Table: status, commit, branch, jobs, duration, actions | Done |
+| UI — run detail | Pipeline graph, step logs, artifacts, cancel/rerun/delete | Done |
+| UI — runners | Host metrics, busy/online, current job | Done |
+| Self-build CI | Root pipeline builds `pertisk-gits` + `pertisk-runner` RPMs (`runs-on: docker`) | Done |
+| Packaging on CI | `docker cp` into fpm container (CI temp workspaces) | Done |
 
-**MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, self-hosted runners
+**MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, `needs`, `artifacts`, self-hosted runners
 
 Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
 **Tables:** `runners`, `pipeline_runs`, `job_runs`, `job_artifacts`, `commit_statuses`, `pipeline_triggers`
+
+**Not in MVP (later):** container-isolated steps, S3 artifacts, matrix builds, caches, secrets, per-branch required checks UI
 
 ---
 
@@ -215,6 +225,7 @@ pertisk-gits/
 │   ├── cicd/             # Phase 4 pipeline engine
 │   ├── runner/           # Phase 4 self-hosted runner
 │   ├── worker/           # Phase 4 scheduler
+│   └── registry/         # Phase 5 (planned)
 ├── web/                  # React app
 ├── migrations/           # SQLx migrations
 ├── deploy/               # Docker Compose, Helm
