@@ -268,10 +268,16 @@ pub async fn head_blob(
 pub async fn start_upload(
     State(state): State<RegistryState>,
     Path((org, image)): Path<(String, String)>,
+    Query(query): Query<UploadQuery>,
     headers: HeaderMap,
+    body: Bytes,
 ) -> RegistryResult<Response> {
     let full_name = format!("{org}/{image}");
     let _auth = require_push(&state, &headers, &full_name).await?;
+
+    if let Some(digest) = query.digest {
+        return store_monolithic_blob(&state, &digest, body).await;
+    }
 
     let upload_id = state.storage.create_upload();
     let location = format!("/v2/{org}/{image}/blobs/uploads/{upload_id}");
@@ -311,6 +317,7 @@ pub async fn complete_upload(
     Path((org, image, upload_id)): Path<(String, String, Uuid)>,
     Query(query): Query<UploadQuery>,
     headers: HeaderMap,
+    body: Bytes,
 ) -> RegistryResult<Response> {
     let full_name = format!("{org}/{image}");
     let _auth = require_push(&state, &headers, &full_name).await?;
@@ -325,25 +332,21 @@ pub async fn complete_upload(
         })
         .ok_or_else(|| registry_err(StatusCode::BAD_REQUEST, "digest required"))?;
 
+    if !body.is_empty() {
+        state
+            .storage
+            .write_upload(&upload_id, &body)
+            .await
+            .map_err(|e| registry_err(StatusCode::BAD_REQUEST, &e.to_string()))?;
+    }
+
     let (storage_key, size) = state
         .storage
         .finalize_upload(&upload_id, &digest)
         .await
         .map_err(|e| registry_err(StatusCode::BAD_REQUEST, &e.to_string()))?;
 
-    sqlx::query(
-        r#"
-        INSERT INTO container_blobs (digest, size_bytes, storage_path)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (digest) DO NOTHING
-        "#,
-    )
-    .bind(&digest)
-    .bind(size)
-    .bind(&storage_key)
-    .execute(&state.pool)
-    .await
-    .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    record_blob(&state.pool, &digest, size, &storage_key).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -353,6 +356,63 @@ pub async fn complete_upload(
         )],
     )
         .into_response())
+}
+
+async fn store_monolithic_blob(
+    state: &RegistryState,
+    digest: &str,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    if body.is_empty() {
+        return Err(registry_err(StatusCode::BAD_REQUEST, "empty blob body"));
+    }
+
+    let computed = sha256_digest(&body);
+    if computed != digest {
+        return Err(registry_err(
+            StatusCode::BAD_REQUEST,
+            &format!("digest mismatch: got {computed}, expected {digest}"),
+        ));
+    }
+
+    let key = state
+        .storage
+        .write_blob(digest, &body)
+        .await
+        .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+    record_blob(&state.pool, digest, body.len() as i64, &key).await?;
+
+    Ok((
+        StatusCode::CREATED,
+        [(
+            header::HeaderName::from_static("docker-content-digest"),
+            digest.to_string(),
+        )],
+    )
+        .into_response())
+}
+
+async fn record_blob(
+    pool: &PgPool,
+    digest: &str,
+    size: i64,
+    storage_key: &str,
+) -> RegistryResult<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO container_blobs (digest, size_bytes, storage_path)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (digest) DO NOTHING
+        "#,
+    )
+    .bind(digest)
+    .bind(size)
+    .bind(storage_key)
+    .execute(pool)
+    .await
+    .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    Ok(())
 }
 
 async fn resolve_manifest_digest(

@@ -64,6 +64,15 @@ impl BlobStore {
         self.backend.delete(&Self::blob_key(digest)).await
     }
 
+    pub async fn write_upload(&self, upload_id: &Uuid, data: &[u8]) -> anyhow::Result<()> {
+        let path = self.upload_path(upload_id);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::write(&path, data).await?;
+        Ok(())
+    }
+
     pub async fn finalize_upload(
         &self,
         upload_id: &Uuid,
@@ -155,5 +164,24 @@ mod tests {
             BlobStore::blob_key("sha256:abcd"),
             "blobs/ab/cd"
         );
+    }
+
+    #[tokio::test]
+    async fn monolithic_upload_finalize() {
+        let dir = std::env::temp_dir().join(format!("pertisk-registry-test-{}", Uuid::new_v4()));
+        let store = BlobStore::new_local(dir.clone()).unwrap();
+        let upload_id = store.create_upload();
+        let data = b"hello blob";
+        let digest = sha256_digest(data);
+
+        store.write_upload(&upload_id, data).await.unwrap();
+        let (key, size) = store.finalize_upload(&upload_id, &digest).await.unwrap();
+
+        assert_eq!(size, data.len() as i64);
+        assert!(store.blob_exists(&digest).await);
+        assert_eq!(store.read_blob(&digest).await.unwrap(), data);
+        assert!(key.starts_with("blobs/"));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
