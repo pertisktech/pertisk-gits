@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use axum::{
     body::Body,
-    extract::{Multipart, Path, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     http::{header, HeaderMap, StatusCode},
     response::Response,
     response::IntoResponse,
@@ -34,6 +34,8 @@ fn sqlx_error(err: sqlx::Error) -> ApiError {
 
 /// No heartbeat for this long ⇒ runner is treated as offline (runner polls ~every 25s).
 const RUNNER_OFFLINE_AFTER_SECS: i64 = 75;
+/// RPM/tar.gz CI artifacts exceed axum's default 2 MiB body limit.
+const MAX_RUNNER_ARTIFACT_BYTES: usize = 256 * 1024 * 1024;
 
 pub fn spawn_runner_stale_checker(pool: PgPool) {
     tokio::spawn(async move {
@@ -170,6 +172,7 @@ pub fn runner_routes() -> Router<AppState> {
             get(runner_workspace),
         )
         .route("/runner/jobs/{job_id}/workspace", get(runner_job_workspace))
+        .layer(DefaultBodyLimit::max(MAX_RUNNER_ARTIFACT_BYTES))
 }
 
 pub fn post_receive_hook(
@@ -1951,7 +1954,13 @@ async fn upload_runner_artifact(
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| internal(e.to_string()))?
+        .map_err(|e| {
+            tracing::warn!(%job_id, %e, "artifact multipart parse failed");
+            internal(format!(
+                "invalid multipart upload (artifact may exceed {} MiB limit): {e}",
+                MAX_RUNNER_ARTIFACT_BYTES / (1024 * 1024)
+            ))
+        })?
     {
         match field.name() {
             Some("name") => {
