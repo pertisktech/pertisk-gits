@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { FolderGit2, Plus } from 'lucide-react'
+import { FolderGit2, Plus, Settings } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -8,7 +8,7 @@ import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
 
 export function GroupDetailPage() {
   const { slug = '' } = useParams()
-  const { token } = useAuth()
+  const { token, user } = useAuth()
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -17,11 +17,21 @@ export function GroupDetailPage() {
   })
   const group = groups.find((g) => g.slug === slug)
 
+  const { data: members = [] } = useQuery({
+    queryKey: ['org-members', slug],
+    queryFn: () => api.listOrganizationMembers(token!, slug),
+    enabled: Boolean(token && slug),
+  })
+
   const { data: projects = [], isLoading, error } = useQuery({
     queryKey: ['repositories', slug],
     queryFn: () => api.listRepositories(token!, slug),
     enabled: Boolean(token && slug),
   })
+
+  const canManage =
+    members.find((member) => member.user.id === user?.id)?.role === 'owner' ||
+    members.find((member) => member.user.id === user?.id)?.role === 'admin'
 
   return (
     <>
@@ -40,7 +50,13 @@ export function GroupDetailPage() {
         <p className="text-xs text-muted font-mono mt-1">@{slug}</p>
       </div>
 
-      <div className="mb-4 flex justify-end">
+      <div className="mb-4 flex justify-end gap-2">
+        {canManage && (
+          <LinkButton to={`/groups/${slug}/settings`}>
+            <Settings size={14} />
+            Settings
+          </LinkButton>
+        )}
         <LinkButton to={`/groups/${slug}/projects/new`} primary>
           <Plus size={14} />
           New repository

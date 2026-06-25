@@ -158,6 +158,15 @@ pub struct CreateOrganizationRequest {
 }
 
 #[derive(Debug, Deserialize, Validate)]
+pub struct UpdateOrganizationRequest {
+    #[validate(length(min = 1, max = 100))]
+    pub name: Option<String>,
+    #[validate(length(min = 1, max = 100))]
+    pub slug: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
 pub struct CreateRepositoryRequest {
     #[validate(length(min = 1, max = 100))]
     pub name: String,

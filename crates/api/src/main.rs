@@ -159,6 +159,10 @@ async fn main() -> anyhow::Result<()> {
         .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
         .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
         .route("/organizations", get(list_organizations).post(create_organization))
+        .route(
+            "/organizations/{org_slug}",
+            patch(update_organization),
+        )
         .route("/organizations/{org_slug}/members", get(list_organization_members))
         .route(
             "/organizations/{org_slug}/repositories",
@@ -701,6 +705,113 @@ async fn create_organization(
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok((StatusCode::CREATED, Json(org)))
+}
+
+async fn update_organization(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(org_slug): Path<String>,
+    Json(body): Json<UpdateOrganizationRequest>,
+) -> Result<Json<Organization>, ApiError> {
+    body.validate()
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    if body.name.is_none() && body.slug.is_none() && body.description.is_none() {
+        return Err(DomainError::Validation("no fields to update".into()).into());
+    }
+
+    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    permissions::ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+
+    let name = body.name.unwrap_or_else(|| org.name.clone());
+    let new_slug = body.slug.unwrap_or_else(|| org.slug.clone());
+    let description = match body.description {
+        Some(value) => {
+            if value.trim().is_empty() {
+                None
+            } else {
+                Some(value)
+            }
+        }
+        None => org.description.clone(),
+    };
+
+    if new_slug != org.slug {
+        let old_dir = state.config.repos_root.join(&org.slug);
+        let new_dir = state.config.repos_root.join(&new_slug);
+        if old_dir.exists() {
+            if new_dir.exists() {
+                return Err(DomainError::Conflict(
+                    "cannot rename group: target storage path already exists".into(),
+                )
+                .into());
+            }
+        }
+    }
+
+    let mut renamed_storage = false;
+    let old_dir = state.config.repos_root.join(&org.slug);
+    let new_dir = state.config.repos_root.join(&new_slug);
+    if new_slug != org.slug && old_dir.exists() {
+        tokio::fs::rename(&old_dir, &new_dir)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        renamed_storage = true;
+    }
+
+    let updated = match sqlx::query_as::<_, Organization>(
+        r#"
+        UPDATE organizations
+        SET name = $1,
+            slug = $2,
+            description = $3,
+            updated_at = NOW()
+        WHERE id = $4
+        RETURNING id, slug, name, description, created_at, updated_at
+        "#,
+    )
+    .bind(&name)
+    .bind(&new_slug)
+    .bind(&description)
+    .bind(org.id)
+    .fetch_one(&state.pool)
+    .await
+    {
+        Ok(org) => org,
+        Err(e) => {
+            if renamed_storage {
+                let _ = tokio::fs::rename(&new_dir, &old_dir).await;
+            }
+            return Err(match e {
+                sqlx::Error::Database(db) if db.constraint().is_some() => {
+                    ApiError::from(DomainError::Conflict("organization slug already exists".into()))
+                }
+                other => ApiError::from(DomainError::Internal(other.to_string())),
+            });
+        }
+    };
+
+    let _ = audit::record_audit_event(
+        &state.pool,
+        audit::AuditEventInput {
+            organization_id: Some(org.id),
+            actor_user_id: Some(auth.user_id),
+            event_type: AuditEventType::PermissionChange,
+            action: format!("updated group settings (slug: {} → {})", org.slug, updated.slug),
+            resource_type: Some("organization".into()),
+            resource_id: Some(org.id.to_string()),
+            metadata: Some(serde_json::json!({
+                "old_slug": org.slug,
+                "new_slug": updated.slug,
+                "name": updated.name,
+            })),
+            ip_address: None,
+            user_agent: None,
+        },
+    )
+    .await;
+
+    Ok(Json(updated))
 }
 
 async fn list_repositories(

@@ -13,6 +13,7 @@ import { GroupAuditPage } from './pages/GroupAuditPage'
 import { GroupSecretsPage } from './pages/GroupSecretsPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupMembersPage } from './pages/GroupMembersPage'
+import { GroupSettingsPage } from './pages/GroupSettingsPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewGroupPage } from './pages/NewGroupPage'
@@ -123,6 +124,7 @@ export default function App() {
                   <Route path="/groups/new" element={<NewGroupPage />} />
                   <Route path="/groups/:slug/registry" element={<RegistryPage />} />
                   <Route path="/groups/:slug/registry/:imageName" element={<RegistryPage />} />
+                  <Route path="/groups/:slug/settings" element={<GroupSettingsPage />} />
                   <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
                   <Route path="/groups/:slug/audit" element={<GroupAuditPage />} />
                   <Route path="/groups/:slug/secrets" element={<GroupSecretsPage />} />

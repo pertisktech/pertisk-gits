@@ -50,6 +50,7 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'members', label: 'Members', icon: Users },
   { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'audit', label: 'Audit log', icon: ScrollText },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
 const globalLinkClass = ({ isActive }: { isActive: boolean }) =>
@@ -98,6 +99,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
 
             {groupNavItems
               .filter((item) => item.id !== 'audit' || group.canViewAudit)
+              .filter((item) => item.id !== 'settings' || group.canManage)
               .map(({ id, label, icon: Icon }) => (
               <NavLink
                 key={id}

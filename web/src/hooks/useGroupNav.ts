@@ -29,10 +29,12 @@ export function useGroupNav() {
   const group = groups.find((g) => g.slug === route.orgSlug)
   const myRole = members.find((member) => member.user.id === user?.id)?.role
   const canViewAudit = myRole === 'owner' || myRole === 'admin'
+  const canManage = canViewAudit
 
   return {
     ...route,
     groupName: group?.name ?? route.orgSlug,
     canViewAudit,
+    canManage,
   }
 }

@@ -200,6 +200,16 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
+  updateOrganization: (
+    token: string,
+    orgSlug: string,
+    payload: { name?: string; slug?: string; description?: string },
+  ) =>
+    request<Organization>(`/organizations/${orgSlug}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
   listRepositories: (token: string, orgSlug: string) =>
     request<Repository[]>(`/organizations/${orgSlug}/repositories`, {}, token),
 
