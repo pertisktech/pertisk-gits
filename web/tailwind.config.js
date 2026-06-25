@@ -6,10 +6,10 @@ export default {
   ],
   theme: {
     borderColor: {
-      DEFAULT: 'var(--color-naturals-n4)',
+      DEFAULT: 'var(--color-border)',
     },
     divideColor: {
-      DEFAULT: 'var(--color-naturals-n4)',
+      DEFAULT: 'var(--color-border)',
     },
     extend: {
       colors: {
@@ -26,7 +26,7 @@ export default {
         primary: "var(--color-primary)",
         card: "var(--color-card)",
         sidebar: "var(--color-sidebar)",
-        /* Omni naturals palette */
+        /* Naturals palette */
         "naturals-n0":  "var(--color-naturals-n0)",
         "naturals-n1":  "var(--color-naturals-n1)",
         "naturals-n2":  "var(--color-naturals-n2)",
@@ -42,14 +42,14 @@ export default {
         "naturals-n12": "var(--color-naturals-n12)",
         "naturals-n13": "var(--color-naturals-n13)",
         "naturals-n14": "var(--color-naturals-n14)",
-        /* Omni primary palette */
+        /* Primary palette */
         "primary-p1": "var(--color-primary-p1)",
         "primary-p2": "var(--color-primary-p2)",
         "primary-p3": "var(--color-primary-p3)",
         "primary-p4": "var(--color-primary-p4)",
         "primary-p5": "var(--color-primary-p5)",
         "primary-p6": "var(--color-primary-p6)",
-        /* Omni semantic named colors */
+        /* Semantic named colors */
         "green-g1": "var(--color-green-g1)",
         "green-g2": "var(--color-green-g2)",
         "red-r1":   "var(--color-red-r1)",

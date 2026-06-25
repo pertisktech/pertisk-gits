@@ -1,57 +1,54 @@
-/* Omni-aligned design system (Pertisk Gits) */
+/* Flux-inspired violet theme (Pertisk Gits) */
 
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Roboto+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500&display=swap');
 @import './styles/theme.css';
 
 :root {
-  /* ── Neutrals (Omni) ───────────────────────────────────────────────────── */
-  --color-naturals-n0: #101118;
-  --color-naturals-n1: #13141c;
-  --color-naturals-n2: #15161e;
-  --color-naturals-n3: #191b24;
-  --color-naturals-n4: #1f222e;
-  --color-naturals-n5: #272932;
-  --color-naturals-n6: #2c2e38;
-  --color-naturals-n7: #3a3b45;
-  --color-naturals-n8: #5b5c64;
-  --color-naturals-n9: #7d7d85;
-  --color-naturals-n10: #878990;
-  --color-naturals-n11: #9fa1a6;
-  --color-naturals-n12: #c3c3c7;
-  --color-naturals-n13: #e8e8e9;
+  /* ── Neutrals (violet-tinted dark navy) ─────────────────────────────────── */
+  --color-naturals-n0: #0c0d18;
+  --color-naturals-n1: #10111e;
+  --color-naturals-n2: #131421;
+  --color-naturals-n3: #181a2c;
+  --color-naturals-n4: #1d1f32;
+  --color-naturals-n5: #23253c;
+  --color-naturals-n6: #2c2f4c;
+  --color-naturals-n7: #3b3e5e;
+  --color-naturals-n8: #585b7a;
+  --color-naturals-n9: #7778a0;
+  --color-naturals-n10: #8e90ad;
+  --color-naturals-n11: #a8aac6;
+  --color-naturals-n12: #c8c9de;
+  --color-naturals-n13: #e6e7f0;
   --color-naturals-n14: #ffffff;
 
-  /* ── Primary (Omni orange) ─────────────────────────────────────────────── */
-  --color-primary-p1: #ffbea9;
-  --color-primary-p2: #fe9e74;
-  --color-primary-p3: #ff8b59;
-  --color-primary-p4: #ff5f2a;
-  --color-primary-p5: #ce5027;
-  --color-primary-p6: #342321;
+  /* ── Primary (violet) ─────────────────────────────────────────────────────── */
+  --color-primary-p1: #d8c8fd;
+  --color-primary-p2: #b89ef9;
+  --color-primary-p3: #9a7bf7;
+  --color-primary-p4: #7c59f0;
+  --color-primary-p5: #5f3fd4;
+  --color-primary-p6: #281a5e;
 
   /* ── Semantic named colors ─────────────────────────────────────────────── */
-  --color-green-g1: #69c297;
-  --color-green-g2: #2d9663;
-  --color-green-g3: #141f21;
+  --color-green-g1: #4ade9b;
+  --color-green-g2: #22a06b;
   --color-red-r1: #ff5c56;
   --color-red-r2: #6e2f30;
-  --color-red-r3: #311c20;
-  --color-yellow-y1: #ffb200;
-  --color-yellow-y2: #c68a00;
-  --color-yellow-y3: #a97809;
-  --color-blue-b1: #59a5ff;
+  --color-yellow-y1: #fbbf24;
+  --color-yellow-y2: #d97706;
+  --color-blue-b1: #60a5fa;
 
   /* ── Semantic aliases ─────────────────────────────────────────────────────── */
   --color-bg: var(--color-naturals-n0);
   --color-surface: var(--color-naturals-n1);
   --color-surface-elevated: var(--color-naturals-n2);
   --color-hover: var(--color-naturals-n4);
-  --color-border: var(--color-naturals-n4);
-  --color-text: var(--color-naturals-n14);
+  --color-border: var(--color-naturals-n5);
+  --color-text: var(--color-naturals-n13);
   --color-text-secondary: var(--color-naturals-n11);
   --color-muted: var(--color-naturals-n9);
   --color-card: var(--color-naturals-n2);
-  --color-sidebar: var(--color-naturals-n1);
+  --color-sidebar: #090a14;
   --color-primary: var(--color-primary-p3);
   --color-primary-hover: var(--color-primary-p2);
   --color-bg-gradient-start: var(--color-naturals-n0);
@@ -86,8 +83,8 @@
   /* Primary chart/series color — dark green for dashboard & workload overview charts */
   --color-dashboard-metric-primary: var(--color-green-g2);
   --color-dashboard-metric-primary-bg: color-mix(in srgb, var(--color-green-g2) 12%, transparent);
-  --color-dashboard-metric-secondary: var(--color-primary-p3);
-  --color-dashboard-metric-secondary-bg: color-mix(in srgb, var(--color-primary-p3) 12%, transparent);
+  --color-dashboard-metric-secondary: #a855f7;
+  --color-dashboard-metric-secondary-bg: rgba(168, 85, 247, 0.12);
   --color-dashboard-metric-tertiary: #ec4899;
   --color-dashboard-metric-tertiary-bg: rgba(236, 72, 153, 0.12);
   --color-dashboard-metric-quaternary: #06b6d4;
@@ -113,8 +110,8 @@
   --radius-2xl: 20px;
 
   /* ── Typography ──────────────────────────────────────────────────────────── */
-  --font-sans: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-mono: "Roboto Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 
   /* ── Shadows / transitions ───────────────────────────────────────────────── */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
@@ -145,8 +142,8 @@ html.light {
   --color-muted: #6c6d90;
   --color-card: #ffffff;
   --color-sidebar: #f0f0f9;
-  --color-primary: #ff5f2a;
-  --color-primary-hover: #ff8b59;
+  --color-primary: #6d3ef5;
+  --color-primary-hover: #8b65f7;
   --color-icon-secondary: #6c6d90;
   --color-bg-gradient-start: #f5f5fa;
   --color-bg-gradient-end: #ffffff;
@@ -218,7 +215,8 @@ body {
   min-height: 100%;
   min-height: 100dvh;
   background-color: var(--color-bg);
-  color: var(--color-naturals-n11);
+  background-image: linear-gradient(180deg, var(--color-bg-gradient-start), var(--color-bg-gradient-end));
+  color: var(--color-text);
   font-family: var(--font-sans);
   font-size: 1rem;
   line-height: 1.5;
@@ -312,7 +310,7 @@ body,
   *,
   ::before,
   ::after {
-    border-color: var(--color-naturals-n4);
+    border-color: var(--color-border);
   }
 }
 
@@ -329,7 +327,7 @@ body,
   padding: 3px 8px;
   background: var(--color-surface-elevated);
   color: var(--color-text);
-  border: 1px solid var(--color-naturals-n4);
+  border: 1px solid var(--color-border);
   border-radius: 6px;
   font-size: 11px;
   font-weight: 500;
@@ -376,7 +374,7 @@ body,
   color: var(--color-text) !important;
 }
 
-/* ── Resource labels (Omni design system) ────────────────────────────────── */
+/* ── Resource labels ─────────────────────────────────────────────────────── */
 .resource-label {
   border-radius: var(--radius-sm);
   padding-inline: 0.5rem;
@@ -414,7 +412,7 @@ body,
 
 .bottom-panel-tabbar {
   min-height: 2.6rem;
-  border-bottom: 1px solid var(--color-naturals-n4);
+  border-bottom: 1px solid var(--color-border);
   background: var(--bottom-panel-tabbar-bg);
 }
 
@@ -674,8 +672,8 @@ body,
 
 .app-content-top {
   flex-shrink: 0;
-  background: var(--color-naturals-n1);
-  border-bottom: 1px solid var(--color-naturals-n4);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
   z-index: 10;
 }
 
@@ -705,8 +703,8 @@ body,
   height: 2rem;
   flex-shrink: 0;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-naturals-n4);
-  color: var(--color-naturals-n11);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
   background: transparent;
 }
 
@@ -718,8 +716,8 @@ body,
 }
 
 .app-topbar-menu-btn:hover {
-  color: var(--color-naturals-n13);
-  background: var(--color-naturals-n3);
+  color: var(--color-text);
+  background: var(--color-hover);
 }
 
 .app-topbar-icon-btn {
@@ -729,8 +727,8 @@ body,
   width: 2rem;
   height: 2rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-naturals-n4);
-  color: var(--color-naturals-n11);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
   text-decoration: none;
   transition:
     background var(--transition-fast),
@@ -738,16 +736,16 @@ body,
 }
 
 .app-topbar-icon-btn:hover {
-  color: var(--color-primary-p3);
-  background: var(--color-naturals-n3);
+  color: var(--color-primary);
+  background: var(--color-hover);
 }
 
 .app-topbar-sign-in {
   padding: 0.375rem 0.75rem;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-naturals-n4);
+  border: 1px solid var(--color-border);
   font-size: 0.875rem;
-  color: var(--color-naturals-n11);
+  color: var(--color-text-secondary);
   text-decoration: none;
   transition:
     background var(--transition-fast),
@@ -755,8 +753,8 @@ body,
 }
 
 .app-topbar-sign-in:hover {
-  color: var(--color-primary-p3);
-  background: var(--color-naturals-n3);
+  color: var(--color-primary);
+  background: var(--color-hover);
 }
 
 .app-brand {
@@ -765,7 +763,7 @@ body,
   gap: 0.5rem;
   font-weight: 700;
   font-size: 0.9375rem;
-  color: var(--color-naturals-n13);
+  color: var(--color-text);
   text-decoration: none;
   min-width: 0;
 }
@@ -783,8 +781,9 @@ body,
   flex-direction: column;
   width: 16rem;
   flex-shrink: 0;
-  border-right: 1px solid var(--color-naturals-n4);
-  background: var(--color-naturals-n1);
+  border-right: 1px solid var(--color-border);
+  background: var(--color-sidebar);
+  box-shadow: var(--shadow-sidebar);
   overflow: hidden;
 }
 
@@ -801,7 +800,7 @@ body,
   align-items: center;
   height: 3rem;
   padding: 0 1.25rem;
-  border-bottom: 1px solid var(--color-naturals-n4);
+  border-bottom: 1px solid var(--color-border);
 }
 
 @media (min-width: 768px) {
@@ -821,31 +820,31 @@ body,
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin: 0.125rem 0;
-  padding: 0.5rem 1.5rem;
-  border-left: 2px solid transparent;
+  margin: 0.125rem 0.5rem;
+  padding: 0.375rem 1rem;
+  border-radius: var(--radius-lg);
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--color-naturals-n11);
+  color: var(--color-text-secondary);
   text-decoration: none;
   transition:
     background var(--transition-fast),
-    color var(--transition-fast),
-    border-color var(--transition-fast);
+    color var(--transition-fast);
 }
 
 .app-sidebar-link:hover {
-  background: var(--color-naturals-n4);
-  color: var(--color-naturals-n13);
+  background: var(--color-hover);
+  color: var(--color-text);
 }
 
 .app-sidebar-link.active {
-  border-left-color: var(--color-primary-p3);
-  color: var(--color-naturals-n13);
+  background: var(--color-hover);
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 .app-sidebar-link.active svg {
-  color: var(--color-naturals-n13);
+  color: var(--color-primary);
 }
 
 .app-sidebar-section {
@@ -856,7 +855,7 @@ body,
 .app-sidebar-section-divider {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--color-naturals-n4);
+  border-top: 1px solid var(--color-border);
 }
 
 .app-sidebar-section-label {
@@ -882,7 +881,7 @@ body,
 }
 
 .app-sidebar-back:hover {
-  color: var(--color-primary-p3);
+  color: var(--color-primary);
 }
 
 .app-sidebar-project-name {
@@ -903,9 +902,9 @@ body,
 .app-sidebar-footer {
   flex-shrink: 0;
   padding: 0.75rem 1.5rem;
-  border-top: 1px solid var(--color-naturals-n4);
+  border-top: 1px solid var(--color-border);
   font-size: 0.6875rem;
-  color: var(--color-naturals-n9);
+  color: var(--color-muted);
   text-align: center;
 }
 
