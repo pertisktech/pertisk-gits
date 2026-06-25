@@ -10,11 +10,17 @@ jobs:
     needs: []
     timeout_minutes: 30
     steps:
+      - name: Preflight
+        run: docker info >/dev/null && echo "docker ok"
       - name: Build runner RPM
         env:
           PERTISK_FORCE_DOCKER_BUILD: "1"
           VERSION: "1.0.0"
-        run: make package-runner-amd64 VERSION="$VERSION" && test -f "release/pertisk-runner-${VERSION}-1.x86_64.rpm" && ls -lh "release/pertisk-runner-${VERSION}-1.x86_64.rpm"
+        run: make package-runner-amd64 VERSION="$VERSION"
+      - name: Verify runner RPM
+        env:
+          VERSION: "1.0.0"
+        run: test -f "release/pertisk-runner-${VERSION}-1.x86_64.rpm" && ls -lh "release/pertisk-runner-${VERSION}-1.x86_64.rpm"
     artifacts:
       - name: pertisk-runner-rpm
         path: release/pertisk-runner-1.0.0-1.x86_64.rpm
@@ -22,13 +28,19 @@ jobs:
   build-package:
     runs-on: docker
     needs: []
-    timeout_minutes: 30
+    timeout_minutes: 60
     steps:
-      - name: Build pertisk-gits RPM (includes worker)
+      - name: Preflight
+        run: docker info >/dev/null && (command -v npm >/dev/null && npm --version || echo "npm not on host; web-dist may use cached dist") && echo "preflight ok"
+      - name: Build pertisk-gits RPM
         env:
           PERTISK_FORCE_DOCKER_BUILD: "1"
           VERSION: "1.0.0"
-        run: make package-amd64 VERSION="$VERSION" && test -f "release/pertisk-gits-${VERSION}-1.x86_64.rpm" && test -f pertisk-worker-linux-amd64 && ls -lh "release/pertisk-gits-${VERSION}-1.x86_64.rpm" pertisk-worker-linux-amd64
+        run: make package-amd64 VERSION="$VERSION"
+      - name: Verify package RPM
+        env:
+          VERSION: "1.0.0"
+        run: test -f "release/pertisk-gits-${VERSION}-1.x86_64.rpm" && test -f pertisk-worker-linux-amd64 && ls -lh "release/pertisk-gits-${VERSION}-1.x86_64.rpm" pertisk-worker-linux-amd64
     artifacts:
       - name: pertisk-gits-rpm
         path: release/pertisk-gits-1.0.0-1.x86_64.rpm

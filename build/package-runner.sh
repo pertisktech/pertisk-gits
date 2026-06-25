@@ -123,6 +123,7 @@ fi
 
 if [ "$need_rebuild" -eq 1 ]; then
   force_docker="${PERTISK_FORCE_DOCKER_BUILD:-}"
+  echo "Binary build: ARCH=$ARCH HOST=$HOST_OS/$HOST_ARCH PERTISK_FORCE_DOCKER_BUILD=${force_docker:-0}"
   if [ "$force_docker" = "1" ] || [ "$force_docker" = "true" ]; then
     build_binary_docker
   elif [ "$ARCH" = "$HOST_ARCH" ] && [ "$HOST_OS" = "Linux" ] && command -v cargo >/dev/null 2>&1; then
