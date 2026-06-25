@@ -32,8 +32,8 @@ fn sqlx_error(err: sqlx::Error) -> ApiError {
     pertisk_domain::DomainError::Internal(err.to_string()).into()
 }
 
-/// No heartbeat for this long ⇒ runner is treated as offline (runner polls ~every 25s).
-const RUNNER_OFFLINE_AFTER_SECS: i64 = 75;
+/// No heartbeat for this long ⇒ runner is treated as offline (runner heartbeats every ~30s while busy).
+const RUNNER_OFFLINE_AFTER_SECS: i64 = 180;
 /// Running job with cancel_requested older than this is force-finalized (safety net).
 const CANCEL_RECLAIM_AFTER_SECS: i64 = 30;
 /// RPM/tar.gz CI artifacts exceed axum's default 2 MiB body limit.

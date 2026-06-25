@@ -109,7 +109,21 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             continue;
         };
 
-        if let Err(err) = job::run_job(&api, job, cli.repos_root.as_deref()).await {
+        let hb_api = api.clone_for_poll();
+        let heartbeat_task = tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(30)).await;
+                let host = collect_host_info();
+                if let Err(err) = hb_api.heartbeat(&host).await {
+                    tracing::warn!("heartbeat during job failed: {err:#}");
+                }
+            }
+        });
+
+        let job_result = job::run_job(&api, job, cli.repos_root.as_deref()).await;
+        heartbeat_task.abort();
+
+        if let Err(err) = job_result {
             tracing::error!("job failed: {err:#}");
         }
     }
