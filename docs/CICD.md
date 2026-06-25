@@ -1,6 +1,6 @@
 # Pertisk Gits CI/CD (Phase 4)
 
-Self-hosted pipelines triggered on **push** and **pull_request**, executed by **Rust runners** with per-step performance metrics.
+CI pipelines triggered on **push** and **pull_request**, executed by **Rust runners** with per-step performance metrics.
 
 ## Architecture
 
@@ -50,7 +50,7 @@ cargo run -p pertisk-worker   # optional backup; API also processes triggers on 
 3. **Redeploy `pertisk-api`** — SSH push used to skip the CI hook (fixed in recent builds).
 4. On the server: `sudo systemctl status pertisk-gits pertisk-worker` and check logs:
    `journalctl -u pertisk-gits -f` for `pipeline triggered by push` or `trigger skipped`.
-5. **Runners** must be online with labels matching `runs-on` (`self-hosted`, `docker`, etc.).
+5. **Runners** must be online with labels matching `runs-on` (e.g. `linux`, `docker`).
 
 ### 3. Register a runner
 
@@ -163,7 +163,7 @@ on:
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: linux
     needs: []          # optional DAG deps
     required: true     # default; set false for optional jobs (excluded from merge gate)
     timeout_minutes: 30  # optional; kills the job after N minutes (runner + API reclaim)
@@ -266,7 +266,7 @@ Jobs can publish build outputs as downloadable `.tar.gz` archives. Storage defau
 ```yaml
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: linux
     steps:
       - run: cargo build --release -p pertisk-api
     artifacts:

@@ -62,7 +62,7 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
         jobs.insert(
             name,
             Job {
-                runs_on: "self-hosted".into(),
+                runs_on: "linux".into(),
                 needs,
                 required: true,
                 steps: vec![Step {

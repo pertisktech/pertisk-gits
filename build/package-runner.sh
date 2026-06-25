@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build DEB, RPM, and tarball for pertisk-runner (self-hosted CI).
+# Build DEB, RPM, and tarball for pertisk-runner (CI).
 # Usage: ./build/package-runner.sh <amd64|arm64> [VERSION] [all]
 # Requires: docker. DEB/RPM use fpm (Linux) or docker/Dockerfile.package (macOS).
 # Run from repo root.
@@ -284,7 +284,7 @@ if [ "$use_docker_packaging" -eq 1 ] && command -v docker >/dev/null 2>&1; then
 elif [ -n "$FPM_CMD" ]; then
   $FPM_CMD -s dir -t deb --force \
     -n "$PACKAGE_NAME" -v "$VERSION" -a "$deb_arch" \
-    --description "Pertisk Gits self-hosted CI runner" \
+    --description "Pertisk Gits CI runner" \
     --url "https://github.com/pertisktech/pertisk-gits" \
     --maintainer "Pertisk Team" --license "MIT" --vendor "Pertisk" \
     --category "net" --depends git \
@@ -296,7 +296,7 @@ elif [ -n "$FPM_CMD" ]; then
   if command -v rpmbuild >/dev/null 2>&1; then
     $FPM_CMD -s dir -t rpm --force \
       -n "$PACKAGE_NAME" -v "$VERSION" -a "$rpm_arch" \
-      --description "Pertisk Gits self-hosted CI runner" \
+      --description "Pertisk Gits CI runner" \
       --url "https://github.com/pertisktech/pertisk-gits" \
       --maintainer "Pertisk Team" --license "MIT" --vendor "Pertisk" \
       --category "System Environment/Daemons" \

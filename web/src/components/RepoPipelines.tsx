@@ -147,7 +147,7 @@ export function RepoPipelines({
 {`# .pertisk-ci.yaml
 jobs:
   build:
-    runs_on: self-hosted
+    runs_on: docker
     steps:
       - name: test
         run: echo "hello"`}

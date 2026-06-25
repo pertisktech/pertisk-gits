@@ -83,8 +83,16 @@ export function RunnerCard({
             <span className="text-sm font-semibold text-text truncate">{runner.name}</span>
             <StatusBadge variant={runnerStatusVariant(runner.status)}>{runner.status}</StatusBadge>
           </div>
-          <div className="text-xs text-text-secondary mt-1 font-mono">
-            Labels: {runner.labels.join(', ') || 'self-hosted'}
+          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+            {runner.labels.length > 0 ? (
+              runner.labels.map((label) => (
+                <span key={label} className="runner-label-badge">
+                  {label}
+                </span>
+              ))
+            ) : (
+              <span className="text-xs text-text-secondary">No labels</span>
+            )}
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">

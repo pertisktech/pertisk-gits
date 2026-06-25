@@ -912,7 +912,21 @@ async fn register_runner(
         return Err(pertisk_domain::DomainError::Validation("runner name is required".into()).into());
     }
 
-    let labels = body.labels.unwrap_or_else(|| vec!["self-hosted".into()]);
+    let mut labels: Vec<String> = body
+        .labels
+        .unwrap_or_default()
+        .into_iter()
+        .map(|label| label.trim().to_string())
+        .filter(|label| !label.is_empty())
+        .collect();
+    labels.sort();
+    labels.dedup();
+    if labels.is_empty() {
+        return Err(
+            pertisk_domain::DomainError::Validation("at least one runner label is required".into())
+                .into(),
+        );
+    }
     let token = format!("ptr_{}", Uuid::new_v4().simple());
     let token_hash = hash_runner_token(&token);
 

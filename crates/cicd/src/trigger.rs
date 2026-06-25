@@ -85,7 +85,7 @@ mod tests {
             jobs: HashMap::from([(
                 "test".into(),
                 Job {
-                    runs_on: "self-hosted".into(),
+                    runs_on: "linux".into(),
                     needs: vec![],
                     required: true,
                     steps: vec![Step {

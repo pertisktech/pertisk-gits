@@ -1,6 +1,6 @@
 # Pertisk Gits — Development Phases
 
-Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React**, and **PostgreSQL**.
+Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React**, and **PostgreSQL**.
 
 **Stack:** [Pingora](https://github.com/cloudflare/pingora) (edge gateway), [Quiche](https://github.com/cloudflare/quiche) (HTTP/3, later), axum (API), PostgreSQL, Redis, object storage.
 
@@ -117,7 +117,7 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | Self-build CI | Root pipeline builds `pertisk-gits` + `pertisk-runner` RPMs (`runs-on: docker`) | Done |
 | Packaging on CI | `docker cp` into fpm container (CI temp workspaces) | Done |
 
-**MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, `needs`, `artifacts`, self-hosted runners
+**MVP:** `on: push`, `on: pull_request`, `jobs`, `steps`, `needs`, `artifacts`, labeled runners
 
 Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
@@ -243,7 +243,7 @@ pertisk-gits/
 │   ├── gateway/          # Pingora reverse proxy
 │   ├── git/              # Phase 1 (git-http, git-ssh)
 │   ├── cicd/             # Phase 4 pipeline engine
-│   ├── runner/           # Phase 4 self-hosted runner
+│   ├── runner/           # Phase 4 CI runner
 │   ├── worker/           # Phase 4 scheduler
 │   └── registry/         # Phase 5 OCI container registry
 ├── web/                  # React app

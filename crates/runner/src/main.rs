@@ -20,7 +20,7 @@ use crate::host::collect_host_info;
 use crate::version::APP_VERSION;
 
 #[derive(Parser)]
-#[command(name = "pertisk-runner", about = "Pertisk Gits self-hosted CI runner")]
+#[command(name = "pertisk-runner", about = "Pertisk Gits CI runner")]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,

@@ -322,7 +322,7 @@ export function PipelineRunDetailPage() {
 
         <CiPrompt
           user="runner"
-          host="self-hosted"
+          host="pertisk-ci"
           path={`${orgSlug}/${projectSlug}`}
           command={`pipeline run --ref ${branch} --sha ${shortSha(run.commit_sha)}`}
         />

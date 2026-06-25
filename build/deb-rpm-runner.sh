@@ -16,7 +16,7 @@ fpm -s dir -t deb --force \
   -n "$BINARY_NAME" \
   -v "$VERSION" \
   -a "$deb_arch" \
-  --description "Pertisk Gits self-hosted CI runner" \
+  --description "Pertisk Gits CI runner" \
   --url "https://github.com/pertisktech/pertisk-gits" \
   --maintainer "Pertisk Team" \
   --license "MIT" \
@@ -36,7 +36,7 @@ fpm -s dir -t rpm --force \
   -n "$BINARY_NAME" \
   -v "$VERSION" \
   -a "$rpm_arch" \
-  --description "Pertisk Gits self-hosted CI runner" \
+  --description "Pertisk Gits CI runner" \
   --url "https://github.com/pertisktech/pertisk-gits" \
   --maintainer "Pertisk Team" \
   --license "MIT" \

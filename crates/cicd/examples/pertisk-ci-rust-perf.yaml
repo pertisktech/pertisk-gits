@@ -9,20 +9,20 @@ on:
 
 jobs:
   fmt:
-    runs-on: self-hosted
+    runs-on: linux
     steps:
       - name: Format check
         run: cargo fmt --all -- --check
 
   clippy:
-    runs-on: self-hosted
+    runs-on: linux
     needs: [fmt]
     steps:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   test:
-    runs-on: self-hosted
+    runs-on: linux
     needs: [clippy]
     steps:
       - name: Unit tests
@@ -31,7 +31,7 @@ jobs:
         run: cargo test -p pertisk-cicd
 
   bench:
-    runs-on: self-hosted
+    runs-on: linux
     required: false
     needs: [test]
     steps:
@@ -41,7 +41,7 @@ jobs:
         run: cargo run -p pertisk-runner -- bench --iterations 50
 
   perf-report:
-    runs-on: self-hosted
+    runs-on: linux
     needs: [bench]
     steps:
       - name: Build release binary

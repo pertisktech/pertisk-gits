@@ -2429,6 +2429,19 @@ textarea.app-field {
   border-bottom: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
 }
 
+.runner-label-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
 .runner-metrics-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

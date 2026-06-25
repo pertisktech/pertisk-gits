@@ -244,7 +244,7 @@ on:
 
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: linux
     steps:
       - name: Build
         run: cargo build --release
@@ -252,7 +252,7 @@ jobs:
         run: cargo test --workspace
 
   bench:
-    runs-on: self-hosted
+    runs-on: linux
     required: false
     needs: [test]
     steps:
@@ -266,7 +266,7 @@ jobs:
 on: push
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: linux
     artifacts:
       - name: binary
         path: target/release/app
@@ -301,7 +301,7 @@ jobs:
 on: push
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: linux
     steps:
       - run: echo ok
 "#,
@@ -317,7 +317,7 @@ jobs:
 on: push
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: linux
     timeout_minutes: 30
     steps:
       - run: sleep 9999
@@ -356,7 +356,7 @@ on:
 on: [push, pull_request]
 jobs:
   test:
-    runs-on: [self-hosted, docker]
+    runs-on: [linux, docker]
     steps:
       - uses: actions/checkout@v4
       - run: echo ok
@@ -365,7 +365,7 @@ jobs:
         .unwrap();
         assert!(cfg.on.push.is_some());
         assert!(cfg.on.pull_request.is_some());
-        assert_eq!(cfg.jobs["test"].runs_on, "self-hosted,docker");
+        assert_eq!(cfg.jobs["test"].runs_on, "linux,docker");
         assert_eq!(cfg.jobs["test"].steps[0].uses.as_deref(), Some("actions/checkout@v4"));
     }
 }

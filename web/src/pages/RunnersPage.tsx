@@ -6,6 +6,7 @@ import type { Runner } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { DeleteRunnerConfirm, RotateRunnerConfirm } from '../components/ConfirmModal'
 import { RunnerCard, TokenModal } from '../components/RunnerCard'
+import { parseRunnerLabels } from '../lib/runnerLabels'
 import { Breadcrumbs, PageHeader, PrimaryButton } from '../components/ui'
 
 type RunnerConfirm =
@@ -16,7 +17,7 @@ export function RunnersPage() {
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
-  const [labels, setLabels] = useState('self-hosted')
+  const [labels, setLabels] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [tokenModal, setTokenModal] = useState<{
     title: string
@@ -36,15 +37,12 @@ export function RunnersPage() {
     mutationFn: () =>
       api.registerRunner(token!, {
         name: name.trim(),
-        labels: labels
-          .split(',')
-          .map((label) => label.trim())
-          .filter(Boolean),
+        labels: parseRunnerLabels(labels),
       }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['runners'] })
       setName('')
-      setLabels('self-hosted')
+      setLabels('')
       setError(null)
       setTokenModal({
         title: 'Runner registered',
@@ -93,6 +91,10 @@ export function RunnersPage() {
   function onSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
+    if (parseRunnerLabels(labels).length === 0) {
+      setError('Add at least one label (comma-separated).')
+      return
+    }
     registerRunner.mutate()
   }
 
@@ -133,7 +135,7 @@ export function RunnersPage() {
       />
       <PageHeader
         title="CI runners"
-        subtitle="Self-hosted runners with live host metrics and job history"
+        subtitle="Register runners with labels that match runs-on in .pertisk-ci.yaml"
       />
 
       <div className="space-y-5">
@@ -145,10 +147,11 @@ export function RunnersPage() {
           </div>
           <div className="app-panel-body space-y-4">
             <p className="text-sm text-text-secondary">
-              Create a runner, copy the token, then configure it on the host running{' '}
-              <span className="font-mono text-text">pertisk-runner</span>. Labels must match{' '}
-              <span className="font-mono text-text">runs-on</span> in{' '}
-              <span className="font-mono text-text">.pertisk-ci.yaml</span>.
+              Install <span className="font-mono text-text">pertisk-runner</span> on a host, register
+              it here with labels, then copy the token into{' '}
+              <span className="font-mono text-text">/etc/pertisk-runner/pertisk-runner.conf</span>.
+              Jobs run on runners whose labels match{' '}
+              <span className="font-mono text-text">runs-on</span> in the pipeline file.
             </p>
             <form className="space-y-4" onSubmit={onSubmit}>
               <div className="grid gap-4">
@@ -174,12 +177,12 @@ export function RunnersPage() {
                     className="app-field font-mono text-sm"
                     value={labels}
                     onChange={(e) => setLabels(e.target.value)}
-                    placeholder="self-hosted, docker"
+                    placeholder="linux, docker, amd64"
                     required
                   />
                   <p className="text-xs text-text-secondary">
-                    Comma-separated. Example: <code>self-hosted</code> or{' '}
-                    <code>docker, self-hosted</code>
+                    Comma-separated labels. A job with <code>runs-on: docker</code> runs only on
+                    runners that include the <code>docker</code> label.
                   </p>
                 </div>
               </div>

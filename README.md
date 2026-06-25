@@ -1,6 +1,6 @@
 # Pertisk Gits
 
-Self-hosted Git platform built with Rust, React, and PostgreSQL.
+Git platform built with Rust, React, and PostgreSQL.
 
 ## Quick Start
 
