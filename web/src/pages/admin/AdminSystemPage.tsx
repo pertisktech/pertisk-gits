@@ -5,6 +5,26 @@ import { useAuth } from '../../auth/AuthContext'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
 import { Breadcrumbs, PageHeader } from '../../components/ui'
 import { formatDateTime } from '../../lib/collaboration'
+import { formatBytes, formatPercent } from '../../lib/formatBytes'
+
+function usageBar(used: number, total: number) {
+  if (total <= 0) return null
+  const pct = Math.min(100, (used / total) * 100)
+  return (
+    <div className="admin-usage-bar" aria-hidden>
+      <div className="admin-usage-bar-fill" style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+function pathWithBadge(path: string, exists: boolean) {
+  return (
+    <>
+      <code>{path}</code>
+      <span className="admin-info-badge">{exists ? 'exists' : 'missing'}</span>
+    </>
+  )
+}
 
 export function AdminSystemPage() {
   const { token } = useAuth()
@@ -13,6 +33,7 @@ export function AdminSystemPage() {
     queryKey: ['admin-system'],
     queryFn: () => api.getAdminSystemInfo(token!),
     enabled: Boolean(token),
+    refetchInterval: 30_000,
   })
 
   return (
@@ -25,7 +46,7 @@ export function AdminSystemPage() {
       />
       <PageHeader
         title="System information"
-        subtitle="Platform version, resource counts, and storage paths."
+        subtitle="Server hardware, application process usage, and storage consumption."
       />
 
       {isLoading && (
@@ -47,6 +68,60 @@ export function AdminSystemPage() {
             <InfoRow label="Application version" value={<code>{data.version}</code>} />
             <InfoRow label="Rust toolchain" value={<code>{data.rust_version}</code>} />
             <InfoRow label="Process started" value={formatDateTime(data.started_at)} />
+            <InfoRow label="Hostname" value={data.host.hostname} />
+          </InfoPanel>
+
+          <InfoPanel title="Server hardware">
+            <InfoRow
+              label="CPU"
+              value={
+                <>
+                  {data.host.cpu_cores} cores · {formatPercent(data.host.cpu_usage_percent)} used
+                </>
+              }
+            />
+            <InfoRow
+              label="Memory"
+              value={
+                <div className="admin-usage-cell">
+                  <span>
+                    {formatBytes(data.host.memory_used_bytes)} / {formatBytes(data.host.memory_total_bytes)}
+                    {' · '}
+                    {formatPercent(
+                      data.host.memory_total_bytes > 0
+                        ? (data.host.memory_used_bytes / data.host.memory_total_bytes) * 100
+                        : 0,
+                    )}
+                  </span>
+                  {usageBar(data.host.memory_used_bytes, data.host.memory_total_bytes)}
+                </div>
+              }
+            />
+            <InfoRow
+              label="Disk"
+              value={
+                <div className="admin-usage-cell">
+                  <span>
+                    {formatBytes(data.host.disk_used_bytes)} used · {formatBytes(data.host.disk_free_bytes)} free
+                    {' · '}
+                    {formatBytes(data.host.disk_total_bytes)} total
+                  </span>
+                  {usageBar(data.host.disk_used_bytes, data.host.disk_total_bytes)}
+                </div>
+              }
+            />
+          </InfoPanel>
+
+          <InfoPanel title="Application process">
+            <InfoRow label="PID" value={data.process.pid} />
+            <InfoRow
+              label="Memory"
+              value={formatBytes(data.process.memory_bytes)}
+            />
+            <InfoRow
+              label="CPU"
+              value={formatPercent(data.process.cpu_usage_percent)}
+            />
           </InfoPanel>
 
           <InfoPanel title="Counts">
@@ -57,27 +132,40 @@ export function AdminSystemPage() {
             <InfoRow label="Runners" value={data.counts.runners} />
           </InfoPanel>
 
-          <InfoPanel title="Storage">
+          <InfoPanel title="Application storage">
             <InfoRow
-              label="Repositories root"
+              label="Git repositories"
               value={
-                <>
-                  <code>{data.storage.repos_root}</code>
-                  <span className="admin-info-badge">
-                    {data.storage.repos_root_exists ? 'exists' : 'missing'}
-                  </span>
-                </>
+                <div className="admin-usage-cell">
+                  {pathWithBadge(data.storage.repos_root, data.storage.repos_root_exists)}
+                  <span>{formatBytes(data.storage.repos_disk_bytes)} on disk</span>
+                </div>
               }
             />
             <InfoRow
-              label="Artifacts root"
+              label="CI artifacts"
               value={
-                <>
-                  <code>{data.storage.artifacts_root}</code>
-                  <span className="admin-info-badge">
-                    {data.storage.artifacts_root_exists ? 'exists' : 'missing'}
+                <div className="admin-usage-cell">
+                  {pathWithBadge(data.storage.artifacts_root, data.storage.artifacts_root_exists)}
+                  <span>
+                    {data.storage.artifacts_count} files · {formatBytes(data.storage.artifacts_db_bytes)} recorded
+                    {' · '}
+                    {formatBytes(data.storage.artifacts_disk_bytes)} on disk
                   </span>
-                </>
+                </div>
+              }
+            />
+            <InfoRow
+              label="Container registry"
+              value={
+                <div className="admin-usage-cell">
+                  {pathWithBadge(data.storage.registry_root, data.storage.registry_root_exists)}
+                  <span>
+                    {data.storage.registry_blob_count} blobs · {formatBytes(data.storage.registry_db_bytes)} recorded
+                    {' · '}
+                    {formatBytes(data.storage.registry_disk_bytes)} on disk
+                  </span>
+                </div>
               }
             />
           </InfoPanel>

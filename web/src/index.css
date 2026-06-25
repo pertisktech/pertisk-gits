@@ -2743,3 +2743,22 @@ html.light .ci-log-line-warn {
   color: var(--color-text-secondary);
 }
 
+.admin-usage-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.admin-usage-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-naturals-n4);
+  overflow: hidden;
+}
+
+.admin-usage-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--color-primary-p1);
+}
+

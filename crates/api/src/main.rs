@@ -44,6 +44,7 @@ mod permissions;
 mod registry;
 mod secrets_crypto;
 mod sso;
+mod system_metrics;
 mod version;
 
 use chrono::Utc;

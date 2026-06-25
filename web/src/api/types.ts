@@ -122,11 +122,35 @@ export interface AdminSystemInfo {
     pipeline_runs: number
     runners: number
   }
+  host: {
+    hostname: string
+    cpu_cores: number
+    cpu_usage_percent: number
+    memory_total_bytes: number
+    memory_used_bytes: number
+    disk_total_bytes: number
+    disk_used_bytes: number
+    disk_free_bytes: number
+  }
+  process: {
+    pid: number
+    memory_bytes: number
+    cpu_usage_percent: number
+  }
   storage: {
     repos_root: string
     repos_root_exists: boolean
+    repos_disk_bytes: number
     artifacts_root: string
     artifacts_root_exists: boolean
+    artifacts_count: number
+    artifacts_db_bytes: number
+    artifacts_disk_bytes: number
+    registry_root: string
+    registry_root_exists: boolean
+    registry_blob_count: number
+    registry_db_bytes: number
+    registry_disk_bytes: number
   }
 }
 

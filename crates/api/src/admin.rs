@@ -15,6 +15,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::password::hash_password;
+use crate::system_metrics::{self, HostMetrics, ProcessMetrics};
 use crate::{ApiError, AppState, AuthUser};
 use crate::version;
 
@@ -69,6 +70,8 @@ struct AdminSystemInfoResponse {
     rust_version: String,
     started_at: DateTime<Utc>,
     counts: AdminSystemCounts,
+    host: HostMetrics,
+    process: ProcessMetrics,
     storage: AdminStorageInfo,
 }
 
@@ -85,8 +88,17 @@ struct AdminSystemCounts {
 struct AdminStorageInfo {
     repos_root: String,
     repos_root_exists: bool,
+    repos_disk_bytes: u64,
     artifacts_root: String,
     artifacts_root_exists: bool,
+    artifacts_count: i64,
+    artifacts_db_bytes: i64,
+    artifacts_disk_bytes: u64,
+    registry_root: String,
+    registry_root_exists: bool,
+    registry_blob_count: i64,
+    registry_db_bytes: i64,
+    registry_disk_bytes: u64,
 }
 
 #[derive(Serialize)]
@@ -130,6 +142,10 @@ fn artifacts_root() -> String {
     std::env::var("ARTIFACTS_ROOT").unwrap_or_else(|_| "data/artifacts".into())
 }
 
+fn registry_root() -> String {
+    std::env::var("REGISTRY_ROOT").unwrap_or_else(|_| "data/registry".into())
+}
+
 fn path_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
@@ -154,8 +170,50 @@ async fn admin_system_info(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
+    let artifact_stats = sqlx::query_as::<_, (i64, i64)>(
+        r#"
+        SELECT
+            COALESCE(SUM(size_bytes), 0)::BIGINT,
+            COUNT(*)::BIGINT
+        FROM job_artifacts
+        "#,
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let registry_stats = sqlx::query_as::<_, (i64, i64)>(
+        r#"
+        SELECT
+            COALESCE(SUM(size_bytes), 0)::BIGINT,
+            COUNT(*)::BIGINT
+        FROM container_blobs
+        "#,
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
     let repos_root = state.config.repos_root.display().to_string();
     let artifacts_root = artifacts_root();
+    let registry_root = registry_root();
+
+    let repos_path = state.config.repos_root.clone();
+    let artifacts_path = Path::new(&artifacts_root).to_path_buf();
+    let registry_path = Path::new(&registry_root).to_path_buf();
+
+    let (host, process, repos_disk_bytes, artifacts_disk_bytes, registry_disk_bytes) =
+        tokio::task::spawn_blocking(move || {
+            (
+                system_metrics::collect_host_metrics(),
+                system_metrics::collect_process_metrics(),
+                system_metrics::directory_size_bytes(&repos_path),
+                system_metrics::directory_size_bytes(&artifacts_path),
+                system_metrics::directory_size_bytes(&registry_path),
+            )
+        })
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok(Json(AdminSystemInfoResponse {
         version: version::APP_VERSION,
@@ -168,11 +226,22 @@ async fn admin_system_info(
             pipeline_runs: counts.3,
             runners: counts.4,
         },
+        host,
+        process,
         storage: AdminStorageInfo {
             repos_root_exists: state.config.repos_root.exists(),
             artifacts_root_exists: path_exists(&artifacts_root),
+            registry_root_exists: path_exists(&registry_root),
             repos_root,
             artifacts_root,
+            registry_root,
+            repos_disk_bytes,
+            artifacts_count: artifact_stats.1,
+            artifacts_db_bytes: artifact_stats.0,
+            artifacts_disk_bytes,
+            registry_blob_count: registry_stats.1,
+            registry_db_bytes: registry_stats.0,
+            registry_disk_bytes,
         },
     }))
 }
