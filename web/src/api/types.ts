@@ -318,6 +318,7 @@ export interface Runner {
   last_job_name: string | null
   last_job_status: string | null
   last_job_at: string | null
+  current_job_name: string | null
   last_seen_at: string | null
   created_at: string
 }

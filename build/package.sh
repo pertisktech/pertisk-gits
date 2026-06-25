@@ -268,6 +268,7 @@ if [ -d /etc/pertisk-gits ]; then
   chmod 640 /etc/pertisk-gits/pertisk-gits.conf 2>/dev/null || true
 fi
 command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
+command -v systemctl >/dev/null 2>&1 && systemctl enable pertisk-gits --now 2>/dev/null || true
 command -v systemctl >/dev/null 2>&1 && systemctl enable pertisk-worker --now 2>/dev/null || true
 POST
 

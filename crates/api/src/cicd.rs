@@ -48,6 +48,8 @@ pub fn spawn_runner_stale_checker(pool: PgPool) {
 }
 
 async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
+    reclaim_stale_running_jobs(pool).await?;
+
     sqlx::query(
         r#"
         UPDATE runners r
@@ -68,6 +70,50 @@ async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
     .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+/// Fail jobs left in `running` when the runner stops heartbeating (crash/kill).
+async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let stale_jobs = sqlx::query_as::<_, (Uuid, Uuid, String)>(
+        r#"
+        SELECT j.id, j.pipeline_run_id, j.job_name
+        FROM job_runs j
+        INNER JOIN runners r ON r.id = j.runner_id
+        WHERE j.status = 'running'
+          AND (
+            r.last_seen_at IS NULL
+            OR r.last_seen_at < NOW() - make_interval(secs => $1)
+          )
+        "#,
+    )
+    .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
+    .fetch_all(pool)
+    .await?;
+
+    for (job_id, pipeline_run_id, job_name) in stale_jobs {
+        sqlx::query(
+            r#"
+            UPDATE job_runs
+            SET status = 'failure',
+                finished_at = NOW(),
+                log_text = log_text || E'\n\n=== job failed (runner lost contact)\n'
+            WHERE id = $1 AND status = 'running'
+            "#,
+        )
+        .bind(job_id)
+        .execute(pool)
+        .await?;
+
+        if let Err(err) = update_commit_status_for_job(pool, job_id, "failure", &job_name).await {
+            tracing::warn!(%job_id, %err, "failed to update commit status for reclaimed job");
+        }
+        if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
+            tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after reclaimed job");
+        }
+        tracing::warn!(%job_id, job = %job_name, "reclaimed stale running job");
+    }
+
     Ok(())
 }
 
@@ -265,6 +311,7 @@ struct RunnerResponse {
     last_job_name: Option<String>,
     last_job_status: Option<String>,
     last_job_at: Option<DateTime<Utc>>,
+    current_job_name: Option<String>,
     last_seen_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }
@@ -552,11 +599,18 @@ async fn list_runners(
     let rows = sqlx::query_as::<_, RunnerRow>(
         r#"
         SELECT
-            id, name, labels, status::text, version, host_ip, host_name,
-            cpu_cores, memory_total_mb, memory_used_mb, disk_total_mb, disk_free_mb,
-            last_job_name, last_job_status, last_job_at, last_seen_at, created_at
-        FROM runners
-        ORDER BY created_at DESC
+            r.id, r.name, r.labels, r.status::text, r.version, r.host_ip, r.host_name,
+            r.cpu_cores, r.memory_total_mb, r.memory_used_mb, r.disk_total_mb, r.disk_free_mb,
+            r.last_job_name, r.last_job_status, r.last_job_at, r.last_seen_at, r.created_at,
+            (
+                SELECT j.job_name
+                FROM job_runs j
+                WHERE j.runner_id = r.id AND j.status = 'running'
+                ORDER BY j.started_at DESC NULLS LAST
+                LIMIT 1
+            ) AS current_job_name
+        FROM runners r
+        ORDER BY r.created_at DESC
         "#,
     )
     .fetch_all(&state.pool)
@@ -581,6 +635,7 @@ async fn list_runners(
                 last_job_name: row.last_job_name,
                 last_job_status: row.last_job_status,
                 last_job_at: row.last_job_at,
+                current_job_name: row.current_job_name,
                 last_seen_at: row.last_seen_at,
                 created_at: row.created_at,
             })
@@ -1823,6 +1878,7 @@ struct RunnerRow {
     last_job_name: Option<String>,
     last_job_status: Option<String>,
     last_job_at: Option<DateTime<Utc>>,
+    current_job_name: Option<String>,
     last_seen_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
 }

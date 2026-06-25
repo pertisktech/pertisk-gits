@@ -17,8 +17,8 @@ import { projectTabPath } from '../lib/projectRoute'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
 import {
+  inferRunningStepName,
   jobStepViews,
-  parseLogSteps,
   stepDisplayStatus,
   stepLogText,
   stepMeta,
@@ -73,10 +73,10 @@ export function PipelineRunDetailPage() {
   }, [activeJob?.id])
 
   useEffect(() => {
-    if (!activeJob || activeJob.status !== 'running' || activeStepKey) return
-    const running = parseLogSteps(activeJob.log_text).find((step) => step.exitCode === null)
-    if (running) {
-      setActiveStepKey(running.name)
+    if (!activeJob || activeJob.status !== 'running') return
+    const running = inferRunningStepName(activeJob)
+    if (running && running !== activeStepKey) {
+      setActiveStepKey(running)
     }
   }, [activeJob, activeStepKey])
 
@@ -87,6 +87,8 @@ export function PipelineRunDetailPage() {
 
   const logText = activeJob ? stepLogText(activeJob, activeStepKey) : ''
   const activeStep = activeSteps.find((step) => step.key === activeStepKey) ?? null
+  const runningStepName =
+    activeJob && activeJob.status === 'running' ? inferRunningStepName(activeJob) : null
 
   const rerunMutation = useMutation({
     mutationFn: () => api.rerunPipeline(token!, orgSlug, projectSlug, runId),
@@ -240,7 +242,7 @@ export function PipelineRunDetailPage() {
                     <CiRunLine
                       key={step.key}
                       nested
-                      status={stepDisplayStatus(step.exitCode, job.status)}
+                      status={stepDisplayStatus(step, job.status)}
                       label={step.name}
                       meta={stepMeta(step)}
                       active={activeStepKey === step.key}
@@ -260,11 +262,10 @@ export function PipelineRunDetailPage() {
                   path={activeJob.job_name}
                   command={
                     activeStep?.run ??
-                    (activeJob.metrics_json
-                      ? `exit ${activeJob.status === 'success' ? 0 : 1}`
-                      : activeStepKey
-                        ? activeStepKey
-                        : 'running…')
+                    (runningStepName ??
+                      (activeJob.metrics_json
+                        ? `exit ${activeJob.status === 'success' ? 0 : 1}`
+                        : activeStepKey ?? 'running…'))
                   }
                 />
                 <CiLogViewer

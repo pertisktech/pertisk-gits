@@ -145,13 +145,22 @@ export function RunnerCard({
 
       <div className="runner-card-footer text-xs text-text-secondary font-mono">
         <span>
-          Last run{' '}
-          <strong className="text-text">
-            {runner.last_job_name
-              ? `${runner.last_job_name} (${runner.last_job_status ?? 'unknown'})`
-              : '—'}
-          </strong>
-          {runner.last_job_at ? ` · ${formatRelativeTime(runner.last_job_at)}` : ''}
+          {runner.status === 'busy' && runner.current_job_name ? (
+            <>
+              Running{' '}
+              <strong className="text-text">{runner.current_job_name}</strong>
+            </>
+          ) : (
+            <>
+              Last run{' '}
+              <strong className="text-text">
+                {runner.last_job_name
+                  ? `${runner.last_job_name} (${runner.last_job_status ?? 'unknown'})`
+                  : '—'}
+              </strong>
+              {runner.last_job_at ? ` · ${formatRelativeTime(runner.last_job_at)}` : ''}
+            </>
+          )}
         </span>
         <span>Seen {formatRelativeTime(runner.last_seen_at)}</span>
       </div>

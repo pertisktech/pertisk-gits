@@ -29,7 +29,7 @@ export function RunnersPage() {
     queryKey: ['runners'],
     queryFn: () => api.listRunners(token!),
     enabled: Boolean(token),
-    refetchInterval: 15_000,
+    refetchInterval: 5_000,
   })
 
   const registerRunner = useMutation({

@@ -12,6 +12,7 @@ export interface JobStepView {
   run?: string
   exitCode?: number
   durationMs?: number
+  running?: boolean
 }
 
 export function parseLogSteps(logText: string): LogStepSection[] {
@@ -58,18 +59,25 @@ export function parseLogSteps(logText: string): LogStepSection[] {
 }
 
 export function stepDisplayStatus(
-  exitCode: number | undefined,
+  step: JobStepView,
   jobStatus: JobRun['status'],
 ): JobRun['status'] | 'pending' {
-  if (exitCode !== undefined) {
-    return exitCode === 0 ? 'success' : 'failure'
+  if (step.exitCode !== undefined) {
+    return step.exitCode === 0 ? 'success' : 'failure'
   }
-  if (jobStatus === 'running') return 'running'
+  if (step.running) return 'running'
+  if (jobStatus === 'running') return 'pending'
   if (jobStatus === 'queued') return 'queued'
   return 'pending'
 }
 
 export function jobStepViews(job: JobRun): JobStepView[] {
+  const configured = job.steps.map((step, index) => ({
+    key: step.name || `step-${index + 1}`,
+    name: step.name || `step-${index + 1}`,
+    run: step.run,
+  }))
+
   const fromMetrics = job.metrics_json?.steps ?? []
   if (fromMetrics.length > 0) {
     return fromMetrics.map((step) => ({
@@ -80,20 +88,79 @@ export function jobStepViews(job: JobRun): JobStepView[] {
     }))
   }
 
-  const fromLog = parseLogSteps(job.log_text)
-  if (fromLog.length > 0) {
-    return fromLog.map((step) => ({
+  const logSteps = parseLogSteps(job.log_text)
+  if (configured.length > 0) {
+    const nextIndex = inferNextStepIndex(
+      logSteps,
+      configured.map((step) => ({ name: step.name })),
+    )
+    return configured.map((step, index) => {
+      const log = logSteps.find((entry) => entry.name === step.name)
+      let exitCode = log?.exitCode ?? undefined
+      if (exitCode === null) {
+        exitCode = undefined
+      }
+      const running =
+        job.status === 'running' &&
+        (log?.exitCode === null || (exitCode === undefined && index === nextIndex))
+      return {
+        ...step,
+        exitCode: running ? undefined : exitCode,
+        running,
+      }
+    })
+  }
+
+  if (logSteps.length > 0) {
+    return logSteps.map((step) => ({
       key: step.name,
       name: step.name,
       exitCode: step.exitCode ?? undefined,
     }))
   }
 
-  return job.steps.map((step, index) => ({
-    key: step.name || `step-${index + 1}`,
-    name: step.name || `step-${index + 1}`,
-    run: step.run,
-  }))
+  return configured
+}
+
+function inferNextStepIndex(
+  logSteps: LogStepSection[],
+  configured: Array<{ name: string }>,
+): number {
+  for (let index = 0; index < configured.length; index += 1) {
+    const log = logSteps.find((entry) => entry.name === configured[index].name)
+    if (!log || log.exitCode === null) {
+      return index
+    }
+    if (log.exitCode !== 0) {
+      return index
+    }
+  }
+  return configured.length
+}
+
+export function inferRunningStepName(job: JobRun): string | null {
+  const configured = job.steps
+    .map((step, index) => step.name || `step-${index + 1}`)
+    .filter(Boolean)
+  if (configured.length === 0) {
+    return null
+  }
+
+  const logSteps = parseLogSteps(job.log_text)
+  const running = logSteps.find((step) => step.exitCode === null)
+  if (running) {
+    return running.name
+  }
+
+  if (job.status !== 'running') {
+    return null
+  }
+
+  const nextIndex = inferNextStepIndex(
+    logSteps,
+    configured.map((name) => ({ name })),
+  )
+  return configured[nextIndex] ?? null
 }
 
 export function formatRunPreview(run: string): string {
@@ -115,6 +182,12 @@ export function stepLogText(job: JobRun, stepKey: string | null): string {
         ? `=== ${section.name} (running)`
         : `=== ${section.name} (exit ${section.exitCode})`
     return section.text.trim() ? `${header}\n${section.text.trim()}` : header
+  }
+
+  if (job.status === 'running' && inferRunningStepName(job) === stepKey) {
+    return job.log_text.trim()
+      ? `${job.log_text.trim()}\n\n=== ${stepKey} (starting…)`
+      : `=== ${stepKey} (starting…)`
   }
 
   const step = jobStepViews(job).find((item) => item.key === stepKey)
