@@ -18,9 +18,9 @@ export function GroupsPage() {
     <>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-text">Repositories</h1>
+          <h1 className="text-xl font-semibold text-text">Groups</h1>
           <p className="text-sm text-text-secondary mt-0.5">
-            Groups and projects you have access to
+            Top-level namespaces that contain your repositories
           </p>
         </div>
         <LinkButton to="/groups/new" primary>

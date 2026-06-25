@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Play } from 'lucide-react'
+import { Loader2, Play, Workflow } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
@@ -13,7 +13,7 @@ import {
 } from '../lib/pipelineStatus'
 import { PipelineGraph } from './PipelineGraph'
 import { PipelineRunsTable } from './PipelineRunsTable'
-import { PrimaryButton } from './ui'
+import { EmptyState, PrimaryButton } from './ui'
 
 export const PIPELINE_CONFIG_FILES = new Set([
   '.pertisk-ci.yaml',
@@ -45,6 +45,25 @@ export function RepoPipelines({
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+
+  const { data: browserData, isLoading: browserLoading } = useQuery({
+    queryKey: ['repo-browser', orgSlug, repoSlug],
+    queryFn: () => api.getRepoBrowser(orgSlug, repoSlug, token),
+    enabled: Boolean(orgSlug && repoSlug),
+  })
+
+  const repoEmpty = browserData?.browser.empty ?? false
+
+  const { data: hasPipelineConfig = false, isLoading: configLoading } = useQuery({
+    queryKey: ['pipeline-config', orgSlug, repoSlug, defaultBranch],
+    queryFn: async () => {
+      const tree = await api.getRepoTree(orgSlug, repoSlug, { ref: defaultBranch }, token)
+      return tree.entries.some(
+        (entry) => PIPELINE_CONFIG_FILES.has(entry.name) && entry.kind === 'blob',
+      )
+    },
+    enabled: Boolean(token && orgSlug && repoSlug && defaultBranch && browserData && !repoEmpty),
+  })
 
   const { data: runs = [], isLoading, error } = useQuery({
     queryKey: ['pipeline-runs', orgSlug, repoSlug],
@@ -89,6 +108,56 @@ export function RepoPipelines({
       navigate(pipelineUrl(orgSlug, repoSlug, updatedRun.id))
     },
   })
+
+  if (browserLoading || configLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
+        <Loader2 size={16} className="animate-spin" />
+        Loading pipelines…
+      </div>
+    )
+  }
+
+  if (repoEmpty) {
+    return (
+      <EmptyState
+        icon={<Workflow size={40} />}
+        title="Push code to enable CI/CD"
+        description="Pipelines run after you push commits to this repository. Use the Code tab clone instructions to push your first commit."
+      />
+    )
+  }
+
+  if (!hasPipelineConfig) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-base font-semibold text-text">Pipelines</h2>
+          <p className="text-sm text-text-secondary mt-0.5">
+            Add a CI config file to the repository root to get started.
+          </p>
+        </div>
+        <div className="app-panel">
+          <EmptyState
+            icon={<Workflow size={40} />}
+            title="Set up CI/CD"
+            description="Commit a .pertisk-ci.yaml file on the default branch. Migrating from GitLab? Use the same job structure with .pertisk-ci.yaml instead of .gitlab-ci.yml."
+            action={
+              <pre className="text-left text-xs font-mono bg-naturals-n2 border border-naturals-n4 rounded-md p-4 max-w-lg mx-auto overflow-x-auto text-text-secondary">
+{`# .pertisk-ci.yaml
+jobs:
+  build:
+    runs_on: self-hosted
+    steps:
+      - name: test
+        run: echo "hello"`}
+              </pre>
+            }
+          />
+        </div>
+      </div>
+    )
+  }
 
   if (isLoading) {
     return (

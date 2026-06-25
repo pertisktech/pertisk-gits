@@ -3,7 +3,6 @@ import { useMemo } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { PIPELINE_CONFIG_FILES } from '../components/RepoPipelines'
 import { parseProjectRoute } from '../lib/projectRoute'
 
 export function useProjectNav() {
@@ -22,37 +21,14 @@ export function useProjectNav() {
     enabled: Boolean(route),
   })
 
-  const { data: browserData } = useQuery({
-    queryKey: ['repo-browser', route?.orgSlug, route?.projectSlug],
-    queryFn: () => api.getRepoBrowser(route!.orgSlug, route!.projectSlug, token),
-    enabled: Boolean(route),
-  })
-
   const project = repoData?.repository
-  const repoEmpty = browserData?.browser.empty ?? false
 
-  const { data: hasPipelineConfig = false, isLoading: pipelineConfigLoading } = useQuery({
-    queryKey: ['pipeline-config', route?.orgSlug, route?.projectSlug, project?.default_branch],
-    queryFn: async () => {
-      const tree = await api.getRepoTree(
-        route!.orgSlug,
-        route!.projectSlug,
-        { ref: project!.default_branch },
-        token,
-      )
-      return tree.entries.some(
-        (entry) => PIPELINE_CONFIG_FILES.has(entry.name) && entry.kind === 'blob',
-      )
-    },
-    enabled: Boolean(token && route && project && browserData && !repoEmpty),
-  })
-
-  const showPipelinesTab = Boolean(token && route && !repoEmpty && hasPipelineConfig)
+  const showPipelinesTab = Boolean(token && route)
 
   if (!route) return null
 
   let tab = route.tab
-  if (tab === 'pipelines' && !showPipelinesTab && !pipelineConfigLoading) {
+  if (tab === 'pipelines' && !token) {
     tab = 'code'
   }
   if (tab === 'settings' && !token) {

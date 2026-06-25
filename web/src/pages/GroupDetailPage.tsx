@@ -4,7 +4,7 @@ import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
-import { EmptyState, LinkButton } from '../components/ui'
+import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
 
 export function GroupDetailPage() {
   const { slug = '' } = useParams()
@@ -25,6 +25,13 @@ export function GroupDetailPage() {
 
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { label: 'Groups', to: '/groups' },
+          { label: group?.name ?? slug },
+        ]}
+      />
+
       <div className="app-repo-header mb-4">
         <h1 className="app-repo-title">
           <span>{group?.name ?? slug}</span>

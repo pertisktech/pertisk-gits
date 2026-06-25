@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { pullUrl } from '../lib/collaboration'
-import { PrimaryButton } from './ui'
+import { PrimaryButton, EmptyState } from './ui'
 
 interface RepoPullRequestsProps {
   token?: string | null
@@ -152,9 +152,23 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
 
       <div className="app-panel">
         {pulls.length === 0 ? (
-          <div className="app-panel-body text-center py-10 text-text-secondary text-sm">
-            No pull requests found.
-          </div>
+          <EmptyState
+            icon={<GitPullRequest size={40} />}
+            title={stateFilter === 'open' ? 'No open pull requests' : 'No pull requests found'}
+            description={
+              stateFilter === 'open'
+                ? 'Propose changes and review code before merging. GitLab users: these work like merge requests.'
+                : 'Try a different filter.'
+            }
+            action={
+              token && stateFilter !== 'closed' ? (
+                <PrimaryButton type="button" onClick={() => setShowNew(true)}>
+                  <Plus size={14} />
+                  New pull request
+                </PrimaryButton>
+              ) : undefined
+            }
+          />
         ) : (
           <ul className="divide-y divide-naturals-n4">
             {pulls.map(({ pull_request: pr, author, review_summary: reviewSummary }) => (

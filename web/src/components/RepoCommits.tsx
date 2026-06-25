@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CommitInfo } from '../api/types'
+import { EmptyState } from './ui'
 
 function formatDate(ts: number) {
   return new Date(ts * 1000).toLocaleString()
@@ -53,9 +54,11 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
   if (browser?.empty) {
     return (
       <div className="app-panel">
-        <div className="app-panel-body text-center py-12 text-text-secondary text-sm">
-          No commits yet — push to this repository to see history here.
-        </div>
+        <EmptyState
+          icon={<GitCommit size={40} />}
+          title="No commits yet"
+          description="Push to this repository using the clone URL on the Code tab to see commit history here."
+        />
       </div>
     )
   }
@@ -98,7 +101,13 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
             <CommitRow key={commit.sha} commit={commit} orgSlug={orgSlug} repoSlug={repoSlug} />
           ))}
           {(data?.commits ?? []).length === 0 && (
-            <li className="px-4 py-8 text-center text-sm text-text-secondary">No commits on this branch.</li>
+            <li>
+              <EmptyState
+                icon={<GitCommit size={40} />}
+                title="No commits on this branch"
+                description="This branch has no commits yet, or history has not been fetched."
+              />
+            </li>
           )}
         </ul>
       )}

@@ -8,9 +8,10 @@ import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
 import { RepoIssues } from '../components/RepoIssues'
 import { RepoPullRequests } from '../components/RepoPullRequests'
-import { RepoPipelines, PIPELINE_CONFIG_FILES } from '../components/RepoPipelines'
+import { RepoPipelines } from '../components/RepoPipelines'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
+import { Breadcrumbs } from '../components/ui'
 import { useProjectNav } from '../hooks/useProjectNav'
 import type { ProjectTab } from '../lib/projectRoute'
 import { projectTabPath } from '../lib/projectRoute'
@@ -50,24 +51,6 @@ export function ProjectDetailPage() {
   const authCloneUrl = user ? cloneUrl.replace('://', `://${user.username}@`) : cloneUrl
   const repoEmpty = browserData?.browser.empty ?? false
 
-  const { data: hasPipelineConfig = false, isLoading: pipelineConfigLoading } = useQuery({
-    queryKey: ['pipeline-config', orgSlug, projectSlug, project?.default_branch],
-    queryFn: async () => {
-      const tree = await api.getRepoTree(
-        orgSlug,
-        projectSlug,
-        { ref: project!.default_branch },
-        token,
-      )
-      return tree.entries.some(
-        (entry) => PIPELINE_CONFIG_FILES.has(entry.name) && entry.kind === 'blob',
-      )
-    },
-    enabled: Boolean(token && orgSlug && projectSlug && project && browserData && !repoEmpty),
-  })
-
-  const showPipelinesTab = Boolean(token && !repoEmpty && hasPipelineConfig)
-
   useEffect(() => {
     const requested = searchParams.get('tab')
     if (!requested || requested === 'code') return
@@ -83,27 +66,13 @@ export function ProjectDetailPage() {
     }
 
     const tab = requested as ProjectTab
-    if (tab === 'pipelines') {
-      if (pipelineConfigLoading) return
-      if (!showPipelinesTab) {
-        navigate(basePath, { replace: true })
-        return
-      }
-    }
     if (tab === 'settings' && !token) {
       navigate(basePath, { replace: true })
       return
     }
 
     navigate(projectTabPath(basePath, tab), { replace: true })
-  }, [
-    searchParams,
-    token,
-    showPipelinesTab,
-    pipelineConfigLoading,
-    navigate,
-    basePath,
-  ])
+  }, [searchParams, token, navigate, basePath])
 
   if (isLoading) {
     return <div className="text-text-secondary text-sm py-8">Loading repository…</div>
@@ -121,6 +90,14 @@ export function ProjectDetailPage() {
 
   return (
     <>
+      <Breadcrumbs
+        items={[
+          { label: 'Groups', to: '/groups' },
+          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
+          { label: project.name },
+        ]}
+      />
+
       <RepoHeader
         orgName={group?.name ?? orgSlug}
         orgSlug={orgSlug}
@@ -174,7 +151,7 @@ export function ProjectDetailPage() {
           />
         )}
 
-        {tab === 'pipelines' && showPipelinesTab && token && (
+        {tab === 'pipelines' && token && (
           <RepoPipelines
             token={token}
             orgSlug={orgSlug}

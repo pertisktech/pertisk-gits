@@ -27,7 +27,7 @@ import { AppVersion } from './AppVersion'
 
 const globalNavItems: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/groups', label: 'Repositories', icon: Users },
+  { to: '/groups', label: 'Groups', icon: Users },
   { to: '/runners', label: 'Runners', icon: Server },
 ]
 

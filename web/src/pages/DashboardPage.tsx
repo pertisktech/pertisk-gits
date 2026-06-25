@@ -132,9 +132,56 @@ export function DashboardPage() {
         }
       />
 
+      {!isLoading && sortedProjects.length === 0 && (
+        <div className="app-panel mb-4">
+          <div className="app-panel-header">Getting started</div>
+          <div className="p-5 grid gap-4 sm:grid-cols-3">
+            <div className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-p4/15 text-primary text-sm font-semibold">
+                1
+              </span>
+              <div>
+                <p className="text-sm font-medium text-text">Create a group</p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Groups are namespaces — like GitLab groups — that hold repositories.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-p4/15 text-primary text-sm font-semibold">
+                2
+              </span>
+              <div>
+                <p className="text-sm font-medium text-text">Create a repository</p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Add a repo inside your group and push code with git.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-p4/15 text-primary text-sm font-semibold">
+                3
+              </span>
+              <div>
+                <p className="text-sm font-medium text-text">Add CI/CD</p>
+                <p className="text-xs text-text-secondary mt-0.5">
+                  Commit <code className="font-mono">.pertisk-ci.yaml</code> to run pipelines.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="px-5 pb-5">
+            <LinkButton to="/groups/new" primary>
+              <Plus size={14} />
+              Create your first group
+            </LinkButton>
+          </div>
+        </div>
+      )}
+
       <div className="app-panel">
         <div className="app-panel-header flex items-center justify-between gap-3">
-          <span>All projects</span>
+          <span>All repositories</span>
           <span className="font-normal text-text-secondary">
             {isLoading ? 'Loading…' : `${sortedProjects.length} total`}
           </span>
@@ -149,8 +196,8 @@ export function DashboardPage() {
         {!isLoading && sortedProjects.length === 0 && (
           <EmptyState
             icon={<FolderGit2 size={40} />}
-            title="No projects yet"
-            description="Create a group and add your first repository."
+            title="No repositories yet"
+            description="Create a group, then add your first repository inside it."
             action={
               <LinkButton to="/groups/new" primary>
                 Create group
@@ -166,7 +213,7 @@ export function DashboardPage() {
                 <thead>
                   <tr>
                     <SortableHeader
-                      label="Project"
+                      label="Repository"
                       field="name"
                       sortField={sortField}
                       sortDirection={sortDirection}

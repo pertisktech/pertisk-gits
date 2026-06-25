@@ -6,7 +6,7 @@ import { api } from '../api/client'
 import { issueUrl } from '../lib/collaboration'
 import { RepoLabelsPanel, RepoMilestonesPanel } from './IssueSidebar'
 import { LabelBadge } from './LabelBadge'
-import { PrimaryButton } from './ui'
+import { EmptyState, PrimaryButton } from './ui'
 
 interface RepoIssuesProps {
   token?: string | null
@@ -228,9 +228,23 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
 
       <div className="app-panel">
         {issues.length === 0 ? (
-          <div className="app-panel-body text-center py-10 text-text-secondary text-sm">
-            No issues found.
-          </div>
+          <EmptyState
+            icon={<CircleDot size={40} />}
+            title={stateFilter === 'open' ? 'No open issues' : 'No issues found'}
+            description={
+              stateFilter === 'open'
+                ? 'Track bugs, tasks, and ideas for this repository.'
+                : 'Try a different filter or search term.'
+            }
+            action={
+              token && stateFilter !== 'closed' ? (
+                <PrimaryButton type="button" onClick={() => setShowNew(true)}>
+                  <Plus size={14} />
+                  New issue
+                </PrimaryButton>
+              ) : undefined
+            }
+          />
         ) : (
           <ul className="divide-y divide-naturals-n4">
             {issues.map(({ issue, author, labels, assignee }) => (

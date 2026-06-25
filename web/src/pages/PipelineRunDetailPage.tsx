@@ -57,6 +57,13 @@ export function PipelineRunDetailPage() {
     enabled: Boolean(orgSlug && projectSlug),
   })
 
+  const { data: groups = [] } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => api.listOrganizations(token!),
+    enabled: Boolean(token),
+  })
+  const group = groups.find((g) => g.slug === orgSlug)
+
   const { data: run, isLoading, error } = useQuery({
     queryKey: ['pipeline-run', orgSlug, projectSlug, runId],
     queryFn: () => api.getPipelineRun(token!, orgSlug, projectSlug, runId),
@@ -185,7 +192,8 @@ export function PipelineRunDetailPage() {
     <div className="pipeline-run-page">
       <Breadcrumbs
         items={[
-          { label: 'Repositories', to: '/groups' },
+          { label: 'Groups', to: '/groups' },
+          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
           { label: repoName, to: pipelinesPath },
           { label: `run ${shortSha(run.commit_sha)}` },
         ]}
