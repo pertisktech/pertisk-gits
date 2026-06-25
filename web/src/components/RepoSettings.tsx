@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import type { Repository } from '../api/types'
 import { PrimaryButton } from './ui'
 import { RepoCollaborators } from './RepoCollaborators'
+import { SecretsPanel } from './SecretsPanel'
 
 interface RepoSettingsProps {
   token: string
@@ -172,6 +173,19 @@ export function RepoSettings({
       </div>
 
       <RepoCollaborators token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
+
+      <SecretsPanel
+        token={token}
+        title="Repository secrets"
+        description="Available only to pipelines in this repository. Override group secrets with the same name."
+        queryKey={['repo-secrets', orgSlug, repoSlug]}
+        listSecrets={() => api.listRepoSecrets(token, orgSlug, repoSlug)}
+        createSecret={(payload) => api.createRepoSecret(token, orgSlug, repoSlug, payload)}
+        updateSecret={(id, payload) =>
+          api.updateRepoSecret(token, orgSlug, repoSlug, id, payload)
+        }
+        deleteSecret={(id) => api.deleteRepoSecret(token, orgSlug, repoSlug, id)}
+      />
     </div>
   )
 }

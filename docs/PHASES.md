@@ -123,7 +123,9 @@ Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
 **Tables:** `runners`, `pipeline_runs`, `job_runs`, `job_artifacts`, `commit_statuses`, `pipeline_triggers`
 
-**Not in MVP (later):** container-isolated steps, S3 artifacts, matrix builds, caches, secrets, per-branch required checks UI
+**Not in MVP (later):** container-isolated steps, S3 artifacts, matrix builds, caches, per-branch required checks UI
+
+**Secrets (done):** group + repository secrets, `${{ secrets.NAME }}` in pipelines, log masking — see [CICD_SECRETS.md](./CICD_SECRETS.md)
 
 ---
 

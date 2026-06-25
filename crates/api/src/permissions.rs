@@ -372,7 +372,7 @@ async fn remove_repository_collaborator(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn ensure_can_manage_org(
+pub(crate) async fn ensure_can_manage_org(
     pool: &PgPool,
     org_id: Uuid,
     user_id: Uuid,

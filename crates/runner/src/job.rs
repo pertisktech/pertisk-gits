@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use pertisk_cicd::apply_secrets_to_step;
 use pertisk_cicd::metrics::{JobMetrics, StepTiming};
 use pertisk_cicd::ShellExecutor;
 use tempfile::TempDir;
@@ -12,6 +14,60 @@ use crate::api::{PollJobResponse, RunnerApi};
 use crate::artifacts::{upload_artifact_step, upload_declared_artifact};
 use crate::log_stream::LogStreamer;
 use crate::workspace::materialize_workspace;
+
+struct PreparedSecrets {
+    injection: HashMap<String, String>,
+    mask_values: Vec<String>,
+}
+
+async fn prepare_secrets(
+    api: &RunnerApi,
+    job_id: uuid::Uuid,
+    work_root: &Path,
+) -> anyhow::Result<PreparedSecrets> {
+    let response = match api.fetch_job_secrets(job_id).await {
+        Ok(response) => response,
+        Err(err) => {
+            tracing::warn!(%err, "failed to load job secrets; continuing without secrets");
+            crate::api::JobSecretsResponse { secrets: vec![] }
+        }
+    };
+
+    let secrets_dir = work_root.join(".pertisk-secrets");
+    std::fs::create_dir_all(&secrets_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&secrets_dir, std::fs::Permissions::from_mode(0o700))?;
+    }
+
+    let mut injection = HashMap::new();
+    let mut mask_values = Vec::new();
+
+    for item in response.secrets {
+        if item.value.len() >= 4 {
+            mask_values.push(item.value.clone());
+        }
+        let value = if item.secret_kind == "file" {
+            let path = secrets_dir.join(&item.name);
+            std::fs::write(&path, &item.value)?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+            }
+            path.display().to_string()
+        } else {
+            item.value.clone()
+        };
+        injection.insert(item.name, value);
+    }
+
+    Ok(PreparedSecrets {
+        injection,
+        mask_values,
+    })
+}
 
 pub async fn run_job(
     api: &RunnerApi,
@@ -55,6 +111,8 @@ pub async fn run_job(
         .await?;
         return Ok(());
     }
+
+    let secrets = prepare_secrets(api, job.job_id, work_root.path()).await?;
 
     let executor = ShellExecutor::new();
     let queue_wait = queued_at.elapsed();
@@ -184,7 +242,7 @@ pub async fn run_job(
         }
 
         let (log_tx, mut log_rx) = mpsc::unbounded_channel::<String>();
-        let mut streamer = LogStreamer::new(api, job.job_id);
+        let mut streamer = LogStreamer::new(api, job.job_id, secrets.mask_values.clone());
         let drain_logs = async {
             while let Some(chunk) = log_rx.recv().await {
                 streamer.push(&chunk).await;
@@ -193,12 +251,13 @@ pub async fn run_job(
         };
 
         let started_at = Utc::now();
+        let resolved_step = apply_secrets_to_step(step, &secrets.injection);
         let output = tokio::join!(
             drain_logs,
             executor.run_step_streaming_cancellable(
                 &workspace,
                 index,
-                step,
+                &resolved_step,
                 &job_env,
                 Some(log_tx),
                 cancel_rx.clone(),

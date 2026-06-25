@@ -1,5 +1,6 @@
 use std::time::{Duration, Instant};
 
+use pertisk_cicd::mask_secrets_in_text;
 use uuid::Uuid;
 
 use crate::api::RunnerApi;
@@ -12,15 +13,17 @@ pub struct LogStreamer<'a> {
     job_id: Uuid,
     buffer: String,
     last_flush: Instant,
+    mask_values: Vec<String>,
 }
 
 impl<'a> LogStreamer<'a> {
-    pub fn new(api: &'a RunnerApi, job_id: Uuid) -> Self {
+    pub fn new(api: &'a RunnerApi, job_id: Uuid, mask_values: Vec<String>) -> Self {
         Self {
             api,
             job_id,
             buffer: String::new(),
             last_flush: Instant::now(),
+            mask_values,
         }
     }
 
@@ -28,7 +31,8 @@ impl<'a> LogStreamer<'a> {
         if chunk.is_empty() {
             return;
         }
-        self.buffer.push_str(chunk);
+        let masked = mask_secrets_in_text(chunk, &self.mask_values);
+        self.buffer.push_str(&masked);
         if self.buffer.len() >= FLUSH_BYTES || self.last_flush.elapsed() >= FLUSH_INTERVAL {
             self.flush().await;
         }

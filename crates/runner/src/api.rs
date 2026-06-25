@@ -213,4 +213,32 @@ impl RunnerApi {
 
         Ok(response.json().await?)
     }
+
+    pub async fn fetch_job_secrets(&self, job_id: Uuid) -> anyhow::Result<JobSecretsResponse> {
+        let response = self
+            .client
+            .get(format!("{}/api/v1/runner/jobs/{job_id}/secrets", self.base_url))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .context("fetch job secrets")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("job secrets failed: {}", response.status());
+        }
+
+        Ok(response.json().await?)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct JobSecretItem {
+    pub name: String,
+    pub secret_kind: String,
+    pub value: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct JobSecretsResponse {
+    pub secrets: Vec<JobSecretItem>,
 }

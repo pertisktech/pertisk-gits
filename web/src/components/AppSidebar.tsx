@@ -5,6 +5,7 @@ import {
   FolderGit2,
   GitCommit,
   GitPullRequest,
+  KeyRound,
   LayoutDashboard,
   Package,
   ScrollText,
@@ -47,6 +48,7 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'repositories', label: 'Repositories', icon: FolderGit2 },
   { id: 'registry', label: 'Registry', icon: Package },
   { id: 'members', label: 'Members', icon: Users },
+  { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'audit', label: 'Audit log', icon: ScrollText },
 ]
 

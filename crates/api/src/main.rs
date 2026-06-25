@@ -33,6 +33,7 @@ use validator::Validate;
 
 mod artifacts;
 mod audit;
+mod ci_secrets;
 mod collaboration;
 mod cicd;
 mod config;
@@ -40,17 +41,20 @@ mod db;
 mod password;
 mod permissions;
 mod registry;
+mod secrets_crypto;
 mod sso;
 mod version;
 
 use config::Config;
 use password::{hash_password, verify_password};
+use secrets_crypto::SecretsCrypto;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
     pub config: Arc<Config>,
     pub artifacts: artifacts::ArtifactStore,
+    pub secrets_crypto: Arc<SecretsCrypto>,
 }
 
 #[derive(Serialize)]
@@ -97,11 +101,13 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("../../migrations").run(&pool).await?;
     cicd::spawn_runner_stale_checker(pool.clone());
     let artifact_store = artifacts::ArtifactStore::from_env()?;
+    let secrets_crypto = Arc::new(SecretsCrypto::from_env()?);
 
     let state = AppState {
         pool,
         config: config.clone(),
         artifacts: artifact_store,
+        secrets_crypto,
     };
 
     let repo_read_routes = Router::new()
@@ -139,6 +145,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .merge(collaboration::collaboration_read_routes())
         .merge(cicd::cicd_read_routes())
+        .merge(ci_secrets::ci_secrets_read_routes())
         .merge(registry::registry_read_routes())
         .layer(from_fn_with_state(state.clone(), optional_auth_middleware));
 
@@ -164,6 +171,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(permissions::permissions_routes())
         .merge(collaboration::collaboration_write_routes())
         .merge(cicd::cicd_write_routes())
+        .merge(ci_secrets::ci_secrets_write_routes())
         .merge(registry::registry_write_routes())
         .merge(audit::audit_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));

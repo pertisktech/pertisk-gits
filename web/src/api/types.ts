@@ -442,3 +442,13 @@ export interface AuditListResponse {
   events: AuditEvent[]
   total: number
 }
+
+export type CiSecretKind = 'variable' | 'file'
+
+export interface CiSecret {
+  id: string
+  name: string
+  secret_kind: CiSecretKind
+  created_at: string
+  updated_at: string
+}

@@ -824,4 +824,99 @@ export const api = {
     if (!response.ok) throw new Error('Export failed')
     return response.text()
   },
+
+  listOrgSecrets: (token: string, orgSlug: string) =>
+    request<import('./types').CiSecret[]>(`/organizations/${orgSlug}/secrets`, {}, token),
+
+  createOrgSecret: (
+    token: string,
+    orgSlug: string,
+    payload: { name: string; secret_kind: import('./types').CiSecretKind; value: string },
+  ) =>
+    request<import('./types').CiSecret>(`/organizations/${orgSlug}/secrets`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  updateOrgSecret: (
+    token: string,
+    orgSlug: string,
+    secretId: string,
+    payload: { secret_kind?: import('./types').CiSecretKind; value?: string },
+  ) =>
+    request<import('./types').CiSecret>(`/organizations/${orgSlug}/secrets/${secretId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteOrgSecret: async (token: string, orgSlug: string, secretId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/secrets/${secretId}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listRepoSecrets: (token: string, orgSlug: string, repoSlug: string) =>
+    request<import('./types').CiSecret[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/secrets`,
+      {},
+      token,
+    ),
+
+  createRepoSecret: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { name: string; secret_kind: import('./types').CiSecretKind; value: string },
+  ) =>
+    request<import('./types').CiSecret>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/secrets`,
+      {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+
+  updateRepoSecret: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    secretId: string,
+    payload: { secret_kind?: import('./types').CiSecretKind; value?: string },
+  ) =>
+    request<import('./types').CiSecret>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/secrets/${secretId}`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify(payload),
+      },
+      token,
+    ),
+
+  deleteRepoSecret: async (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    secretId: string,
+  ) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/secrets/${secretId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
 }

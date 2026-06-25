@@ -287,6 +287,7 @@ pub fn runner_routes() -> Router<AppState> {
         )
         .route("/runner/jobs/{job_id}/workspace", get(runner_job_workspace))
         .route("/runner/jobs/{job_id}/control", get(runner_job_control))
+        .route("/runner/jobs/{job_id}/secrets", get(runner_job_secrets))
         .layer(DefaultBodyLimit::max(MAX_RUNNER_ARTIFACT_BYTES))
 }
 
@@ -2561,6 +2562,22 @@ async fn runner_job_control(
         cancel_step_name: row.2,
         timed_out: row.4,
     }))
+}
+
+async fn runner_job_secrets(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<crate::ci_secrets::RunnerJobSecretsResponse>, (StatusCode, String)> {
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+    let secrets = crate::ci_secrets::load_job_secrets_for_runner(
+        &state.pool,
+        &state.secrets_crypto,
+        job_id,
+        runner_id,
+    )
+    .await?;
+    Ok(Json(secrets))
 }
 
 async fn cancel_pipeline_run(
