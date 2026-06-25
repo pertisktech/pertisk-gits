@@ -1,5 +1,6 @@
 import { ChevronRight, Terminal } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { PipelineStatusDot } from './PipelineStatus'
 import { cn } from '../utils/cn'
 
 export function CiTerminal({
@@ -124,18 +125,7 @@ export function CiLogViewer({
 }
 
 export function CiStatusDot({ status }: { status: string }) {
-  return (
-    <span
-      className={cn(
-        'ci-status-dot',
-        status === 'success' && 'ci-status-dot-success',
-        status === 'failure' && 'ci-status-dot-failure',
-        status === 'cancelled' && 'ci-status-dot-cancelled',
-        (status === 'running' || status === 'queued' || status === 'pending') && 'ci-status-dot-active',
-      )}
-      aria-hidden
-    />
-  )
+  return <PipelineStatusDot status={status} />
 }
 
 export function CiRunLine({

@@ -19,12 +19,11 @@ import {
   displayRunStatus,
   isRunInProgress,
   refLabel,
-  runStatusVariant,
   shortSha,
   type RerunScope,
 } from '../lib/pipelineStatus'
 import { PipelineRerunMenu } from '../components/PipelineRerunMenu'
-import { StatusBadge } from '../components/StatusBadge'
+import { PipelineRunStatusBadge } from '../components/PipelineStatus'
 import { projectTabPath } from '../lib/projectRoute'
 import { Breadcrumbs, SecondaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
@@ -203,9 +202,7 @@ export function PipelineRunDetailPage() {
           </Link>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-xl font-semibold text-text font-mono">pipeline run</h1>
-            <StatusBadge variant={runStatusVariant(displayRunStatus(run))}>
-              {displayRunStatus(run)}
-            </StatusBadge>
+            <PipelineRunStatusBadge status={displayRunStatus(run)} />
           </div>
           <p className="text-sm text-text-secondary mt-1 font-mono">
             {run.event_type} ·{' '}

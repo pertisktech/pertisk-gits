@@ -8,15 +8,13 @@ import {
   failureSummary,
   formatRunDuration,
   isRunInProgress,
-  jobStatusVariant,
   refLabel,
-  runStatusVariant,
   shortSha,
   type RerunScope,
 } from '../lib/pipelineStatus'
 import { formatDateTime } from '../lib/collaboration'
+import { PipelineJobStatusBadge, PipelineRunStatusBadge } from './PipelineStatus'
 import { PipelineRerunMenu } from './PipelineRerunMenu'
-import { StatusBadge } from './StatusBadge'
 
 export function PipelineRunsTable({
   runs,
@@ -102,7 +100,7 @@ function PipelineRunRow({
       }
     }}>
       <td className="pipeline-runs-status">
-        <StatusBadge variant={runStatusVariant(status)}>{status}</StatusBadge>
+        <PipelineRunStatusBadge status={status} />
       </td>
       <td className="pipeline-runs-pipeline" title={summary ?? undefined}>
         <div className="pipeline-runs-pipeline-line">
@@ -139,12 +137,9 @@ function PipelineRunRow({
                 className="pipeline-runs-job"
                 title={`${job.job_name}: ${jobStatus}`}
               >
-                <StatusBadge
-                  variant={jobStatusVariant(jobStatus)}
-                  className="pipeline-runs-job-badge"
-                >
+                <PipelineJobStatusBadge status={jobStatus} className="pipeline-runs-job-badge">
                   {job.job_name}
-                </StatusBadge>
+                </PipelineJobStatusBadge>
               </span>
             )
           })}

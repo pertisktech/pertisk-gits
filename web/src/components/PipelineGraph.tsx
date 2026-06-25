@@ -17,20 +17,12 @@ import {
   type PipelineGraphJob,
   type PipelineGraphNodeData,
 } from '../lib/pipelineGraphLayout'
-
-const STATUS_DOT: Record<string, string> = {
-  success: 'ci-status-dot-success',
-  failure: 'ci-status-dot-failure',
-  cancelled: 'ci-status-dot-cancelled',
-  running: 'ci-status-dot-active',
-  queued: 'ci-status-dot-active',
-}
+import { PipelineStatusDot } from './PipelineStatus'
 
 function PipelineJobNode({ data }: NodeProps) {
   const nodeData = data as PipelineGraphNodeData
   const { job, selected } = nodeData
-  const status = job.status ?? 'preview'
-  const dotClass = STATUS_DOT[status] ?? ''
+  const status = job.status ?? 'pending'
 
   return (
     <button
@@ -40,7 +32,7 @@ function PipelineJobNode({ data }: NodeProps) {
     >
       <Handle type="target" position={Position.Left} className="pipeline-graph-handle" />
       <div className="pipeline-graph-node-header">
-        <span className={`ci-status-dot${dotClass ? ` ${dotClass}` : ''}`} />
+        <PipelineStatusDot status={status} />
         <Cpu size={12} className="pipeline-graph-node-icon" />
         <span className="pipeline-graph-node-name">{job.name}</span>
       </div>

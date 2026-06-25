@@ -1945,6 +1945,11 @@ textarea.app-field {
   flex-shrink: 0;
 }
 
+.ci-status-dot-pending {
+  background: var(--color-naturals-n7);
+  opacity: 0.85;
+}
+
 .ci-status-dot-success {
   background: #3fb950;
   box-shadow: 0 0 6px color-mix(in srgb, #3fb950 55%, transparent);
@@ -1956,11 +1961,17 @@ textarea.app-field {
 }
 
 .ci-status-dot-cancelled {
-  background: var(--color-naturals-n7);
-  opacity: 0.75;
+  width: 0.75rem;
+  height: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, #f85149 22%, transparent);
+  color: #f85149;
+  box-shadow: none;
 }
 
-.ci-status-dot-active {
+.ci-status-dot-running {
   background: #d29922;
   animation: ci-pulse 1.4s ease-in-out infinite;
 }

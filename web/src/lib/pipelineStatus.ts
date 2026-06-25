@@ -63,18 +63,29 @@ export function isRunInProgress(run: PipelineRun): boolean {
 
 export function runStatusVariant(status: PipelineRun['status']) {
   if (status === 'success') return 'green' as const
-  if (status === 'failure') return 'red' as const
-  if (status === 'cancelled') return 'gray' as const
-  if (status === 'running' || status === 'queued') return 'yellow' as const
+  if (status === 'failure' || status === 'cancelled') return 'red' as const
+  if (status === 'running') return 'yellow' as const
   return 'gray' as const
 }
 
-export function jobStatusVariant(status: JobRun['status']) {
+export function jobStatusVariant(status: JobRun['status'] | 'pending') {
   if (status === 'success') return 'green' as const
-  if (status === 'failure') return 'red' as const
-  if (status === 'cancelled') return 'gray' as const
-  if (status === 'running' || status === 'queued') return 'yellow' as const
+  if (status === 'failure' || status === 'cancelled') return 'red' as const
+  if (status === 'running') return 'yellow' as const
   return 'gray' as const
+}
+
+/** CSS class for pipeline status dots (graph, sidebar, steps). */
+export function statusDotClass(status: string): string {
+  if (status === 'success') return 'ci-status-dot-success'
+  if (status === 'failure') return 'ci-status-dot-failure'
+  if (status === 'cancelled') return 'ci-status-dot-cancelled'
+  if (status === 'running') return 'ci-status-dot-running'
+  return 'ci-status-dot-pending'
+}
+
+export function isCancelledStatus(status: string) {
+  return status === 'cancelled'
 }
 
 export function shortSha(sha: string) {
