@@ -13,6 +13,17 @@ use crate::access::{find_repository, get_or_create_repository, parse_image_name,
 use crate::auth::{authorize_registry, registry_err, RegistryAuth, RegistryResult};
 use crate::storage::{sha256_digest, BlobStore};
 
+const MANIFEST_V2_MEDIA_TYPE: &str = "application/vnd.docker.distribution.manifest.v2+json";
+const BLOB_MEDIA_TYPE: &str = "application/octet-stream";
+
+fn manifest_media_type(media_type: &str) -> &str {
+    if media_type.is_empty() {
+        MANIFEST_V2_MEDIA_TYPE
+    } else {
+        media_type
+    }
+}
+
 #[derive(Clone)]
 pub struct RegistryState {
     pub pool: PgPool,
@@ -75,7 +86,7 @@ pub async fn get_manifest(
     Ok((
         StatusCode::OK,
         [
-            (header::CONTENT_TYPE, row.1),
+            (header::CONTENT_TYPE, manifest_media_type(&row.1).to_string()),
             (
                 header::HeaderName::from_static("docker-content-digest"),
                 digest.clone(),
@@ -105,8 +116,12 @@ pub async fn head_manifest(
         .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
         .ok_or_else(|| registry_err(StatusCode::NOT_FOUND, "manifest not found"))?;
 
-    let size = sqlx::query_scalar::<_, i64>(
-        "SELECT size_bytes FROM container_manifests WHERE repository_id = $1 AND digest = $2",
+    let row = sqlx::query_as::<_, (String, i64)>(
+        r#"
+        SELECT media_type, size_bytes
+        FROM container_manifests
+        WHERE repository_id = $1 AND digest = $2
+        "#,
     )
     .bind(repo.id)
     .bind(&digest)
@@ -118,11 +133,12 @@ pub async fn head_manifest(
     Ok((
         StatusCode::OK,
         [
+            (header::CONTENT_TYPE, manifest_media_type(&row.0).to_string()),
             (
                 header::HeaderName::from_static("docker-content-digest"),
                 digest,
             ),
-            (header::CONTENT_LENGTH, size.to_string()),
+            (header::CONTENT_LENGTH, row.1.to_string()),
         ],
     )
         .into_response())
@@ -230,6 +246,7 @@ pub async fn get_blob(
     Ok((
         StatusCode::OK,
         [
+            (header::CONTENT_TYPE, BLOB_MEDIA_TYPE.to_string()),
             (
                 header::HeaderName::from_static("docker-content-digest"),
                 digest.clone(),
@@ -265,6 +282,7 @@ pub async fn head_blob(
     Ok((
         StatusCode::OK,
         [
+            (header::CONTENT_TYPE, BLOB_MEDIA_TYPE.to_string()),
             (
                 header::HeaderName::from_static("docker-content-digest"),
                 digest,
