@@ -96,6 +96,15 @@ export function jobStepViews(job: JobRun): JobStepView[] {
   }))
 }
 
+export function formatRunPreview(run: string): string {
+  return run
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => `$ ${line}`)
+    .join('\n')
+}
+
 export function stepLogText(job: JobRun, stepKey: string | null): string {
   if (!stepKey) return job.log_text
 
@@ -110,7 +119,7 @@ export function stepLogText(job: JobRun, stepKey: string | null): string {
 
   const step = jobStepViews(job).find((item) => item.key === stepKey)
   if (step?.run) {
-    return `$ ${step.run}\n\n(step has not run yet)`
+    return `${formatRunPreview(step.run)}\n\n(step has not run yet)`
   }
 
   return '(no output for this step)'
