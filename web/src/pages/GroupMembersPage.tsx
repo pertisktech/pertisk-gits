@@ -6,9 +6,8 @@ import { api } from '../api/client'
 import type { OrgMember, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
-import { GroupSubnav } from '../components/GroupNav'
 import { UserPicker } from '../components/UserPicker'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
+import { PrimaryButton, SecondaryButton } from '../components/ui'
 
 type OrgRole = OrgMember['role']
 
@@ -102,23 +101,14 @@ export function GroupMembersPage() {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? slug, to: `/groups/${slug}` },
-          { label: 'Members' },
-        ]}
-      />
-      <PageHeader
-        title="Group members"
-        subtitle={
-          <>
-            Manage who belongs to <strong className="text-text">{group?.name ?? slug}</strong> and their group role.
-          </>
-        }
-      />
-
-      <GroupSubnav orgSlug={slug} activeTab="members" />
+      <div className="app-repo-header mb-4">
+        <h1 className="app-repo-title">
+          <span>Members</span>
+        </h1>
+        <p className="app-repo-desc">
+          Manage who belongs to {group?.name ?? slug} and their group role.
+        </p>
+      </div>
 
       {canManage && (
         <div className="app-panel max-w-3xl mb-5">

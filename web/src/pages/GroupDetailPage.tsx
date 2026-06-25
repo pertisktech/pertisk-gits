@@ -3,9 +3,8 @@ import { FolderGit2, Plus } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { GroupSubnav } from '../components/GroupNav'
 import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
-import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
+import { EmptyState, LinkButton } from '../components/ui'
 
 export function GroupDetailPage() {
   const { slug = '' } = useParams()
@@ -26,22 +25,13 @@ export function GroupDetailPage() {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? slug },
-        ]}
-      />
-
-      <div className="app-repo-header mb-2">
+      <div className="app-repo-header mb-4">
         <h1 className="app-repo-title">
           <span>{group?.name ?? slug}</span>
         </h1>
         {group?.description && <p className="app-repo-desc">{group.description}</p>}
         <p className="text-xs text-muted font-mono mt-1">@{slug}</p>
       </div>
-
-      <GroupSubnav orgSlug={slug} activeTab="repositories" />
 
       <div className="mb-4 flex justify-end">
         <LinkButton to={`/groups/${slug}/projects/new`} primary>

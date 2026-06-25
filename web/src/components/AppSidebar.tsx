@@ -7,6 +7,7 @@ import {
   GitPullRequest,
   LayoutDashboard,
   Package,
+  ScrollText,
   Server,
   Settings,
   Users,
@@ -46,6 +47,7 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'repositories', label: 'Repositories', icon: FolderGit2 },
   { id: 'registry', label: 'Registry', icon: Package },
   { id: 'members', label: 'Members', icon: Users },
+  { id: 'audit', label: 'Audit log', icon: ScrollText },
 ]
 
 const globalLinkClass = ({ isActive }: { isActive: boolean }) =>

@@ -5,12 +5,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ContainerImageSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { GroupSubnav } from '../components/GroupNav'
 import {
-  Breadcrumbs,
   EmptyState,
   LinkButton,
-  PageHeader,
   PrimaryButton,
   SecondaryButton,
 } from '../components/ui'
@@ -96,36 +93,29 @@ export function RegistryPage() {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: slug, to: `/groups/${slug}` },
-          { label: 'Registry', to: registryBase },
-          ...(decodedImage ? [{ label: decodedImage }] : []),
-        ]}
-      />
-
-      <PageHeader
-        title="Container registry"
-        subtitle={`OCI images for @${slug} — push with docker login && docker push host/${slug}/image:tag`}
-        action={
-          <div className="flex gap-2">
-            <SecondaryButton
-              type="button"
-              disabled={runGc.isPending}
-              onClick={() => runGc.mutate()}
-            >
-              {runGc.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
-              Run GC
-            </SecondaryButton>
-            {!decodedImage && (
-              <LinkButton to={`/groups/${slug}`}>Back to group</LinkButton>
-            )}
-          </div>
-        }
-      />
-
-      <GroupSubnav orgSlug={slug} activeTab="registry" />
+      <div className="app-repo-header mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="app-repo-title">
+            <span>{decodedImage ?? 'Container registry'}</span>
+          </h1>
+          <p className="app-repo-desc">
+            OCI images for @{slug} — push with docker login &amp;&amp; docker push host/{slug}/image:tag
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
+          <SecondaryButton
+            type="button"
+            disabled={runGc.isPending}
+            onClick={() => runGc.mutate()}
+          >
+            {runGc.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
+            Run GC
+          </SecondaryButton>
+          {decodedImage && (
+            <LinkButton to={registryBase}>All images</LinkButton>
+          )}
+        </div>
+      </div>
 
       {error && (
         <div className="mb-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">

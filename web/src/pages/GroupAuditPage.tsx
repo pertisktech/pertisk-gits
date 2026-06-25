@@ -5,9 +5,8 @@ import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuditEventType } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { GroupSubnav } from '../components/GroupNav'
 import { StatusBadge } from '../components/StatusBadge'
-import { Breadcrumbs, PageHeader, SecondaryButton } from '../components/ui'
+import { SecondaryButton } from '../components/ui'
 
 const EVENT_TYPES: { value: '' | AuditEventType; label: string }[] = [
   { value: '', label: 'All events' },
@@ -52,12 +51,7 @@ export function GroupAuditPage() {
   const total = data?.total ?? 0
 
   const subtitle = useMemo(
-    () => (
-      <>
-        Security and activity events for <strong className="text-text">{group?.name ?? slug}</strong>.
-        Visible to group owners and admins.
-      </>
-    ),
+    () => `Security and activity events for ${group?.name ?? slug}. Visible to group owners and admins.`,
     [group?.name, slug],
   )
 
@@ -82,25 +76,18 @@ export function GroupAuditPage() {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? slug, to: `/groups/${slug}` },
-          { label: 'Audit log' },
-        ]}
-      />
-      <PageHeader
-        title="Audit log"
-        subtitle={subtitle}
-        action={
-          <SecondaryButton type="button" disabled={exporting} onClick={onExport}>
-            <Download size={14} />
-            {exporting ? 'Exporting…' : 'Export CSV'}
-          </SecondaryButton>
-        }
-      />
-
-      <GroupSubnav orgSlug={slug} activeTab="audit" />
+      <div className="app-repo-header mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="app-repo-title">
+            <span>Audit log</span>
+          </h1>
+          <p className="app-repo-desc">{subtitle}</p>
+        </div>
+        <SecondaryButton type="button" disabled={exporting} onClick={onExport}>
+          <Download size={14} />
+          {exporting ? 'Exporting…' : 'Export CSV'}
+        </SecondaryButton>
+      </div>
 
       <div className="app-panel mb-4 max-w-5xl">
         <div className="app-panel-body flex flex-wrap gap-3 items-center">

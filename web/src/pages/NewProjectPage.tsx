@@ -4,8 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
-import { GroupSubnav } from '../components/GroupNav'
-import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
+import { LinkButton, PrimaryButton } from '../components/ui'
 
 function slugify(value: string) {
   return value
@@ -62,23 +61,14 @@ export function NewProjectPage() {
 
   return (
     <>
-      <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
-          { label: 'New project' },
-        ]}
-      />
-      <PageHeader
-        title="New project"
-        subtitle={
-          <>
-            Create a repository under <strong className="text-text">{group?.name ?? orgSlug}</strong>
-          </>
-        }
-      />
-
-      <GroupSubnav orgSlug={orgSlug} activeTab="repositories" />
+      <div className="app-repo-header mb-4">
+        <h1 className="app-repo-title">
+          <span>New repository</span>
+        </h1>
+        <p className="app-repo-desc">
+          Create a repository under {group?.name ?? orgSlug}.
+        </p>
+      </div>
 
       <Card className="max-w-xl">
         <form onSubmit={onSubmit} className="space-y-4">
