@@ -2,8 +2,15 @@
 # Run inside docker/Dockerfile.package. Builds .deb and .rpm for pertisk-gits.
 set -euo pipefail
 cd /work
+mkdir -p /work/release
 
 BINARY_NAME="${PACKAGE_NAME:-pertisk-gits}"
+
+if [ ! -d "/work/pkg-${BINARY_NAME}" ]; then
+  echo "Error: /work/pkg-${BINARY_NAME} not found" >&2
+  ls -la /work >&2 || true
+  exit 1
+fi
 
 fpm -s dir -t deb --force \
   -n "$BINARY_NAME" \

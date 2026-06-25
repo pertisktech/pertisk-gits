@@ -291,25 +291,6 @@ fi
 
 [ "$(uname -s)" = "Darwin" ] && export COPYFILE_DISABLE=1
 
-build_deb_rpm_docker() {
-  local workdir
-  workdir="$(pwd)"
-  echo "Building DEB and RPM in Linux container (workdir=${workdir})..."
-  if [ ! -d "pkg-${PACKAGE_NAME}" ]; then
-    echo "Error: pkg-${PACKAGE_NAME} not found in ${workdir}" >&2
-    exit 1
-  fi
-  docker build -f docker/Dockerfile.package -t pertisk-gits-package .
-  docker run --rm \
-    -v "$(docker_work_volume "$workdir")" \
-    -w /work \
-    -e PACKAGE_NAME="$PACKAGE_NAME" \
-    -e VERSION="$VERSION" \
-    -e deb_arch="$deb_arch" \
-    -e rpm_arch="$rpm_arch" \
-    pertisk-gits-package /usr/local/bin/deb-rpm.sh
-}
-
 FPM_CMD=""
 if command -v fpm >/dev/null 2>&1; then
   FPM_CMD="fpm"
@@ -331,7 +312,7 @@ fi
 echo "Package build: use_docker_packaging=${use_docker_packaging} fpm=${FPM_CMD:-missing} PERTISK_FORCE_DOCKER_BUILD=${force_docker:-0}"
 
 if [ "$use_docker_packaging" -eq 1 ] && command -v docker >/dev/null 2>&1; then
-  build_deb_rpm_docker
+  run_fpm_in_docker pertisk-gits-package /usr/local/bin/deb-rpm.sh
 elif [ -n "$FPM_CMD" ]; then
   $FPM_CMD -s dir -t deb --force \
     -n "$PACKAGE_NAME" -v "$VERSION" -a "$deb_arch" \
