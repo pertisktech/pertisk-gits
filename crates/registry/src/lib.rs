@@ -13,7 +13,9 @@ use axum::{
 use routes::v2::RegistryState;
 
 /// Docker layers can be hundreds of MB; axum's default limit is 2 MiB.
-const MAX_REGISTRY_BODY_BYTES: usize = 5 * 1024 * 1024 * 1024;
+/// Apply on the **top-level** app when embedding in pertisk-api (merged routers
+/// do not inherit this layer from a child router).
+pub const MAX_REGISTRY_BODY_BYTES: usize = 5 * 1024 * 1024 * 1024;
 
 pub fn router() -> Router<RegistryState> {
     Router::new()

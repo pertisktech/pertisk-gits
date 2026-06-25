@@ -83,6 +83,23 @@ docker push -H "X-Pertisk-Commit-Sha: $CI_COMMIT_SHA" ...
 - `migrations/20250630100000_phase5_registry.sql` — core tables
 - `migrations/20250630120000_registry_extras.sql` — `repository_id`, `commit_sha`
 
+## Blob upload body limit
+
+Axum defaults to **2 MiB** per request (`DefaultBodyLimit`). Docker layer uploads (PATCH/PUT on `/v2/.../blobs/uploads/...`) exceed that.
+
+`pertisk-api` applies `MAX_REGISTRY_BODY_BYTES` (**5 GiB**) on the **top-level app** when registry routes are embedded — a limit on the child registry router alone does not apply after `Router::merge`.
+
+Symptom: `docker push` fails with `413` / `Failed to buffer the request body: length limit exceeded` once a chunk exceeds 2 MiB.
+
+After deploy, verify on the server:
+
+```bash
+dd if=/dev/zero bs=1m count=3 2>/dev/null | curl -s -o /dev/null -w "%{http_code}\n" \
+  -X PUT --data-binary @- \
+  "http://127.0.0.1:8080/v2/test/image/blobs/uploads/00000000-0000-0000-0000-000000000001?digest=sha256:0000000000000000000000000000000000000000000000000000000000000000"
+# expect 401 (unauthorized), not 413
+```
+
 ## Verify (bypass proxy)
 
 On the server, a large POST should **not** return 413 from pertisk-gits itself:

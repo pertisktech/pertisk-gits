@@ -12,7 +12,10 @@
 
 The reverse proxy must forward **all** requests for your Git host to `pertisk-gits` — not only `/api/v1` or `*.git`.
 
-**Docker registry pushes** send multi‑MB layer blobs on `/v2/.../blobs/uploads/...`. If the proxy or ingress caps request body size (common defaults: **1–10 MiB**), pushes fail with **`413 Payload Too Large`**. Set **unlimited** or **≥ 5 GiB** on the site / ingress (see below).
+**Docker registry pushes** send multi‑MB layer blobs on `/v2/.../blobs/uploads/...`. If pushes fail with **`413 Payload Too Large`** / `length limit exceeded`:
+
+1. **pertisk-gits (axum):** embedded registry needs `DefaultBodyLimit` on the top-level app (5 GiB in `pertisk-api` `main.rs`). Child-router limits do not apply after `merge`.
+2. **Reverse proxy:** if localhost accepts large bodies but HTTPS does not, raise proxy/ingress body limits (see below).
 
 ## Server config
 

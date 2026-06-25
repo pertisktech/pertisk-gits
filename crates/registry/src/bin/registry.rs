@@ -1,3 +1,4 @@
+use axum::extract::DefaultBodyLimit;
 use sqlx::postgres::PgPoolOptions;
 use tower_http::trace::TraceLayer;
 
@@ -21,6 +22,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = pertisk_registry::build_state(&config, pool).await?;
     let app = pertisk_registry::router()
+        .layer(DefaultBodyLimit::max(pertisk_registry::MAX_REGISTRY_BODY_BYTES))
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{header, Method, Request, StatusCode},
     middleware::{from_fn_with_state, Next},
     response::{Html, IntoResponse, Response},
@@ -227,6 +227,7 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let app = app
+        .layer(DefaultBodyLimit::max(pertisk_registry::MAX_REGISTRY_BODY_BYTES))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
