@@ -1894,9 +1894,32 @@ textarea.app-field {
 }
 
 .ci-log-viewer {
-  padding: 0.75rem 1rem 1rem;
+  padding: 0.75rem 0 1rem;
   overflow: auto;
   max-height: 28rem;
+}
+
+.ci-log-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  min-height: 1.55em;
+}
+
+.ci-log-line-num {
+  flex-shrink: 0;
+  padding: 0 0.75rem 0 1rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-naturals-n8);
+  user-select: none;
+  border-right: 1px solid color-mix(in srgb, var(--color-border) 45%, transparent);
+}
+
+.ci-log-row > .ci-log-line {
+  flex: 1;
+  min-width: 0;
+  padding-right: 1rem;
   white-space: pre-wrap;
   word-break: break-word;
 }

@@ -105,6 +105,7 @@ export function CiLogViewer({
 }) {
   const trimmed = text.trim()
   const lines = trimmed ? trimmed.split('\n') : []
+  const lineNumWidth = Math.max(2, String(lines.length || 1).length)
 
   return (
     <div
@@ -115,8 +116,15 @@ export function CiLogViewer({
         <div className="ci-log-line ci-log-line-muted">{emptyMessage}</div>
       ) : (
         lines.map((line, index) => (
-          <div key={`${index}-${line.slice(0, 24)}`} className={lineClass(line)}>
-            {line || '\u00a0'}
+          <div key={`${index}-${line.slice(0, 24)}`} className="ci-log-row">
+            <span
+              className="ci-log-line-num"
+              style={{ minWidth: `${lineNumWidth + 0.5}ch` }}
+              aria-hidden
+            >
+              {index + 1}
+            </span>
+            <span className={lineClass(line)}>{line || '\u00a0'}</span>
           </div>
         ))
       )}
