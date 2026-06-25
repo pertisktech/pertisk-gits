@@ -26,6 +26,33 @@ pub struct PollJobResponse {
     pub artifacts: Vec<ArtifactDecl>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct JobControlState {
+    pub pipeline_cancelled: bool,
+    pub job_cancelled: bool,
+    pub cancel_requested: bool,
+    pub cancel_step_name: Option<String>,
+}
+
+impl JobControlState {
+    pub fn should_cancel_job(&self) -> bool {
+        self.pipeline_cancelled || self.job_cancelled
+    }
+
+    pub fn should_cancel_step(&self, step_name: &str) -> bool {
+        if self.should_cancel_job() {
+            return true;
+        }
+        if !self.cancel_requested {
+            return false;
+        }
+        match self.cancel_step_name.as_deref() {
+            None => true,
+            Some(want) => want == step_name,
+        }
+    }
+}
+
 impl RunnerApi {
     pub fn new(api_url: &str, token: String) -> Self {
         Self {
@@ -101,12 +128,18 @@ impl RunnerApi {
         if let Some(log) = log_text {
             body["log_text"] = Value::String(log.to_string());
         }
-        self.client
+        let response = self
+            .client
             .post(format!("{}/api/v1/runner/jobs/{job_id}/complete", self.base_url))
             .bearer_auth(&self.token)
             .json(&body)
             .send()
             .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("complete job failed ({status}): {body}");
+        }
         Ok(())
     }
 
@@ -159,5 +192,21 @@ impl RunnerApi {
         }
 
         Ok(())
+    }
+
+    pub async fn fetch_job_control(&self, job_id: Uuid) -> anyhow::Result<JobControlState> {
+        let response = self
+            .client
+            .get(format!("{}/api/v1/runner/jobs/{job_id}/control", self.base_url))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .context("fetch job control")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("job control failed: {}", response.status());
+        }
+
+        Ok(response.json().await?)
     }
 }

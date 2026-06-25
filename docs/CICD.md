@@ -228,11 +228,23 @@ If the PR head commit has **required** `commit_statuses` (from CI jobs with `req
 
 ### Live logs
 
-While a step runs, the runner streams stdout/stderr to the API in ~400ms chunks (`POST /runner/jobs/{id}/log`). Each step starts with `=== name (running)` and ends with `=== name (exit N)`. The pipeline detail page polls every 2 seconds while a run is in progress.
+While a step runs, the runner streams stdout/stderr to the API in ~400ms chunks (`POST /runner/jobs/{id}/log`). Each step starts with `=== name (running)` and ends with `=== name (exit N)` or `=== name (exit cancelled)`. The pipeline detail page polls every 1 second while a run is in progress.
+
+### Cancel pipeline / cancel step
+
+While a run is **running**, the pipeline detail page shows **Cancel pipeline** and **Cancel step** (for the active step). The API sets the run or job to `cancelled`; the runner polls `GET /runner/jobs/{id}/control` and kills the current shell step (exit 130). Runners return to **online** when no jobs are `running`.
+
+Requires migration `20250629100000_pipeline_cancel.sql` (applied automatically when `pertisk-gits` starts).
 
 ### Re-run
 
-Re-run resets the **same** pipeline run (same run ID and job rows) instead of creating a duplicate entry in the pipeline list.
+Re-run resets the **same** pipeline run (same run ID and job rows) instead of creating a duplicate entry in the pipeline list. Previous artifact files on disk are removed when the run is reset.
+
+POST body `{ "scope": "failed" }` re-queues only jobs that are not `success` (failed, cancelled, queued downstream, etc.). Successful jobs keep their logs and artifacts.
+
+### Delete pipeline run
+
+Finished runs can be deleted from the pipeline detail page (**Delete**). This removes the run from the database (jobs and artifact rows cascade) and deletes stored files under `ARTIFACTS_ROOT`.
 
 ### Artifacts
 

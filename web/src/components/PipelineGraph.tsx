@@ -10,7 +10,7 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import { Cpu, Loader2 } from 'lucide-react'
-import type { JobRun } from '../api/types'
+import type { JobRun, PipelineRun } from '../api/types'
 import {
   graphHeight,
   layoutPipelineGraph,
@@ -21,6 +21,7 @@ import {
 const STATUS_DOT: Record<string, string> = {
   success: 'ci-status-dot-success',
   failure: 'ci-status-dot-failure',
+  cancelled: 'ci-status-dot-cancelled',
   running: 'ci-status-dot-active',
   queued: 'ci-status-dot-active',
 }
@@ -56,12 +57,17 @@ function PipelineJobNode({ data }: NodeProps) {
 
 const nodeTypes = { pipelineJob: memo(PipelineJobNode) }
 
-export function jobsFromRun(jobs: JobRun[]): PipelineGraphJob[] {
+export function jobsFromRun(
+  jobs: JobRun[],
+  runStatus?: PipelineRun['status'],
+): PipelineGraphJob[] {
   return jobs.map((job) => ({
     name: job.job_name,
     runs_on: job.runs_on,
     needs: job.needs ?? [],
-    status: job.status,
+    status: runStatus === 'cancelled' && (job.status === 'running' || job.status === 'queued')
+      ? 'cancelled'
+      : job.status,
     job_id: job.id,
     step_count: job.steps?.length ?? job.metrics_json?.steps.length,
   }))

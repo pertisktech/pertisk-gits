@@ -560,12 +560,58 @@ export const api = {
       token,
     ),
 
-  rerunPipeline: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
+  rerunPipeline: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    runId: string,
+    scope: 'all' | 'failed' = 'all',
+  ) =>
     request<PipelineRun>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/rerun`,
+      {
+        method: 'POST',
+        body: JSON.stringify(scope === 'failed' ? { scope: 'failed' } : {}),
+      },
+      token,
+    ),
+
+  cancelPipeline: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
+    request<PipelineRun>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/cancel`,
       { method: 'POST' },
       token,
     ),
+
+  cancelJobStep: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    runId: string,
+    jobId: string,
+    stepName?: string,
+  ) =>
+    request<PipelineRun>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/jobs/${jobId}/cancel-step`,
+      {
+        method: 'POST',
+        body: JSON.stringify(stepName ? { step_name: stepName } : {}),
+      },
+      token,
+    ),
+
+  deletePipeline: async (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    runId: string,
+  ) => {
+    await request<void>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}`,
+      { method: 'DELETE' },
+      token,
+    )
+  },
 
   listCommitStatuses: (
     orgSlug: string,

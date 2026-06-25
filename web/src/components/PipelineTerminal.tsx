@@ -130,6 +130,7 @@ export function CiStatusDot({ status }: { status: string }) {
         'ci-status-dot',
         status === 'success' && 'ci-status-dot-success',
         status === 'failure' && 'ci-status-dot-failure',
+        status === 'cancelled' && 'ci-status-dot-cancelled',
         (status === 'running' || status === 'queued' || status === 'pending') && 'ci-status-dot-active',
       )}
       aria-hidden

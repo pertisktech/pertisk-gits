@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Download, Loader2, RefreshCw } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, Square, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import {
@@ -11,10 +11,22 @@ import {
   CiTerminal,
 } from '../components/PipelineTerminal'
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
-import { displayRunStatus, isRunInProgress, refLabel, runStatusVariant, shortSha } from '../components/RepoPipelines'
+import { ConfirmModal } from '../components/ConfirmModal'
+import {
+  canRerunFailed,
+  countRerunnableFailedJobs,
+  displayJobStatus,
+  displayRunStatus,
+  isRunInProgress,
+  refLabel,
+  runStatusVariant,
+  shortSha,
+  type RerunScope,
+} from '../lib/pipelineStatus'
+import { PipelineRerunMenu } from '../components/PipelineRerunMenu'
 import { StatusBadge } from '../components/StatusBadge'
 import { projectTabPath } from '../lib/projectRoute'
-import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { Breadcrumbs, SecondaryButton } from '../components/ui'
 import { formatDateTime } from '../lib/collaboration'
 import {
   inferRunningStepName,
@@ -32,11 +44,13 @@ function formatBytes(bytes: number): string {
 
 export function PipelineRunDetailPage() {
   const { slug: orgSlug = '', projectSlug = '', runId = '' } = useParams()
+  const navigate = useNavigate()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [activeStepKey, setActiveStepKey] = useState<string | null>(null)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -64,8 +78,8 @@ export function PipelineRunDetailPage() {
   }, [run, activeJobId])
 
   const activeSteps = useMemo(
-    () => (activeJob ? jobStepViews(activeJob) : []),
-    [activeJob],
+    () => (activeJob && run ? jobStepViews(activeJob, run.status) : []),
+    [activeJob, run],
   )
 
   useEffect(() => {
@@ -73,30 +87,69 @@ export function PipelineRunDetailPage() {
   }, [activeJob?.id])
 
   useEffect(() => {
-    if (!activeJob || activeJob.status !== 'running') return
-    const running = inferRunningStepName(activeJob)
+    if (!activeJob || !run || displayJobStatus(activeJob, run.status) !== 'running') return
+    const running = inferRunningStepName(activeJob, run.status)
     if (running && running !== activeStepKey) {
       setActiveStepKey(running)
     }
-  }, [activeJob, activeStepKey])
+  }, [activeJob, activeStepKey, run])
 
   const selectJob = (jobId: string) => {
     setActiveJobId(jobId)
     setActiveStepKey(null)
   }
 
-  const logText = activeJob ? stepLogText(activeJob, activeStepKey) : ''
+  const logText = activeJob && run ? stepLogText(activeJob, activeStepKey, run.status) : ''
   const activeStep = activeSteps.find((step) => step.key === activeStepKey) ?? null
+  const activeJobDisplayStatus = activeJob && run ? displayJobStatus(activeJob, run.status) : null
   const runningStepName =
-    activeJob && activeJob.status === 'running' ? inferRunningStepName(activeJob) : null
+    activeJob && activeJobDisplayStatus === 'running'
+      ? inferRunningStepName(activeJob, run?.status)
+      : null
+  const canCancelStep =
+    Boolean(activeJobDisplayStatus === 'running' && (activeStep?.running || runningStepName))
+  const cancelStepName = activeStep?.running ? activeStep.name : runningStepName ?? undefined
 
   const rerunMutation = useMutation({
-    mutationFn: () => api.rerunPipeline(token!, orgSlug, projectSlug, runId),
+    mutationFn: (scope: RerunScope) =>
+      api.rerunPipeline(token!, orgSlug, projectSlug, runId, scope),
     onSuccess: (updatedRun) => {
       queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
       queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
       setActiveJobId(null)
       setActiveStepKey(null)
+    },
+  })
+
+  const cancelPipelineMutation = useMutation({
+    mutationFn: () => api.cancelPipeline(token!, orgSlug, projectSlug, runId),
+    onSuccess: (updatedRun) => {
+      queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
+      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+    },
+  })
+
+  const cancelStepMutation = useMutation({
+    mutationFn: (payload: { jobId: string; stepName?: string }) =>
+      api.cancelJobStep(
+        token!,
+        orgSlug,
+        projectSlug,
+        runId,
+        payload.jobId,
+        payload.stepName,
+      ),
+    onSuccess: (updatedRun) => {
+      queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
+      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.deletePipeline(token!, orgSlug, projectSlug, runId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+      navigate(projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'pipelines'))
     },
   })
 
@@ -166,23 +219,76 @@ export function PipelineRunDetailPage() {
             {branch}
           </p>
         </div>
-        <PrimaryButton
-          type="button"
-          disabled={rerunMutation.isPending || isRunInProgress(run)}
-          onClick={() => rerunMutation.mutate()}
-        >
-          {rerunMutation.isPending ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <RefreshCw size={14} />
+        <div className="flex flex-wrap items-center gap-2">
+          {isRunInProgress(run) && (
+            <SecondaryButton
+              type="button"
+              className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg"
+              disabled={cancelPipelineMutation.isPending}
+              onClick={() => cancelPipelineMutation.mutate()}
+            >
+              {cancelPipelineMutation.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Square size={14} />
+              )}
+              Cancel pipeline
+            </SecondaryButton>
           )}
-          Re-run
-        </PrimaryButton>
+          <PipelineRerunMenu
+            disabled={isRunInProgress(run)}
+            loading={rerunMutation.isPending}
+            canRerunFailed={canRerunFailed(run)}
+            failedCount={countRerunnableFailedJobs(run)}
+            onRerun={(scope) => rerunMutation.mutate(scope)}
+          />
+          {!isRunInProgress(run) && (
+            <SecondaryButton
+              type="button"
+              className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg"
+              disabled={deleteMutation.isPending}
+              onClick={() => setConfirmDelete(true)}
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Trash2 size={14} />
+              )}
+              Delete
+            </SecondaryButton>
+          )}
+        </div>
       </div>
 
-      {rerunMutation.isError && (
+      {confirmDelete && (
+        <ConfirmModal
+          open
+          variant="danger"
+          title="Delete pipeline run?"
+          description={
+            <>
+              This removes the run, job logs, and any uploaded artifacts for{' '}
+              <strong className="text-text font-mono">{shortSha(run.commit_sha)}</strong>.
+            </>
+          }
+          confirmLabel="Delete run"
+          loading={deleteMutation.isPending}
+          onConfirm={() => deleteMutation.mutate()}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {(rerunMutation.isError ||
+        cancelPipelineMutation.isError ||
+        cancelStepMutation.isError ||
+        deleteMutation.isError) && (
         <div className="mb-4 p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(rerunMutation.error as Error).message}
+          {(
+            (rerunMutation.error ??
+              cancelPipelineMutation.error ??
+              cancelStepMutation.error ??
+              deleteMutation.error) as Error
+          ).message}
         </div>
       )}
 
@@ -218,7 +324,7 @@ export function PipelineRunDetailPage() {
 
         <PipelineGraph
           className="pipeline-graph-panel--inline"
-          jobs={jobsFromRun(run.jobs)}
+          jobs={jobsFromRun(run.jobs, run.status)}
           selectedJob={activeJob?.id ?? null}
           onJobSelect={(jobKey) => {
             const match = run.jobs.find((job) => job.id === jobKey || job.job_name === jobKey)
@@ -231,7 +337,7 @@ export function PipelineRunDetailPage() {
             {run.jobs.map((job) => (
               <div key={job.id}>
                 <CiRunLine
-                  status={job.status}
+                  status={displayJobStatus(job, run.status)}
                   label={job.job_name}
                   meta={job.runs_on}
                   active={activeJob?.id === job.id && !activeStepKey}
@@ -242,7 +348,7 @@ export function PipelineRunDetailPage() {
                     <CiRunLine
                       key={step.key}
                       nested
-                      status={stepDisplayStatus(step, job.status)}
+                      status={stepDisplayStatus(step, displayJobStatus(job, run.status), run.status)}
                       label={step.name}
                       meta={stepMeta(step)}
                       active={activeStepKey === step.key}
@@ -256,27 +362,51 @@ export function PipelineRunDetailPage() {
           <div className="ci-terminal-log-pane">
             {activeJob ? (
               <>
-                <CiPrompt
-                  user="runner"
-                  host={activeJob.runs_on}
-                  path={activeJob.job_name}
-                  command={
-                    activeStep?.run ??
-                    (runningStepName ??
-                      (activeJob.metrics_json
-                        ? `exit ${activeJob.status === 'success' ? 0 : 1}`
-                        : activeStepKey ?? 'running…'))
-                  }
-                />
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-naturals-n4/40">
+                  <CiPrompt
+                    user="runner"
+                    host={activeJob.runs_on}
+                    path={activeJob.job_name}
+                    command={
+                      activeStep?.run ??
+                      (runningStepName ??
+                        (activeJob.metrics_json
+                          ? `exit ${activeJob.status === 'success' ? 0 : 1}`
+                          : activeStepKey ?? 'running…'))
+                    }
+                  />
+                  {canCancelStep && (
+                    <SecondaryButton
+                      type="button"
+                      className="shrink-0 border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg text-xs py-1 px-2.5"
+                      disabled={cancelStepMutation.isPending}
+                      onClick={() =>
+                        cancelStepMutation.mutate({
+                          jobId: activeJob.id,
+                          stepName: cancelStepName,
+                        })
+                      }
+                    >
+                      {cancelStepMutation.isPending ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Square size={12} />
+                      )}
+                      Cancel step
+                    </SecondaryButton>
+                  )}
+                </div>
                 <CiLogViewer
                   className="ci-log-viewer--fill"
                   text={logText}
                   emptyMessage={
-                    activeJob.status === 'queued' || activeJob.status === 'running'
+                    activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
                       ? activeStepKey
                         ? '(step running…)'
                         : '(job running…)'
-                      : '(no log output)'
+                      : activeJobDisplayStatus === 'cancelled'
+                        ? '(cancelled)'
+                        : '(no log output)'
                   }
                 />
                 {activeJob.metrics_json && (

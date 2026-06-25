@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use chrono::Utc;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 use crate::config::Step;
 use crate::metrics::{JobMetrics, StepTiming};
@@ -116,6 +116,21 @@ impl ShellExecutor {
         job_env: &[(&str, String)],
         log_tx: Option<mpsc::UnboundedSender<String>>,
     ) -> StepOutput {
+        let (_tx, rx) = watch::channel(false);
+        self.run_step_streaming_cancellable(workspace, index, step, job_env, log_tx, rx)
+            .await
+    }
+
+    /// Like [`run_step_streaming`] but kills the step when `cancel` becomes true.
+    pub async fn run_step_streaming_cancellable(
+        &self,
+        workspace: &Path,
+        index: usize,
+        step: &Step,
+        job_env: &[(&str, String)],
+        log_tx: Option<mpsc::UnboundedSender<String>>,
+        mut cancel: watch::Receiver<bool>,
+    ) -> StepOutput {
         let name = step
             .name
             .clone()
@@ -185,9 +200,35 @@ impl ShellExecutor {
             combined
         };
 
-        let (combined, status) = tokio::join!(forward, child.wait());
+        let mut forward = Box::pin(forward);
+        let mut was_cancelled = false;
+        let (combined, status) = loop {
+            tokio::select! {
+                combined = forward.as_mut() => {
+                    break (combined, child.wait().await);
+                }
+                changed = cancel.changed() => {
+                    if changed.is_err() || *cancel.borrow() {
+                        was_cancelled = true;
+                        let _ = child.kill().await;
+                        let combined = forward.as_mut().await;
+                        break (combined, child.wait().await);
+                    }
+                }
+            }
+        };
 
         let duration = started.elapsed();
+        if was_cancelled {
+            return StepOutput {
+                name,
+                exit_code: 130,
+                stdout: combined,
+                stderr: "step cancelled".into(),
+                duration,
+            };
+        }
+
         let exit_code = match status {
             Ok(status) => status.code().unwrap_or(1),
             Err(err) => {

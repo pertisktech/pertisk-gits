@@ -3,16 +3,17 @@ import { Loader2, Play } from 'lucide-react'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { JobRun, PipelineRun } from '../api/types'
-import { PipelineGraph } from './PipelineGraph'
 import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
 import {
-  CiPrompt,
-  CiRunLine,
-  CiTerminal,
-} from './PipelineTerminal'
+  isRunInProgress,
+  pipelineUrl,
+  refLabel,
+  shortSha,
+  type RerunScope,
+} from '../lib/pipelineStatus'
+import { PipelineGraph } from './PipelineGraph'
+import { PipelineRunsTable } from './PipelineRunsTable'
 import { PrimaryButton } from './ui'
-import { formatDateTime } from '../lib/collaboration'
 
 export const PIPELINE_CONFIG_FILES = new Set([
   '.pertisk-ci.yaml',
@@ -21,68 +22,15 @@ export const PIPELINE_CONFIG_FILES = new Set([
   'pertisk-ci.yml',
 ])
 
-function pipelineUrl(orgSlug: string, repoSlug: string, runId: string) {
-  return `/groups/${orgSlug}/projects/${repoSlug}/pipelines/${runId}`
-}
-
-function failureSummary(jobs: JobRun[]): string | null {
-  const failed = jobs.filter((job) => job.status === 'failure')
-  if (failed.length === 0) return null
-
-  const log = failed[0].log_text.trim()
-  if (!log) return `Job "${failed[0].job_name}" failed`
-
-  const checkout = log.match(/checkout failed: (.+)/)?.[1]
-  if (checkout) return checkout
-
-  const stepFailed = log.match(/=== .+ \(exit [1-9]\d*\)/)?.[0]
-  if (stepFailed) return stepFailed.replace(/^=== /, '')
-
-  const line = log.split('\n').find((entry) => entry.trim() && !entry.startsWith('==='))
-  return line?.trim().slice(0, 160) ?? `Job "${failed[0].job_name}" failed`
-}
-
-/** UI status — pipeline_run.status can stay "running" while failed jobs exist and others are queued. */
-export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
-  const { jobs, status } = run
-  if (jobs.length === 0) return status
-
-  const hasRunning = jobs.some((j) => j.status === 'running')
-  const hasFailed = jobs.some((j) => j.status === 'failure')
-  const allTerminal = jobs.every(
-    (j) => j.status === 'success' || j.status === 'failure' || j.status === 'cancelled',
-  )
-
-  if (allTerminal) {
-    return hasFailed ? 'failure' : 'success'
-  }
-
-  if (hasFailed && !hasRunning) {
-    return 'failure'
-  }
-
-  return status
-}
-
-export function isRunInProgress(run: PipelineRun): boolean {
-  const displayStatus = displayRunStatus(run)
-  return displayStatus === 'running' || displayStatus === 'queued' || displayStatus === 'pending'
-}
-
-function runStatusVariant(status: PipelineRun['status']) {
-  if (status === 'success') return 'green' as const
-  if (status === 'failure') return 'red' as const
-  if (status === 'running' || status === 'queued') return 'yellow' as const
-  return 'gray' as const
-}
-
-function shortSha(sha: string) {
-  return sha.slice(0, 7)
-}
-
-function refLabel(refName: string) {
-  return refName.replace(/^refs\/heads\//, '')
-}
+export {
+  displayJobStatus,
+  displayRunStatus,
+  isRunInProgress,
+  pipelineUrl,
+  refLabel,
+  runStatusVariant,
+  shortSha,
+} from '../lib/pipelineStatus'
 
 export function RepoPipelines({
   token,
@@ -125,26 +73,37 @@ export function RepoPipelines({
     },
   })
 
+  const [rerunningRunId, setRerunningRunId] = useState<string | null>(null)
+
+  const rerunMutation = useMutation({
+    mutationFn: ({ runId, scope }: { runId: string; scope: RerunScope }) =>
+      api.rerunPipeline(token, orgSlug, repoSlug, runId, scope),
+    onMutate: ({ runId }) => {
+      setRerunningRunId(runId)
+    },
+    onSettled: () => {
+      setRerunningRunId(null)
+    },
+    onSuccess: (updatedRun) => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, repoSlug] })
+      navigate(pipelineUrl(orgSlug, repoSlug, updatedRun.id))
+    },
+  })
+
   if (isLoading) {
     return (
-      <CiTerminal title="pertisk-ci" subtitle={repoSlug}>
-        <div className="ci-log-viewer">
-          <div className="ci-log-line ci-log-line-muted flex items-center gap-2">
-            <Loader2 size={14} className="animate-spin" />
-            Loading pipelines…
-          </div>
-        </div>
-      </CiTerminal>
+      <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
+        <Loader2 size={16} className="animate-spin" />
+        Loading pipelines…
+      </div>
     )
   }
 
   if (error) {
     return (
-      <CiTerminal title="pertisk-ci" subtitle={repoSlug}>
-        <div className="ci-log-viewer">
-          <div className="ci-log-line ci-log-line-error">{(error as Error).message}</div>
-        </div>
-      </CiTerminal>
+      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+        {(error as Error).message}
+      </div>
     )
   }
 
@@ -152,9 +111,12 @@ export function RepoPipelines({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-text font-mono">pipelines</h2>
+          <h2 className="text-base font-semibold text-text">Pipelines</h2>
           <p className="text-sm text-text-secondary mt-0.5">
             CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
+            {runs.length > 0 && (
+              <span className="text-muted"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
+            )}
           </p>
         </div>
         <PrimaryButton
@@ -177,6 +139,12 @@ export function RepoPipelines({
         </div>
       )}
 
+      {rerunMutation.isError && (
+        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+          {(rerunMutation.error as Error).message}
+        </div>
+      )}
+
       <PipelineConfigGraph
         token={token}
         orgSlug={orgSlug}
@@ -184,61 +152,17 @@ export function RepoPipelines({
         defaultBranch={defaultBranch}
       />
 
-      <CiTerminal
-        title="pertisk-ci"
-        subtitle={`${repoSlug} — ${runs.length} run${runs.length === 1 ? '' : 's'}`}
-      >
-        <CiPrompt user="dev" host="pertisk-ci" path={repoSlug} command="pipeline list --recent" />
-
-        {runs.length === 0 ? (
-          <div className="ci-log-viewer">
-            <div className="ci-log-line ci-log-line-muted">
-              No pipeline runs yet. Add .pertisk-ci.yaml and push, or click Run pipeline.
-            </div>
-          </div>
-        ) : (
-          <div>
-            {runs.map((run) => (
-              <PipelineRow
-                key={run.id}
-                run={run}
-                orgSlug={orgSlug}
-                repoSlug={repoSlug}
-                onOpen={() => navigate(pipelineUrl(orgSlug, repoSlug, run.id))}
-              />
-            ))}
-          </div>
-        )}
-      </CiTerminal>
+      <PipelineRunsTable
+        runs={runs}
+        orgSlug={orgSlug}
+        repoSlug={repoSlug}
+        onOpenRun={(runId) => navigate(pipelineUrl(orgSlug, repoSlug, runId))}
+        onRerun={(runId, scope) => rerunMutation.mutate({ runId, scope })}
+        rerunningRunId={rerunningRunId}
+      />
     </div>
   )
 }
-
-function PipelineRow({
-  run,
-  onOpen,
-}: {
-  run: PipelineRun
-  orgSlug: string
-  repoSlug: string
-  onOpen: () => void
-}) {
-  const passed = run.jobs.filter((j) => j.status === 'success').length
-  const failed = run.jobs.filter((j) => j.status === 'failure').length
-  const summary = failureSummary(run.jobs)
-
-  return (
-    <CiRunLine
-      status={displayRunStatus(run)}
-      label={run.event_type}
-      meta={`${shortSha(run.commit_sha)} · ${refLabel(run.ref_name)} · ${passed}/${run.jobs.length}${failed > 0 ? ` (${failed} failed)` : ''} · ${formatDateTime(run.started_at ?? run.created_at)}`}
-      hint={summary ?? undefined}
-      onClick={onOpen}
-    />
-  )
-}
-
-export { pipelineUrl, runStatusVariant, shortSha, refLabel }
 
 function PipelineConfigGraph({
   token,

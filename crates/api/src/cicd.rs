@@ -34,6 +34,8 @@ fn sqlx_error(err: sqlx::Error) -> ApiError {
 
 /// No heartbeat for this long ⇒ runner is treated as offline (runner polls ~every 25s).
 const RUNNER_OFFLINE_AFTER_SECS: i64 = 75;
+/// Running job with cancel_requested older than this is force-finalized (safety net).
+const CANCEL_RECLAIM_AFTER_SECS: i64 = 30;
 /// RPM/tar.gz CI artifacts exceed axum's default 2 MiB body limit.
 const MAX_RUNNER_ARTIFACT_BYTES: usize = 256 * 1024 * 1024;
 
@@ -51,6 +53,7 @@ pub fn spawn_runner_stale_checker(pool: PgPool) {
 
 async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
     reclaim_stale_running_jobs(pool).await?;
+    release_idle_runners(pool).await?;
 
     sqlx::query(
         r#"
@@ -70,6 +73,26 @@ async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
         "#,
     )
     .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+/// Clear `busy` when no jobs are still running on the runner.
+async fn release_idle_runners(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE runners r
+        SET status = 'online'
+        WHERE r.status = 'busy'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM job_runs j
+            WHERE j.runner_id = r.id
+              AND j.status = 'running'
+          )
+        "#,
+    )
     .execute(pool)
     .await?;
     Ok(())
@@ -116,6 +139,42 @@ async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
         tracing::warn!(%job_id, job = %job_name, "reclaimed stale running job");
     }
 
+    let cancel_stale = sqlx::query_as::<_, (Uuid, Uuid, String)>(
+        r#"
+        SELECT j.id, j.pipeline_run_id, j.job_name
+        FROM job_runs j
+        WHERE j.status = 'running'
+          AND j.cancel_requested_at IS NOT NULL
+          AND j.cancel_requested_at < NOW() - make_interval(secs => $1)
+        "#,
+    )
+    .bind(CANCEL_RECLAIM_AFTER_SECS as f64)
+    .fetch_all(pool)
+    .await?;
+
+    for (job_id, pipeline_run_id, job_name) in cancel_stale {
+        sqlx::query(
+            r#"
+            UPDATE job_runs
+            SET status = 'cancelled'::job_run_status,
+                finished_at = NOW(),
+                log_text = log_text || E'\n\n=== job cancelled (runner did not finish in time)\n'
+            WHERE id = $1 AND status = 'running'
+            "#,
+        )
+        .bind(job_id)
+        .execute(pool)
+        .await?;
+
+        if let Err(err) = update_commit_status_for_job(pool, job_id, "cancelled", &job_name).await {
+            tracing::warn!(%job_id, %err, "failed to update commit status for cancel-reclaimed job");
+        }
+        if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
+            tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after cancel-reclaimed job");
+        }
+        tracing::warn!(%job_id, job = %job_name, "reclaimed running job after cancel timeout");
+    }
+
     Ok(())
 }
 
@@ -154,6 +213,18 @@ pub fn cicd_write_routes() -> Router<AppState> {
             "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/rerun",
             post(rerun_pipeline),
         )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/cancel",
+            post(cancel_pipeline),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}",
+            delete(delete_pipeline),
+        )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/cancel-step",
+            post(cancel_job_step),
+        )
         .route("/runners/register", post(register_runner))
         .route("/runners/{runner_id}", delete(delete_runner))
         .route("/runners/{runner_id}/rotate-token", post(rotate_runner_token))
@@ -172,6 +243,7 @@ pub fn runner_routes() -> Router<AppState> {
             get(runner_workspace),
         )
         .route("/runner/jobs/{job_id}/workspace", get(runner_job_workspace))
+        .route("/runner/jobs/{job_id}/control", get(runner_job_control))
         .layer(DefaultBodyLimit::max(MAX_RUNNER_ARTIFACT_BYTES))
 }
 
@@ -465,6 +537,41 @@ async fn get_pipeline_run(
     Ok(Json(run.into_response(jobs)))
 }
 
+async fn delete_pipeline(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+) -> Result<StatusCode, ApiError> {
+    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+
+    if matches!(run.status.as_str(), "pending" | "queued" | "running") {
+        return Err(DomainError::Validation("pipeline is still running".into()).into());
+    }
+
+    delete_pipeline_artifact_files(&state.pool, &state.artifacts, run_id)
+        .await
+        .map_err(sqlx_error)?;
+
+    let deleted = sqlx::query("DELETE FROM pipeline_runs WHERE id = $1 AND repository_id = $2")
+        .bind(run_id)
+        .bind(repo.id)
+        .execute(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+    if deleted.rows_affected() == 0 {
+        return Err(DomainError::NotFound.into());
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_commit_statuses(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -539,10 +646,32 @@ async fn trigger_pipeline(
     Ok(Json(run.into_response(jobs)))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MaterializeMode {
+    Fresh,
+    RerunAll,
+    RerunFailed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum RerunScope {
+    #[default]
+    All,
+    Failed,
+}
+
+#[derive(Deserialize, Default)]
+struct RerunPipelineRequest {
+    #[serde(default)]
+    scope: RerunScope,
+}
+
 async fn rerun_pipeline(
     State(state): State<AppState>,
     auth: AuthUser,
     Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+    body: Option<Json<RerunPipelineRequest>>,
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
     let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
     ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
@@ -572,13 +701,34 @@ async fn rerun_pipeline(
         DomainError::Validation(format!("schedule failed: {e}"))
     })?;
 
+    let scope = body.map(|Json(b)| b.scope).unwrap_or_default();
+    let mode = match scope {
+        RerunScope::All => MaterializeMode::RerunAll,
+        RerunScope::Failed => {
+            let statuses = fetch_job_status_map(&state.pool, run_id)
+                .await
+                .map_err(sqlx_error)?;
+            let has_failed = statuses
+                .values()
+                .any(|status| status == "failure" || status == "cancelled");
+            if !has_failed {
+                return Err(
+                    DomainError::Validation("no failed or cancelled jobs to rerun".into()).into(),
+                );
+            }
+            MaterializeMode::RerunFailed
+        }
+    };
+
     reset_pipeline_run(
         &state.pool,
+        &state.artifacts,
         repo.id,
         run_id,
         &run.commit_sha,
         &config_path,
         &jobs,
+        mode,
     )
     .await
     .map_err(sqlx_error)?;
@@ -589,6 +739,67 @@ async fn rerun_pipeline(
         .ok_or(DomainError::NotFound)?;
     let job_rows = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
     Ok(Json(run.into_response(job_rows)))
+}
+
+async fn cancel_pipeline(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+) -> Result<Json<PipelineRunResponse>, ApiError> {
+    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+
+    cancel_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(|e| -> ApiError {
+            match e {
+                CancelError::NotFound => DomainError::NotFound.into(),
+                CancelError::NotCancellable => {
+                    DomainError::Validation("pipeline is not running".into()).into()
+                }
+            }
+        })?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+    let jobs = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
+    Ok(Json(run.into_response(jobs)))
+}
+
+#[derive(Deserialize, Default)]
+struct CancelJobStepRequest {
+    step_name: Option<String>,
+}
+
+async fn cancel_job_step(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
+    Json(body): Json<CancelJobStepRequest>,
+) -> Result<Json<PipelineRunResponse>, ApiError> {
+    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+
+    cancel_job_step_run(&state.pool, repo.id, run_id, job_id, body.step_name.as_deref())
+        .await
+        .map_err(|e| -> ApiError {
+            match e {
+                CancelError::NotFound => DomainError::NotFound.into(),
+                CancelError::NotCancellable => DomainError::Validation(
+                    "job is not running or step cannot be cancelled".into(),
+                )
+                .into(),
+            }
+        })?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+    let jobs = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
+    Ok(Json(run.into_response(jobs)))
 }
 
 async fn list_runners(
@@ -1368,18 +1579,29 @@ async fn process_trigger_now(
         sqlx::Error::Protocol(format!("schedule failed: {e}").into())
     })?;
 
-    materialize_jobs_for_run(&state.pool, repository_id, commit_sha, run_id, &jobs).await?;
+    materialize_jobs_for_run(
+        &state.pool,
+        &state.artifacts,
+        repository_id,
+        commit_sha,
+        run_id,
+        &jobs,
+        MaterializeMode::Fresh,
+    )
+    .await?;
 
     Ok(run_id)
 }
 
 async fn reset_pipeline_run(
     pool: &PgPool,
+    store: &ArtifactStore,
     repository_id: Uuid,
     run_id: Uuid,
     commit_sha: &str,
     config_path: &str,
     jobs: &[ScheduledJob],
+    mode: MaterializeMode,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
@@ -1394,19 +1616,119 @@ async fn reset_pipeline_run(
     .execute(pool)
     .await?;
 
-    materialize_jobs_for_run(pool, repository_id, commit_sha, run_id, jobs).await
+    materialize_jobs_for_run(pool, store, repository_id, commit_sha, run_id, jobs, mode).await
+}
+
+async fn fetch_job_status_map(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<std::collections::HashMap<String, String>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT job_name, status::text
+        FROM job_runs
+        WHERE pipeline_run_id = $1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows.into_iter().collect())
+}
+
+fn job_should_reset(mode: MaterializeMode, existing_status: Option<&str>) -> bool {
+    match mode {
+        MaterializeMode::Fresh | MaterializeMode::RerunAll => true,
+        MaterializeMode::RerunFailed => match existing_status {
+            None => true,
+            Some("success") => false,
+            Some(_) => true,
+        },
+    }
+}
+
+async fn delete_pipeline_artifact_files(
+    pool: &PgPool,
+    store: &ArtifactStore,
+    run_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    let keys = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT a.storage_key
+        FROM job_artifacts a
+        INNER JOIN job_runs j ON j.id = a.job_run_id
+        WHERE j.pipeline_run_id = $1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+
+    store.delete_keys(&keys).await;
+    Ok(())
+}
+
+async fn delete_artifact_files_for_job_names(
+    pool: &PgPool,
+    store: &ArtifactStore,
+    run_id: Uuid,
+    job_names: &[String],
+) -> Result<(), sqlx::Error> {
+    if job_names.is_empty() {
+        return Ok(());
+    }
+
+    let keys = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT a.storage_key
+        FROM job_artifacts a
+        INNER JOIN job_runs j ON j.id = a.job_run_id
+        WHERE j.pipeline_run_id = $1 AND j.job_name = ANY($2)
+        "#,
+    )
+    .bind(run_id)
+    .bind(job_names)
+    .fetch_all(pool)
+    .await?;
+
+    store.delete_keys(&keys).await;
+
+    sqlx::query(
+        r#"
+        DELETE FROM job_artifacts
+        WHERE job_run_id IN (
+            SELECT id FROM job_runs WHERE pipeline_run_id = $1 AND job_name = ANY($2)
+        )
+        "#,
+    )
+    .bind(run_id)
+    .bind(job_names)
+    .execute(pool)
+    .await?;
+
+    Ok(())
 }
 
 async fn materialize_jobs_for_run(
     pool: &PgPool,
+    store: &ArtifactStore,
     repository_id: Uuid,
     commit_sha: &str,
     run_id: Uuid,
     jobs: &[ScheduledJob],
+    mode: MaterializeMode,
 ) -> Result<(), sqlx::Error> {
     let job_names: Vec<String> = jobs.iter().map(|job| job.name.clone()).collect();
+    let existing_statuses = fetch_job_status_map(pool, run_id).await?;
+    let mut reset_job_names: Vec<String> = Vec::new();
 
     for job in jobs {
+        let should_reset = job_should_reset(mode, existing_statuses.get(&job.name).map(String::as_str));
+        if !should_reset {
+            continue;
+        }
+        reset_job_names.push(job.name.clone());
+
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
         let artifacts_json =
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
@@ -1461,20 +1783,29 @@ async fn materialize_jobs_for_run(
     }
 
     if job_names.is_empty() {
+        delete_pipeline_artifact_files(pool, store, run_id).await?;
         sqlx::query("DELETE FROM job_runs WHERE pipeline_run_id = $1")
             .bind(run_id)
             .execute(pool)
             .await?;
     } else {
-        sqlx::query(
-            r#"
-            DELETE FROM job_artifacts
-            WHERE job_run_id IN (SELECT id FROM job_runs WHERE pipeline_run_id = $1)
-            "#,
-        )
-        .bind(run_id)
-        .execute(pool)
-        .await?;
+        match mode {
+            MaterializeMode::RerunFailed => {
+                delete_artifact_files_for_job_names(pool, store, run_id, &reset_job_names).await?;
+            }
+            MaterializeMode::Fresh | MaterializeMode::RerunAll => {
+                delete_pipeline_artifact_files(pool, store, run_id).await?;
+                sqlx::query(
+                    r#"
+                    DELETE FROM job_artifacts
+                    WHERE job_run_id IN (SELECT id FROM job_runs WHERE pipeline_run_id = $1)
+                    "#,
+                )
+                .bind(run_id)
+                .execute(pool)
+                .await?;
+            }
+        }
 
         sqlx::query(
             r#"
@@ -1571,6 +1902,15 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
           AND j.runs_on = ANY(r.labels)
           AND NOT EXISTS (
             SELECT 1
+            FROM pipeline_runs p
+            WHERE p.id = j.pipeline_run_id
+              AND p.status IN (
+                'cancelled'::pipeline_run_status,
+                'failure'::pipeline_run_status
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1
             FROM job_runs dep
             WHERE dep.pipeline_run_id = j.pipeline_run_id
               AND dep.job_name = ANY(j.needs)
@@ -1621,6 +1961,11 @@ async fn update_commit_status_for_job(
         "success" => "success",
         _ => "failure",
     };
+    let description = match status {
+        "success" => "Job success".to_string(),
+        "cancelled" => "Job cancelled".to_string(),
+        other => format!("Job {other}"),
+    };
     sqlx::query(
         r#"
         UPDATE commit_statuses cs
@@ -1637,13 +1982,24 @@ async fn update_commit_status_for_job(
     .bind(job_id)
     .bind(format!("ci/{job_name}"))
     .bind(state)
-    .bind(format!("Job {status}"))
+    .bind(description)
     .execute(pool)
     .await?;
     Ok(())
 }
 
 async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> Result<(), sqlx::Error> {
+    let pipeline_status = sqlx::query_scalar::<_, String>(
+        r#"SELECT status::text FROM pipeline_runs WHERE id = $1"#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    if pipeline_status == "cancelled" {
+        return Ok(());
+    }
+
     let running = sqlx::query_scalar::<_, i64>(
         r#"
         SELECT COUNT(*) FROM job_runs
@@ -1679,6 +2035,26 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
         .bind(pipeline_run_id)
         .execute(pool)
         .await?;
+
+        let skipped = sqlx::query_as::<_, (Uuid, String)>(
+            r#"
+            UPDATE job_runs
+            SET status = 'failure'::job_run_status,
+                finished_at = NOW(),
+                log_text = log_text || E'\n=== skipped: pipeline failed\n'
+            WHERE pipeline_run_id = $1 AND status IN ('queued', 'running')
+            RETURNING id, job_name
+            "#,
+        )
+        .bind(pipeline_run_id)
+        .fetch_all(pool)
+        .await?;
+
+        for (job_id, job_name) in skipped {
+            let _ = update_commit_status_for_job(pool, job_id, "failure", &job_name).await;
+        }
+
+        let _ = release_idle_runners(pool).await;
         return Ok(());
     }
 
@@ -2081,4 +2457,186 @@ async fn authenticate_runner(pool: &PgPool, headers: &HeaderMap) -> Result<Uuid,
 fn internal(msg: String) -> (StatusCode, String) {
     tracing::error!("cicd error: {msg}");
     (StatusCode::INTERNAL_SERVER_ERROR, msg)
+}
+
+#[derive(Debug)]
+enum CancelError {
+    NotFound,
+    NotCancellable,
+}
+
+#[derive(Serialize)]
+struct RunnerJobControlResponse {
+    pipeline_cancelled: bool,
+    job_cancelled: bool,
+    cancel_requested: bool,
+    cancel_step_name: Option<String>,
+}
+
+async fn runner_job_control(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+) -> Result<Json<RunnerJobControlResponse>, (StatusCode, String)> {
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+
+    let row = sqlx::query_as::<_, (String, String, Option<String>, Option<DateTime<Utc>>)>(
+        r#"
+        SELECT p.status::text, j.status::text, j.cancel_step_name, j.cancel_requested_at
+        FROM job_runs j
+        INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+        WHERE j.id = $1 AND j.runner_id = $2
+        "#,
+    )
+    .bind(job_id)
+    .bind(runner_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?
+    .ok_or((StatusCode::NOT_FOUND, "job not found".into()))?;
+
+    Ok(Json(RunnerJobControlResponse {
+        pipeline_cancelled: row.0 == "cancelled" || row.0 == "failure",
+        job_cancelled: row.1 == "cancelled",
+        cancel_requested: row.3.is_some(),
+        cancel_step_name: row.2,
+    }))
+}
+
+async fn cancel_pipeline_run(
+    pool: &PgPool,
+    repo_id: Uuid,
+    run_id: Uuid,
+) -> Result<(), CancelError> {
+    let status = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT status::text
+        FROM pipeline_runs
+        WHERE id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(run_id)
+    .bind(repo_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| CancelError::NotFound)?
+    .ok_or(CancelError::NotFound)?;
+
+    if !matches!(status.as_str(), "pending" | "queued" | "running") {
+        return Err(CancelError::NotCancellable);
+    }
+
+    let mut tx = pool.begin().await.map_err(|_| CancelError::NotFound)?;
+
+    sqlx::query(
+        r#"
+        UPDATE pipeline_runs
+        SET status = 'cancelled'::pipeline_run_status,
+            finished_at = NOW()
+        WHERE id = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(run_id)
+    .bind(repo_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|_| CancelError::NotFound)?;
+
+    let queued_jobs = sqlx::query_as::<_, (Uuid, String)>(
+        r#"
+        UPDATE job_runs
+        SET status = 'cancelled'::job_run_status,
+            finished_at = NOW(),
+            log_text = log_text || E'\n=== pipeline cancelled\n'
+        WHERE pipeline_run_id = $1 AND status = 'queued'
+        RETURNING id, job_name
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|_| CancelError::NotFound)?;
+
+    let running_jobs = sqlx::query_as::<_, (Uuid, String)>(
+        r#"
+        UPDATE job_runs
+        SET status = 'cancelled'::job_run_status,
+            finished_at = NOW(),
+            cancel_requested_at = COALESCE(cancel_requested_at, NOW()),
+            log_text = log_text || E'\n=== pipeline cancelled\n'
+        WHERE pipeline_run_id = $1 AND status = 'running'
+        RETURNING id, job_name
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(&mut *tx)
+    .await
+    .map_err(|_| CancelError::NotFound)?;
+
+    tx.commit().await.map_err(|_| CancelError::NotFound)?;
+
+    for (job_id, job_name) in queued_jobs
+        .into_iter()
+        .chain(running_jobs.into_iter())
+    {
+        let _ = update_commit_status_for_job(pool, job_id, "cancelled", &job_name).await;
+    }
+
+    let _ = release_idle_runners(pool).await;
+
+    Ok(())
+}
+
+async fn cancel_job_step_run(
+    pool: &PgPool,
+    repo_id: Uuid,
+    run_id: Uuid,
+    job_id: Uuid,
+    step_name: Option<&str>,
+) -> Result<(), CancelError> {
+    let row = sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT j.status::text, p.status::text
+        FROM job_runs j
+        INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+        WHERE j.id = $1 AND j.pipeline_run_id = $2 AND p.repository_id = $3
+        "#,
+    )
+    .bind(job_id)
+    .bind(run_id)
+    .bind(repo_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| CancelError::NotFound)?
+    .ok_or(CancelError::NotFound)?;
+
+    if row.0 != "running" || row.1 == "cancelled" {
+        return Err(CancelError::NotCancellable);
+    }
+
+    let cancelled = sqlx::query_as::<_, (String,)>(
+        r#"
+        UPDATE job_runs
+        SET status = 'cancelled'::job_run_status,
+            finished_at = NOW(),
+            cancel_requested_at = NOW(),
+            cancel_step_name = $2,
+            log_text = log_text || E'\n=== step cancelled\n'
+        WHERE id = $1 AND status = 'running'
+        RETURNING job_name
+        "#,
+    )
+    .bind(job_id)
+    .bind(step_name)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| CancelError::NotFound)?
+    .ok_or(CancelError::NotCancellable)?;
+
+    let job_name = cancelled.0;
+    let _ = update_commit_status_for_job(pool, job_id, "cancelled", &job_name).await;
+    let _ = finalize_pipeline_run_if_done(pool, run_id).await;
+    let _ = release_idle_runners(pool).await;
+
+    Ok(())
 }

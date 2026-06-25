@@ -49,6 +49,27 @@ impl ArtifactStore {
     pub fn exists(&self, storage_key: &str) -> bool {
         self.root.join(storage_key).is_file()
     }
+
+    pub async fn delete(&self, storage_key: &str) -> anyhow::Result<()> {
+        let path = self.root.join(storage_key);
+        if path.is_file() {
+            tokio::fs::remove_file(&path).await?;
+        }
+        if let Some(parent) = path.parent() {
+            if parent != self.root && parent.starts_with(&self.root) {
+                let _ = tokio::fs::remove_dir(parent).await;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn delete_keys(&self, storage_keys: &[String]) {
+        for key in storage_keys {
+            if let Err(err) = self.delete(key).await {
+                tracing::warn!(storage_key = %key, %err, "failed to delete artifact file");
+            }
+        }
+    }
 }
 
 pub fn sanitize_artifact_name(name: &str) -> String {
