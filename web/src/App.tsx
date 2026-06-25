@@ -4,7 +4,7 @@ import { AuthProvider } from './auth/AuthContext'
 import { AppLayout } from './components/AppLayout'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthCallbackPage } from './pages/AuthCallbackPage'
-import { AuthSettingsPage } from './pages/AuthSettingsPage'
+import { AdminAuthPage } from './pages/admin/AdminAuthPage'
 import { CommitDetailPage } from './pages/CommitDetailPage'
 import { IssueDetailPage } from './pages/IssueDetailPage'
 import { PullRequestDetailPage } from './pages/PullRequestDetailPage'
@@ -140,11 +140,12 @@ export default function App() {
                     <Route path="/admin" element={<AdminSystemPage />} />
                     <Route path="/admin/health" element={<AdminHealthPage />} />
                     <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
+                    <Route path="/admin/auth" element={<AdminAuthPage />} />
                     <Route path="/admin/users" element={<AdminUsersPage />} />
                     <Route path="/admin/runners" element={<RunnersPage />} />
                   </Route>
                   <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings/auth" element={<AuthSettingsPage />} />
+                  <Route path="/settings/auth" element={<Navigate to="/admin/auth" replace />} />
                   <Route path="/organizations" element={<Navigate to="/groups" replace />} />
                   <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />
                 </Route>

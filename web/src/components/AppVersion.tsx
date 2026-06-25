@@ -3,7 +3,7 @@ import { GitBranch } from 'lucide-react'
 import { builtAppVersion, fetchAppVersion } from '../lib/version'
 import { cn } from '../utils/cn'
 
-export function AppVersion({ className }: { className?: string }) {
+export function AppVersion({ className, collapsed }: { className?: string; collapsed?: boolean }) {
   const { data: version } = useQuery({
     queryKey: ['app-version'],
     queryFn: fetchAppVersion,
@@ -14,9 +14,12 @@ export function AppVersion({ className }: { className?: string }) {
   const label = version ?? builtAppVersion
 
   return (
-    <span className={cn('inline-flex items-center gap-1.5', className)}>
+    <span
+      className={cn('inline-flex items-center gap-1.5', className)}
+      title={collapsed ? `Pertisk Gits v${label}` : undefined}
+    >
       <GitBranch size={12} className="text-primary shrink-0" />
-      Pertisk Gits v{label}
+      <span className="app-version-label">Pertisk Gits v{label}</span>
     </span>
   )
 }

@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
-import { Breadcrumbs, LinkButton, PageHeader } from '../../components/ui'
+import { Breadcrumbs, PageHeader } from '../../components/ui'
 
 export function AdminConfigurationPage() {
   const { token } = useAuth()
@@ -69,16 +69,12 @@ export function AdminConfigurationPage() {
             <InfoRow
               label="SSO / LDAP"
               value={
-                <Link to="/settings/auth" className="text-primary hover:underline text-sm">
+                <Link to="/admin/auth" className="text-primary hover:underline text-sm">
                   Manage auth providers
                 </Link>
               }
             />
           </InfoPanel>
-
-          <div className="flex gap-2">
-            <LinkButton to="/settings/auth">SSO / LDAP settings</LinkButton>
-          </div>
         </div>
       )}
     </>

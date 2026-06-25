@@ -8,15 +8,31 @@ import { AppSidebar } from './AppSidebar'
 import { GlobalSearch } from './GlobalSearch'
 import { UserMenu } from './UserMenu'
 
+const SIDEBAR_COLLAPSED_KEY = 'pertisk_gits_sidebar_collapsed'
+
+function getStoredSidebarCollapsed(): boolean {
+  if (typeof localStorage === 'undefined') return false
+  return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === 'true'
+}
+
 export function AppLayout() {
   const { isDark, toggleTheme } = useTheme()
   const { user } = useAuth()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(getStoredSidebarCollapsed)
 
   useEffect(() => {
     setSidebarOpen(false)
   }, [location.pathname])
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed))
+  }, [sidebarCollapsed])
+
+  function toggleSidebarCollapsed() {
+    setSidebarCollapsed((collapsed) => !collapsed)
+  }
 
   return (
     <div className="app-shell">
@@ -26,7 +42,11 @@ export function AppLayout() {
         onClick={() => setSidebarOpen(false)}
       />
 
-      <AppSidebar open={sidebarOpen} />
+      <AppSidebar
+        open={sidebarOpen}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={toggleSidebarCollapsed}
+      />
 
       <div className={cn('app-content', sidebarOpen && 'sidebar-open')}>
         <header className="app-content-top">

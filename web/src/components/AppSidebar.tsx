@@ -1,5 +1,7 @@
 import {
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Code2,
   CircleDot,
   FolderGit2,
@@ -56,6 +58,7 @@ const adminNavItems: { id: AdminTab; label: string; icon: LucideIcon }[] = [
   { id: 'system', label: 'System information', icon: Gauge },
   { id: 'health', label: 'Health check', icon: HeartPulse },
   { id: 'configuration', label: 'Configuration', icon: SlidersHorizontal },
+  { id: 'auth', label: 'SSO / LDAP', icon: KeyRound },
   { id: 'users', label: 'Users', icon: UserCog },
   { id: 'runners', label: 'Runners', icon: Server },
 ]
@@ -78,34 +81,61 @@ function projectLinkClass(active: boolean, nested = true) {
 
 interface AppSidebarProps {
   open: boolean
+  collapsed: boolean
+  onToggleCollapse: () => void
 }
 
-export function AppSidebar({ open }: AppSidebarProps) {
+export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProps) {
   const project = useProjectNav()
   const group = useGroupNav()
   const admin = useAdminNav()
   const isSuperAdmin = useSuperAdmin()
 
   return (
-    <aside id="app-sidebar" className={cn('app-sidebar', open && 'open')} aria-label="Main navigation">
+    <aside
+      id="app-sidebar"
+      className={cn('app-sidebar', open && 'open', collapsed && 'collapsed')}
+      aria-label="Main navigation"
+      aria-expanded={!collapsed}
+    >
       <div className="app-sidebar-header">
-        <NavLink to="/dashboard" className="app-brand">
-          <img src="/favicon.svg" alt="" className="w-7 h-7" />
+        <NavLink
+          to="/dashboard"
+          className="app-brand"
+          title={collapsed ? 'Pertisk Gits' : undefined}
+        >
+          <img src="/favicon.svg" alt="" className="w-7 h-7 shrink-0" />
           <span>Pertisk Gits</span>
         </NavLink>
+        <button
+          type="button"
+          className="app-sidebar-collapse-btn"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          data-no-global-button-hover="true"
+          onClick={onToggleCollapse}
+        >
+          {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+        </button>
       </div>
 
       <nav className="app-sidebar-nav">
         {!project && !group && !admin &&
           globalNavItems.map(({ to, label, icon: Icon, end }) => (
-            <NavLink key={to} to={to} end={end} className={globalLinkClass}>
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              title={collapsed ? label : undefined}
+              className={globalLinkClass}
+            >
               <Icon size={16} className="shrink-0" aria-hidden />
               <span>{label}</span>
             </NavLink>
           ))}
 
         {!project && !group && !admin && isSuperAdmin && (
-          <NavLink to="/admin" className={globalLinkClass}>
+          <NavLink to="/admin" className={globalLinkClass} title={collapsed ? 'Admin' : undefined}>
             <Shield size={16} className="shrink-0" aria-hidden />
             <span>Admin</span>
           </NavLink>
@@ -114,7 +144,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
         {admin && !project && !group && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Administration</p>
-            <NavLink to="/dashboard" className="app-sidebar-back">
+            <NavLink to="/dashboard" className="app-sidebar-back" title={collapsed ? 'Dashboard' : undefined}>
               <ArrowLeft size={14} aria-hidden />
               <span>Dashboard</span>
             </NavLink>
@@ -124,6 +154,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
                 key={id}
                 to={adminTabPath(admin.basePath, id)}
                 end={id === 'system'}
+                title={collapsed ? label : undefined}
                 className={({ isActive }) => projectLinkClass(isActive, false)}
               >
                 <Icon size={16} className="shrink-0" aria-hidden />
@@ -136,7 +167,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
         {group && !project && !admin && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Group</p>
-            <NavLink to="/groups" className="app-sidebar-back">
+            <NavLink to="/groups" className="app-sidebar-back" title={collapsed ? 'Groups' : undefined}>
               <ArrowLeft size={14} aria-hidden />
               <span>Groups</span>
             </NavLink>
@@ -152,6 +183,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
                 key={id}
                 to={groupTabPath(group.basePath, id)}
                 end={id === 'repositories'}
+                title={collapsed ? label : undefined}
                 className={({ isActive }) => projectLinkClass(isActive, false)}
               >
                 <Icon size={16} className="shrink-0" aria-hidden />
@@ -164,7 +196,11 @@ export function AppSidebar({ open }: AppSidebarProps) {
         {project && !admin && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Repository</p>
-            <NavLink to={`/groups/${project.orgSlug}`} className="app-sidebar-back">
+            <NavLink
+              to={`/groups/${project.orgSlug}`}
+              className="app-sidebar-back"
+              title={collapsed ? project.orgSlug : undefined}
+            >
               <ArrowLeft size={14} aria-hidden />
               <span className="truncate">{project.orgSlug}</span>
             </NavLink>
@@ -183,6 +219,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
                   key={id}
                   to={projectTabPath(project.basePath, id)}
                   end={id === 'code'}
+                  title={collapsed ? label : undefined}
                   className={({ isActive }) => projectLinkClass(isActive, false)}
                 >
                   <Icon size={16} className="shrink-0" aria-hidden />
@@ -194,7 +231,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
       </nav>
 
       <div className="app-sidebar-footer">
-        <AppVersion />
+        <AppVersion collapsed={collapsed} />
       </div>
     </aside>
   )

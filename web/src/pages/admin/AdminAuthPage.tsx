@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { api } from '../api/client'
-import type { AuthProviderAdmin, AuthProviderType } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
+import { api } from '../../api/client'
+import type { AuthProviderAdmin, AuthProviderType } from '../../api/types'
+import { useAuth } from '../../auth/AuthContext'
+import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../../components/ui'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
@@ -26,7 +26,7 @@ const EMPTY_FORM = {
   ldap_base_dn: '',
 }
 
-export function AuthSettingsPage() {
+export function AdminAuthPage() {
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
@@ -81,10 +81,15 @@ export function AuthSettingsPage() {
 
   return (
     <>
-      <Breadcrumbs items={[{ label: 'Settings' }, { label: 'Authentication' }]} />
+      <Breadcrumbs
+        items={[
+          { label: 'Admin', to: '/admin' },
+          { label: 'SSO / LDAP' },
+        ]}
+      />
       <PageHeader
         title="SSO / LDAP"
-        subtitle="Configure instance authentication providers. Requires group owner role."
+        subtitle="Configure instance authentication providers (OIDC, SAML, LDAP)."
       />
 
       {error && (
