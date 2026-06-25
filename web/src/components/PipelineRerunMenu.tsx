@@ -23,27 +23,56 @@ export function PipelineRerunMenu({
   const [open, setOpen] = useState(false)
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
   const updateMenuPosition = () => {
     const el = ref.current
     if (!el) return
+
     const rect = el.getBoundingClientRect()
-    const menuWidth = 200
+    const menuWidth = menuRef.current?.offsetWidth ?? 200
+    const menuHeight = menuRef.current?.offsetHeight ?? 88
+    const gap = 6
+    const pad = 8
+
     let left = rect.right - menuWidth
-    left = Math.max(8, Math.min(left, window.innerWidth - menuWidth - 8))
+    left = Math.max(pad, Math.min(left, window.innerWidth - menuWidth - pad))
+
+    const spaceBelow = window.innerHeight - rect.bottom - gap - pad
+    const spaceAbove = rect.top - gap - pad
+    const fitsBelow = menuHeight <= spaceBelow
+    const fitsAbove = menuHeight <= spaceAbove
+
+    let top: number
+    let maxHeight: number | undefined
+
+    if (fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove)) {
+      top = rect.bottom + gap
+      if (!fitsBelow) {
+        maxHeight = Math.max(64, spaceBelow)
+      }
+    } else {
+      maxHeight = Math.max(64, spaceAbove)
+      top = rect.top - Math.min(menuHeight, maxHeight) - gap
+      top = Math.max(pad, top)
+    }
+
     setMenuStyle({
-      top: rect.bottom + 6,
+      top,
       left,
       minWidth: menuWidth,
+      ...(maxHeight !== undefined ? { maxHeight, overflowY: 'auto' as const } : {}),
     })
   }
 
   useLayoutEffect(() => {
     if (!open) return
     updateMenuPosition()
+    const raf = requestAnimationFrame(updateMenuPosition)
     window.addEventListener('resize', updateMenuPosition)
     window.addEventListener('scroll', updateMenuPosition, true)
     return () => {
+      cancelAnimationFrame(raf)
       window.removeEventListener('resize', updateMenuPosition)
       window.removeEventListener('scroll', updateMenuPosition, true)
     }
@@ -68,6 +97,7 @@ export function PipelineRerunMenu({
     ? createPortal(
         <div
           id="pipeline-rerun-dropdown-portal"
+          ref={menuRef}
           className="pipeline-rerun-dropdown"
           style={menuStyle}
           role="menu"
