@@ -10,7 +10,5 @@ jobs:
     needs: []
     timeout_minutes: 30
     steps:
-      - name: Set Path  
-        run: export PATH := $(PATH):/root/.cargo/bin
       - name: Build
-        run: make package-runner-amd64 VERSION=1.0.0 
+        run: export PATH="$PATH:/root/.cargo/bin" && make package-runner-amd64 VERSION=1.0.0
