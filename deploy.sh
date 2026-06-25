@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export VERSION="${VERSION:-0.1.85}"
+export VERSION="${VERSION:-0.1.86}"
 
 make deploy-rpm DEPLOY_HOST=nat@103.117.150.228 VERSION="$VERSION"
 make install-runner DEPLOY_HOST=nat@103.117.150.228 VERSION="$VERSION"

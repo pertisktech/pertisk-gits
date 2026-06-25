@@ -1,0 +1,14 @@
+# Build embedded web UI (Vite). Used when npm is not on the host (CI runners).
+FROM node:20-bookworm-slim
+
+WORKDIR /web
+
+COPY web/package.json web/package-lock.json ./
+RUN npm ci
+
+COPY web/ ./
+
+ARG VERSION=0.1.0
+ENV VERSION=${VERSION}
+
+RUN npm run build && echo "${VERSION}" > dist/.app-version

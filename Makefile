@@ -1,5 +1,5 @@
 .PHONY: build build-local build-package check test run run-release \
-	infra infra-down install-web web-dist fix-perms \
+	infra infra-down install-web web-dist web-dist-docker fix-perms \
 	dev dev-vite dev-serve dev-web dev-stop \
 	package package-clean package-amd64 package-arm64 package-deb package-rpm \
 	package-runner package-runner-clean package-runner-amd64 package-runner-arm64 \
@@ -75,6 +75,17 @@ fix-perms:
 
 WEB_VERSION_FILE = web/dist/.app-version
 
+.PHONY: web-dist-docker
+web-dist-docker:
+	@echo "Building web UI via Docker (v$(VERSION))..."
+	docker build -f docker/Dockerfile.web --build-arg VERSION="$(VERSION)" -t pertisk-web-dist .
+	rm -rf web/dist && mkdir -p web/dist
+	docker rm -f extract-web-dist 2>/dev/null || true
+	docker create --name extract-web-dist pertisk-web-dist
+	docker cp extract-web-dist:/web/dist/. web/dist/
+	docker rm extract-web-dist
+	@test -f web/dist/index.html
+
 web-dist:
 	@if [ -d web/dist/assets ] && [ ! -w web/dist/assets ]; then \
 		echo "web/dist is not writable (usually from 'sudo make dev'). Run: sudo make fix-perms"; exit 1; \
@@ -88,14 +99,18 @@ web-dist:
 		fi; \
 	fi; \
 	if [ $$skip -eq 0 ]; then \
-		echo "Building web UI (v$(VERSION))..."; \
-		if [ ! -d web/node_modules ] || [ ! -f web/node_modules/.package-lock.json ] || [ web/package-lock.json -nt web/node_modules/.package-lock.json ]; then \
-			$(MAKE) install-web; \
+		if ! command -v npm >/dev/null 2>&1 || [ "$(PERTISK_FORCE_DOCKER_BUILD)" = "1" ]; then \
+			$(MAKE) web-dist-docker VERSION="$(VERSION)"; \
+		else \
+			echo "Building web UI (v$(VERSION))..."; \
+			if [ ! -d web/node_modules ] || [ ! -f web/node_modules/.package-lock.json ] || [ web/package-lock.json -nt web/node_modules/.package-lock.json ]; then \
+				$(MAKE) install-web; \
+			fi; \
+			rm -rf web/dist 2>/dev/null || { \
+				echo "Cannot clean web/dist. Run: sudo make fix-perms"; exit 1; \
+			}; \
+			cd web && $(RUN_AS_USER)VERSION="$(VERSION)" npm run build && echo "$(VERSION)" > dist/.app-version; \
 		fi; \
-		rm -rf web/dist 2>/dev/null || { \
-			echo "Cannot clean web/dist. Run: sudo make fix-perms"; exit 1; \
-		}; \
-		cd web && $(RUN_AS_USER)VERSION="$(VERSION)" npm run build && echo "$(VERSION)" > dist/.app-version; \
 	fi
 
 dev-web:

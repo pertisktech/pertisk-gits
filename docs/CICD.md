@@ -103,7 +103,7 @@ The runner RPM postinstall also adds `pertisk-runner` to the `docker` group when
 
 ### Self-build pipeline (this repo)
 
-Root `.pertisk-ci.yaml` defines `build-runner` and `build-package` jobs (`runs-on: docker`) that produce RPM artifacts via `make package-runner-amd64` / `make package-amd64`. Set `PERTISK_FORCE_DOCKER_BUILD=1` in CI so binaries and fpm packaging use Docker on the runner host. Packaging copies `pkg-*` into the fpm image with `docker cp` (bind mounts from `/tmp/pertisk-ci-*` workspaces are unreliable).
+Root `.pertisk-ci.yaml` defines `build-runner` and `build-package` jobs (`runs-on: docker`) that produce RPM artifacts via `make package-runner-amd64` / `make package-amd64`. Set `PERTISK_FORCE_DOCKER_BUILD=1` in CI so binaries, web UI (`docker/Dockerfile.web`), and fpm packaging use Docker on the runner host (no host `npm` or `fpm` required).
 
 ## Performance testing
 
