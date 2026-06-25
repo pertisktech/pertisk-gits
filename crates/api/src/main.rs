@@ -31,6 +31,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 use validator::Validate;
 
+mod admin;
 mod artifacts;
 mod audit;
 mod ci_secrets;
@@ -45,6 +46,7 @@ mod secrets_crypto;
 mod sso;
 mod version;
 
+use chrono::Utc;
 use config::Config;
 use password::{hash_password, verify_password};
 use secrets_crypto::SecretsCrypto;
@@ -55,6 +57,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub artifacts: artifacts::ArtifactStore,
     pub secrets_crypto: Arc<SecretsCrypto>,
+    pub started_at: chrono::DateTime<Utc>,
 }
 
 #[derive(Serialize)]
@@ -74,6 +77,7 @@ struct HealthResponse {
 #[derive(Serialize)]
 struct MeResponse {
     user: UserPublic,
+    is_super_admin: bool,
 }
 
 #[derive(Serialize)]
@@ -108,6 +112,7 @@ async fn main() -> anyhow::Result<()> {
         config: config.clone(),
         artifacts: artifact_store,
         secrets_crypto,
+        started_at: Utc::now(),
     };
 
     let repo_read_routes = Router::new()
@@ -178,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(ci_secrets::ci_secrets_write_routes())
         .merge(registry::registry_write_routes())
         .merge(audit::audit_routes())
+        .merge(admin::admin_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
     let api_routes = Router::new()
@@ -348,7 +354,7 @@ async fn register(
         r#"
         INSERT INTO users (username, email, password_hash, display_name)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, username, email, password_hash, display_name, created_at, updated_at
+        RETURNING id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
         "#,
     )
     .bind(&body.username)
@@ -367,9 +373,12 @@ async fn register(
     let token = create_token(user.id, &user.username, &state.config.jwt_secret, 72)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
+    let is_super_admin = admin::is_super_admin(&state.pool, user.id).await?;
+
     Ok(Json(AuthResponse {
         token,
         user: user.into_public(),
+        is_super_admin,
     }))
 }
 
@@ -382,7 +391,7 @@ async fn login(
 
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
         FROM users
         WHERE username = $1 OR email = $1
         "#,
@@ -422,9 +431,12 @@ async fn login(
     )
     .await?;
 
+    let is_super_admin = admin::is_super_admin(&state.pool, user.id).await?;
+
     Ok(Json(AuthResponse {
         token,
         user: user.into_public(),
+        is_super_admin,
     }))
 }
 
@@ -445,7 +457,10 @@ async fn me(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::NotFound)?;
 
-    Ok(Json(MeResponse { user }))
+    Ok(Json(MeResponse {
+        user,
+        is_super_admin: admin::is_super_admin(&state.pool, auth.user_id).await?,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -1441,6 +1456,19 @@ async fn optional_auth_middleware(
     next.run(req).await
 }
 
+fn is_auth_exempt_path(path: &str) -> bool {
+    matches!(
+        path,
+        "/health" | "/health/live" | "/api/v1/health" | "/api/v1/health/live"
+    ) || path.ends_with("/auth/register")
+        || path.ends_with("/auth/login")
+        || path.ends_with("/auth/providers")
+        || path.contains("/auth/oidc/")
+        || path.ends_with("/auth/oidc/callback")
+        || path.contains("/auth/saml/")
+        || path.contains("/auth/ldap/")
+}
+
 async fn auth_middleware(
     State(state): State<AppState>,
     mut req: Request<axum::body::Body>,
@@ -1448,16 +1476,7 @@ async fn auth_middleware(
 ) -> Result<Response, ApiError> {
     let path = req.uri().path();
 
-    if path.ends_with("/health")
-        || path.ends_with("/health/live")
-        || path.ends_with("/auth/register")
-        || path.ends_with("/auth/login")
-        || path.ends_with("/auth/providers")
-        || path.contains("/auth/oidc/")
-        || path.ends_with("/auth/oidc/callback")
-        || path.contains("/auth/saml/")
-        || path.contains("/auth/ldap/")
-    {
+    if is_auth_exempt_path(path) {
         return Ok(next.run(req).await);
     }
 

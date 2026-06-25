@@ -1,4 +1,8 @@
 import type {
+  AdminConfiguration,
+  AdminHealth,
+  AdminSystemInfo,
+  AdminUser,
   AuthResponse,
   CommitDetail,
   CommitInfo,
@@ -70,7 +74,8 @@ export const api = {
       body: JSON.stringify(payload),
     }),
 
-  me: (token: string) => request<{ user: User }>('/me', {}, token),
+  me: (token: string) =>
+    request<{ user: User; is_super_admin: boolean }>('/me', {}, token),
 
   searchUsers: (token: string, q: string, limit = 20) => {
     const search = new URLSearchParams({ q, limit: String(limit) })
@@ -923,6 +928,61 @@ export const api = {
       `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/secrets/${secretId}`,
       { method: 'DELETE', headers },
     )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  getAdminSystemInfo: (token: string) =>
+    request<AdminSystemInfo>('/admin/system', {}, token),
+
+  getAdminHealth: (token: string) => request<AdminHealth>('/admin/health', {}, token),
+
+  getAdminConfiguration: (token: string) =>
+    request<AdminConfiguration>('/admin/configuration', {}, token),
+
+  listAdminUsers: (token: string) => request<AdminUser[]>('/admin/users', {}, token),
+
+  createAdminUser: (
+    token: string,
+    payload: {
+      username: string
+      email: string
+      password: string
+      display_name?: string
+      is_super_admin?: boolean
+    },
+  ) =>
+    request<AdminUser>('/admin/users', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  updateAdminUser: (
+    token: string,
+    userId: string,
+    payload: {
+      username?: string
+      email?: string
+      password?: string
+      display_name?: string
+      is_super_admin?: boolean
+    },
+  ) =>
+    request<AdminUser>(`/admin/users/${userId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteAdminUser: async (token: string, userId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
+      method: 'DELETE',
+      headers,
+    })
     if (!response.ok) {
       const body = await response.json().catch(() => ({}))
       const message = typeof body.error === 'string' ? body.error : 'Request failed'

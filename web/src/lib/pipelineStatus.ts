@@ -57,6 +57,12 @@ export function displayJobStatus(
 
 export function isRunInProgress(run: PipelineRun): boolean {
   if (run.status === 'cancelled') return false
+
+  const hasActiveJob = run.jobs.some(
+    (job) => job.status === 'queued' || job.status === 'running',
+  )
+  if (!hasActiveJob) return false
+
   const displayStatus = displayRunStatus(run)
   return displayStatus === 'running' || displayStatus === 'queued' || displayStatus === 'pending'
 }

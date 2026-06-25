@@ -3,21 +3,30 @@ import {
   Code2,
   CircleDot,
   FolderGit2,
+  Gauge,
   GitCommit,
   GitPullRequest,
+  HeartPulse,
   KeyRound,
   LayoutDashboard,
   Package,
   ScrollText,
   Server,
   Settings,
+  Shield,
+  SlidersHorizontal,
+  UserCog,
   Users,
   Workflow,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import { useAdminNav } from '../hooks/useAdminNav'
 import { useGroupNav } from '../hooks/useGroupNav'
 import { useProjectNav } from '../hooks/useProjectNav'
+import { useSuperAdmin } from '../hooks/useSuperAdmin'
+import type { AdminTab } from '../lib/adminRoute'
+import { adminTabPath } from '../lib/adminRoute'
 import type { GroupTab } from '../lib/groupRoute'
 import { groupTabPath } from '../lib/groupRoute'
 import type { ProjectTab } from '../lib/projectRoute'
@@ -28,7 +37,6 @@ import { AppVersion } from './AppVersion'
 const globalNavItems: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/groups', label: 'Groups', icon: Users },
-  { to: '/runners', label: 'Runners', icon: Server },
 ]
 
 const projectNavItems: {
@@ -42,6 +50,14 @@ const projectNavItems: {
   { id: 'commits', label: 'Commits', icon: GitCommit },
   { id: 'pipelines', label: 'Pipelines', icon: Workflow },
   { id: 'settings', label: 'Settings', icon: Settings },
+]
+
+const adminNavItems: { id: AdminTab; label: string; icon: LucideIcon }[] = [
+  { id: 'system', label: 'System information', icon: Gauge },
+  { id: 'health', label: 'Health check', icon: HeartPulse },
+  { id: 'configuration', label: 'Configuration', icon: SlidersHorizontal },
+  { id: 'users', label: 'Users', icon: UserCog },
+  { id: 'runners', label: 'Runners', icon: Server },
 ]
 
 const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
@@ -67,6 +83,8 @@ interface AppSidebarProps {
 export function AppSidebar({ open }: AppSidebarProps) {
   const project = useProjectNav()
   const group = useGroupNav()
+  const admin = useAdminNav()
+  const isSuperAdmin = useSuperAdmin()
 
   return (
     <aside id="app-sidebar" className={cn('app-sidebar', open && 'open')} aria-label="Main navigation">
@@ -78,7 +96,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
       </div>
 
       <nav className="app-sidebar-nav">
-        {!project && !group &&
+        {!project && !group && !admin &&
           globalNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink key={to} to={to} end={end} className={globalLinkClass}>
               <Icon size={16} className="shrink-0" aria-hidden />
@@ -86,7 +104,36 @@ export function AppSidebar({ open }: AppSidebarProps) {
             </NavLink>
           ))}
 
-        {group && !project && (
+        {!project && !group && !admin && isSuperAdmin && (
+          <NavLink to="/admin" className={globalLinkClass}>
+            <Shield size={16} className="shrink-0" aria-hidden />
+            <span>Admin</span>
+          </NavLink>
+        )}
+
+        {admin && !project && !group && (
+          <div className="app-sidebar-section">
+            <p className="app-sidebar-section-label">Administration</p>
+            <NavLink to="/dashboard" className="app-sidebar-back">
+              <ArrowLeft size={14} aria-hidden />
+              <span>Dashboard</span>
+            </NavLink>
+
+            {adminNavItems.map(({ id, label, icon: Icon }) => (
+              <NavLink
+                key={id}
+                to={adminTabPath(admin.basePath, id)}
+                end={id === 'system'}
+                className={({ isActive }) => projectLinkClass(isActive, false)}
+              >
+                <Icon size={16} className="shrink-0" aria-hidden />
+                <span>{label}</span>
+              </NavLink>
+            ))}
+          </div>
+        )}
+
+        {group && !project && !admin && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Group</p>
             <NavLink to="/groups" className="app-sidebar-back">
@@ -114,7 +161,7 @@ export function AppSidebar({ open }: AppSidebarProps) {
           </div>
         )}
 
-        {project && (
+        {project && !admin && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Repository</p>
             <NavLink to={`/groups/${project.orgSlug}`} className="app-sidebar-back">

@@ -147,10 +147,11 @@ async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
         r#"
         SELECT j.id, j.pipeline_run_id, j.job_name
         FROM job_runs j
-        INNER JOIN runners r ON r.id = j.runner_id
+        LEFT JOIN runners r ON r.id = j.runner_id
         WHERE j.status = 'running'
           AND (
-            r.last_seen_at IS NULL
+            j.runner_id IS NULL
+            OR r.last_seen_at IS NULL
             OR r.last_seen_at < NOW() - make_interval(secs => $1)
           )
         "#,
@@ -574,6 +575,10 @@ async fn get_pipeline_run(
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
     let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
 
+    sync_pipeline_run_state(&state.pool, run_id)
+        .await
+        .map_err(sqlx_error)?;
+
     let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
         .await
         .map_err(sqlx_error)?
@@ -590,14 +595,7 @@ async fn delete_pipeline(
     let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
     ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
 
-    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
-        .await
-        .map_err(sqlx_error)?
-        .ok_or(DomainError::NotFound)?;
-
-    if matches!(run.status.as_str(), "pending" | "queued" | "running") {
-        return Err(DomainError::Validation("pipeline is still running".into()).into());
-    }
+    ensure_pipeline_idle(&state.pool, repo.id, run_id).await?;
 
     delete_pipeline_artifact_files(&state.pool, &state.artifacts, run_id)
         .await
@@ -726,9 +724,7 @@ async fn rerun_pipeline(
         .map_err(sqlx_error)?
         .ok_or(DomainError::NotFound)?;
 
-    if matches!(run.status.as_str(), "pending" | "queued" | "running") {
-        return Err(DomainError::Validation("pipeline is still running".into()).into());
-    }
+    ensure_pipeline_idle(&state.pool, repo.id, run_id).await?;
 
     let repo_path = pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
     let Some((config_yaml, config_path)) = read_pipeline_config(&repo_path, &run.commit_sha).await else {
@@ -804,6 +800,10 @@ async fn cancel_pipeline(
                 }
             }
         })?;
+
+    sync_pipeline_run_state(&state.pool, run_id)
+        .await
+        .map_err(sqlx_error)?;
 
     let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
         .await
@@ -2131,6 +2131,142 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
     .bind(pipeline_run_id)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+async fn sync_pipeline_run_state(pool: &PgPool, pipeline_run_id: Uuid) -> Result<(), sqlx::Error> {
+    reclaim_stale_running_jobs(pool).await?;
+    finalize_pipeline_run_if_done(pool, pipeline_run_id).await?;
+    force_finalize_stuck_pipeline(pool, pipeline_run_id).await
+}
+
+async fn force_finalize_stuck_pipeline(
+    pool: &PgPool,
+    pipeline_run_id: Uuid,
+) -> Result<(), sqlx::Error> {
+    let status = sqlx::query_scalar::<_, String>(
+        r#"SELECT status::text FROM pipeline_runs WHERE id = $1"#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    if !matches!(status.as_str(), "pending" | "queued" | "running") {
+        return Ok(());
+    }
+
+    let active_jobs = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*) FROM job_runs
+        WHERE pipeline_run_id = $1 AND status IN ('queued', 'running')
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    if active_jobs > 0 {
+        return Ok(());
+    }
+
+    let has_failed = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM job_runs
+            WHERE pipeline_run_id = $1 AND status = 'failure'
+        )
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    let all_cancelled = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT COUNT(*) > 0
+           AND COUNT(*) = COUNT(*) FILTER (WHERE status = 'cancelled')
+        FROM job_runs
+        WHERE pipeline_run_id = $1
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    let new_status = if has_failed {
+        "failure"
+    } else if all_cancelled {
+        "cancelled"
+    } else {
+        "success"
+    };
+
+    sqlx::query(
+        r#"
+        UPDATE pipeline_runs
+        SET status = $2::pipeline_run_status,
+            finished_at = COALESCE(finished_at, NOW())
+        WHERE id = $1
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .bind(new_status)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn ensure_pipeline_idle(
+    pool: &PgPool,
+    repo_id: Uuid,
+    run_id: Uuid,
+) -> Result<(), DomainError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM pipeline_runs WHERE id = $1 AND repository_id = $2
+        )
+        "#,
+    )
+    .bind(run_id)
+    .bind(repo_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+    if !exists {
+        return Err(DomainError::NotFound);
+    }
+
+    sync_pipeline_run_state(pool, run_id)
+        .await
+        .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+    let status = sqlx::query_scalar::<_, String>(
+        r#"SELECT status::text FROM pipeline_runs WHERE id = $1"#,
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+    let active_jobs = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*) FROM job_runs
+        WHERE pipeline_run_id = $1 AND status IN ('queued', 'running')
+        "#,
+    )
+    .bind(run_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| DomainError::Internal(e.to_string()))?;
+
+    if active_jobs > 0 || matches!(status.as_str(), "pending" | "queued" | "running") {
+        return Err(DomainError::Validation(
+            "pipeline is still running — cancel it first or wait for jobs to finish".into(),
+        ));
+    }
+
     Ok(())
 }
 

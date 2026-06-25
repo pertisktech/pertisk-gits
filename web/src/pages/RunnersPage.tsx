@@ -125,7 +125,12 @@ export function RunnersPage() {
         />
       )}
 
-      <Breadcrumbs items={[{ label: 'CI Runners' }]} />
+      <Breadcrumbs
+        items={[
+          { label: 'Admin', to: '/admin' },
+          { label: 'Runners' },
+        ]}
+      />
       <PageHeader
         title="CI runners"
         subtitle="Self-hosted runners with live host metrics and job history"

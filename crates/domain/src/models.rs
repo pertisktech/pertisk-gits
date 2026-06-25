@@ -32,6 +32,7 @@ pub struct User {
     #[serde(skip_serializing)]
     pub password_hash: Option<String>,
     pub display_name: Option<String>,
+    pub is_super_admin: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -133,10 +134,35 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct AdminCreateUserRequest {
+    #[validate(length(min = 3, max = 39))]
+    pub username: String,
+    #[validate(email)]
+    pub email: String,
+    #[validate(length(min = 8, max = 128))]
+    pub password: String,
+    pub display_name: Option<String>,
+    pub is_super_admin: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct AdminUpdateUserRequest {
+    #[validate(length(min = 3, max = 39))]
+    pub username: Option<String>,
+    #[validate(email)]
+    pub email: Option<String>,
+    #[validate(length(min = 8, max = 128))]
+    pub password: Option<String>,
+    pub display_name: Option<String>,
+    pub is_super_admin: Option<bool>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
     pub token: String,
     pub user: UserPublic,
+    pub is_super_admin: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]

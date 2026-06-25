@@ -4,3 +4,6 @@ pub const APP_VERSION: &str = match option_env!("PERTISK_VERSION") {
     Some(version) => version,
     None => env!("CARGO_PKG_VERSION"),
 };
+
+/// Toolchain used to build this binary (`rustc --version` at compile time).
+pub const RUSTC_VERSION: &str = env!("PERTISK_RUSTC_VERSION");

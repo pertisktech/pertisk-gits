@@ -23,7 +23,7 @@ export function RegisterPage() {
     setError(null)
     try {
       const response = await api.register({ username, email, password })
-      setSession(response.token, response.user)
+      setSession(response.token, { ...response.user, is_super_admin: response.is_super_admin })
       navigate('/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed')

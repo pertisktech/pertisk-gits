@@ -4,6 +4,7 @@ export interface User {
   email: string
   display_name: string | null
   created_at: string
+  is_super_admin?: boolean
 }
 
 export interface Organization {
@@ -96,6 +97,60 @@ export interface RepoCollaborator {
 export interface AuthResponse {
   token: string
   user: User
+  is_super_admin: boolean
+}
+
+export interface AdminUser {
+  id: string
+  username: string
+  email: string
+  display_name: string | null
+  is_super_admin: boolean
+  has_password: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminSystemInfo {
+  version: string
+  rust_version: string
+  started_at: string
+  counts: {
+    users: number
+    organizations: number
+    repositories: number
+    pipeline_runs: number
+    runners: number
+  }
+  storage: {
+    repos_root: string
+    repos_root_exists: boolean
+    artifacts_root: string
+    artifacts_root_exists: boolean
+  }
+}
+
+export interface AdminHealth {
+  status: string
+  version: string
+  database: string
+  database_latency_ms: number
+  database_version: string
+  api_url: string
+  checked_at: string
+}
+
+export interface AdminConfiguration {
+  api_host: string
+  api_port: number
+  git_public_base_url: string
+  git_ssh_public_host: string | null
+  git_ssh_port: number | null
+  repos_root: string
+  artifacts_root: string
+  web_dist: string | null
+  registration_enabled: boolean
+  super_admin_env_override: boolean
 }
 
 export interface Label {

@@ -18,8 +18,8 @@ export function AuthCallbackPage() {
 
     api
       .me(token)
-      .then(({ user }) => {
-        setSession(token, user)
+      .then(({ user, is_super_admin }) => {
+        setSession(token, { ...user, is_super_admin })
         navigate('/dashboard', { replace: true })
       })
       .catch(() => setError('Could not complete sign-in'))

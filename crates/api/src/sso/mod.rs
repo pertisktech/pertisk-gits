@@ -152,7 +152,7 @@ pub async fn jit_provision_user(
         r#"
         INSERT INTO users (username, email, password_hash, display_name)
         VALUES ($1, $2, NULL, $3)
-        RETURNING id, username, email, password_hash, display_name, created_at, updated_at
+        RETURNING id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
         "#,
     )
     .bind(&username)
@@ -236,7 +236,7 @@ fn sanitize_username(raw: &str) -> String {
 pub async fn load_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<User, ApiError> {
     sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
         FROM users WHERE id = $1
         "#,
     )
@@ -259,6 +259,8 @@ pub async fn issue_auth_response(
     )
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
+    let is_super_admin = crate::admin::is_super_admin(&state.pool, user.id).await?;
+
     Ok(pertisk_domain::models::AuthResponse {
         token,
         user: UserPublic {
@@ -268,6 +270,7 @@ pub async fn issue_auth_response(
             display_name: user.display_name,
             created_at: user.created_at,
         },
+        is_super_admin,
     })
 }
 

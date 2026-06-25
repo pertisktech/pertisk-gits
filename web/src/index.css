@@ -2703,3 +2703,43 @@ html.light .ci-log-line-warn {
   color: #9a6700;
 }
 
+.admin-info-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+}
+
+.admin-info-row {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid var(--color-naturals-n4);
+}
+
+.admin-info-row:last-child {
+  border-bottom: none;
+}
+
+.admin-info-label {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.admin-info-value {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  word-break: break-word;
+}
+
+.admin-info-badge {
+  margin-left: 0.5rem;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--color-text-secondary);
+}
+

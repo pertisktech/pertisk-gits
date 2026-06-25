@@ -37,7 +37,7 @@ export function LoginPage() {
     setError(null)
     try {
       const response = await api.login({ login, password })
-      setSession(response.token, response.user)
+      setSession(response.token, { ...response.user, is_super_admin: response.is_super_admin })
       navigate('/dashboard')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')

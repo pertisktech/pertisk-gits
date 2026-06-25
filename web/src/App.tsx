@@ -24,6 +24,11 @@ import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { RegistryPage } from './pages/RegistryPage'
 import { RunnersPage } from './pages/RunnersPage'
+import { SuperAdminRoute } from './routes/SuperAdminRoute'
+import { AdminConfigurationPage } from './pages/admin/AdminConfigurationPage'
+import { AdminHealthPage } from './pages/admin/AdminHealthPage'
+import { AdminSystemPage } from './pages/admin/AdminSystemPage'
+import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { ProtectedRoute } from './routes/ProtectedRoute'
 
 const queryClient = new QueryClient()
@@ -130,7 +135,14 @@ export default function App() {
                   <Route path="/groups/:slug/secrets" element={<GroupSecretsPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
-                  <Route path="/runners" element={<RunnersPage />} />
+                  <Route path="/runners" element={<Navigate to="/admin/runners" replace />} />
+                  <Route element={<SuperAdminRoute />}>
+                    <Route path="/admin" element={<AdminSystemPage />} />
+                    <Route path="/admin/health" element={<AdminHealthPage />} />
+                    <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
+                    <Route path="/admin/users" element={<AdminUsersPage />} />
+                    <Route path="/admin/runners" element={<RunnersPage />} />
+                  </Route>
                   <Route path="/profile" element={<ProfilePage />} />
                   <Route path="/settings/auth" element={<AuthSettingsPage />} />
                   <Route path="/organizations" element={<Navigate to="/groups" replace />} />
