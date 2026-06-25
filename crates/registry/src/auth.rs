@@ -94,16 +94,57 @@ pub fn verify_registry_token(jwt_secret: &str, token: &str) -> anyhow::Result<Re
 }
 
 pub fn parse_scopes(scope: &str) -> Vec<(String, Vec<String>)> {
-    scope
-        .split(',')
-        .filter_map(|part| {
-            let part = part.trim();
-            let rest = part.strip_prefix("repository:")?;
-            let (name, actions) = rest.rsplit_once(':')?;
-            let actions: Vec<String> = actions.split(',').map(str::trim).map(String::from).collect();
-            Some((name.to_string(), actions))
-        })
+    split_scope_entries(scope)
+        .iter()
+        .filter_map(|part| parse_single_scope(part))
         .collect()
+}
+
+fn split_scope_entries(scope: &str) -> Vec<String> {
+    let scope = scope.trim();
+    if scope.is_empty() {
+        return Vec::new();
+    }
+
+    let mut entries = Vec::new();
+    let mut start = 0usize;
+    for (idx, _) in scope.match_indices(",repository:") {
+        entries.push(scope[start..idx].trim().to_string());
+        start = idx + 1;
+    }
+    entries.push(scope[start..].trim().to_string());
+    entries
+}
+
+fn parse_single_scope(part: &str) -> Option<(String, Vec<String>)> {
+    let part = part.trim();
+    let rest = part.strip_prefix("repository:")?;
+    let (name, actions) = rest.rsplit_once(':')?;
+    let actions: Vec<String> = actions.split(',').map(str::trim).map(String::from).collect();
+    Some((name.to_string(), actions))
+}
+
+/// Docker may send duplicate `scope` query params; merge actions per repository name.
+pub fn merge_scopes(scopes: Vec<(String, Vec<String>)>) -> Vec<(String, Vec<String>)> {
+    use std::collections::{HashMap, HashSet};
+
+    let mut merged: HashMap<String, HashSet<String>> = HashMap::new();
+    for (name, actions) in scopes {
+        merged.entry(name).or_default().extend(actions);
+    }
+    merged
+        .into_iter()
+        .map(|(name, actions)| (name, actions.into_iter().collect()))
+        .collect()
+}
+
+pub fn parse_scope_params(params: &[String]) -> Vec<(String, Vec<String>)> {
+    merge_scopes(
+        params
+            .iter()
+            .flat_map(|scope| parse_scopes(scope))
+            .collect(),
+    )
 }
 
 pub async fn authorize_scopes(
@@ -180,4 +221,30 @@ pub fn registry_unauthorized(
         unauthorized_headers(token_url, service_name, &scope),
         "Unauthorized".into(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_combined_scope_string() {
+        let scopes = parse_scopes("repository:node-js/node-express:pull,push");
+        assert_eq!(scopes.len(), 1);
+        assert_eq!(scopes[0].0, "node-js/node-express");
+        assert_eq!(scopes[0].1, vec!["pull", "push"]);
+    }
+
+    #[test]
+    fn parse_duplicate_docker_scope_params() {
+        let params = vec![
+            "repository:node-js/node-express:pull".into(),
+            "repository:node-js/node-express:pull,push".into(),
+        ];
+        let merged = parse_scope_params(&params);
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].0, "node-js/node-express");
+        assert!(merged[0].1.contains(&"pull".to_string()));
+        assert!(merged[0].1.contains(&"push".to_string()));
+    }
 }

@@ -35,3 +35,4 @@ uuid = { workspace = true }
 aws-config = { version = "1", features = ["behavior-version-latest"] }
 aws-credential-types = "1"
 aws-sdk-s3 = { version = "1", features = ["behavior-version-latest"] }
+url = "2"
