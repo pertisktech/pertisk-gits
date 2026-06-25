@@ -27,7 +27,7 @@ jobs:
 
   build-package:
     runs-on: docker
-    needs: []
+    needs: ["build-runner"]
     timeout_minutes: 60
     steps:
       - name: Preflight
