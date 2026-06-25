@@ -18,3 +18,4 @@ pkg-pertisk-runner/
 pertisk-runner-linux-*
 pertisk-worker-linux-*
 pertisk-worker-linux-amd64
+release-test
