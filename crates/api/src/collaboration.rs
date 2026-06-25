@@ -1101,6 +1101,30 @@ async fn merge_pull_request(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
+    let _ = crate::audit::record_audit_event(
+        &state.pool,
+        crate::audit::AuditEventInput {
+            organization_id: Some(repo.organization_id),
+            actor_user_id: Some(auth.user_id),
+            event_type: pertisk_domain::models::AuditEventType::Merge,
+            action: format!(
+                "merged pull request #{} ({strategy})",
+                existing.number
+            ),
+            resource_type: Some("pull_request".into()),
+            resource_id: Some(existing.id.to_string()),
+            metadata: Some(serde_json::json!({
+                "pull_number": existing.number,
+                "merge_strategy": strategy,
+                "merge_commit_sha": merge_sha,
+                "repo_slug": repo_slug,
+            })),
+            ip_address: None,
+            user_agent: None,
+        },
+    )
+    .await;
+
     Ok(Json(MergePullRequestResponse {
         merge_commit_sha: merge_sha,
         pull_request: pull,

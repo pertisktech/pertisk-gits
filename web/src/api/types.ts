@@ -370,3 +370,75 @@ export interface RegistryGcReport {
   blobs_removed: number
   upload_files_removed: number
 }
+
+export type AuthProviderType = 'oidc' | 'saml' | 'ldap'
+
+export interface AuthProviderPublic {
+  id: string
+  name: string
+  provider_type: AuthProviderType
+}
+
+export interface AuthProviderAdmin {
+  id: string
+  name: string
+  provider_type: AuthProviderType
+  enabled: boolean
+  issuer_url: string | null
+  client_id: string | null
+  has_client_secret: boolean
+  scopes: string
+  idp_entity_id: string | null
+  idp_sso_url: string | null
+  has_idp_certificate: boolean
+  sp_entity_id: string | null
+  ldap_url: string | null
+  ldap_bind_dn: string | null
+  has_ldap_bind_password: boolean
+  ldap_base_dn: string | null
+  ldap_user_filter: string
+  ldap_email_attr: string
+  ldap_display_name_attr: string
+  ldap_username_attr: string
+  ldap_group_filter: string
+  created_at: string
+  updated_at: string
+  ldap_mappings?: LdapGroupMapping[]
+}
+
+export interface LdapGroupMapping {
+  id: string
+  provider_id: string
+  ldap_group_dn: string
+  organization_id: string
+  org_role: 'owner' | 'admin' | 'member'
+  created_at: string
+  organization_slug: string
+  organization_name: string
+}
+
+export type AuditEventType =
+  | 'login'
+  | 'sso_login'
+  | 'repo_access'
+  | 'permission_change'
+  | 'merge'
+
+export interface AuditEvent {
+  id: string
+  organization_id: string | null
+  actor: User | null
+  event_type: AuditEventType
+  action: string
+  resource_type: string | null
+  resource_id: string | null
+  metadata: Record<string, unknown>
+  ip_address: string | null
+  user_agent: string | null
+  created_at: string
+}
+
+export interface AuditListResponse {
+  events: AuditEvent[]
+  total: number
+}

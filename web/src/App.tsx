@@ -3,10 +3,13 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-
 import { AuthProvider } from './auth/AuthContext'
 import { AppLayout } from './components/AppLayout'
 import { ThemeProvider } from './context/ThemeContext'
+import { AuthCallbackPage } from './pages/AuthCallbackPage'
+import { AuthSettingsPage } from './pages/AuthSettingsPage'
 import { CommitDetailPage } from './pages/CommitDetailPage'
 import { IssueDetailPage } from './pages/IssueDetailPage'
 import { PullRequestDetailPage } from './pages/PullRequestDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
+import { GroupAuditPage } from './pages/GroupAuditPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupMembersPage } from './pages/GroupMembersPage'
 import { GroupsPage } from './pages/GroupsPage'
@@ -30,6 +33,8 @@ const RESERVED_PATHS = new Set([
   'groups',
   'runners',
   'profile',
+  'settings',
+  'auth',
   'organizations',
   'api',
   'health',
@@ -69,6 +74,7 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
+              <Route path="/auth/callback" element={<AuthCallbackPage />} />
               <Route element={<AppLayout />}>
                 <Route
                   path="/groups/:slug/projects/:projectSlug/commit/:commitSha"
@@ -117,10 +123,12 @@ export default function App() {
                   <Route path="/groups/:slug/registry" element={<RegistryPage />} />
                   <Route path="/groups/:slug/registry/:imageName" element={<RegistryPage />} />
                   <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
+                  <Route path="/groups/:slug/audit" element={<GroupAuditPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
                   <Route path="/runners" element={<RunnersPage />} />
                   <Route path="/profile" element={<ProfilePage />} />
+                  <Route path="/settings/auth" element={<AuthSettingsPage />} />
                   <Route path="/organizations" element={<Navigate to="/groups" replace />} />
                   <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />
                 </Route>

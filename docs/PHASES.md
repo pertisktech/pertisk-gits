@@ -152,18 +152,24 @@ See [docs/REGISTRY.md](./REGISTRY.md)
 
 ---
 
-## Phase 6 — SSO/LDAP & Audit Logs
+## Phase 6 — SSO/LDAP & Audit Logs (Done)
 
-### SSO/LDAP
-- OIDC (Google, Azure AD, Okta)
-- SAML 2.0
-- LDAP bind + group → team mapping
-- JIT user provisioning
+**Goal:** Enterprise IdP login and org audit trail.
 
-### Audit Logs
-- Append-only `audit_events` table
-- Events: login, repo access, permission changes, merges
-- Org admin UI: filter, export CSV
+| Component | Status |
+|-----------|--------|
+| OIDC (Google, Azure AD, Okta) | Done (PKCE, JIT) |
+| SAML 2.0 | Done (MVP — enable `SAML_SKIP_SIGNATURE_VERIFY=1` for dev) |
+| LDAP bind + group → team mapping | Done |
+| JIT user provisioning | Done |
+| Append-only `audit_events` | Done |
+| Events: login, SSO, permissions, merges | Done |
+| Org admin UI: filter, export CSV | Done |
+| Provider admin UI (`/settings/auth`) | Done |
+
+See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
+
+**Tables:** `auth_providers`, `ldap_group_mappings`, `user_external_identities`, `audit_events`
 
 ---
 

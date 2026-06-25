@@ -82,6 +82,22 @@ async fn add_organization_member(
         return Err(DomainError::Conflict("user is already a group member".into()).into());
     }
 
+    let _ = crate::audit::record_audit_event(
+        &state.pool,
+        crate::audit::AuditEventInput {
+            organization_id: Some(org.id),
+            actor_user_id: Some(auth.user_id),
+            event_type: pertisk_domain::models::AuditEventType::PermissionChange,
+            action: format!("added @{} as {role:?}", user.username),
+            resource_type: Some("organization_member".into()),
+            resource_id: Some(user.id.to_string()),
+            metadata: Some(serde_json::json!({ "role": role })),
+            ip_address: None,
+            user_agent: None,
+        },
+    )
+    .await;
+
     Ok((
         StatusCode::CREATED,
         Json(OrgMemberResponse {
@@ -132,6 +148,22 @@ async fn update_organization_member(
 
     let user = find_user_by_id(&state.pool, target_user_id).await?;
 
+    let _ = crate::audit::record_audit_event(
+        &state.pool,
+        crate::audit::AuditEventInput {
+            organization_id: Some(org.id),
+            actor_user_id: Some(auth.user_id),
+            event_type: pertisk_domain::models::AuditEventType::PermissionChange,
+            action: format!("updated @{} role to {:?}", user.username, body.role),
+            resource_type: Some("organization_member".into()),
+            resource_id: Some(user.id.to_string()),
+            metadata: Some(serde_json::json!({ "role": body.role })),
+            ip_address: None,
+            user_agent: None,
+        },
+    )
+    .await;
+
     Ok(Json(OrgMemberResponse {
         user: user.into_public(),
         role: body.role,
@@ -158,6 +190,8 @@ async fn remove_organization_member(
         ensure_org_has_other_owner(&state.pool, org.id, target_user_id).await?;
     }
 
+    let target_user = find_user_by_id(&state.pool, target_user_id).await?;
+
     sqlx::query(
         r#"
         DELETE FROM organization_members
@@ -169,6 +203,22 @@ async fn remove_organization_member(
     .execute(&state.pool)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let _ = crate::audit::record_audit_event(
+        &state.pool,
+        crate::audit::AuditEventInput {
+            organization_id: Some(org.id),
+            actor_user_id: Some(auth.user_id),
+            event_type: pertisk_domain::models::AuditEventType::PermissionChange,
+            action: format!("removed @{} from group", target_user.username),
+            resource_type: Some("organization_member".into()),
+            resource_id: Some(target_user_id.to_string()),
+            metadata: None,
+            ip_address: None,
+            user_agent: None,
+        },
+    )
+    .await;
 
     Ok(StatusCode::NO_CONTENT)
 }

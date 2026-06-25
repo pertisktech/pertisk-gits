@@ -45,7 +45,7 @@ pub async fn authenticate_basic(
     username: &str,
     password: &str,
 ) -> anyhow::Result<Option<AuthUser>> {
-    let user = sqlx::query_as::<_, (Uuid, String, String)>(
+    let user = sqlx::query_as::<_, (Uuid, String, Option<String>)>(
         r#"
         SELECT id, username, password_hash
         FROM users
@@ -60,7 +60,11 @@ pub async fn authenticate_basic(
         return Ok(None);
     };
 
-    if !verify_password(password, &password_hash)? {
+    let Some(hash) = password_hash else {
+        return Ok(None);
+    };
+
+    if !verify_password(password, &hash)? {
         return Ok(None);
     }
 

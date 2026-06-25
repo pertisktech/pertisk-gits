@@ -32,6 +32,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 mod artifacts;
+mod audit;
 mod collaboration;
 mod cicd;
 mod config;
@@ -39,6 +40,7 @@ mod db;
 mod password;
 mod permissions;
 mod registry;
+mod sso;
 mod version;
 
 use config::Config;
@@ -144,6 +146,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/health", get(health))
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
+        .merge(sso::sso_routes())
         .route("/me", get(me))
         .route("/users/search", get(search_users))
         .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
@@ -162,6 +165,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(collaboration::collaboration_write_routes())
         .merge(cicd::cicd_write_routes())
         .merge(registry::registry_write_routes())
+        .merge(audit::audit_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
     let api_routes = Router::new()
@@ -377,8 +381,11 @@ async fn login(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::Unauthorized)?;
 
-    let valid = verify_password(&body.password, &user.password_hash)
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    let valid = match &user.password_hash {
+        Some(hash) => verify_password(&body.password, hash)
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?,
+        None => false,
+    };
 
     if !valid {
         return Err(DomainError::Unauthorized.into());
@@ -386,6 +393,22 @@ async fn login(
 
     let token = create_token(user.id, &user.username, &state.config.jwt_secret, 72)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    audit::record_audit_event(
+        &state.pool,
+        audit::AuditEventInput {
+            organization_id: None,
+            actor_user_id: Some(user.id),
+            event_type: pertisk_domain::models::AuditEventType::Login,
+            action: "password login".into(),
+            resource_type: Some("user".into()),
+            resource_id: Some(user.id.to_string()),
+            metadata: None,
+            ip_address: None,
+            user_agent: None,
+        },
+    )
+    .await?;
 
     Ok(Json(AuthResponse {
         token,
@@ -1310,6 +1333,11 @@ async fn auth_middleware(
         || path.ends_with("/health/live")
         || path.ends_with("/auth/register")
         || path.ends_with("/auth/login")
+        || path.ends_with("/auth/providers")
+        || path.contains("/auth/oidc/")
+        || path.ends_with("/auth/oidc/callback")
+        || path.contains("/auth/saml/")
+        || path.contains("/auth/ldap/")
     {
         return Ok(next.run(req).await);
     }

@@ -4,13 +4,33 @@ use sqlx::FromRow;
 use uuid::Uuid;
 use validator::Validate;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "auth_provider_type", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum AuthProviderType {
+    Oidc,
+    Saml,
+    Ldap,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "audit_event_type", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum AuditEventType {
+    Login,
+    SsoLogin,
+    RepoAccess,
+    PermissionChange,
+    Merge,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,
     pub username: String,
     pub email: String,
     #[serde(skip_serializing)]
-    pub password_hash: String,
+    pub password_hash: Option<String>,
     pub display_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -410,4 +430,131 @@ pub struct CreatePullRequestReviewRequest {
 #[derive(Debug, Deserialize)]
 pub struct MergePullRequestRequest {
     pub merge_strategy: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AuthProvider {
+    pub id: Uuid,
+    pub name: String,
+    pub provider_type: AuthProviderType,
+    pub enabled: bool,
+    pub issuer_url: Option<String>,
+    pub client_id: Option<String>,
+    #[serde(skip_serializing)]
+    pub client_secret: Option<String>,
+    pub scopes: String,
+    pub idp_entity_id: Option<String>,
+    pub idp_sso_url: Option<String>,
+    #[serde(skip_serializing)]
+    pub idp_certificate: Option<String>,
+    pub sp_entity_id: Option<String>,
+    pub ldap_url: Option<String>,
+    pub ldap_bind_dn: Option<String>,
+    #[serde(skip_serializing)]
+    pub ldap_bind_password: Option<String>,
+    pub ldap_base_dn: Option<String>,
+    pub ldap_user_filter: String,
+    pub ldap_email_attr: String,
+    pub ldap_display_name_attr: String,
+    pub ldap_username_attr: String,
+    pub ldap_group_filter: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct LdapGroupMapping {
+    pub id: Uuid,
+    pub provider_id: Uuid,
+    pub ldap_group_dn: String,
+    pub organization_id: Uuid,
+    pub org_role: OrgRole,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AuditEvent {
+    pub id: Uuid,
+    pub organization_id: Option<Uuid>,
+    pub actor_user_id: Option<Uuid>,
+    pub event_type: AuditEventType,
+    pub action: String,
+    pub resource_type: Option<String>,
+    pub resource_id: Option<String>,
+    pub metadata: serde_json::Value,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct AuthProviderPublic {
+    pub id: Uuid,
+    pub name: String,
+    pub provider_type: AuthProviderType,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateAuthProviderRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: String,
+    pub provider_type: AuthProviderType,
+    pub enabled: Option<bool>,
+    pub issuer_url: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub scopes: Option<String>,
+    pub idp_entity_id: Option<String>,
+    pub idp_sso_url: Option<String>,
+    pub idp_certificate: Option<String>,
+    pub sp_entity_id: Option<String>,
+    pub ldap_url: Option<String>,
+    pub ldap_bind_dn: Option<String>,
+    pub ldap_bind_password: Option<String>,
+    pub ldap_base_dn: Option<String>,
+    pub ldap_user_filter: Option<String>,
+    pub ldap_email_attr: Option<String>,
+    pub ldap_display_name_attr: Option<String>,
+    pub ldap_username_attr: Option<String>,
+    pub ldap_group_filter: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateAuthProviderRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: Option<String>,
+    pub enabled: Option<bool>,
+    pub issuer_url: Option<String>,
+    pub client_id: Option<String>,
+    pub client_secret: Option<String>,
+    pub scopes: Option<String>,
+    pub idp_entity_id: Option<String>,
+    pub idp_sso_url: Option<String>,
+    pub idp_certificate: Option<String>,
+    pub sp_entity_id: Option<String>,
+    pub ldap_url: Option<String>,
+    pub ldap_bind_dn: Option<String>,
+    pub ldap_bind_password: Option<String>,
+    pub ldap_base_dn: Option<String>,
+    pub ldap_user_filter: Option<String>,
+    pub ldap_email_attr: Option<String>,
+    pub ldap_display_name_attr: Option<String>,
+    pub ldap_username_attr: Option<String>,
+    pub ldap_group_filter: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateLdapGroupMappingRequest {
+    #[validate(length(min = 1))]
+    pub ldap_group_dn: String,
+    pub organization_id: Uuid,
+    pub org_role: Option<OrgRole>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct LdapLoginRequest {
+    #[validate(length(min = 1))]
+    pub username: String,
+    #[validate(length(min = 1))]
+    pub password: String,
 }

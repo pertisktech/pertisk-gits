@@ -705,4 +705,123 @@ export const api = {
       { method: 'POST', body: JSON.stringify({}) },
       token,
     ),
+
+  listAuthProviders: () =>
+    request<import('./types').AuthProviderPublic[]>('/auth/providers'),
+
+  ldapLogin: (providerId: string, payload: { username: string; password: string }) =>
+    request<AuthResponse>(`/auth/ldap/${providerId}/login`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  listAdminAuthProviders: (token: string) =>
+    request<{ provider: import('./types').AuthProviderAdmin; ldap_mappings: import('./types').LdapGroupMapping[] | null }[]>(
+      '/admin/auth-providers',
+      {},
+      token,
+    ),
+
+  createAuthProvider: (
+    token: string,
+    payload: Record<string, unknown>,
+  ) =>
+    request<{ provider: import('./types').AuthProviderAdmin; ldap_mappings: null }>(
+      '/admin/auth-providers',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  updateAuthProvider: (
+    token: string,
+    providerId: string,
+    payload: Record<string, unknown>,
+  ) =>
+    request<{ provider: import('./types').AuthProviderAdmin; ldap_mappings: import('./types').LdapGroupMapping[] | null }>(
+      `/admin/auth-providers/${providerId}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteAuthProvider: async (token: string, providerId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/admin/auth-providers/${providerId}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      throw new Error(typeof body.error === 'string' ? body.error : 'Request failed')
+    }
+  },
+
+  createLdapGroupMapping: (
+    token: string,
+    providerId: string,
+    payload: { ldap_group_dn: string; organization_id: string; org_role?: string },
+  ) =>
+    request<import('./types').LdapGroupMapping>(
+      `/admin/auth-providers/${providerId}/ldap-mappings`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteLdapGroupMapping: async (token: string, providerId: string, mappingId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/admin/auth-providers/${providerId}/ldap-mappings/${mappingId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      throw new Error(typeof body.error === 'string' ? body.error : 'Request failed')
+    }
+  },
+
+  listAuditEvents: (
+    token: string,
+    orgSlug: string,
+    params?: {
+      event_type?: string
+      from?: string
+      to?: string
+      limit?: number
+      offset?: number
+    },
+  ) => {
+    const search = new URLSearchParams()
+    if (params?.event_type) search.set('event_type', params.event_type)
+    if (params?.from) search.set('from', params.from)
+    if (params?.to) search.set('to', params.to)
+    if (params?.limit) search.set('limit', String(params.limit))
+    if (params?.offset) search.set('offset', String(params.offset))
+    const qs = search.toString()
+    return request<import('./types').AuditListResponse>(
+      `/organizations/${orgSlug}/audit-events${qs ? `?${qs}` : ''}`,
+      {},
+      token,
+    )
+  },
+
+  exportAuditEvents: async (
+    token: string,
+    orgSlug: string,
+    params?: { event_type?: string; from?: string; to?: string },
+  ) => {
+    const search = new URLSearchParams()
+    if (params?.event_type) search.set('event_type', params.event_type)
+    if (params?.from) search.set('from', params.from)
+    if (params?.to) search.set('to', params.to)
+    const qs = search.toString()
+    const headers = new Headers()
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/audit-events/export${qs ? `?${qs}` : ''}`,
+      { headers },
+    )
+    if (!response.ok) throw new Error('Export failed')
+    return response.text()
+  },
 }

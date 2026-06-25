@@ -1,4 +1,4 @@
-import { FolderGit2, Package, Users } from 'lucide-react'
+import { FolderGit2, Package, ScrollText, Users } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import type { GroupTab } from '../lib/groupRoute'
@@ -9,6 +9,7 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'repositories', label: 'Repositories', icon: FolderGit2 },
   { id: 'registry', label: 'Registry', icon: Package },
   { id: 'members', label: 'Members', icon: Users },
+  { id: 'audit', label: 'Audit log', icon: ScrollText },
 ]
 
 export function GroupSubnav({ orgSlug, activeTab }: { orgSlug: string; activeTab: GroupTab }) {
