@@ -102,7 +102,7 @@ Self-hosted Git platform (GitHub / GitLab / Gitea alternative) built with **Rust
 | Pipeline config | `.pertisk-ci.yaml` in repo | Done |
 | Scheduler | `pertisk-worker` + API flush on push | Done |
 | Runners | `pertisk-runner` shell executor + metrics | Done (MVP) |
-| Live logs | Runner appends log after each step | Done |
+| Live logs | Runner streams stdout/stderr during each step | Done |
 | Optional jobs | `required: false` skips merge gate | Done |
 | Artifacts | Local filesystem (`ARTIFACTS_ROOT`) + download UI | Done |
 | Status API | Commit status + PR merge gate | Done |

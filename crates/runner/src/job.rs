@@ -3,11 +3,13 @@ use std::time::Instant;
 
 use chrono::Utc;
 use pertisk_cicd::metrics::{JobMetrics, StepTiming};
-use pertisk_cicd::{ShellExecutor, StepOutput};
+use pertisk_cicd::ShellExecutor;
 use tempfile::TempDir;
+use tokio::sync::mpsc;
 
 use crate::api::{PollJobResponse, RunnerApi};
 use crate::artifacts::{upload_artifact_step, upload_declared_artifact};
+use crate::log_stream::LogStreamer;
 use crate::workspace::materialize_workspace;
 
 pub async fn run_job(
@@ -103,11 +105,40 @@ pub async fn run_job(
             continue;
         }
 
+        let step_name = step
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("step-{index}"));
+
+        api.append_log(
+            job.job_id,
+            &format!("=== {step_name} (running)\n"),
+        )
+        .await?;
+
+        let (log_tx, mut log_rx) = mpsc::unbounded_channel::<String>();
+        let mut streamer = LogStreamer::new(api, job.job_id);
+        let drain_logs = async {
+            while let Some(chunk) = log_rx.recv().await {
+                streamer.push(&chunk).await;
+            }
+            streamer.flush().await;
+        };
+
         let started_at = Utc::now();
-        let output = executor
-            .run_step(&workspace, index, step, &job_env)
-            .await;
+        let output = tokio::join!(
+            drain_logs,
+            executor.run_step_streaming(&workspace, index, step, &job_env, Some(log_tx)),
+        )
+        .1;
         let finished_at = Utc::now();
+
+        api.append_log(
+            job.job_id,
+            &format!("\n=== {step_name} (exit {})\n", output.exit_code),
+        )
+        .await?;
+
         timings.push(StepTiming {
             name: output.name.clone(),
             duration_ms: output.duration.as_millis() as u64,
@@ -115,8 +146,6 @@ pub async fn run_job(
             started_at,
             finished_at,
         });
-        api.append_log(job.job_id, &format_step_log(&output))
-            .await?;
         if output.exit_code != 0 {
             failed = true;
             break;
@@ -156,21 +185,4 @@ pub async fn run_job(
         "job finished"
     );
     Ok(())
-}
-
-fn format_step_log(output: &StepOutput) -> String {
-    let mut log = format!("=== {} (exit {})\n", output.name, output.exit_code);
-    if !output.stdout.is_empty() {
-        log.push_str(&output.stdout);
-        if !output.stdout.ends_with('\n') {
-            log.push('\n');
-        }
-    }
-    if !output.stderr.is_empty() {
-        log.push_str(&output.stderr);
-        if !output.stderr.ends_with('\n') {
-            log.push('\n');
-        }
-    }
-    log
 }

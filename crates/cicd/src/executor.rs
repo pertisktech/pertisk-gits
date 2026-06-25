@@ -1,8 +1,11 @@
 use std::path::Path;
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
+use tokio::sync::mpsc;
 
 use crate::config::Step;
 use crate::metrics::{JobMetrics, StepTiming};
@@ -92,6 +95,124 @@ impl ShellExecutor {
                 stderr: format!("failed to spawn step: {err}"),
                 duration,
             },
+        }
+    }
+
+    /// Run a step and stream stdout/stderr chunks to `log_tx` while the process runs.
+    pub async fn run_step_streaming(
+        &self,
+        workspace: &Path,
+        index: usize,
+        step: &Step,
+        job_env: &[(&str, String)],
+        log_tx: Option<mpsc::UnboundedSender<String>>,
+    ) -> StepOutput {
+        let name = step
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("step-{index}"));
+        let cwd = step
+            .working_directory
+            .as_ref()
+            .map(|rel| workspace.join(rel))
+            .unwrap_or_else(|| workspace.to_path_buf());
+
+        let started = Instant::now();
+        let mut command = Command::new(&self.shell);
+        command
+            .arg("-lc")
+            .arg(&step.run)
+            .current_dir(cwd)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .env("CI", "true")
+            .env("PERTISK_CI", "true");
+
+        for (key, value) in job_env {
+            command.env(key, value);
+        }
+
+        for (key, value) in &step.env {
+            command.env(key, value);
+        }
+
+        let mut child = match command.spawn() {
+            Ok(child) => child,
+            Err(err) => {
+                return StepOutput {
+                    name,
+                    exit_code: 127,
+                    stdout: String::new(),
+                    stderr: format!("failed to spawn step: {err}"),
+                    duration: started.elapsed(),
+                };
+            }
+        };
+
+        let (chunk_tx, mut chunk_rx) = mpsc::unbounded_channel();
+        if let Some(stdout) = child.stdout.take() {
+            let tx = chunk_tx.clone();
+            tokio::spawn(async move {
+                pipe_reader(stdout, tx).await;
+            });
+        }
+        if let Some(stderr) = child.stderr.take() {
+            let tx = chunk_tx.clone();
+            tokio::spawn(async move {
+                pipe_reader(stderr, tx).await;
+            });
+        }
+        drop(chunk_tx);
+
+        let forward = async {
+            let mut combined = String::new();
+            while let Some(chunk) = chunk_rx.recv().await {
+                if let Some(ref log_tx) = log_tx {
+                    let _ = log_tx.send(chunk.clone());
+                }
+                combined.push_str(&chunk);
+            }
+            combined
+        };
+
+        let (combined, status) = tokio::join!(forward, child.wait());
+
+        let duration = started.elapsed();
+        let exit_code = match status {
+            Ok(status) => status.code().unwrap_or(1),
+            Err(err) => {
+                return StepOutput {
+                    name,
+                    exit_code: 127,
+                    stdout: combined,
+                    stderr: format!("failed to wait for step: {err}"),
+                    duration,
+                };
+            }
+        };
+
+        StepOutput {
+            name,
+            exit_code,
+            stdout: combined,
+            stderr: String::new(),
+            duration,
+        }
+    }
+}
+
+async fn pipe_reader(mut reader: impl AsyncReadExt + Unpin, tx: mpsc::UnboundedSender<String>) {
+    let mut buf = [0u8; 4096];
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) => break,
+            Ok(n) => {
+                let chunk = String::from_utf8_lossy(&buf[..n]).into_owned();
+                if tx.send(chunk).is_err() {
+                    break;
+                }
+            }
+            Err(_) => break,
         }
     }
 }

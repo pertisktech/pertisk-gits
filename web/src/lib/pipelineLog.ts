@@ -19,12 +19,30 @@ export function parseLogSteps(logText: string): LogStepSection[] {
   let current: LogStepSection | null = null
 
   for (const line of logText.split('\n')) {
-    const match = line.match(/^=== (.+?) \(exit (\d+)\)$/)
-    if (match) {
+    const exitMatch = line.match(/^=== (.+?) \(exit (\d+)\)$/)
+    const runningMatch = line.match(/^=== (.+?) \(running\)$/)
+
+    if (runningMatch) {
       if (current) sections.push(current)
       current = {
-        name: match[1],
-        exitCode: Number(match[2]),
+        name: runningMatch[1],
+        exitCode: null,
+        text: '',
+      }
+      continue
+    }
+
+    if (exitMatch) {
+      const name = exitMatch[1]
+      const exitCode = Number(exitMatch[2])
+      if (current && current.name === name && current.exitCode === null) {
+        current.exitCode = exitCode
+        continue
+      }
+      if (current) sections.push(current)
+      current = {
+        name,
+        exitCode,
         text: '',
       }
       continue
@@ -83,7 +101,10 @@ export function stepLogText(job: JobRun, stepKey: string | null): string {
 
   const section = parseLogSteps(job.log_text).find((step) => step.name === stepKey)
   if (section) {
-    const header = `=== ${section.name} (exit ${section.exitCode ?? '?'})`
+    const header =
+      section.exitCode === null
+        ? `=== ${section.name} (running)`
+        : `=== ${section.name} (exit ${section.exitCode})`
     return section.text.trim() ? `${header}\n${section.text.trim()}` : header
   }
 

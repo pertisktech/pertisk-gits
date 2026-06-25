@@ -2,6 +2,7 @@ mod api;
 mod artifacts;
 mod host;
 mod job;
+mod log_stream;
 mod version;
 mod workspace;
 

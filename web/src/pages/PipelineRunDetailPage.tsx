@@ -50,7 +50,7 @@ export function PipelineRunDetailPage() {
     refetchInterval: (query) => {
       const item = query.state.data
       if (!item) return false
-      return isRunInProgress(item) ? 4000 : false
+      return isRunInProgress(item) ? 2000 : false
     },
   })
 

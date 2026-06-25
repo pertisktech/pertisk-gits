@@ -228,7 +228,7 @@ If the PR head commit has **required** `commit_statuses` (from CI jobs with `req
 
 ### Live logs
 
-While a job runs, the runner appends log output to the API after **each step** completes (`POST /runner/jobs/{id}/log`). The pipeline detail page polls every few seconds, so logs update during the run without waiting for job completion.
+While a step runs, the runner streams stdout/stderr to the API in ~400ms chunks (`POST /runner/jobs/{id}/log`). Each step starts with `=== name (running)` and ends with `=== name (exit N)`. The pipeline detail page polls every 2 seconds while a run is in progress.
 
 ### Re-run
 
@@ -269,7 +269,6 @@ Paths are relative to the job workspace. The runner archives each path with `tar
 
 - Container-isolated runners (currently shell on host)
 - S3-compatible object storage backend (MinIO is in `deploy/docker-compose.yml` for future use)
-- Intra-step log streaming (stdout/stderr while a step is running)
 - Per-branch required checks configuration in repo settings (merge gate uses `required` per job in YAML today)
 
 See `docs/PHASES.md` Phase 4 for the full roadmap.
