@@ -6,10 +6,14 @@ pub mod routes;
 pub mod storage;
 
 use axum::{
+    extract::DefaultBodyLimit,
     routing::{get, patch, post},
     Router,
 };
 use routes::v2::RegistryState;
+
+/// Docker layers can be hundreds of MB; axum's default limit is 2 MiB.
+const MAX_REGISTRY_BODY_BYTES: usize = 5 * 1024 * 1024 * 1024;
 
 pub fn router() -> Router<RegistryState> {
     Router::new()
@@ -33,6 +37,7 @@ pub fn router() -> Router<RegistryState> {
             "/v2/{org}/{image}/blobs/uploads/{upload_id}",
             patch(routes::v2::patch_upload).put(routes::v2::complete_upload),
         )
+        .layer(DefaultBodyLimit::max(MAX_REGISTRY_BODY_BYTES))
 }
 
 pub async fn build_state(config: &config::RegistryConfig, pool: sqlx::PgPool) -> anyhow::Result<RegistryState> {

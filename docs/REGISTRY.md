@@ -83,6 +83,21 @@ docker push -H "X-Pertisk-Commit-Sha: $CI_COMMIT_SHA" ...
 - `migrations/20250630100000_phase5_registry.sql` — core tables
 - `migrations/20250630120000_registry_extras.sql` — `repository_id`, `commit_sha`
 
+## Verify (bypass proxy)
+
+On the server, a large POST should **not** return 413 from pertisk-gits itself:
+
+```bash
+# expect 401 (auth required), NOT 413
+curl -s -o /dev/null -w "%{http_code}\n" \
+  -X POST --data-binary @/tmp/15mb.bin \
+  "http://127.0.0.1:8080/v2/test/image/blobs/uploads/?digest=sha256:abc"
+```
+
+If localhost returns 401 but HTTPS returns 413, the limit is in **ingress/proxy**, not pertisk-gits.
+
+---
+
 ## Not yet implemented
 
 - Public anonymous pulls

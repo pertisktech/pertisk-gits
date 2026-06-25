@@ -7,9 +7,12 @@
 | `/api/v1/*` | REST API |
 | `/health`, `/health/live` | Health probes (no auth) |
 | `/{org}/{repo}.git/*` | Git Smart HTTP |
+| `/v2/*`, `/service/token` | OCI container registry |
 | `/*` | React SPA (`WEB_DIST`) |
 
 The reverse proxy must forward **all** requests for your Git host to `pertisk-gits` — not only `/api/v1` or `*.git`.
+
+**Docker registry pushes** send multi‑MB layer blobs on `/v2/.../blobs/uploads/...`. If the proxy or ingress caps request body size (common defaults: **1–10 MiB**), pushes fail with **`413 Payload Too Large`**. Set **unlimited** or **≥ 5 GiB** on the site / ingress (see below).
 
 ## Server config
 
@@ -67,12 +70,32 @@ In the **pertisk-proxy admin UI** → **Sites** → add:
 
 Enable TLS (ACME) for that host. Do **not** split UI and API into different upstreams.
 
+**Registry pushes:** In site settings, set **max request body size** to **0** (unlimited) or at least **5 GiB**. Without this, `docker push` fails around 1–10 MiB with `413 Payload Too Large`.
+
+---
+
+## Kubernetes / nginx ingress
+
+If `gitdev.cloud.pertisk.com` is routed through nginx ingress (not pertisk-proxy on the same host), add annotations:
+
+```yaml
+metadata:
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+```
+
+`proxy-body-size: "0"` disables the body limit. Reload the ingress controller after applying.
+
 ---
 
 ## Caddy
 
 ```caddy
 gitdev.cloud.pertisk.com {
+    request_body {
+        max_size 5GB
+    }
     reverse_proxy 127.0.0.1:8080
 }
 ```
@@ -91,7 +114,8 @@ server {
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        client_max_body_size 0;  # large git pushes
+        client_max_body_size 0;  # git pushes + docker registry layers
+        proxy_request_buffering off;
     }
 }
 ```
