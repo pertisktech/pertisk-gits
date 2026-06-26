@@ -3,7 +3,7 @@ import { Download, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { ImportJobDetail, ImportProvider, RemoteRepo } from '../api/types'
+import type { ImportJobDetail, ImportProvider, RemoteNamespace, RemoteRepo } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { Card } from '../components/Card'
@@ -31,8 +31,11 @@ export function GroupImportPage() {
   const [credentialId, setCredentialId] = useState<string | null>(null)
   const [account, setAccount] = useState<string | null>(null)
   const [remoteRepos, setRemoteRepos] = useState<RemoteRepo[]>([])
+  const [namespaces, setNamespaces] = useState<RemoteNamespace[]>([])
+  const [namespacePath, setNamespacePath] = useState('')
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [importIssues, setImportIssues] = useState(false)
+  const [importPullRequests, setImportPullRequests] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
 
   const { data: members = [] } = useQuery({
@@ -91,6 +94,19 @@ export function GroupImportPage() {
     },
   })
 
+  const discoverPayload = useMemo(() => {
+    const credId = credentialId ?? undefined
+    if (namespacePath) {
+      const ns = namespaces.find((item) => item.path === namespacePath)
+      return {
+        credential_id: credId,
+        namespace: namespacePath,
+        namespace_kind: ns?.kind,
+      }
+    }
+    return { credential_id: credId }
+  }, [credentialId, namespacePath, namespaces])
+
   const discover = useMutation({
     mutationFn: async () => {
       if (pat.trim()) {
@@ -101,15 +117,35 @@ export function GroupImportPage() {
         })
         setCredentialId(saved.id)
         queryClient.invalidateQueries({ queryKey: ['import-credentials', slug] })
-        return api.discoverImportRepos(token!, slug, { credential_id: saved.id })
+        return api.discoverImportRepos(token!, slug, {
+          ...discoverPayload,
+          credential_id: saved.id,
+        })
       }
       if (!credentialId) {
         throw new Error('Enter a personal access token or select a saved credential')
       }
-      return api.discoverImportRepos(token!, slug, { credential_id: credentialId })
+      return api.discoverImportRepos(token!, slug, discoverPayload)
     },
     onSuccess: (result) => {
       setAccount(result.account)
+      setNamespaces(result.namespaces)
+      setRemoteRepos(result.repos)
+      const initial: Record<string, boolean> = {}
+      for (const repo of result.repos) {
+        initial[repo.id] = false
+      }
+      setSelected(initial)
+    },
+  })
+
+  const refreshRepos = useMutation({
+    mutationFn: () => {
+      if (!credentialId) throw new Error('Save credentials before listing repositories')
+      return api.discoverImportRepos(token!, slug, discoverPayload)
+    },
+    onSuccess: (result) => {
+      setNamespaces(result.namespaces)
       setRemoteRepos(result.repos)
       const initial: Record<string, boolean> = {}
       for (const repo of result.repos) {
@@ -137,6 +173,7 @@ export function GroupImportPage() {
       return api.createImportJob(token!, slug, {
         credential_id: id,
         import_issues: importIssues,
+        import_pull_requests: importPullRequests,
         repos,
       })
     },
@@ -145,6 +182,12 @@ export function GroupImportPage() {
       queryClient.invalidateQueries({ queryKey: ['import-jobs', slug] })
     },
   })
+
+  useEffect(() => {
+    if (!credentialId || !account) return
+    refreshRepos.mutate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- refresh when namespace filter changes
+  }, [namespacePath])
 
   const selectedCount = Object.values(selected).filter(Boolean).length
 
@@ -163,7 +206,7 @@ export function GroupImportPage() {
       />
       <PageHeader
         title="Import repositories"
-        subtitle="Mirror projects from GitHub or GitLab into this group. Git history is preserved; issues and merge requests are not imported yet."
+        subtitle="Mirror projects from GitHub or GitLab into this group. Git history is preserved; optionally import issues and open pull/merge requests."
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -299,7 +342,46 @@ export function GroupImportPage() {
             <p className="text-xs text-muted mb-3">
               Signed in as <span className="font-mono">{account}</span> · {remoteRepos.length}{' '}
               repositories
+              {namespacePath ? (
+                <>
+                  {' '}
+                  in <span className="font-mono">{namespacePath}</span>
+                </>
+              ) : null}
             </p>
+          )}
+          {namespaces.length > 0 && (
+            <label className="block text-sm font-medium text-text mb-3">
+              {provider === 'github' ? 'Organization' : 'Group'}
+              <select
+                className={`${fieldClass} mt-1`}
+                value={namespacePath}
+                onChange={(e) => setNamespacePath(e.target.value)}
+                disabled={refreshRepos.isPending}
+              >
+                <option value="">All accessible repositories</option>
+                {namespaces.map((ns) => (
+                  <option key={ns.id} value={ns.path}>
+                    {ns.name}
+                  </option>
+                ))}
+              </select>
+              {credentialId && (
+                <SecondaryButton
+                  type="button"
+                  className="mt-2"
+                  disabled={refreshRepos.isPending}
+                  onClick={() => refreshRepos.mutate()}
+                >
+                  {refreshRepos.isPending ? 'Refreshing…' : 'Refresh list'}
+                </SecondaryButton>
+              )}
+            </label>
+          )}
+          {refreshRepos.error && (
+            <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm mb-3">
+              {(refreshRepos.error as Error).message}
+            </div>
           )}
           {remoteRepos.length > 0 && (
             <div className="space-y-3">
@@ -311,6 +393,45 @@ export function GroupImportPage() {
                 />
                 Import issues, labels, and milestones (open and closed)
               </label>
+              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={importPullRequests}
+                  onChange={(e) => setImportPullRequests(e.target.checked)}
+                />
+                Import open pull/merge requests (title, body, branches)
+              </label>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <SecondaryButton
+                  type="button"
+                  onClick={() => {
+                    const next: Record<string, boolean> = {}
+                    for (const repo of remoteRepos) {
+                      next[repo.id] = true
+                    }
+                    setSelected(next)
+                  }}
+                >
+                  Select all
+                </SecondaryButton>
+                <SecondaryButton
+                  type="button"
+                  onClick={() => {
+                    const next: Record<string, boolean> = {}
+                    for (const repo of remoteRepos) {
+                      next[repo.id] = false
+                    }
+                    setSelected(next)
+                  }}
+                >
+                  Clear
+                </SecondaryButton>
+                {remoteRepos.length > 200 && (
+                  <span className="text-xs text-dashboard-danger">
+                    This list has {remoteRepos.length} repos; import at most 200 per job.
+                  </span>
+                )}
+              </div>
               <div className="max-h-72 overflow-y-auto border border-naturals-n4 rounded-lg divide-y divide-naturals-n4">
                 {remoteRepos.map((repo) => (
                   <label

@@ -46,7 +46,7 @@ impl ImportWorker {
                 FOR UPDATE SKIP LOCKED
             ) picked
             WHERE j.id = picked.id
-            RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text, j.import_issues
+            RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text, j.import_issues, j.import_pull_requests
             "#,
         )
         .fetch_all(&self.pool)
@@ -221,7 +221,7 @@ impl ImportWorker {
         .execute(&self.pool)
         .await?;
 
-        if job.import_issues {
+        if job.import_issues || job.import_pull_requests {
             sqlx::query(
                 r#"
                 UPDATE import_job_repos
@@ -241,6 +241,10 @@ impl ImportWorker {
                 &repo.source_full_name,
                 repository_id,
                 job.created_by,
+                crate::metadata::MetadataImportOptions {
+                    import_issues: job.import_issues,
+                    import_pull_requests: job.import_pull_requests,
+                },
             )
             .await
             {
@@ -249,6 +253,7 @@ impl ImportWorker {
                     labels = stats.labels,
                     milestones = stats.milestones,
                     issues = stats.issues,
+                    pull_requests = stats.pull_requests,
                     "imported repository metadata"
                 ),
                 Err(err) => tracing::warn!(
@@ -562,6 +567,7 @@ struct JobRow {
     #[allow(dead_code)]
     provider: String,
     import_issues: bool,
+    import_pull_requests: bool,
 }
 
 #[derive(sqlx::FromRow)]

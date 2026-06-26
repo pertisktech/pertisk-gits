@@ -19,7 +19,8 @@ use crate::{
 };
 
 use providers::{
-    list_remote_repos, normalize_base_url, slug_from_name, validate_token, RemoteRepo,
+    list_remote_namespaces, list_remote_repos, normalize_base_url, slug_from_name, validate_token,
+    NamespaceFilter, RemoteNamespace, RemoteRepo,
 };
 
 pub fn import_routes() -> Router<AppState> {
@@ -67,11 +68,16 @@ struct DiscoverRequest {
     pub provider: Option<ImportProvider>,
     pub token: Option<String>,
     pub base_url: Option<String>,
+    /// Org login, GitLab group path, or user login for personal repos.
+    pub namespace: Option<String>,
+    /// `personal`, `organization`, or `group` — required when `namespace` is set.
+    pub namespace_kind: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
 struct DiscoverResponse {
     pub account: String,
+    pub namespaces: Vec<RemoteNamespace>,
     pub repos: Vec<RemoteRepo>,
 }
 
@@ -93,6 +99,8 @@ struct CreateImportJobRequest {
     pub repos: Vec<ImportRepoSelection>,
     #[serde(default)]
     pub import_issues: bool,
+    #[serde(default)]
+    pub import_pull_requests: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -240,11 +248,42 @@ async fn discover_repos(
     let account = validate_token(provider, &token, &base_url)
         .await
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
-    let repos = list_remote_repos(provider, &token, &base_url)
+
+    let namespaces = list_remote_namespaces(provider, &token, &base_url, &account)
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    Ok(Json(DiscoverResponse { account, repos }))
+    let namespace_filter = match body.namespace.as_deref().filter(|s| !s.is_empty()) {
+        Some(path) => {
+            let kind = body
+                .namespace_kind
+                .as_deref()
+                .filter(|s| !s.is_empty())
+                .or_else(|| {
+                    namespaces
+                        .iter()
+                        .find(|ns| ns.path == path)
+                        .map(|ns| ns.kind.as_str())
+                })
+                .ok_or_else(|| {
+                    DomainError::Validation(
+                        "namespace_kind is required when filtering by namespace".into(),
+                    )
+                })?;
+            Some(NamespaceFilter { path, kind })
+        }
+        None => None,
+    };
+
+    let repos = list_remote_repos(provider, &token, &base_url, namespace_filter)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(DiscoverResponse {
+        account,
+        namespaces,
+        repos,
+    }))
 }
 
 async fn create_import_job(
@@ -256,8 +295,8 @@ async fn create_import_job(
     if body.repos.is_empty() {
         return Err(DomainError::Validation("select at least one repository".into()).into());
     }
-    if body.repos.len() > 50 {
-        return Err(DomainError::Validation("import at most 50 repositories per job".into()).into());
+    if body.repos.len() > 200 {
+        return Err(DomainError::Validation("import at most 200 repositories per job".into()).into());
     }
 
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
@@ -286,10 +325,10 @@ async fn create_import_job(
 
     let job = sqlx::query_as::<_, ImportJob>(
         r#"
-        INSERT INTO import_jobs (organization_id, created_by, credential_id, provider, import_issues, status)
-        VALUES ($1, $2, $3, $4, $5, 'pending')
+        INSERT INTO import_jobs (organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status)
+        VALUES ($1, $2, $3, $4, $5, $6, 'pending')
         RETURNING
-            id, organization_id, created_by, credential_id, provider, import_issues, status,
+            id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status,
             error_message, started_at, finished_at, created_at, updated_at
         "#,
     )
@@ -298,6 +337,7 @@ async fn create_import_job(
     .bind(body.credential_id)
     .bind(credential.0)
     .bind(body.import_issues)
+    .bind(body.import_pull_requests)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
@@ -406,7 +446,7 @@ async fn list_import_jobs(
     let jobs = sqlx::query_as::<_, ImportJob>(
         r#"
         SELECT
-            id, organization_id, created_by, credential_id, provider, import_issues, status,
+            id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status,
             error_message, started_at, finished_at, created_at, updated_at
         FROM import_jobs
         WHERE organization_id = $1
@@ -433,7 +473,7 @@ async fn get_import_job(
     let job = sqlx::query_as::<_, ImportJob>(
         r#"
         SELECT
-            id, organization_id, created_by, credential_id, provider, import_issues, status,
+            id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status,
             error_message, started_at, finished_at, created_at, updated_at
         FROM import_jobs
         WHERE id = $1 AND organization_id = $2

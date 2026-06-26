@@ -266,10 +266,10 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 | Component | Notes | Status |
 |-----------|-------|--------|
 | Issues + labels + milestones | Map via GitHub/GitLab REST API into Pertisk tables; optional checkbox on import | Done (MVP) |
-| Pull/merge requests | Import open MRs/PRs (title, body, branches); closed history later | Planned |
+| Pull/merge requests | Import open MRs/PRs (title, body, branches); closed history later | Done (MVP) |
 | Wiki pages | Export wiki repo or API → Pertisk wiki (Phase 3) | Deferred |
 | CI config | Detect `.gitlab-ci.yml` / GitHub Actions; suggest `.pertisk-ci.yaml` conversion | Planned |
-| Bulk import | Entire GitHub org or GitLab group in one job | Planned |
+| Bulk import | Entire GitHub org or GitLab group in one job | Done (MVP) |
 | Registry images | Optional mirror of container images to Pertisk registry | Deferred |
 
 ### Technical notes

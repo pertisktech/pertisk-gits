@@ -580,6 +580,13 @@ export interface ImportCredential {
   created_at: string
 }
 
+export interface RemoteNamespace {
+  id: string
+  path: string
+  name: string
+  kind: 'personal' | 'organization' | 'group'
+}
+
 export interface RemoteRepo {
   id: string
   full_name: string
@@ -597,6 +604,7 @@ export interface ImportJob {
   credential_id: string
   provider: ImportProvider
   import_issues: boolean
+  import_pull_requests: boolean
   status: ImportJobStatus
   error_message: string | null
   started_at: string | null

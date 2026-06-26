@@ -22,6 +22,7 @@ import type {
   ImportCredential,
   ImportJob,
   ImportJobDetail,
+  RemoteNamespace,
   RemoteRepo,
   RegisterRunnerResponse,
   RepoBrowser,
@@ -1033,9 +1034,11 @@ export const api = {
       provider?: 'github' | 'gitlab'
       token?: string
       base_url?: string
+      namespace?: string
+      namespace_kind?: 'personal' | 'organization' | 'group'
     },
   ) =>
-    request<{ account: string; repos: RemoteRepo[] }>(
+    request<{ account: string; namespaces: RemoteNamespace[]; repos: RemoteRepo[] }>(
       `/organizations/${orgSlug}/import/discover`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
@@ -1047,6 +1050,7 @@ export const api = {
     payload: {
       credential_id: string
       import_issues?: boolean
+      import_pull_requests?: boolean
       repos: Array<{
         source_id: string
         source_full_name: string

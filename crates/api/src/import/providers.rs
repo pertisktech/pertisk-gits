@@ -3,6 +3,16 @@ use pertisk_domain::models::{ImportProvider, RepoVisibility};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct RemoteNamespace {
+    pub id: String,
+    /// Org login, GitLab group path, or user login for personal repos.
+    pub path: String,
+    pub name: String,
+    /// `personal`, `organization`, or `group`
+    pub kind: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct RemoteRepo {
     pub id: String,
     pub full_name: String,
@@ -87,15 +97,34 @@ pub async fn validate_token(
     }
 }
 
+pub async fn list_remote_namespaces(
+    provider: ImportProvider,
+    token: &str,
+    base_url: &str,
+    account: &str,
+) -> anyhow::Result<Vec<RemoteNamespace>> {
+    let token = normalize_token(token);
+    match provider {
+        ImportProvider::Github => list_github_namespaces(&token, base_url, account).await,
+        ImportProvider::Gitlab => list_gitlab_namespaces(&token, base_url, account).await,
+    }
+}
+
+pub struct NamespaceFilter<'a> {
+    pub path: &'a str,
+    pub kind: &'a str,
+}
+
 pub async fn list_remote_repos(
     provider: ImportProvider,
     token: &str,
     base_url: &str,
+    namespace: Option<NamespaceFilter<'_>>,
 ) -> anyhow::Result<Vec<RemoteRepo>> {
     let token = normalize_token(token);
     match provider {
-        ImportProvider::Github => list_github_repos(&token, base_url).await,
-        ImportProvider::Gitlab => list_gitlab_repos(&token, base_url).await,
+        ImportProvider::Github => list_github_repos(&token, base_url, namespace).await,
+        ImportProvider::Gitlab => list_gitlab_repos(&token, base_url, namespace).await,
     }
 }
 
@@ -133,26 +162,148 @@ async fn validate_gitlab_token(token: &str, base_url: &str) -> anyhow::Result<St
     Ok(body.username)
 }
 
-async fn list_github_repos(token: &str, base_url: &str) -> anyhow::Result<Vec<RemoteRepo>> {
+async fn list_github_namespaces(
+    token: &str,
+    base_url: &str,
+    account: &str,
+) -> anyhow::Result<Vec<RemoteNamespace>> {
     let client = http_client()?;
     let api = api_base(ImportProvider::Github, base_url);
+    let mut namespaces = vec![RemoteNamespace {
+        id: account.to_string(),
+        path: account.to_string(),
+        name: format!("{account} (personal)"),
+        kind: "personal".into(),
+    }];
+
+    let mut page = 1u32;
+    loop {
+        let response = github_get(&client, &format!("{api}/user/orgs"), token)
+            .query(&[("per_page", "100"), ("page", &page.to_string())])
+            .send()
+            .await
+            .context("github orgs request failed")?;
+
+        if !response.status().is_success() {
+            return Err(github_auth_error(response).await);
+        }
+
+        let orgs: Vec<GithubOrg> = response.json().await.context("parse github orgs")?;
+        if orgs.is_empty() {
+            break;
+        }
+
+        let page_len = orgs.len();
+        for org in orgs {
+            namespaces.push(RemoteNamespace {
+                id: org.id.to_string(),
+                path: org.login.clone(),
+                name: org.login,
+                kind: "organization".into(),
+            });
+        }
+
+        if page_len < 100 {
+            break;
+        }
+        page += 1;
+        if page > 20 {
+            break;
+        }
+    }
+
+    namespaces.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(namespaces)
+}
+
+async fn list_gitlab_namespaces(
+    token: &str,
+    base_url: &str,
+    account: &str,
+) -> anyhow::Result<Vec<RemoteNamespace>> {
+    let client = http_client()?;
+    let api = api_base(ImportProvider::Gitlab, base_url);
+    let mut namespaces = vec![RemoteNamespace {
+        id: account.to_string(),
+        path: account.to_string(),
+        name: format!("{account} (personal)"),
+        kind: "personal".into(),
+    }];
+
+    let mut page = 1u32;
+    loop {
+        let response = client
+            .get(format!("{api}/groups"))
+            .query(&[
+                ("min_access_level", "10"),
+                ("per_page", "100"),
+                ("page", &page.to_string()),
+            ])
+            .header("PRIVATE-TOKEN", token)
+            .send()
+            .await
+            .context("gitlab groups request failed")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("failed to list GitLab groups");
+        }
+
+        let groups: Vec<GitlabGroup> = response.json().await.context("parse gitlab groups")?;
+        if groups.is_empty() {
+            break;
+        }
+
+        let page_len = groups.len();
+        for group in groups {
+            namespaces.push(RemoteNamespace {
+                id: group.id.to_string(),
+                path: group.full_path,
+                name: group.name,
+                kind: "group".into(),
+            });
+        }
+
+        if page_len < 100 {
+            break;
+        }
+        page += 1;
+        if page > 20 {
+            break;
+        }
+    }
+
+    namespaces.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(namespaces)
+}
+
+async fn list_github_repos(
+    token: &str,
+    base_url: &str,
+    namespace: Option<NamespaceFilter<'_>>,
+) -> anyhow::Result<Vec<RemoteRepo>> {
+    let client = http_client()?;
+    let api = api_base(ImportProvider::Github, base_url);
+
+    if let Some(ns) = namespace {
+        if ns.kind == "personal" {
+            return list_github_personal_repos(&client, token, &api, base_url, ns.path).await;
+        }
+        return list_github_org_repos(&client, token, &api, base_url, ns.path).await;
+    }
+
     let mut repos = Vec::new();
     let mut page = 1u32;
 
     loop {
-        let response = github_get(
-            &client,
-            &format!("{api}/user/repos"),
-            token,
-        )
-        .query(&[
-            ("per_page", "100"),
-            ("page", &page.to_string()),
-            ("affiliation", "owner,collaborator,organization_member"),
-        ])
-        .send()
-        .await
-        .context("github repos request failed")?;
+        let response = github_get(&client, &format!("{api}/user/repos"), token)
+            .query(&[
+                ("per_page", "100"),
+                ("page", &page.to_string()),
+                ("affiliation", "owner,collaborator,organization_member"),
+            ])
+            .send()
+            .await
+            .context("github repos request failed")?;
 
         if !response.status().is_success() {
             return Err(github_auth_error(response).await);
@@ -168,12 +319,7 @@ async fn list_github_repos(token: &str, base_url: &str) -> anyhow::Result<Vec<Re
             let clone_url = repo
                 .clone_url
                 .or(repo.git_url)
-                .unwrap_or_else(|| {
-                    format!(
-                        "{base_url}/{}/{}.git",
-                        repo.owner.login, repo.name
-                    )
-                });
+                .unwrap_or_else(|| format!("{base_url}/{}/{}.git", repo.owner.login, repo.name));
             repos.push(RemoteRepo {
                 id: repo.id.to_string(),
                 full_name: repo.full_name,
@@ -193,7 +339,7 @@ async fn list_github_repos(token: &str, base_url: &str) -> anyhow::Result<Vec<Re
             break;
         }
         page += 1;
-        if page > 20 {
+        if page > 50 {
             break;
         }
     }
@@ -202,9 +348,148 @@ async fn list_github_repos(token: &str, base_url: &str) -> anyhow::Result<Vec<Re
     Ok(repos)
 }
 
-async fn list_gitlab_repos(token: &str, base_url: &str) -> anyhow::Result<Vec<RemoteRepo>> {
+async fn list_github_org_repos(
+    client: &reqwest::Client,
+    token: &str,
+    api: &str,
+    base_url: &str,
+    org: &str,
+) -> anyhow::Result<Vec<RemoteRepo>> {
+    let mut repos = Vec::new();
+    let mut page = 1u32;
+    let url = format!("{api}/orgs/{org}/repos");
+
+    loop {
+        let response = github_get(client, &url, token)
+            .query(&[("per_page", "100"), ("page", &page.to_string())])
+            .send()
+            .await
+            .context("github org repos request failed")?;
+
+        if !response.status().is_success() {
+            return Err(github_auth_error(response).await);
+        }
+
+        let page_repos: Vec<GithubRepo> = response.json().await.context("parse github repos")?;
+        if page_repos.is_empty() {
+            break;
+        }
+
+        let page_len = page_repos.len();
+        for repo in page_repos {
+            let clone_url = repo
+                .clone_url
+                .or(repo.git_url)
+                .unwrap_or_else(|| format!("{base_url}/{}/{}.git", repo.owner.login, repo.name));
+            repos.push(RemoteRepo {
+                id: repo.id.to_string(),
+                full_name: repo.full_name,
+                name: repo.name,
+                description: repo.description,
+                visibility: if repo.private {
+                    RepoVisibility::Private
+                } else {
+                    RepoVisibility::Public
+                },
+                default_branch: repo.default_branch.unwrap_or_else(|| "main".into()),
+                clone_url,
+            });
+        }
+
+        if page_len < 100 {
+            break;
+        }
+        page += 1;
+        if page > 50 {
+            break;
+        }
+    }
+
+    repos.sort_by(|a, b| a.full_name.cmp(&b.full_name));
+    Ok(repos)
+}
+
+async fn list_github_personal_repos(
+    client: &reqwest::Client,
+    token: &str,
+    api: &str,
+    base_url: &str,
+    username: &str,
+) -> anyhow::Result<Vec<RemoteRepo>> {
+    let mut repos = Vec::new();
+    let mut page = 1u32;
+
+    loop {
+        let response = github_get(client, &format!("{api}/user/repos"), token)
+            .query(&[
+                ("per_page", "100"),
+                ("page", &page.to_string()),
+                ("affiliation", "owner"),
+            ])
+            .send()
+            .await
+            .context("github personal repos request failed")?;
+
+        if !response.status().is_success() {
+            return Err(github_auth_error(response).await);
+        }
+
+        let page_repos: Vec<GithubRepo> = response.json().await.context("parse github repos")?;
+        if page_repos.is_empty() {
+            break;
+        }
+
+        let page_len = page_repos.len();
+        for repo in page_repos {
+            if repo.owner.login != username {
+                continue;
+            }
+            let clone_url = repo
+                .clone_url
+                .or(repo.git_url)
+                .unwrap_or_else(|| format!("{base_url}/{}/{}.git", repo.owner.login, repo.name));
+            repos.push(RemoteRepo {
+                id: repo.id.to_string(),
+                full_name: repo.full_name,
+                name: repo.name,
+                description: repo.description,
+                visibility: if repo.private {
+                    RepoVisibility::Private
+                } else {
+                    RepoVisibility::Public
+                },
+                default_branch: repo.default_branch.unwrap_or_else(|| "main".into()),
+                clone_url,
+            });
+        }
+
+        if page_len < 100 {
+            break;
+        }
+        page += 1;
+        if page > 50 {
+            break;
+        }
+    }
+
+    Ok(repos)
+}
+
+async fn list_gitlab_repos(
+    token: &str,
+    base_url: &str,
+    namespace: Option<NamespaceFilter<'_>>,
+) -> anyhow::Result<Vec<RemoteRepo>> {
     let client = http_client()?;
     let api = api_base(ImportProvider::Gitlab, base_url);
+
+    if let Some(ns) = namespace {
+        if ns.kind == "personal" {
+            return list_gitlab_personal_projects(&client, token, &api, ns.path).await;
+        }
+        return list_gitlab_group_projects(&client, token, &api, ns.path).await;
+    }
+
     let mut repos = Vec::new();
     let mut page = 1u32;
 
@@ -251,13 +536,146 @@ async fn list_gitlab_repos(token: &str, base_url: &str) -> anyhow::Result<Vec<Re
             break;
         }
         page += 1;
-        if page > 20 {
+        if page > 50 {
             break;
         }
     }
 
     repos.sort_by(|a, b| a.full_name.cmp(&b.full_name));
     Ok(repos)
+}
+
+async fn list_gitlab_group_projects(
+    client: &reqwest::Client,
+    token: &str,
+    api: &str,
+    group_path: &str,
+) -> anyhow::Result<Vec<RemoteRepo>> {
+    let mut repos = Vec::new();
+    let mut page = 1u32;
+    let url = format!("{api}/groups/{}/projects", urlencoding::encode(group_path));
+
+    loop {
+        let response = client
+            .get(&url)
+            .query(&[
+                ("include_subgroups", "true"),
+                ("simple", "true"),
+                ("per_page", "100"),
+                ("page", &page.to_string()),
+            ])
+            .header("PRIVATE-TOKEN", token)
+            .send()
+            .await
+            .context("gitlab group projects request failed")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("failed to list GitLab group projects");
+        }
+
+        let page_repos: Vec<GitlabProject> = response.json().await.context("parse gitlab projects")?;
+        if page_repos.is_empty() {
+            break;
+        }
+
+        let page_len = page_repos.len();
+        for project in page_repos {
+            repos.push(RemoteRepo {
+                id: project.id.to_string(),
+                full_name: project.path_with_namespace,
+                name: project.name,
+                description: project.description,
+                visibility: match project.visibility.as_deref() {
+                    Some("public") => RepoVisibility::Public,
+                    _ => RepoVisibility::Private,
+                },
+                default_branch: project.default_branch.unwrap_or_else(|| "main".into()),
+                clone_url: project.http_url_to_repo,
+            });
+        }
+
+        if page_len < 100 {
+            break;
+        }
+        page += 1;
+        if page > 50 {
+            break;
+        }
+    }
+
+    repos.sort_by(|a, b| a.full_name.cmp(&b.full_name));
+    Ok(repos)
+}
+
+async fn list_gitlab_personal_projects(
+    client: &reqwest::Client,
+    token: &str,
+    api: &str,
+    username: &str,
+) -> anyhow::Result<Vec<RemoteRepo>> {
+    let mut repos = Vec::new();
+    let mut page = 1u32;
+
+    loop {
+        let response = client
+            .get(format!("{api}/projects"))
+            .query(&[
+                ("owned", "true"),
+                ("simple", "true"),
+                ("per_page", "100"),
+                ("page", &page.to_string()),
+            ])
+            .header("PRIVATE-TOKEN", token)
+            .send()
+            .await
+            .context("gitlab personal projects request failed")?;
+
+        if !response.status().is_success() {
+            anyhow::bail!("failed to list GitLab personal projects");
+        }
+
+        let page_repos: Vec<GitlabProject> = response.json().await.context("parse gitlab projects")?;
+        if page_repos.is_empty() {
+            break;
+        }
+
+        let page_len = page_repos.len();
+        for project in page_repos {
+            if !is_gitlab_personal_project(&project.path_with_namespace, username) {
+                continue;
+            }
+            repos.push(RemoteRepo {
+                id: project.id.to_string(),
+                full_name: project.path_with_namespace,
+                name: project.name,
+                description: project.description,
+                visibility: match project.visibility.as_deref() {
+                    Some("public") => RepoVisibility::Public,
+                    _ => RepoVisibility::Private,
+                },
+                default_branch: project.default_branch.unwrap_or_else(|| "main".into()),
+                clone_url: project.http_url_to_repo,
+            });
+        }
+
+        if page_len < 100 {
+            break;
+        }
+        page += 1;
+        if page > 50 {
+            break;
+        }
+    }
+
+    Ok(repos)
+}
+
+fn is_gitlab_personal_project(path_with_namespace: &str, username: &str) -> bool {
+    let prefix = format!("{username}/");
+    if !path_with_namespace.starts_with(&prefix) {
+        return false;
+    }
+    !path_with_namespace[prefix.len()..].contains('/')
 }
 
 fn http_client() -> anyhow::Result<reqwest::Client> {
@@ -298,6 +716,12 @@ async fn github_auth_error(response: reqwest::Response) -> anyhow::Error {
 }
 
 #[derive(Debug, Deserialize)]
+struct GithubOrg {
+    id: i64,
+    login: String,
+}
+
+#[derive(Debug, Deserialize)]
 struct GithubError {
     message: String,
 }
@@ -328,6 +752,13 @@ struct GithubOwner {
 #[derive(Debug, Deserialize)]
 struct GitlabUser {
     username: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct GitlabGroup {
+    id: i64,
+    name: String,
+    full_path: String,
 }
 
 #[derive(Debug, Deserialize)]

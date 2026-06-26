@@ -7,11 +7,18 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+#[derive(Debug, Default, Clone, Copy)]
+pub struct MetadataImportOptions {
+    pub import_issues: bool,
+    pub import_pull_requests: bool,
+}
+
 #[derive(Debug, Default)]
 pub struct MetadataStats {
     pub labels: u32,
     pub milestones: u32,
     pub issues: u32,
+    pub pull_requests: u32,
 }
 
 pub async fn import_repo_metadata(
@@ -22,15 +29,32 @@ pub async fn import_repo_metadata(
     source_full_name: &str,
     repository_id: Uuid,
     author_id: Uuid,
+    options: MetadataImportOptions,
 ) -> anyhow::Result<MetadataStats> {
     match provider {
         ImportProvider::Github => {
-            import_github_metadata(pool, token, base_url, source_full_name, repository_id, author_id)
-                .await
+            import_github_metadata(
+                pool,
+                token,
+                base_url,
+                source_full_name,
+                repository_id,
+                author_id,
+                options,
+            )
+            .await
         }
         ImportProvider::Gitlab => {
-            import_gitlab_metadata(pool, token, base_url, source_full_name, repository_id, author_id)
-                .await
+            import_gitlab_metadata(
+                pool,
+                token,
+                base_url,
+                source_full_name,
+                repository_id,
+                author_id,
+                options,
+            )
+            .await
         }
     }
 }
@@ -42,6 +66,7 @@ async fn import_github_metadata(
     source_full_name: &str,
     repository_id: Uuid,
     author_id: Uuid,
+    options: MetadataImportOptions,
 ) -> anyhow::Result<MetadataStats> {
     let (owner, repo) = split_full_name(source_full_name)?;
     let api = github_api_base(base_url);
@@ -50,6 +75,44 @@ async fn import_github_metadata(
 
     let mut stats = MetadataStats::default();
 
+    if options.import_issues {
+        import_github_issues(
+            pool,
+            &client,
+            token,
+            &repo_path,
+            repository_id,
+            author_id,
+            &mut stats,
+        )
+        .await?;
+    }
+
+    if options.import_pull_requests {
+        import_github_pull_requests(
+            pool,
+            &client,
+            token,
+            &repo_path,
+            repository_id,
+            author_id,
+            &mut stats,
+        )
+        .await?;
+    }
+
+    Ok(stats)
+}
+
+async fn import_github_issues(
+    pool: &PgPool,
+    client: &reqwest::Client,
+    token: &str,
+    repo_path: &str,
+    repository_id: Uuid,
+    author_id: Uuid,
+    stats: &mut MetadataStats,
+) -> anyhow::Result<()> {
     let labels: Vec<GithubLabel> =
         paginate_github(&client, token, &format!("{repo_path}/labels"), 100, false).await?;
     let mut label_ids: HashMap<String, Uuid> = HashMap::new();
@@ -125,7 +188,48 @@ async fn import_github_metadata(
         bump_issue_counter(pool, repository_id, max_issue_number + 1).await?;
     }
 
-    Ok(stats)
+    Ok(())
+}
+
+async fn import_github_pull_requests(
+    pool: &PgPool,
+    client: &reqwest::Client,
+    token: &str,
+    repo_path: &str,
+    repository_id: Uuid,
+    author_id: Uuid,
+    stats: &mut MetadataStats,
+) -> anyhow::Result<()> {
+    let pulls: Vec<GithubPull> =
+        paginate_github_open(&client, token, &format!("{repo_path}/pulls"), 100).await?;
+
+    let mut max_pull_number = 0i32;
+    for pull in pulls {
+        if pull.source_branch() == pull.target_branch() {
+            continue;
+        }
+        let number = pull.number;
+        max_pull_number = max_pull_number.max(number);
+        upsert_pull_request(
+            pool,
+            repository_id,
+            number,
+            author_id,
+            &pull.title,
+            pull.body.as_deref().unwrap_or(""),
+            pull.source_branch(),
+            pull.target_branch(),
+            pull.created_at,
+        )
+        .await?;
+        stats.pull_requests += 1;
+    }
+
+    if max_pull_number > 0 {
+        bump_pull_counter(pool, repository_id, max_pull_number + 1).await?;
+    }
+
+    Ok(())
 }
 
 async fn import_gitlab_metadata(
@@ -135,6 +239,7 @@ async fn import_gitlab_metadata(
     source_full_name: &str,
     repository_id: Uuid,
     author_id: Uuid,
+    options: MetadataImportOptions,
 ) -> anyhow::Result<MetadataStats> {
     let api = gitlab_api_base(base_url);
     let project = urlencoding::encode(source_full_name);
@@ -143,6 +248,44 @@ async fn import_gitlab_metadata(
 
     let mut stats = MetadataStats::default();
 
+    if options.import_issues {
+        import_gitlab_issues(
+            pool,
+            &client,
+            token,
+            &project_path,
+            repository_id,
+            author_id,
+            &mut stats,
+        )
+        .await?;
+    }
+
+    if options.import_pull_requests {
+        import_gitlab_merge_requests(
+            pool,
+            &client,
+            token,
+            &project_path,
+            repository_id,
+            author_id,
+            &mut stats,
+        )
+        .await?;
+    }
+
+    Ok(stats)
+}
+
+async fn import_gitlab_issues(
+    pool: &PgPool,
+    client: &reqwest::Client,
+    token: &str,
+    project_path: &str,
+    repository_id: Uuid,
+    author_id: Uuid,
+    stats: &mut MetadataStats,
+) -> anyhow::Result<()> {
     let labels: Vec<GitlabLabel> =
         paginate_gitlab(&client, token, &format!("{project_path}/labels"), 100).await?;
     let mut label_ids: HashMap<String, Uuid> = HashMap::new();
@@ -208,7 +351,93 @@ async fn import_gitlab_metadata(
         bump_issue_counter(pool, repository_id, max_issue_number + 1).await?;
     }
 
-    Ok(stats)
+    Ok(())
+}
+
+async fn import_gitlab_merge_requests(
+    pool: &PgPool,
+    client: &reqwest::Client,
+    token: &str,
+    project_path: &str,
+    repository_id: Uuid,
+    author_id: Uuid,
+    stats: &mut MetadataStats,
+) -> anyhow::Result<()> {
+    let mrs: Vec<GitlabMergeRequest> = paginate_gitlab_open(
+        client,
+        token,
+        &format!("{project_path}/merge_requests"),
+        100,
+    )
+    .await?;
+
+    let mut max_pull_number = 0i32;
+    for mr in mrs {
+        if mr.source_branch == mr.target_branch {
+            continue;
+        }
+        let number = mr.iid;
+        max_pull_number = max_pull_number.max(number);
+        upsert_pull_request(
+            pool,
+            repository_id,
+            number,
+            author_id,
+            &mr.title,
+            mr.description.as_deref().unwrap_or(""),
+            &mr.source_branch,
+            &mr.target_branch,
+            mr.created_at,
+        )
+        .await?;
+        stats.pull_requests += 1;
+    }
+
+    if max_pull_number > 0 {
+        bump_pull_counter(pool, repository_id, max_pull_number + 1).await?;
+    }
+
+    Ok(())
+}
+
+async fn paginate_github_open<T: for<'de> Deserialize<'de>>(
+    client: &reqwest::Client,
+    token: &str,
+    url: &str,
+    per_page: u32,
+) -> anyhow::Result<Vec<T>> {
+    let mut all = Vec::new();
+    let mut page = 1u32;
+    loop {
+        let response = client
+            .get(url)
+            .query(&[
+                ("per_page", per_page.to_string()),
+                ("page", page.to_string()),
+                ("state", "open".to_string()),
+            ])
+            .header("Authorization", format!("Bearer {token}"))
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .send()
+            .await
+            .with_context(|| format!("github GET {url}"))?;
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "github API {}: {}",
+                response.status(),
+                response.text().await.unwrap_or_default()
+            );
+        }
+        let batch: Vec<T> = response.json().await?;
+        let len = batch.len();
+        all.extend(batch);
+        if len < per_page as usize || page >= 20 {
+            break;
+        }
+        page += 1;
+    }
+    Ok(all)
 }
 
 async fn paginate_github<T: for<'de> Deserialize<'de>>(
@@ -240,6 +469,44 @@ async fn paginate_github<T: for<'de> Deserialize<'de>>(
         if !response.status().is_success() {
             anyhow::bail!(
                 "github API {}: {}",
+                response.status(),
+                response.text().await.unwrap_or_default()
+            );
+        }
+        let batch: Vec<T> = response.json().await?;
+        let len = batch.len();
+        all.extend(batch);
+        if len < per_page as usize || page >= 20 {
+            break;
+        }
+        page += 1;
+    }
+    Ok(all)
+}
+
+async fn paginate_gitlab_open<T: for<'de> Deserialize<'de>>(
+    client: &reqwest::Client,
+    token: &str,
+    url: &str,
+    per_page: u32,
+) -> anyhow::Result<Vec<T>> {
+    let mut all = Vec::new();
+    let mut page = 1u32;
+    loop {
+        let response = client
+            .get(url)
+            .query(&[
+                ("per_page", per_page.to_string()),
+                ("page", page.to_string()),
+                ("state", "opened".to_string()),
+            ])
+            .header("PRIVATE-TOKEN", token)
+            .send()
+            .await
+            .with_context(|| format!("gitlab GET {url}"))?;
+        if !response.status().is_success() {
+            anyhow::bail!(
+                "gitlab API {}: {}",
                 response.status(),
                 response.text().await.unwrap_or_default()
             );
@@ -424,6 +691,61 @@ async fn bump_issue_counter(pool: &PgPool, repository_id: Uuid, next: i32) -> an
     Ok(())
 }
 
+async fn upsert_pull_request(
+    pool: &PgPool,
+    repository_id: Uuid,
+    number: i32,
+    author_id: Uuid,
+    title: &str,
+    body: &str,
+    source_branch: &str,
+    target_branch: &str,
+    created_at: DateTime<Utc>,
+) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO pull_requests (
+            repository_id, number, author_id, title, body, source_branch, target_branch, state, created_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'open', $8)
+        ON CONFLICT (repository_id, number) DO UPDATE SET
+            title = EXCLUDED.title,
+            body = EXCLUDED.body,
+            source_branch = EXCLUDED.source_branch,
+            target_branch = EXCLUDED.target_branch,
+            state = 'open',
+            updated_at = NOW()
+        "#,
+    )
+    .bind(repository_id)
+    .bind(number)
+    .bind(author_id)
+    .bind(title)
+    .bind(body)
+    .bind(source_branch)
+    .bind(target_branch)
+    .bind(created_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn bump_pull_counter(pool: &PgPool, repository_id: Uuid, next: i32) -> anyhow::Result<()> {
+    sqlx::query(
+        r#"
+        INSERT INTO repository_counters (repository_id, next_pull_number)
+        VALUES ($1, $2)
+        ON CONFLICT (repository_id)
+        DO UPDATE SET next_pull_number = GREATEST(repository_counters.next_pull_number, EXCLUDED.next_pull_number)
+        "#,
+    )
+    .bind(repository_id)
+    .bind(next)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 fn split_full_name(full_name: &str) -> anyhow::Result<(&str, &str)> {
     let (owner, repo) = full_name
         .split_once('/')
@@ -525,4 +847,39 @@ struct GitlabIssue {
     closed_at: Option<DateTime<Utc>>,
     labels: Vec<String>,
     milestone: Option<GitlabMilestoneRef>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubPull {
+    number: i32,
+    title: String,
+    body: Option<String>,
+    created_at: DateTime<Utc>,
+    head: GithubPullRef,
+    base: GithubPullRef,
+}
+
+#[derive(Debug, Deserialize)]
+struct GithubPullRef {
+    r#ref: String,
+}
+
+impl GithubPull {
+    fn source_branch(&self) -> &str {
+        &self.head.r#ref
+    }
+
+    fn target_branch(&self) -> &str {
+        &self.base.r#ref
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct GitlabMergeRequest {
+    iid: i32,
+    title: String,
+    description: Option<String>,
+    source_branch: String,
+    target_branch: String,
+    created_at: DateTime<Utc>,
 }
