@@ -164,12 +164,18 @@ export function GroupImportPage() {
         <Card>
           <h2 className="text-sm font-semibold text-text mb-3">1. Connect</h2>
           <div className="space-y-3">
+            <form
+              autoComplete="off"
+              onSubmit={(e) => e.preventDefault()}
+              className="space-y-3"
+            >
             <label className="block text-sm font-medium text-text">
               Source
               <select
                 className={`${fieldClass} mt-1`}
                 value={provider}
                 onChange={(e) => setProvider(e.target.value as ImportProvider)}
+                autoComplete="off"
               >
                 <option value="github">GitHub</option>
                 <option value="gitlab">GitLab</option>
@@ -184,6 +190,10 @@ export function GroupImportPage() {
                   placeholder="https://gitlab.com"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
+                  name="pertisk-import-gitlab-url"
+                  autoComplete="off"
+                  readOnly
+                  onFocus={(e) => e.currentTarget.removeAttribute('readonly')}
                 />
               </label>
             )}
@@ -196,6 +206,10 @@ export function GroupImportPage() {
                   placeholder="https://github.com"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
+                  name="pertisk-import-github-url"
+                  autoComplete="off"
+                  readOnly
+                  onFocus={(e) => e.currentTarget.removeAttribute('readonly')}
                 />
                 <span className="text-xs text-text-secondary mt-1 block">
                   Leave blank for github.com. For GitHub Enterprise Server, use your instance URL
@@ -230,7 +244,12 @@ export function GroupImportPage() {
                 placeholder={provider === 'github' ? 'ghp_…' : 'glpat-…'}
                 value={pat}
                 onChange={(e) => setPat(e.target.value)}
-                autoComplete="off"
+                name="pertisk-import-pat"
+                autoComplete="new-password"
+                data-1p-ignore
+                data-lpignore="true"
+                readOnly
+                onFocus={(e) => e.currentTarget.removeAttribute('readonly')}
               />
               <span className="text-xs text-text-secondary mt-1 block">
                 {provider === 'github'
@@ -259,6 +278,7 @@ export function GroupImportPage() {
                 'List repositories'
               )}
             </PrimaryButton>
+            </form>
           </div>
         </Card>
 
