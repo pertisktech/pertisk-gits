@@ -84,12 +84,12 @@ upload_artifact() {{
         for (key, value) in &step.env {
             script.push_str(&format!("export {}={}\n", key, shell_quote(value)));
         }
+        // Use bash -c (not -lc): login shells reset PATH via /etc/profile and drop
+        // toolchains from official images (golang, rust, node, etc.).
+        script.push_str(&format!("bash -c {}\n", shell_quote(&step.run)));
+        script.push_str("step_exit=$?\n");
         script.push_str(&format!(
-            "if ! bash -lc {};\n",
-            shell_quote(&step.run)
-        ));
-        script.push_str(&format!(
-            "then echo \"=== {step_name} (exit $?)\"; popd >/dev/null; exit 1; fi\n"
+            "if [ \"$step_exit\" -ne 0 ]; then echo \"=== {step_name} (exit $step_exit)\"; popd >/dev/null; exit \"$step_exit\"; fi\n"
         ));
         script.push_str(&format!("echo \"=== {step_name} (exit 0)\"\npopd >/dev/null\n"));
     }
@@ -124,5 +124,22 @@ mod tests {
         let script = render_job_script("/workspace", &steps, &[], &HashMap::new());
         assert!(script.contains("make build"));
         assert!(script.contains("=== build (running)"));
+        assert!(script.contains("bash -c 'make build'"));
+        assert!(!script.contains("bash -lc"));
+    }
+
+    #[test]
+    fn records_step_exit_code() {
+        let steps = vec![Step {
+            name: Some("test".into()),
+            run: "false".into(),
+            uses: None,
+            working_directory: None,
+            env: HashMap::new(),
+            with: HashMap::new(),
+        }];
+        let script = render_job_script("/workspace", &steps, &[], &HashMap::new());
+        assert!(script.contains("step_exit=$?"));
+        assert!(script.contains("=== test (exit $step_exit)"));
     }
 }

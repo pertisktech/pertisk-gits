@@ -173,7 +173,7 @@ jobs:
         run: make test
 ```
 
-When `image` is omitted, the runner uses `kubernetes.buildImage` / `PERTISK_K8S_BUILD_IMAGE` (default `debian:bookworm-slim`). Custom images should include `bash` (steps run via `/bin/bash`).
+When `image` is omitted, the runner uses `kubernetes.buildImage` / `PERTISK_K8S_BUILD_IMAGE` (default `debian:bookworm-slim`). Official images (`golang`, `rust`, `node`, etc.) work as-is — steps run with `bash -c` so the image `PATH` is preserved (login shells would strip `/usr/local/go/bin`, `/usr/local/cargo/bin`, etc.).
 
 | | **Shell pool** | **Kubernetes executor** |
 |--|----------------|-------------------------|

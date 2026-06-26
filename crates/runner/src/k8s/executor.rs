@@ -347,6 +347,8 @@ echo "=== helper: workspace ready"
         env_var("PERTISK_API_URL", api.api_url()),
         env_var("PERTISK_RUNNER_TOKEN", api.token()),
         env_var("PERTISK_JOB_ID", &job_id.to_string()),
+        env_var("CARGO_TARGET_DIR", &format!("{workspace}/target")),
+        env_var("GOCACHE", "/tmp/go-cache"),
     ];
 
     let helper = Container {
@@ -518,51 +520,18 @@ async fn watch_job(
 
     cancel_handle.abort();
 
-    let job = jobs.get(job_name).await.context("read Job status")?;
-    let mut exit_code = 1_i32;
-    let mut timed_out = false;
+    let (exit_code, timed_out) =
+        wait_for_build_exit(&pods, &jobs, job_name, &pod_name, timeout_minutes).await?;
 
-    if let Some(status) = &job.status {
-        if status.conditions.as_ref().is_some_and(|conds| {
-            conds.iter().any(|c| c.type_ == "Failed" && c.reason.as_deref() == Some("DeadlineExceeded"))
-        }) {
-            timed_out = true;
-            api.append_log(
-                job_id,
-                &format!(
-                    "\n=== job timed out after {} minutes\n",
-                    timeout_minutes.unwrap_or(0)
-                ),
-            )
-            .await?;
-        }
-        if let Some(succeeded) = status.succeeded {
-            if succeeded > 0 {
-                exit_code = 0;
-            }
-        }
-        if let Some(failed) = status.failed {
-            if failed > 0 && exit_code != 0 {
-                exit_code = 1;
-            }
-        }
-    }
-
-    let pod = pods.get(&pod_name).await.ok();
-    if let Some(pod) = pod {
-        if let Some(state) = pod
-            .status
-            .as_ref()
-            .and_then(|s| s.container_statuses.as_ref())
-            .and_then(|statuses| statuses.iter().find(|s| s.name == "build"))
-            .and_then(|s| s.state.as_ref())
-            .and_then(|s| s.terminated.as_ref())
-        {
-            exit_code = state.exit_code;
-            if state.reason.as_deref() == Some("DeadlineExceeded") {
-                timed_out = true;
-            }
-        }
+    if timed_out {
+        api.append_log(
+            job_id,
+            &format!(
+                "\n=== job timed out after {} minutes\n",
+                timeout_minutes.unwrap_or(0)
+            ),
+        )
+        .await?;
     }
 
     let cancelled = api
@@ -572,6 +541,81 @@ async fn watch_job(
         .unwrap_or(false);
 
     Ok((exit_code, cancelled, timed_out))
+}
+
+async fn wait_for_build_exit(
+    pods: &Api<Pod>,
+    jobs: &Api<Job>,
+    job_name: &str,
+    pod_name: &str,
+    _timeout_minutes: Option<u32>,
+) -> anyhow::Result<(i32, bool)> {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    let mut timed_out = false;
+
+    loop {
+        if Instant::now() >= deadline {
+            anyhow::bail!("timed out waiting for build container exit for job {job_name}");
+        }
+
+        if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+            return Ok((exit_code, timed_out));
+        }
+
+        if let Ok(job) = jobs.get(job_name).await {
+            if let Some(status) = &job.status {
+                if status.conditions.as_ref().is_some_and(|conds| {
+                    conds.iter().any(|c| {
+                        c.type_ == "Failed" && c.reason.as_deref() == Some("DeadlineExceeded")
+                    })
+                }) {
+                    timed_out = true;
+                }
+                if status.succeeded.is_some_and(|n| n > 0) {
+                    if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+                        return Ok((exit_code, timed_out));
+                    }
+                    return Ok((0, timed_out));
+                }
+                if status.failed.is_some_and(|n| n > 0) {
+                    if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+                        return Ok((exit_code, timed_out));
+                    }
+                    return Ok((1, timed_out));
+                }
+            }
+        }
+
+        if let Ok(pod) = pods.get(pod_name).await {
+            let phase = pod
+                .status
+                .as_ref()
+                .and_then(|status| status.phase.as_deref());
+            if matches!(phase, Some("Failed") | Some("Succeeded")) {
+                if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+                    return Ok((exit_code, timed_out));
+                }
+                let phase_exit = if phase == Some("Succeeded") { 0 } else { 1 };
+                return Ok((phase_exit, timed_out));
+            }
+        }
+
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+async fn build_container_exit_code(
+    pods: &Api<Pod>,
+    pod_name: &str,
+) -> anyhow::Result<Option<i32>> {
+    let pod = pods.get(pod_name).await.context("read job pod for exit code")?;
+    Ok(pod
+        .status
+        .and_then(|status| status.container_statuses)
+        .and_then(|statuses| statuses.into_iter().find(|c| c.name == "build"))
+        .and_then(|c| c.state)
+        .and_then(|state| state.terminated)
+        .map(|terminated| terminated.exit_code))
 }
 
 async fn wait_for_build_ready(
