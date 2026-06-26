@@ -1164,7 +1164,15 @@ async fn complete_runner_job(
     sqlx::query(
         r#"
         UPDATE runners
-        SET status = 'online',
+        SET status = CASE
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM job_runs j
+                    WHERE j.runner_id = $1
+                      AND j.status = 'running'
+                ) THEN 'busy'::runner_status
+                ELSE 'online'::runner_status
+            END,
             last_seen_at = NOW(),
             last_job_name = $2,
             last_job_status = $3,

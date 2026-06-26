@@ -1,19 +1,20 @@
 Pertisk CI runner deployed.
 
-  Release:   {{ .Release.Name }}
-  Namespace: {{ .Release.Namespace }}
-  Replicas:  {{ .Values.replicaCount }}
-  API URL:   {{ .Values.apiUrl }}
+  Release:    {{ .Release.Name }}
+  Namespace:  {{ .Release.Namespace }}
+  Replicas:   {{ if .Values.autoscaling.enabled }}{{ .Values.autoscaling.minReplicas }}-{{ .Values.autoscaling.maxReplicas }} (HPA){{ else }}{{ .Values.replicaCount }}{{ end }}
+  API URL:    {{ .Values.apiUrl }}
 
-Check runner status in the Pertisk UI (Runners page) or:
+All pods share one runner token (runner pool). Each pod claims at most one job;
+scale replicaCount (or HPA) for more concurrent pipelines.
 
-  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} -f
+  kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} -f --prefix
 
-Each replica needs its own registration token unless you scale to 1.
-Register runners at: {{ .Values.apiUrl }}/runners
-
-Upgrade:
+Register once in the UI, then:
 
   helm upgrade {{ .Release.Name }} ./deploy/helm/pertisk-runner \
-    --set runnerToken=ptr_... \
-    --set apiUrl={{ .Values.apiUrl }}
+    --reuse-values --set replicaCount=3
+
+Note: GitLab Kubernetes executor spawns a new pod per job. Pertisk uses long-lived
+runner pods with shell execution — see docs/RUNNERS.md#kubernetes-multi-replica.

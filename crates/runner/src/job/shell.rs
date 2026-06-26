@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -10,64 +9,11 @@ use tempfile::TempDir;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
+use super::common::prepare_secrets;
 use crate::api::{PollJobResponse, RunnerApi};
 use crate::artifacts::{upload_artifact_step, upload_declared_artifact};
 use crate::log_stream::LogStreamer;
 use crate::workspace::materialize_workspace;
-
-struct PreparedSecrets {
-    injection: HashMap<String, String>,
-    mask_values: Vec<String>,
-}
-
-async fn prepare_secrets(
-    api: &RunnerApi,
-    job_id: uuid::Uuid,
-    work_root: &Path,
-) -> anyhow::Result<PreparedSecrets> {
-    let response = match api.fetch_job_secrets(job_id).await {
-        Ok(response) => response,
-        Err(err) => {
-            tracing::warn!(%err, "failed to load job secrets; continuing without secrets");
-            crate::api::JobSecretsResponse { secrets: vec![] }
-        }
-    };
-
-    let secrets_dir = work_root.join(".pertisk-secrets");
-    std::fs::create_dir_all(&secrets_dir)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&secrets_dir, std::fs::Permissions::from_mode(0o700))?;
-    }
-
-    let mut injection = HashMap::new();
-    let mut mask_values = Vec::new();
-
-    for item in response.secrets {
-        if item.value.len() >= 4 {
-            mask_values.push(item.value.clone());
-        }
-        let value = if item.secret_kind == "file" {
-            let path = secrets_dir.join(&item.name);
-            std::fs::write(&path, &item.value)?;
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-            }
-            path.display().to_string()
-        } else {
-            item.value.clone()
-        };
-        injection.insert(item.name, value);
-    }
-
-    Ok(PreparedSecrets {
-        injection,
-        mask_values,
-    })
-}
 
 pub async fn run_job(
     api: &RunnerApi,
@@ -78,6 +24,7 @@ pub async fn run_job(
         job = %job.job_name,
         repo = %format!("{}/{}", job.org_slug, job.repo_slug),
         timeout_minutes = ?job.timeout_minutes,
+        executor = "shell",
         "running job"
     );
     let queued_at = Instant::now();
@@ -212,11 +159,8 @@ pub async fn run_job(
             continue;
         }
 
-        api.append_log(
-            job.job_id,
-            &format!("=== {step_name} (running)\n"),
-        )
-        .await?;
+        api.append_log(job.job_id, &format!("=== {step_name} (running)\n"))
+            .await?;
 
         let (cancel_tx, cancel_rx) = watch::channel(false);
         let poll_api = api.clone_for_poll();
@@ -318,7 +262,10 @@ pub async fn run_job(
                 failed = true;
                 api.append_log(
                     job.job_id,
-                    &format!("=== artifact {} (exit 1)\nartifact upload failed: {err:#}\n", artifact.name),
+                    &format!(
+                        "=== artifact {} (exit 1)\nartifact upload failed: {err:#}\n",
+                        artifact.name
+                    ),
                 )
                 .await?;
                 break;
@@ -378,16 +325,6 @@ async fn poll_cancel_signals(
         if control.timed_out || control.should_cancel_step(&step_name) {
             let _ = cancel_tx.send(true);
             return;
-        }
-    }
-}
-
-impl RunnerApi {
-    pub fn clone_for_poll(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            base_url: self.base_url.clone(),
-            token: self.token.clone(),
         }
     }
 }

@@ -231,6 +231,24 @@ impl RunnerApi {
     }
 }
 
+impl RunnerApi {
+    pub fn clone_for_poll(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            base_url: self.base_url.clone(),
+            token: self.token.clone(),
+        }
+    }
+
+    pub fn api_url(&self) -> &str {
+        &self.base_url
+    }
+
+    pub fn token(&self) -> &str {
+        &self.token
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct JobSecretItem {
     pub name: String,

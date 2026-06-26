@@ -1,0 +1,35 @@
+{{- if and (eq .Values.executor "kubernetes") .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "pertisk-runner.fullname" . }}
+  namespace: {{ include "pertisk-runner.jobNamespace" . }}
+  labels:
+    {{- include "pertisk-runner.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create", "get", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "pertisk-runner.fullname" . }}
+  namespace: {{ include "pertisk-runner.jobNamespace" . }}
+  labels:
+    {{- include "pertisk-runner.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "pertisk-runner.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "pertisk-runner.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

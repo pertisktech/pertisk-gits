@@ -1,7 +1,36 @@
 # Default values for pertisk-runner.
 # Register a runner in the UI first, then set runnerToken or existingSecret.
 
+# Runner pool size — all replicas share one token and claim jobs independently.
+# Max concurrent CI jobs ≈ number of ready pods (each pod runs one job at a time).
+# Unlike GitLab Kubernetes executor (one manager spawns a pod per job), pertisk-runner
+# executes shell steps inside each long-lived pod. See docs/RUNNERS.md.
 replicaCount: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+
+# Spread replicas across nodes when replicaCount > 1
+podAntiAffinity:
+  enabled: true
+
+# shell — run steps on the runner pod/host
+# kubernetes — GitLab-style: manager pod spawns a Job pod per pipeline job
+executor: shell
+
+rbac:
+  create: true
+
+kubernetes:
+  # Namespace for CI job pods (defaults to Helm release namespace)
+  namespace: ""
+  helperImage: curlimages/curl:8.12.1
+  buildImage: debian:bookworm-slim
+  ttlSecondsAfterFinished: 600
+  # nodeSelector: {}
 
 image:
   repository: pertisk-runner
@@ -49,7 +78,8 @@ nodeSelector: {}
 
 tolerations: []
 
-affinity: {}
+# Override podAntiAffinity default (set non-empty affinity to replace entirely)
+# affinity: {}
 
 podAnnotations: {}
 

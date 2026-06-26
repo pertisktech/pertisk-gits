@@ -2,6 +2,7 @@ mod api;
 mod artifacts;
 mod host;
 mod job;
+mod k8s;
 mod log_stream;
 mod version;
 mod workspace;
@@ -65,6 +66,7 @@ async fn main() -> anyhow::Result<()> {
                 memory_mb = host.memory_used_mb,
                 api = %cli.api_url,
                 repos_root = ?cli.repos_root,
+                executor = %job::runner_executor(),
                 "pertisk-runner starting"
             );
             run_loop(&cli).await

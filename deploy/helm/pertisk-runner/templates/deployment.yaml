@@ -5,7 +5,9 @@ metadata:
   labels:
     {{- include "pertisk-runner.labels" . | nindent 4 }}
 spec:
+  {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
       {{- include "pertisk-runner.selectorLabels" . | nindent 6 }}
@@ -49,6 +51,24 @@ spec:
                   key: {{ .Values.existingSecret.key | default "token" }}
             - name: RUST_LOG
               value: {{ .Values.rustLog | quote }}
+            - name: PERTISK_RUNNER_EXECUTOR
+              value: {{ .Values.executor | quote }}
+            - name: HOSTNAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            {{- if eq .Values.executor "kubernetes" }}
+            - name: PERTISK_K8S_NAMESPACE
+              value: {{ include "pertisk-runner.jobNamespace" . | quote }}
+            - name: PERTISK_K8S_HELPER_IMAGE
+              value: {{ .Values.kubernetes.helperImage | quote }}
+            - name: PERTISK_K8S_BUILD_IMAGE
+              value: {{ .Values.kubernetes.buildImage | quote }}
+            - name: PERTISK_K8S_TTL_SECONDS
+              value: {{ .Values.kubernetes.ttlSecondsAfterFinished | quote }}
+            - name: PERTISK_K8S_SERVICE_ACCOUNT
+              value: {{ include "pertisk-runner.serviceAccountName" . | quote }}
+            {{- end }}
             {{- if .Values.reposRoot }}
             - name: PERTISK_REPOS_ROOT
               valueFrom:
@@ -67,14 +87,14 @@ spec:
           volumeMounts:
             - name: workspace
               mountPath: /var/lib/pertisk-runner
-            {{- if .Values.dockerSock.enabled }}
+            {{- if and (ne .Values.executor "kubernetes") .Values.dockerSock.enabled }}
             - name: docker-sock
               mountPath: /var/run/docker.sock
             {{- end }}
       volumes:
         - name: workspace
           emptyDir: {}
-        {{- if .Values.dockerSock.enabled }}
+        {{- if and (ne .Values.executor "kubernetes") .Values.dockerSock.enabled }}
         - name: docker-sock
           hostPath:
             path: {{ .Values.dockerSock.hostPath }}
@@ -84,9 +104,9 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.affinity }}
+      {{- with (include "pertisk-runner.affinity" .) }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- . | nindent 8 }}
       {{- end }}
       {{- with .Values.tolerations }}
       tolerations:

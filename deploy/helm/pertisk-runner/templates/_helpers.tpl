@@ -74,3 +74,36 @@ Image tag
 {{- define "pertisk-runner.imageTag" -}}
 {{- .Values.image.tag | default .Chart.AppVersion }}
 {{- end }}
+
+{{- define "pertisk-runner.kubernetesExecutor" -}}
+{{- eq .Values.executor "kubernetes" -}}
+{{- end }}
+
+{{- define "pertisk-runner.jobNamespace" -}}
+{{- .Values.kubernetes.namespace | default .Release.Namespace }}
+{{- end }}
+
+{{/*
+Default pod anti-affinity — spread runner pods across nodes.
+*/}}
+{{- define "pertisk-runner.podAntiAffinity" -}}
+podAntiAffinity:
+  preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        topologyKey: kubernetes.io/hostname
+        labelSelector:
+          matchLabels:
+            {{- include "pertisk-runner.selectorLabels" . | nindent 12 }}
+{{- end }}
+
+{{/*
+Merged affinity: user values win; else default anti-affinity when enabled.
+*/}}
+{{- define "pertisk-runner.affinity" -}}
+{{- if .Values.affinity -}}
+{{- toYaml .Values.affinity }}
+{{- else if .Values.podAntiAffinity.enabled }}
+{{- include "pertisk-runner.podAntiAffinity" . }}
+{{- end }}
+{{- end }}

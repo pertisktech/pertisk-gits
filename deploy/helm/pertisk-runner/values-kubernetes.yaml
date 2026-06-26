@@ -1,0 +1,32 @@
+# GitLab-style Kubernetes executor — manager Deployment + per-job Pods
+executor: kubernetes
+
+replicaCount: 1
+
+serviceAccount:
+  create: true
+
+rbac:
+  create: true
+
+dockerSock:
+  enabled: false
+
+apiUrl: "https://git.example.com"
+
+# Register with label: kubernetes
+# .pertisk-ci.yaml: runs-on: kubernetes
+
+kubernetes:
+  namespace: ""  # same as release namespace
+  helperImage: curlimages/curl:8.12.1
+  buildImage: debian:bookworm-slim
+  ttlSecondsAfterFinished: 600
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi

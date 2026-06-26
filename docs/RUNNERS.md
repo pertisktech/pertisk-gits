@@ -120,6 +120,74 @@ Set `RUNNER_USER=0:0` in `.env.runner` if the Docker socket is not accessible to
 
 ## Kubernetes
 
+#### Executor modes
+
+| Mode | `PERTISK_RUNNER_EXECUTOR` | Behavior |
+|------|---------------------------|----------|
+| **Shell** (default) | `shell` | Steps run on the runner pod/host |
+| **Kubernetes** | `kubernetes` | Manager spawns a **Job pod per pipeline job** (GitLab-style) |
+
+#### Shell pool (multi-replica)
+
+All pods in a Helm release **share one runner token**. The API uses `FOR UPDATE SKIP LOCKED` so each pod claims a different queued job. With `replicaCount: 3`, up to **three jobs** can run at once.
+
+```bash
+helm upgrade pertisk-runner ./deploy/helm/pertisk-runner \
+  --reuse-values --set replicaCount=3
+```
+
+#### Kubernetes executor (per-job pods)
+
+Like [GitLab Kubernetes executor](https://docs.gitlab.com/runner/executors/kubernetes/): one **manager** Deployment polls the API; each job becomes a `batch/v1` Job with:
+
+1. **helper** init container — downloads workspace from the API  
+2. **build** container — runs generated bash script for all steps  
+
+```bash
+# Register runner with label: kubernetes
+helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
+  -f deploy/helm/pertisk-runner/values-kubernetes.yaml \
+  --namespace pertisk --create-namespace \
+  --set apiUrl=https://git.example.com \
+  --set runnerToken=ptr_...
+```
+
+Pipeline jobs must use `runs-on: kubernetes`:
+
+```yaml
+jobs:
+  build:
+    runs-on: kubernetes
+    steps:
+      - name: test
+        run: make test
+```
+
+| | **Shell pool** | **Kubernetes executor** |
+|--|----------------|-------------------------|
+| Scale | `replicaCount` on manager | One Job pod per active job |
+| Isolation | Shared runner pod | Per-job pod (`emptyDir` workspace) |
+| Docker builds | `docker.sock` on host (optional) | Use custom `kubernetes.buildImage` with Docker/Kaniko |
+
+Environment (manager pod):
+
+| Variable | Description |
+|----------|-------------|
+| `PERTISK_RUNNER_EXECUTOR` | `kubernetes` |
+| `PERTISK_K8S_NAMESPACE` | Where job pods are created |
+| `PERTISK_K8S_BUILD_IMAGE` | Image for build container (default `debian:bookworm-slim`) |
+| `PERTISK_K8S_HELPER_IMAGE` | Init container image (default `curlimages/curl`) |
+
+Optional CPU-based HPA (shell mode only):
+
+```yaml
+autoscaling:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 75
+```
+
 ### Helm (recommended)
 
 Chart: `deploy/helm/pertisk-runner`
@@ -150,7 +218,11 @@ Useful values:
 
 | Value | Description |
 |-------|-------------|
-| `replicaCount` | Number of runner pods (register one token per replica) |
+| `executor` | `shell` (default) or `kubernetes` |
+| `replicaCount` | Shell pool size — shared token, ~1 concurrent job per pod |
+| `kubernetes.buildImage` | CI build container image (k8s executor) |
+| `autoscaling.enabled` | CPU-based HPA (shell mode) |
+| `podAntiAffinity.enabled` | Spread pods across nodes (default `true`) |
 | `dockerSock.enabled` | Mount host `/var/run/docker.sock` (default `true`) |
 | `runAsRoot` | Set `true` if docker.sock permission errors |
 | `nodeSelector` / `tolerations` | Pin to dedicated build nodes |
@@ -179,11 +251,11 @@ Scale replicas for more capacity:
 kubectl scale deployment pertisk-runner --replicas=3
 ```
 
-Each replica must be registered separately (unique token) **or** share one token if you use a single registration — today one token maps to one runner row; register N runners for N replicas.
+Or use Helm: `--set replicaCount=3` (same shared token).
 
-**Docker on nodes:** the default manifest mounts `hostPath` `/var/run/docker.sock`. Remove that volume for `linux`-only jobs. Use `nodeSelector` / `tolerations` for dedicated build nodes (see comments in `deployment.yaml`).
+**Docker on nodes:** the default manifest mounts `hostPath` `/var/run/docker.sock`. Set `dockerSock.enabled: false` for `linux`-only jobs. Use `nodeSelector` / `tolerations` for dedicated build nodes.
 
-**Autoscaling:** HPA on queue depth is planned (Phase 7). Scale manually or use cluster-autoscaler on node pressure for now.
+**Autoscaling:** enable `autoscaling` in Helm values, or use cluster-autoscaler on node pressure. Queue-depth HPA is planned (Phase 7).
 
 ---
 
