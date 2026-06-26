@@ -292,18 +292,31 @@ See [docs/IMPORT.md](./IMPORT.md)
 
 ---
 
-## Phase 7 — Fine-grained Permissions & Kubernetes
+## Phase 7 — Fine-grained Permissions & Kubernetes (In progress)
 
 ### Fine-grained Permissions
-- Custom roles beyond owner/write/read
-- Branch protection, required reviews, required CI
-- Team → repo access with role templates
-- Deploy keys, machine users, scoped API tokens
+
+| Component | Status |
+|-----------|--------|
+| Branch protection rules (pattern, PR-only, approvals, CI, force-push) | Done (MVP) |
+| Enforcement on PR merge | Done |
+| Enforcement on Git HTTP push | Done |
+| Branch protection UI (repo settings) | Done |
+| Custom roles beyond owner/write/read | Planned |
+| Teams → repo access with role templates | Planned |
+| Deploy keys, machine users, scoped API tokens | Planned |
 
 ### Kubernetes Integration
-- Helm chart for gateway + API + workers
-- K8s-based CI runners (see Phase 4.5)
-- Optional GitOps webhooks (Argo CD / Flux)
+
+| Component | Status |
+|-----------|--------|
+| Helm chart for CI runners | Done (Phase 4.5) |
+| Helm chart for platform (`pertisk-gits`) | Done (MVP) |
+| K8s deployment guide | Done — [KUBERNETES.md](./KUBERNETES.md) |
+| HPA / queue-depth autoscale for runners | Planned |
+| Optional GitOps webhooks (Argo CD / Flux) | Planned |
+
+**Tables (new):** `branch_protection_rules`
 
 ---
 
@@ -368,7 +381,9 @@ pertisk-gits/
 ├── web/                  # React app
 ├── migrations/           # SQLx migrations
 ├── deploy/               # Docker Compose, Helm
-│   └── helm/pertisk-runner/  # CI runner chart
+│   └── helm/
+│       ├── pertisk-gits/     # Platform chart (Phase 7)
+│       └── pertisk-runner/   # CI runner chart
 └── docs/
     └── PHASES.md         # This file
 ```

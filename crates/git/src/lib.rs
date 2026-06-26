@@ -16,4 +16,4 @@ pub use config::GitConfig;
 pub use http::{GitHttpState, PostReceiveHook};
 pub use ssh::{GitSshConfig, GitSshState};
 pub use storage::repo_exists_on_disk;
-pub use refs::{diff_refs, snapshot_refs, RefUpdate};
+pub use refs::{diff_refs, is_ancestor, snapshot_refs, RefUpdate};

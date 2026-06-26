@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
         pool,
         repos_root: config.repos_root.clone(),
         post_receive: None,
+        validate_push: None,
     };
 
     let app = pertisk_git::http::router()

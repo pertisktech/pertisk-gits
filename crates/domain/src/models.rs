@@ -662,3 +662,39 @@ pub struct ImportJobRepo {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct BranchProtectionRule {
+    pub id: Uuid,
+    pub repository_id: Uuid,
+    pub branch_pattern: String,
+    pub require_pull_request: bool,
+    pub required_approvals: i32,
+    pub require_status_checks: bool,
+    pub allow_force_push: bool,
+    pub allow_admin_bypass: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateBranchProtectionRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub branch_pattern: String,
+    pub require_pull_request: Option<bool>,
+    pub required_approvals: Option<i32>,
+    pub require_status_checks: Option<bool>,
+    pub allow_force_push: Option<bool>,
+    pub allow_admin_bypass: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateBranchProtectionRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub branch_pattern: Option<String>,
+    pub require_pull_request: Option<bool>,
+    pub required_approvals: Option<i32>,
+    pub require_status_checks: Option<bool>,
+    pub allow_force_push: Option<bool>,
+    pub allow_admin_bypass: Option<bool>,
+}
+

@@ -26,10 +26,17 @@ pub struct GitHttpState {
     pub pool: PgPool,
     pub repos_root: PathBuf,
     pub post_receive: Option<PostReceiveHook>,
+    pub validate_push: Option<ValidatePushHook>,
 }
 
 pub type PostReceiveHook = Arc<
     dyn Fn(Uuid, PathBuf, Vec<crate::refs::RefUpdate>) -> Pin<Box<dyn Future<Output = ()> + Send + 'static>>
+        + Send
+        + Sync,
+>;
+
+pub type ValidatePushHook = Arc<
+    dyn Fn(Uuid, Uuid, PathBuf, Vec<(String, String, String)>) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>
         + Send
         + Sync,
 >;
@@ -151,6 +158,20 @@ async fn receive_pack(
         .await
         .map_err(|e| GitHttpError::Internal(e.to_string()))?;
 
+    let push_updates = protocol::parse_receive_pack_commands(&request_body);
+    if !push_updates.is_empty() {
+        if let Some(validate) = &state.validate_push {
+            validate(
+                repo.id,
+                user.id,
+                disk_path.clone(),
+                push_updates.clone(),
+            )
+            .await
+            .map_err(GitHttpError::ForbiddenMessage)?;
+        }
+    }
+
     let refs_before = snapshot_refs(&disk_path)
         .await
         .map_err(|e| GitHttpError::Internal(e.to_string()))?;
@@ -215,6 +236,7 @@ enum GitHttpError {
     NotFound,
     Unauthorized,
     Forbidden,
+    ForbiddenMessage(String),
     BadRequest(String),
     Internal(String),
 }
@@ -229,6 +251,7 @@ impl IntoResponse for GitHttpError {
             )
                 .into_response(),
             GitHttpError::Forbidden => StatusCode::FORBIDDEN.into_response(),
+            GitHttpError::ForbiddenMessage(msg) => (StatusCode::FORBIDDEN, msg).into_response(),
             GitHttpError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg).into_response(),
             GitHttpError::Internal(msg) => {
                 tracing::error!("git http error: {msg}");

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: pertisk-gits
+description: Pertisk Gits platform — API, Git HTTP, embedded web UI, registry
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - pertisk
+  - git
+  - devops
+home: https://github.com/pertisk-tech/pertisk-gits
+maintainers:
+  - name: Pertisk

@@ -34,6 +34,7 @@ use validator::Validate;
 mod admin;
 mod artifacts;
 mod audit;
+mod branch_protection;
 mod ci_secrets;
 mod collaboration;
 mod cicd;
@@ -188,6 +189,8 @@ async fn main() -> anyhow::Result<()> {
         .merge(audit::audit_routes())
         .merge(import::import_routes())
         .merge(admin::admin_routes())
+        .merge(branch_protection::branch_protection_read_routes())
+        .merge(branch_protection::branch_protection_write_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 
     let api_routes = Router::new()
@@ -195,10 +198,22 @@ async fn main() -> anyhow::Result<()> {
         .merge(protected_routes)
         .merge(cicd::runner_routes());
 
+    let push_pool = state.pool.clone();
+    let validate_push: pertisk_git::http::ValidatePushHook = Arc::new(
+        move |repo_id, user_id, repo_path, updates| {
+            let pool = push_pool.clone();
+            Box::pin(async move {
+                branch_protection::validate_push_updates(&pool, repo_id, user_id, &repo_path, &updates)
+                    .await
+            })
+        },
+    );
+
     let git_state = GitHttpState {
         pool: state.pool.clone(),
         repos_root: state.config.repos_root.clone(),
         post_receive: Some(cicd::post_receive_hook(state.clone())),
+        validate_push: Some(validate_push),
     };
 
     if let Some(ssh_port) = config.git_ssh_port {

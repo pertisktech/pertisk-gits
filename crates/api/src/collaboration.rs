@@ -1045,8 +1045,34 @@ async fn merge_pull_request(
         .await
         .map_err(map_explorer_error)?;
 
+    let review_summary = fetch_review_summary(&state.pool, existing.id).await?;
+
     if let Some(head) = compare.commits.last() {
-        crate::cicd::ensure_ci_passed_for_commit(&state.pool, repo.id, &head.sha).await?;
+        let protection_rule = crate::branch_protection::matching_rule_for_branch(
+            &state.pool,
+            repo.id,
+            &existing.target_branch,
+        )
+        .await?;
+
+        if protection_rule.is_some() {
+            crate::branch_protection::ensure_merge_allowed(
+                &state.pool,
+                repo.id,
+                &existing.target_branch,
+                review_summary.approved_count,
+                review_summary.changes_requested_count,
+                &head.sha,
+            )
+            .await?;
+        }
+
+        if !protection_rule
+            .as_ref()
+            .is_some_and(|rule| rule.require_status_checks)
+        {
+            crate::cicd::ensure_ci_passed_for_commit(&state.pool, repo.id, &head.sha).await?;
+        }
     }
 
     let strategy = body.merge_strategy.as_deref().unwrap_or("merge");

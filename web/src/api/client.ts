@@ -27,6 +27,7 @@ import type {
   RegisterRunnerResponse,
   RepoBrowser,
   RepoCollaborator,
+  BranchProtectionRule,
   Repository,
   RepositoryDetail,
   RotateRunnerTokenResponse,
@@ -192,6 +193,71 @@ export const api = {
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
       `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/collaborators/${userId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listBranchProtectionRules: (token: string, orgSlug: string, repoSlug: string) =>
+    request<BranchProtectionRule[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection`,
+      {},
+      token,
+    ),
+
+  createBranchProtectionRule: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: {
+      branch_pattern: string
+      require_pull_request?: boolean
+      required_approvals?: number
+      require_status_checks?: boolean
+      allow_force_push?: boolean
+      allow_admin_bypass?: boolean
+    },
+  ) =>
+    request<BranchProtectionRule>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  updateBranchProtectionRule: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    ruleId: string,
+    payload: {
+      branch_pattern?: string
+      require_pull_request?: boolean
+      required_approvals?: number
+      require_status_checks?: boolean
+      allow_force_push?: boolean
+      allow_admin_bypass?: boolean
+    },
+  ) =>
+    request<BranchProtectionRule>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection/${ruleId}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  removeBranchProtectionRule: async (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    ruleId: string,
+  ) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection/${ruleId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {

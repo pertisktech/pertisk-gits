@@ -94,6 +94,19 @@ export interface RepoCollaborator {
   role: 'admin' | 'write' | 'read'
 }
 
+export interface BranchProtectionRule {
+  id: string
+  repository_id: string
+  branch_pattern: string
+  require_pull_request: boolean
+  required_approvals: number
+  require_status_checks: boolean
+  allow_force_push: boolean
+  allow_admin_bypass: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface AuthResponse {
   token: string
   user: User

@@ -57,3 +57,30 @@ pub fn diff_refs(
     }
     updates
 }
+
+/// Returns true when `ancestor` is an ancestor of `descendant` (or equal).
+pub async fn is_ancestor(
+    repo_path: &Path,
+    ancestor: &str,
+    descendant: &str,
+) -> anyhow::Result<bool> {
+    if ancestor == descendant {
+        return Ok(true);
+    }
+
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["merge-base", "--is-ancestor", ancestor, descendant])
+        .output()
+        .await
+        .context("git merge-base --is-ancestor")?;
+
+    match output.status.code() {
+        Some(0) => Ok(true),
+        Some(1) => Ok(false),
+        _ => anyhow::bail!(
+            "git merge-base failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    }
+}

@@ -7,7 +7,8 @@
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm \
 	install-runner deploy-runner-rpm \
 	runner-image runner-image-push runner-image-multi runner-compose-up runner-compose-down \
-	helm-runner-lint helm-runner-template helm-runner-install
+	helm-runner-lint helm-runner-template helm-runner-install \
+	helm-gits-lint helm-gits-template
 
 CARGO ?= cargo
 COMPOSE ?= docker compose -f deploy/docker-compose.yml
@@ -356,6 +357,18 @@ helm-runner-install:
 	  --set apiUrl="$(PERTISK_API_URL)" \
 	  --set runnerToken="$(RUNNER_TOKEN)" \
 	  --set image.tag="$(VERSION)"
+
+HELM_GITS_CHART = deploy/helm/pertisk-gits
+HELM_GITS_RELEASE ?= pertisk-gits
+
+helm-gits-lint:
+	helm lint $(HELM_GITS_CHART)
+
+helm-gits-template:
+	helm template $(HELM_GITS_RELEASE) $(HELM_GITS_CHART) \
+	  --set publicUrl=https://git.example.com \
+	  --set jwt.secret=dev-secret \
+	  --set database.url='postgres://pertisk:pertisk@postgres:5432/pertisk_gits'
 
 # Delete a tag (local and remote).
 delete-tag:
