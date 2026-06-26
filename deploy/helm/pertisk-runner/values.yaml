@@ -8,11 +8,11 @@
 replicaCount: 1
 
 autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 5
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
   targetCPUUtilizationPercentage: 75
-
+  targetMemoryUtilizationPercentage: 75
 # Spread replicas across nodes when replicaCount > 1
 podAntiAffinity:
   enabled: true
@@ -33,8 +33,8 @@ kubernetes:
   # nodeSelector: {}
 
 image:
-  repository: pertisk-runner
-  tag: "" # defaults to Chart.appVersion
+  repository: harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/runner
+  tag: "0.1.84" # defaults to Chart.appVersion
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

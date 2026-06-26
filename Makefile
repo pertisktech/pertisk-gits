@@ -6,7 +6,7 @@
 	release release-amd release-arm \
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm \
 	install-runner deploy-runner-rpm \
-	runner-image runner-image-multi runner-compose-up runner-compose-down \
+	runner-image runner-image-push runner-image-multi runner-compose-up runner-compose-down \
 	helm-runner-lint helm-runner-template helm-runner-install
 
 CARGO ?= cargo
@@ -266,13 +266,15 @@ deploy-runner-rpm:
 		./build/deploy-runner-rpm.sh
 
 # --- Runner Docker image & Compose ---
-RUNNER_IMAGE ?= pertisk-runner
+RUNNER_REGISTRY ?= harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy
+RUNNER_IMAGE_NAME ?= runner
+RUNNER_IMAGE ?= $(RUNNER_REGISTRY)/$(RUNNER_IMAGE_NAME)
 RUNNER_IMAGE_TAG ?= $(VERSION)
 RUNNER_BUILDER ?= pertisk-runner-image
 COMPOSE_RUNNER = docker compose -f deploy/docker-compose.runner.yml --env-file deploy/.env.runner
 
 runner-image:
-	@echo "Building $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (linux/amd64)..."
+	@echo "Building $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (linux/amd64, local)..."
 	export DOCKER_BUILDKIT=1; \
 	docker buildx build --platform linux/amd64 \
 	  -f docker/Dockerfile.runner.release \
@@ -282,8 +284,21 @@ runner-image:
 	  -t "$(RUNNER_IMAGE):latest" \
 	  --load .
 
+runner-image-push:
+	@echo "Pushing $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) to $(RUNNER_REGISTRY) (linux/amd64)..."
+	@echo "Login first if needed: docker login $(RUNNER_REGISTRY)"
+	export DOCKER_BUILDKIT=1; \
+	docker buildx build --platform linux/amd64 \
+	  -f docker/Dockerfile.runner.release \
+	  --target runtime \
+	  --build-arg VERSION="$(VERSION)" \
+	  -t "$(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)" \
+	  -t "$(RUNNER_IMAGE):latest" \
+	  --push .
+
 runner-image-multi:
-	@echo "Building $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (amd64 + arm64)..."
+	@echo "Pushing $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (amd64 + arm64) to $(RUNNER_REGISTRY)..."
+	@echo "Login first if needed: docker login $(RUNNER_REGISTRY)"
 	export DOCKER_BUILDKIT=1; \
 	if ! docker buildx inspect "$(RUNNER_BUILDER)" --bootstrap >/dev/null 2>&1; then \
 	  docker buildx create --name "$(RUNNER_BUILDER)" --driver docker-container --bootstrap; \

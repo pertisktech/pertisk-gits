@@ -74,15 +74,24 @@ The RPM postinstall adds `pertisk-runner` to the `docker` group when Docker is i
 
 Multi-stage image: `docker/Dockerfile.runner.release` target `runtime` (Debian bookworm-slim + git, curl, Docker CLI).
 
-### Build
+Default registry: `harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/runner`
 
 ```bash
-make runner-image
-# or multi-arch:
-make runner-image-multi
+docker login harbor.tools.thaidevops.co
+
+# Local load (amd64)
+make runner-image VERSION=0.1.84
+
+# Push amd64 to Harbor
+make runner-image-push VERSION=0.1.84
+
+# Push amd64 + arm64
+make runner-image-multi VERSION=0.1.84
 ```
 
-### Run
+Override registry: `make runner-image-push RUNNER_REGISTRY=my.registry.example/pertisk`
+
+### Run locally
 
 ```bash
 docker run -d --name pertisk-runner --restart unless-stopped \
