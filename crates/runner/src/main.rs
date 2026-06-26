@@ -95,7 +95,19 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             tracing::warn!("heartbeat failed: {err:#}");
         }
 
-        let poll = match api.poll_job(25).await {
+        let poll = tokio::select! {
+            poll = api.poll_job(25) => poll,
+            _ = wait_shutdown_signal() => {
+                let host = collect_host_info();
+                if let Err(err) = api.deregister_instance(&host).await {
+                    tracing::warn!("deregister instance failed: {err:#}");
+                }
+                tracing::info!(host = %host.host_name, "runner shutting down");
+                return Ok(());
+            }
+        };
+
+        let poll = match poll {
             Ok(job) => job,
             Err(err) if err.to_string().contains("unauthorized") => {
                 tracing::error!(
@@ -128,5 +140,24 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
         if let Err(err) = job_result {
             tracing::error!("job failed: {err:#}");
         }
+    }
+}
+
+async fn wait_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut term = signal(SignalKind::terminate()).expect("SIGTERM handler");
+        let mut int = signal(SignalKind::interrupt()).expect("SIGINT handler");
+        tokio::select! {
+            _ = term.recv() => {}
+            _ = int.recv() => {}
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("ctrl-c handler");
     }
 }

@@ -78,6 +78,16 @@ impl RunnerApi {
         Ok(())
     }
 
+    pub async fn deregister_instance(&self, host: &HostInfo) -> anyhow::Result<()> {
+        self.client
+            .delete(format!("{}/api/v1/runner/instance", self.base_url))
+            .bearer_auth(&self.token)
+            .json(host)
+            .send()
+            .await?;
+        Ok(())
+    }
+
     pub async fn poll_job(&self, timeout_secs: u64) -> anyhow::Result<Option<PollJobResponse>> {
         let response = self
             .client

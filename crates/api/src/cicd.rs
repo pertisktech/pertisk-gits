@@ -35,6 +35,8 @@ fn sqlx_error(err: sqlx::Error) -> ApiError {
 
 /// No heartbeat for this long ⇒ runner is treated as offline (runner heartbeats every ~30s while busy).
 const RUNNER_OFFLINE_AFTER_SECS: i64 = 180;
+/// Manager pod rows older than this are hidden and deleted (3× the ~30s heartbeat interval).
+const RUNNER_INSTANCE_STALE_SECS: i64 = 90;
 /// Running job with cancel_requested older than this is force-finalized (safety net).
 const CANCEL_RECLAIM_AFTER_SECS: i64 = 120;
 /// RPM/tar.gz CI artifacts exceed axum's default 2 MiB body limit.
@@ -83,7 +85,7 @@ async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
         WHERE last_seen_at < NOW() - make_interval(secs => $1)
         "#,
     )
-    .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
+    .bind(RUNNER_INSTANCE_STALE_SECS as f64)
     .execute(pool)
     .await?;
 
@@ -358,6 +360,7 @@ pub fn runner_routes() -> Router<AppState> {
         .route("/runner/jobs/{job_id}/complete", post(complete_runner_job))
         .route("/runner/jobs/{job_id}/artifacts", post(upload_runner_artifact))
         .route("/runner/heartbeat", post(runner_heartbeat))
+        .route("/runner/instance", delete(runner_deregister_instance))
         .route(
             "/runner/repos/{org_slug}/{repo_slug}/workspace",
             get(runner_workspace),
@@ -494,6 +497,7 @@ struct RegisterRunnerResponse {
 }
 
 #[derive(Serialize)]
+#[derive(Clone)]
 struct RunnerInstanceResponse {
     instance_id: String,
     host_ip: Option<String>,
@@ -997,7 +1001,7 @@ async fn list_runners(
             "#,
         )
         .bind(&runner_ids)
-        .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
+        .bind(RUNNER_INSTANCE_STALE_SECS as f64)
         .fetch_all(&state.pool)
         .await
         .map_err(sqlx_error)?;
@@ -1016,6 +1020,10 @@ async fn list_runners(
                     status: instance_status(row.last_seen_at),
                     last_seen_at: row.last_seen_at,
                 });
+        }
+
+        for instances in instances_by_runner.values_mut() {
+            *instances = filter_active_k8s_instances(std::mem::take(instances));
         }
 
         let k8s_rows = sqlx::query_as::<_, RunnerK8sPodRow>(
@@ -1552,11 +1560,101 @@ async fn upsert_runner_k8s_pod(
 
 fn instance_status(last_seen_at: DateTime<Utc>) -> &'static str {
     let age_secs = (Utc::now() - last_seen_at).num_seconds();
-    if age_secs <= RUNNER_OFFLINE_AFTER_SECS {
+    if age_secs <= RUNNER_INSTANCE_STALE_SECS {
         "online"
     } else {
         "offline"
     }
+}
+
+/// Kubernetes pod names are `{deployment}-{replicaset-hash}-{suffix}`.
+fn k8s_replicaset_hash(pod_name: &str) -> Option<String> {
+    let mut parts = pod_name.rsplitn(3, '-');
+    let _suffix = parts.next()?;
+    let hash = parts.next()?;
+    let _prefix = parts.next()?;
+    if hash.len() >= 8 && hash.chars().all(|c| c.is_ascii_alphanumeric()) {
+        Some(hash.to_string())
+    } else {
+        None
+    }
+}
+
+/// During a rolling deploy, old and new ReplicaSets can both heartbeat briefly. Keep only the
+/// cohort whose freshest heartbeat is newest (current Deployment pods).
+fn filter_active_k8s_instances(mut instances: Vec<RunnerInstanceResponse>) -> Vec<RunnerInstanceResponse> {
+    if instances.len() <= 1 {
+        return instances;
+    }
+
+    let mut by_hash: HashMap<String, Vec<RunnerInstanceResponse>> = HashMap::new();
+    let mut without_hash = Vec::new();
+
+    for instance in instances.drain(..) {
+        if let Some(hash) = k8s_replicaset_hash(&instance.instance_id) {
+            by_hash.entry(hash).or_default().push(instance);
+        } else {
+            without_hash.push(instance);
+        }
+    }
+
+    if by_hash.len() <= 1 {
+        instances = by_hash.into_values().flatten().collect();
+        instances.extend(without_hash);
+        instances.sort_by(|a, b| b.last_seen_at.cmp(&a.last_seen_at));
+        return instances;
+    }
+
+    let active_hash = by_hash
+        .iter()
+        .max_by_key(|(_, group)| {
+            group
+                .iter()
+                .map(|i| i.last_seen_at)
+                .max()
+                .unwrap_or(DateTime::<Utc>::MIN_UTC)
+        })
+        .map(|(hash, _)| hash.clone());
+
+    let Some(active_hash) = active_hash else {
+        instances.extend(without_hash);
+        return instances;
+    };
+
+    let mut active = by_hash.remove(&active_hash).unwrap_or_default();
+    active.extend(without_hash);
+    active.sort_by(|a, b| b.last_seen_at.cmp(&a.last_seen_at));
+    active
+}
+
+async fn runner_deregister_instance(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Option<Json<RunnerHeartbeatRequest>>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+    let body = body.map(|Json(b)| b).unwrap_or_default();
+    let instance_id = body
+        .host_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty());
+
+    if let Some(instance_id) = instance_id {
+        sqlx::query(
+            r#"
+            DELETE FROM runner_instances
+            WHERE runner_id = $1 AND instance_id = $2
+            "#,
+        )
+        .bind(runner_id)
+        .bind(instance_id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn k8s_pod_phase_for_status(status: &str) -> &'static str {
@@ -3236,4 +3334,45 @@ async fn cancel_job_step_run(
     let _ = release_idle_runners(pool).await;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod runner_instance_tests {
+    use super::*;
+
+    fn instance(id: &str, secs_ago: i64) -> RunnerInstanceResponse {
+        RunnerInstanceResponse {
+            instance_id: id.to_string(),
+            host_ip: None,
+            version: None,
+            cpu_cores: None,
+            memory_total_mb: None,
+            memory_used_mb: None,
+            status: "online",
+            last_seen_at: Utc::now() - chrono::Duration::seconds(secs_ago),
+        }
+    }
+
+    #[test]
+    fn extracts_k8s_replicaset_hash() {
+        assert_eq!(
+            k8s_replicaset_hash("pertisk-runner-86d4dbc796-rqr8h").as_deref(),
+            Some("86d4dbc796")
+        );
+        assert_eq!(k8s_replicaset_hash("my-laptop"), None);
+    }
+
+    #[test]
+    fn keeps_only_active_replicaset_cohort() {
+        let filtered = filter_active_k8s_instances(vec![
+            instance("pertisk-runner-86d4dbc796-a", 0),
+            instance("pertisk-runner-86d4dbc796-b", 1),
+            instance("pertisk-runner-54985b5db6-c", 60),
+            instance("pertisk-runner-54985b5db6-d", 61),
+        ]);
+        assert_eq!(filtered.len(), 2);
+        assert!(filtered
+            .iter()
+            .all(|i| i.instance_id.starts_with("pertisk-runner-86d4dbc796-")));
+    }
 }
