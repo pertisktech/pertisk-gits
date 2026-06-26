@@ -36,7 +36,7 @@ fn sqlx_error(err: sqlx::Error) -> ApiError {
 /// No heartbeat for this long ⇒ runner is treated as offline (runner heartbeats every ~30s while busy).
 const RUNNER_OFFLINE_AFTER_SECS: i64 = 180;
 /// Running job with cancel_requested older than this is force-finalized (safety net).
-const CANCEL_RECLAIM_AFTER_SECS: i64 = 30;
+const CANCEL_RECLAIM_AFTER_SECS: i64 = 120;
 /// RPM/tar.gz CI artifacts exceed axum's default 2 MiB body limit.
 const MAX_RUNNER_ARTIFACT_BYTES: usize = 256 * 1024 * 1024;
 
@@ -80,12 +80,66 @@ async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         DELETE FROM runner_instances
-        WHERE last_seen_at < NOW() - make_interval(hours => 24)
+        WHERE last_seen_at < NOW() - make_interval(secs => $1)
+        "#,
+    )
+    .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
+    .execute(pool)
+    .await?;
+
+    finish_stale_k8s_pod_records(pool).await?;
+
+    sqlx::query(
+        r#"
+        UPDATE job_runs
+        SET cancel_requested_at = NULL,
+            cancel_step_name = NULL
+        WHERE status = 'queued'
+          AND cancel_requested_at IS NOT NULL
         "#,
     )
     .execute(pool)
     .await?;
 
+    Ok(())
+}
+
+/// Close runner_k8s_pods rows left open when the runner or CI job ended unexpectedly.
+async fn finish_stale_k8s_pod_records(pool: &PgPool) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE runner_k8s_pods rkp
+        SET phase = CASE j.status::text
+                WHEN 'success' THEN 'succeeded'
+                WHEN 'cancelled' THEN 'cancelled'
+                ELSE 'failed'
+            END,
+            finished_at = COALESCE(rkp.finished_at, NOW())
+        FROM job_runs j
+        WHERE rkp.job_run_id = j.id
+          AND rkp.finished_at IS NULL
+          AND j.status NOT IN ('queued', 'running')
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn finish_k8s_pod_for_job(pool: &PgPool, job_id: Uuid, phase: &str) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        r#"
+        UPDATE runner_k8s_pods
+        SET phase = $2,
+            finished_at = COALESCE(finished_at, NOW())
+        WHERE job_run_id = $1
+          AND finished_at IS NULL
+        "#,
+    )
+    .bind(job_id)
+    .bind(phase)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -145,6 +199,9 @@ async fn reclaim_timed_out_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
         if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
             tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after timed-out job");
         }
+        if let Err(err) = finish_k8s_pod_for_job(pool, job_id, "failed").await {
+            tracing::warn!(%job_id, %err, "failed to finish k8s pod record for timed-out job");
+        }
         tracing::warn!(%job_id, job = %job_name, timeout_minutes, "reclaimed job after timeout");
     }
 
@@ -191,6 +248,9 @@ async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
         if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
             tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after reclaimed job");
         }
+        if let Err(err) = finish_k8s_pod_for_job(pool, job_id, "failed").await {
+            tracing::warn!(%job_id, %err, "failed to finish k8s pod record for reclaimed job");
+        }
         tracing::warn!(%job_id, job = %job_name, "reclaimed stale running job");
     }
 
@@ -200,6 +260,8 @@ async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
         FROM job_runs j
         WHERE j.status = 'running'
           AND j.cancel_requested_at IS NOT NULL
+          AND j.started_at IS NOT NULL
+          AND j.cancel_requested_at >= j.started_at
           AND j.cancel_requested_at < NOW() - make_interval(secs => $1)
         "#,
     )
@@ -226,6 +288,9 @@ async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
         }
         if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
             tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after cancel-reclaimed job");
+        }
+        if let Err(err) = finish_k8s_pod_for_job(pool, job_id, "cancelled").await {
+            tracing::warn!(%job_id, %err, "failed to finish k8s pod record for cancel-reclaimed job");
         }
         tracing::warn!(%job_id, job = %job_name, "reclaimed running job after cancel timeout");
     }
@@ -348,6 +413,7 @@ struct JobRunResponse {
     job_name: String,
     status: String,
     runs_on: String,
+    image: Option<String>,
     needs: Vec<String>,
     steps: Vec<JobStepResponse>,
     artifacts: Vec<JobArtifactResponse>,
@@ -391,6 +457,7 @@ struct PipelineConfigPreviewResponse {
 struct PipelineJobPreview {
     name: String,
     runs_on: String,
+    image: Option<String>,
     needs: Vec<String>,
     step_count: usize,
     steps: Vec<JobStepResponse>,
@@ -497,6 +564,7 @@ struct PollJobResponse {
     steps: Value,
     artifacts: Value,
     timeout_minutes: Option<i32>,
+    image: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -545,6 +613,7 @@ async fn get_pipeline_config_preview(
         .map(|(name, job)| PipelineJobPreview {
             name,
             runs_on: job.runs_on,
+            image: job.image,
             needs: job.needs.clone(),
             step_count: job.steps.len(),
             steps: job
@@ -923,10 +992,12 @@ async fn list_runners(
             SELECT runner_id, instance_id, host_ip, version, cpu_cores, memory_total_mb, memory_used_mb, last_seen_at
             FROM runner_instances
             WHERE runner_id = ANY($1)
+              AND last_seen_at >= NOW() - make_interval(secs => $2)
             ORDER BY last_seen_at DESC
             "#,
         )
         .bind(&runner_ids)
+        .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
         .fetch_all(&state.pool)
         .await
         .map_err(sqlx_error)?;
@@ -962,6 +1033,12 @@ async fn list_runners(
             JOIN job_runs j ON j.id = rkp.job_run_id
             WHERE rkp.runner_id = ANY($1)
               AND rkp.finished_at IS NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM job_runs j
+                  WHERE j.id = rkp.job_run_id
+                    AND j.status = 'running'
+              )
             ORDER BY rkp.created_at DESC
             "#,
         )
@@ -1137,6 +1214,7 @@ async fn poll_runner_job(
                     j.steps_json,
                     j.artifacts_json,
                     j.timeout_minutes,
+                    j.image,
                     p.repository_id,
                     p.commit_sha,
                     p.ref_name,
@@ -1166,6 +1244,7 @@ async fn poll_runner_job(
                 steps: meta.steps_json,
                 artifacts: meta.artifacts_json,
                 timeout_minutes: meta.timeout_minutes,
+                image: meta.image,
             })));
         }
 
@@ -1216,7 +1295,7 @@ async fn append_runner_job_log(
         r#"
         UPDATE job_runs
         SET log_text = log_text || $3
-        WHERE id = $1 AND runner_id = $2 AND status IN ('queued', 'running')
+        WHERE id = $1 AND runner_id = $2 AND status IN ('queued', 'running', 'cancelled')
         "#,
     )
     .bind(job_id)
@@ -1253,7 +1332,7 @@ async fn complete_runner_job(
             log_text = COALESCE($4, log_text),
             metrics_json = COALESCE($5, metrics_json),
             finished_at = NOW()
-        WHERE id = $1 AND runner_id = $2
+        WHERE id = $1 AND runner_id = $2 AND status IN ('running', 'cancelled')
         RETURNING pipeline_run_id, pipeline_run_id, job_name
         "#,
     )
@@ -2053,11 +2132,12 @@ async fn materialize_jobs_for_run(
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, steps_json, artifacts_json, needs, timeout_minutes, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued')
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
+                image = EXCLUDED.image,
                 steps_json = EXCLUDED.steps_json,
                 artifacts_json = EXCLUDED.artifacts_json,
                 needs = EXCLUDED.needs,
@@ -2068,12 +2148,15 @@ async fn materialize_jobs_for_run(
                 log_text = '',
                 queued_at = NOW(),
                 started_at = NULL,
-                finished_at = NULL
+                finished_at = NULL,
+                cancel_requested_at = NULL,
+                cancel_step_name = NULL
             "#,
         )
         .bind(run_id)
         .bind(&job.name)
         .bind(&job.job.runs_on)
+        .bind(job.job.image.as_deref().filter(|image| !image.trim().is_empty()))
         .bind(steps_json)
         .bind(artifacts_json)
         .bind(&job.job.needs)
@@ -2254,7 +2337,11 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
     sqlx::query(
         r#"
         UPDATE job_runs
-        SET status = 'running', runner_id = $2, started_at = NOW()
+        SET status = 'running',
+            runner_id = $2,
+            started_at = NOW(),
+            cancel_requested_at = NULL,
+            cancel_step_name = NULL
         WHERE id = $1
         "#,
     )
@@ -2576,6 +2663,7 @@ struct JobRunRow {
     job_name: String,
     status: String,
     runs_on: String,
+    image: Option<String>,
     needs: Vec<String>,
     steps_json: Value,
     metrics_json: Option<Value>,
@@ -2648,7 +2736,7 @@ async fn fetch_job_artifacts(
 async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobRunResponse>, sqlx::Error> {
     let rows = sqlx::query_as::<_, JobRunRow>(
         r#"
-        SELECT id, job_name, status::text, runs_on, needs, steps_json, metrics_json, log_text, queued_at, started_at, finished_at
+        SELECT id, job_name, status::text, runs_on, image, needs, steps_json, metrics_json, log_text, queued_at, started_at, finished_at
         FROM job_runs
         WHERE pipeline_run_id = $1
         ORDER BY queued_at ASC
@@ -2666,6 +2754,7 @@ async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobR
             job_name: row.job_name,
             status: row.status,
             runs_on: row.runs_on,
+            image: row.image,
             needs: row.needs,
             steps: steps_from_json(&row.steps_json),
             artifacts,
@@ -2761,6 +2850,7 @@ struct JobPollRow {
     steps_json: Value,
     artifacts_json: Value,
     timeout_minutes: Option<i32>,
+    image: Option<String>,
     repository_id: Uuid,
     commit_sha: String,
     ref_name: String,
@@ -3069,10 +3159,8 @@ async fn cancel_pipeline_run(
     let running_jobs = sqlx::query_as::<_, (Uuid, String)>(
         r#"
         UPDATE job_runs
-        SET status = 'cancelled'::job_run_status,
-            finished_at = NOW(),
-            cancel_requested_at = COALESCE(cancel_requested_at, NOW()),
-            log_text = log_text || E'\n=== pipeline cancelled\n'
+        SET cancel_requested_at = COALESCE(cancel_requested_at, NOW()),
+            log_text = log_text || E'\n=== pipeline cancel requested\n'
         WHERE pipeline_run_id = $1 AND status = 'running'
         RETURNING id, job_name
         "#,
@@ -3084,11 +3172,11 @@ async fn cancel_pipeline_run(
 
     tx.commit().await.map_err(|_| CancelError::NotFound)?;
 
-    for (job_id, job_name) in queued_jobs
-        .into_iter()
-        .chain(running_jobs.into_iter())
-    {
+    for (job_id, job_name) in queued_jobs {
         let _ = update_commit_status_for_job(pool, job_id, "cancelled", &job_name).await;
+    }
+    for (job_id, job_name) in running_jobs {
+        let _ = update_commit_status_for_job(pool, job_id, "failure", &job_name).await;
     }
 
     let _ = release_idle_runners(pool).await;

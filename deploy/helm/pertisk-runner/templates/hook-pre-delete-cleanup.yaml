@@ -1,0 +1,42 @@
+{{- if and (eq .Values.executor "kubernetes") .Values.kubernetes.cleanupOnUninstall .Values.rbac.create }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "pertisk-runner.fullname" . }}-cleanup
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "pertisk-runner.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded,hook-failed
+    helm.sh/hook-weight: "0"
+spec:
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        {{- include "pertisk-runner.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "pertisk-runner.serviceAccountName" . }}
+      restartPolicy: Never
+      containers:
+        - name: cleanup
+          image: {{ .Values.kubernetes.cleanupImage | quote }}
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              NS="{{ include "pertisk-runner.jobNamespace" . }}"
+              RELEASE="{{ .Release.Name }}"
+              echo "Deleting pertisk CI jobs and configmaps in ${NS} for release ${RELEASE}..."
+              kubectl delete jobs,configmaps \
+                -n "${NS}" \
+                -l "pertisk.dev/managed-by=pertisk-runner,app.kubernetes.io/instance=${RELEASE}" \
+                --ignore-not-found --wait=false
+              echo "Cleanup finished."
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

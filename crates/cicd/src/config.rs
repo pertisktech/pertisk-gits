@@ -39,6 +39,9 @@ pub struct ArtifactDecl {
 pub struct Job {
     #[serde(rename = "runs-on", deserialize_with = "deserialize_runs_on")]
     pub runs_on: String,
+    /// Container image for Kubernetes executor (GitLab-style `image:`).
+    #[serde(default)]
+    pub image: Option<String>,
     #[serde(default)]
     pub needs: Vec<String>,
     #[serde(default = "default_true")]
@@ -277,6 +280,23 @@ jobs:
         .unwrap();
         assert_eq!(cfg.jobs["build"].artifacts.len(), 1);
         assert_eq!(cfg.jobs["build"].artifacts[0].name, "binary");
+    }
+
+    #[test]
+    fn parses_job_image() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  build:
+    runs-on: kubernetes
+    image: rust:1-bookworm
+    steps:
+      - run: cargo build --release
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.jobs["build"].image.as_deref(), Some("rust:1-bookworm"));
     }
 
     #[test]

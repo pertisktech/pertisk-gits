@@ -345,6 +345,7 @@ export interface JobRun {
   job_name: string
   status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled'
   runs_on: string
+  image?: string | null
   needs: string[]
   steps: Array<{ name: string; run: string }>
   artifacts: JobArtifact[]
@@ -358,6 +359,7 @@ export interface JobRun {
 export interface PipelineJobPreview {
   name: string
   runs_on: string
+  image?: string | null
   needs: string[]
   step_count: number
   steps: Array<{ name: string; run: string }>

@@ -167,10 +167,13 @@ Pipeline jobs must use `runs-on: kubernetes`:
 jobs:
   build:
     runs-on: kubernetes
+    image: rust:1-bookworm   # optional — per-job image (GitLab-style)
     steps:
       - name: test
         run: make test
 ```
+
+When `image` is omitted, the runner uses `kubernetes.buildImage` / `PERTISK_K8S_BUILD_IMAGE` (default `debian:bookworm-slim`). Custom images should include `bash` (steps run via `/bin/bash`).
 
 | | **Shell pool** | **Kubernetes executor** |
 |--|----------------|-------------------------|
@@ -184,8 +187,13 @@ Environment (manager pod):
 |----------|-------------|
 | `PERTISK_RUNNER_EXECUTOR` | `kubernetes` |
 | `PERTISK_K8S_NAMESPACE` | Where job pods are created |
+| `PERTISK_K8S_RELEASE` | Helm release name — labels CI jobs for uninstall cleanup |
 | `PERTISK_K8S_BUILD_IMAGE` | Image for build container (default `debian:bookworm-slim`) |
 | `PERTISK_K8S_HELPER_IMAGE` | Init container image (default `curlimages/curl`) |
+
+`helm uninstall` runs a pre-delete hook that removes `pertisk-job-*` Jobs and script ConfigMaps labeled for that release (`kubernetes.cleanupOnUninstall`, default `true`). Finished job pods are also removed after `kubernetes.ttlSecondsAfterFinished` (default 600s).
+
+Admin **Runners** only lists manager pods seen in the last ~3 minutes and job pods tied to a still-`running` CI job — stale entries disappear after redeploy without waiting 24h.
 
 Optional CPU-based HPA (shell mode only):
 
@@ -230,6 +238,7 @@ Useful values:
 | `executor` | `shell` (default) or `kubernetes` |
 | `replicaCount` | Shell pool size — shared token, ~1 concurrent job per pod |
 | `kubernetes.buildImage` | CI build container image (k8s executor) |
+| `kubernetes.cleanupOnUninstall` | `helm uninstall` deletes `pertisk-job-*` resources (default `true`) |
 | `autoscaling.enabled` | CPU-based HPA (shell mode) |
 | `podAntiAffinity.enabled` | Spread pods across nodes (default `true`) |
 | `dockerSock.enabled` | Mount host `/var/run/docker.sock` (default `true`) |

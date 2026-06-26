@@ -7,6 +7,7 @@ pub struct K8sExecutorConfig {
     pub namespace: String,
     pub helper_image: String,
     pub build_image: String,
+    pub release_name: Option<String>,
     pub service_account: Option<String>,
     pub ttl_seconds_after_finished: i32,
     pub workspace_mount_path: String,
@@ -32,6 +33,9 @@ impl K8sExecutorConfig {
                 .unwrap_or_else(|_| "curlimages/curl:8.12.1".into()),
             build_image: std::env::var("PERTISK_K8S_BUILD_IMAGE")
                 .unwrap_or_else(|_| "debian:bookworm-slim".into()),
+            release_name: std::env::var("PERTISK_K8S_RELEASE")
+                .ok()
+                .filter(|name| !name.trim().is_empty()),
             service_account: std::env::var("PERTISK_K8S_SERVICE_ACCOUNT").ok(),
             ttl_seconds_after_finished: std::env::var("PERTISK_K8S_TTL_SECONDS")
                 .ok()

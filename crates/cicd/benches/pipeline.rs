@@ -63,6 +63,7 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
             name,
             Job {
                 runs_on: "linux".into(),
+                image: None,
                 needs,
                 required: true,
                 steps: vec![Step {

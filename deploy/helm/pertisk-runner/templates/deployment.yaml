@@ -68,6 +68,8 @@ spec:
               value: {{ .Values.kubernetes.ttlSecondsAfterFinished | quote }}
             - name: PERTISK_K8S_SERVICE_ACCOUNT
               value: {{ include "pertisk-runner.serviceAccountName" . | quote }}
+            - name: PERTISK_K8S_RELEASE
+              value: {{ .Release.Name | quote }}
             {{- end }}
             {{- if .Values.reposRoot }}
             - name: PERTISK_REPOS_ROOT

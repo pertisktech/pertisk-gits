@@ -26,6 +26,8 @@ pub struct PollJobResponse {
     pub artifacts: Vec<ArtifactDecl>,
     #[serde(default)]
     pub timeout_minutes: Option<u32>,
+    #[serde(default)]
+    pub image: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

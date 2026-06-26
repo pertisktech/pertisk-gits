@@ -30,11 +30,14 @@ kubernetes:
   helperImage: curlimages/curl:8.12.1
   buildImage: debian:bookworm-slim
   ttlSecondsAfterFinished: 600
+  # Delete pertisk-job-* Jobs and script ConfigMaps on helm uninstall
+  cleanupOnUninstall: true
+  cleanupImage: bitnami/kubectl:1.31.4
   # nodeSelector: {}
 
 image:
   repository: harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/runner
-  tag: "0.1.84" # defaults to Chart.appVersion
+  tag: "0.1.85" # defaults to Chart.appVersion
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
