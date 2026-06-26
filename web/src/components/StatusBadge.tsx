@@ -1,13 +1,15 @@
+import type { ReactNode } from 'react'
+import { Badge, type BadgeColor } from './ui/Badge'
 import { cn } from '../utils/cn'
 
 type Variant = 'green' | 'yellow' | 'red' | 'gray' | 'violet'
 
-const variantClass: Record<Variant, string> = {
-  green: 'status-green',
-  yellow: 'status-yellow',
-  red: 'status-red',
-  gray: 'status-gray',
-  violet: 'resource-label label-violet',
+const variantColor: Record<Variant, BadgeColor> = {
+  green: 'success',
+  yellow: 'warning',
+  red: 'error',
+  gray: 'gray',
+  violet: 'primary',
 }
 
 export function StatusBadge({
@@ -16,19 +18,13 @@ export function StatusBadge({
   className,
 }: {
   variant: Variant
-  children: React.ReactNode
+  children: ReactNode
   className?: string
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-xs font-medium',
-        variantClass[variant],
-        className,
-      )}
-    >
+    <Badge variant="light" color={variantColor[variant]} className={cn('whitespace-nowrap', className)}>
       {children}
-    </span>
+    </Badge>
   )
 }
 

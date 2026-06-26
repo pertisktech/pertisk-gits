@@ -1,6 +1,7 @@
 import { Check, ChevronDown, Copy, Download, GitBranch, Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { Input } from './ui/Input'
 
 type CloneMode = 'https' | 'ssh' | 'download'
 
@@ -31,19 +32,19 @@ function CopyField({ label, value }: { label: string; value: string }) {
 
   return (
     <div>
-      <div className="text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-wide">
+      <div className="mb-1.5 text-theme-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {label}
       </div>
       <div className="flex gap-1.5">
-        <input readOnly value={value} className="app-clone-input flex-1" />
+        <Input readOnly value={value} className="flex-1 font-mono text-theme-xs" />
         <button
           type="button"
           onClick={copy}
-          className="shrink-0 px-2.5 py-1.5 rounded-md border border-naturals-n4 text-text-secondary hover:bg-hover text-xs"
+          className="shrink-0 rounded-lg border border-gray-200 px-2.5 py-2 text-theme-xs text-gray-500 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5"
           data-no-global-button-hover="true"
           title={copied ? 'Copied!' : 'Copy'}
         >
-          {copied ? <Check size={14} className="text-primary" /> : <Copy size={14} />}
+          {copied ? <Check size={14} className="text-brand-500" /> : <Copy size={14} />}
         </button>
       </div>
     </div>

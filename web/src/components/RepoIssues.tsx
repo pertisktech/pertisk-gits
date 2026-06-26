@@ -6,7 +6,10 @@ import { api } from '../api/client'
 import { issueUrl } from '../lib/collaboration'
 import { RepoLabelsPanel, RepoMilestonesPanel } from './IssueSidebar'
 import { LabelBadge } from './LabelBadge'
-import { EmptyState, PrimaryButton } from './ui'
+import { ShellInlineTabs } from './AppSegment'
+import { Card } from './Card'
+import { Alert, EmptyState, PrimaryButton, SecondaryButton } from './ui'
+import { FieldLabel, Input, Select, Textarea } from './ui/Input'
 
 interface RepoIssuesProps {
   token?: string | null
@@ -78,8 +81,8 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
 
   if (isLoading) {
     return (
-      <div className="app-panel">
-        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
+      <div className="shell-card">
+        <div className="shell-card-body flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
           <Loader2 size={16} className="animate-spin" />
           Loading issues…
         </div>
@@ -88,38 +91,29 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
   }
 
   if (error) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error).message}
-      </div>
-    )
+    return <Alert>{(error as Error).message}</Alert>
   }
 
   const issues = data?.issues ?? []
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="app-segment inline-flex !mb-0 !border-b-0">
-          {(['open', 'closed', 'all'] as const).map((state) => (
-            <button
-              key={state}
-              type="button"
-              className={`app-segment-tab ${stateFilter === state ? 'active' : ''}`}
-              onClick={() => setStateFilter(state)}
-            >
-              {state === 'open' && `${data?.open_count ?? 0} Open`}
-              {state === 'closed' && `${data?.closed_count ?? 0} Closed`}
-              {state === 'all' && 'All'}
-            </button>
-          ))}
-        </div>
-        <input
+      <div className="flex flex-wrap items-center gap-3">
+        <ShellInlineTabs
+          tabs={[
+            { id: 'open', label: `${data?.open_count ?? 0} Open` },
+            { id: 'closed', label: `${data?.closed_count ?? 0} Closed` },
+            { id: 'all', label: 'All' },
+          ]}
+          active={stateFilter}
+          onChange={(id) => setStateFilter(id as 'open' | 'closed' | 'all')}
+        />
+        <Input
           type="search"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search issues…"
-          className="app-field max-w-xs !py-1.5 !text-sm"
+          className="max-w-xs !py-2"
         />
         {token && (
           <PrimaryButton type="button" className="ml-auto" onClick={() => setShowNew((v) => !v)}>
@@ -143,54 +137,59 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
       )}
 
       {showNew && token && (
-        <div className="app-panel">
-          <div className="app-panel-header">New issue</div>
+        <Card title="New issue">
           <form
-            className="app-panel-body space-y-3"
+            className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
               createMutation.mutate()
             }}
           >
-            <input
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Title"
-              required
-              className="app-field"
-            />
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Describe the issue — use @username, #123, !456 (Markdown supported)"
-              rows={5}
-              className="app-field resize-y"
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <select
-                value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-                className="app-field !py-1.5 !text-sm"
-              >
-                <option value="">No assignee</option>
-                {members.map(({ user }) => (
-                  <option key={user.id} value={user.id}>
-                    @{user.username}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={milestoneId}
-                onChange={(e) => setMilestoneId(e.target.value)}
-                className="app-field !py-1.5 !text-sm"
-              >
-                <option value="">No milestone</option>
-                {milestones.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.title}
-                  </option>
-                ))}
-              </select>
+            <FieldLabel label="Title">
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title"
+                required
+              />
+            </FieldLabel>
+            <FieldLabel label="Description">
+              <Textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Describe the issue — use @username, #123, !456 (Markdown supported)"
+                rows={5}
+              />
+            </FieldLabel>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FieldLabel label="Assignee">
+                <Select
+                  value={assigneeId}
+                  onChange={(e) => setAssigneeId(e.target.value)}
+                  className="!py-2"
+                >
+                  <option value="">No assignee</option>
+                  {members.map(({ user }) => (
+                    <option key={user.id} value={user.id}>
+                      @{user.username}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
+              <FieldLabel label="Milestone">
+                <Select
+                  value={milestoneId}
+                  onChange={(e) => setMilestoneId(e.target.value)}
+                  className="!py-2"
+                >
+                  <option value="">No milestone</option>
+                  {milestones.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.title}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
             </div>
             {allLabels.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -200,7 +199,7 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
                     <button
                       key={label.id}
                       type="button"
-                      className={`rounded-full border ${active ? 'opacity-100 ring-1 ring-primary' : 'opacity-50'}`}
+                      className={`rounded-full border ${active ? 'opacity-100 ring-1 ring-brand-500' : 'opacity-50'}`}
                       style={{ borderColor: label.color }}
                       onClick={() =>
                         setSelectedLabelIds((ids) =>
@@ -218,15 +217,15 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
               <PrimaryButton type="submit" disabled={createMutation.isPending || !title.trim()}>
                 {createMutation.isPending ? 'Creating…' : 'Create issue'}
               </PrimaryButton>
-              <button type="button" className="px-3 py-2 text-sm text-text-secondary" onClick={() => setShowNew(false)}>
+              <SecondaryButton type="button" onClick={() => setShowNew(false)}>
                 Cancel
-              </button>
+              </SecondaryButton>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
-      <div className="app-panel">
+      <div className="shell-card">
         {issues.length === 0 ? (
           <EmptyState
             icon={<CircleDot size={40} />}
@@ -238,41 +237,44 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
             }
             action={
               token && stateFilter !== 'closed' ? (
-                <PrimaryButton type="button" onClick={() => setShowNew(true)}>
-                  <Plus size={14} />
+                <PrimaryButton type="button" onClick={() => setShowNew(true)} startIcon={<Plus size={14} />}>
                   New issue
                 </PrimaryButton>
               ) : undefined
             }
           />
         ) : (
-          <ul className="divide-y divide-naturals-n4">
+          <ul className="divide-y divide-gray-200 dark:divide-gray-800">
             {issues.map(({ issue, author, labels, assignee }) => (
               <li key={issue.id}>
                 <Link
                   to={issueUrl(orgSlug, repoSlug, issue.number)}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-hover no-underline text-inherit"
+                  className="flex items-start gap-3 px-4 py-3 no-underline text-inherit transition-colors hover:bg-gray-50 dark:hover:bg-white/5"
                 >
                   <CircleDot
                     size={16}
-                    className={issue.state === 'open' ? 'text-dashboard-success shrink-0 mt-0.5' : 'text-muted shrink-0 mt-0.5'}
+                    className={
+                      issue.state === 'open'
+                        ? 'mt-0.5 shrink-0 text-success-500'
+                        : 'mt-0.5 shrink-0 text-gray-400'
+                    }
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-text">{issue.title}</span>
-                      <span className="text-xs text-muted">#{issue.number}</span>
+                      <span className="font-medium text-gray-800 dark:text-white/90">{issue.title}</span>
+                      <span className="text-theme-xs text-gray-400">#{issue.number}</span>
                       {labels.map((label) => (
                         <LabelBadge key={label.id} label={label} />
                       ))}
                     </div>
-                    <div className="text-xs text-text-secondary mt-1">
+                    <div className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
                       opened by {author.username}
                       {assignee ? ` · assigned to ${assignee.username}` : ''}
                       {' · '}
                       {new Date(issue.created_at).toLocaleDateString()}
                     </div>
                   </div>
-                  <MessageSquare size={14} className="text-muted shrink-0 mt-1" />
+                  <MessageSquare size={14} className="mt-1 shrink-0 text-gray-400" />
                 </Link>
               </li>
             ))}

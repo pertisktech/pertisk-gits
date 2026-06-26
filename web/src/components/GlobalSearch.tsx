@@ -101,7 +101,7 @@ export function GlobalSearch() {
 
   return (
     <div ref={containerRef} className="relative flex-1 min-w-0 max-w-xl">
-      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
       <input
         ref={inputRef}
         type="search"
@@ -121,8 +121,8 @@ export function GlobalSearch() {
             goTo(results[0])
           }
         }}
-        placeholder="Search groups and repositories…"
-        className="w-full pl-8 pr-3 py-1.5 rounded-md border border-naturals-n4 bg-bg text-sm text-text placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/40"
+        placeholder="Search groups and repositories… (⌘K)"
+        className="w-full max-w-xl pl-9 pr-3 py-2 rounded-lg border border-gray-200 bg-gray-50 text-theme-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-4 focus:ring-brand-500/10 focus:border-brand-300 dark:border-gray-800 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-gray-500 dark:focus:border-brand-500/40"
         aria-label="Search groups and repositories"
         aria-expanded={showDropdown}
         aria-autocomplete="list"
@@ -131,7 +131,7 @@ export function GlobalSearch() {
 
       {showDropdown && (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-naturals-n4 bg-surface shadow-lg overflow-hidden"
+          className="absolute left-0 right-0 top-full z-50 mt-2 rounded-xl border border-gray-200 bg-white shadow-theme-md overflow-hidden dark:border-gray-800 dark:bg-gray-dark"
           role="listbox"
         >
           {results.length === 0 ? (

@@ -4,7 +4,7 @@ import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
 import { StatusBadge } from '../../components/StatusBadge'
-import { Breadcrumbs, PageHeader, SecondaryButton } from '../../components/ui'
+import { Alert, Breadcrumbs, PageHeader, SecondaryButton } from '../../components/ui'
 import { formatDateTime } from '../../lib/collaboration'
 
 export function AdminHealthPage() {
@@ -18,7 +18,7 @@ export function AdminHealthPage() {
   })
 
   return (
-    <>
+    <div className="space-y-6">
       <Breadcrumbs
         items={[
           { label: 'Admin', to: '/admin' },
@@ -29,28 +29,23 @@ export function AdminHealthPage() {
         title="Health check"
         subtitle="Live service, database, and registry storage connectivity."
         action={
-          <SecondaryButton type="button" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : undefined} />
+          <SecondaryButton type="button" onClick={() => refetch()} disabled={isFetching} startIcon={<RefreshCw size={16} className={isFetching ? 'animate-spin' : undefined} />}>
             Refresh
           </SecondaryButton>
         }
       />
 
       {isLoading && (
-        <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
+        <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
           <Loader2 size={16} className="animate-spin" />
           Running health check…
         </div>
       )}
 
-      {error && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(error as Error).message}
-        </div>
-      )}
+      {error && <Alert>{(error as Error).message}</Alert>}
 
       {data && (
-        <div className="space-y-4 max-w-3xl">
+        <div className="max-w-3xl space-y-4">
           <InfoPanel title="Status">
             <InfoRow
               label="Overall"
@@ -102,6 +97,6 @@ export function AdminHealthPage() {
           )}
         </div>
       )}
-    </>
+    </div>
   )
 }

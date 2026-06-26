@@ -4,7 +4,16 @@ import { useState, type FormEvent } from 'react'
 import { api } from '../../api/client'
 import type { AuthProviderAdmin, AuthProviderType } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../../components/ui'
+import { StatusBadge } from '../../components/StatusBadge'
+import { Card } from '../../components/Card'
+import {
+  Alert,
+  Breadcrumbs,
+  PageHeader,
+  PrimaryButton,
+  SecondaryButton,
+} from '../../components/ui'
+import { CheckboxField, FieldLabel, Input, Select, Textarea } from '../../components/ui/Input'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
@@ -80,7 +89,7 @@ export function AdminAuthPage() {
   }
 
   return (
-    <>
+    <div className="space-y-6">
       <Breadcrumbs
         items={[
           { label: 'Admin', to: '/admin' },
@@ -90,41 +99,28 @@ export function AdminAuthPage() {
       <PageHeader
         title="SSO / LDAP"
         subtitle="Configure instance authentication providers (OIDC, SAML, LDAP)."
-      />
-
-      {error && (
-        <div className="mb-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm max-w-3xl">
-          {error}
-        </div>
-      )}
-
-      <div className="app-panel max-w-3xl mb-5">
-        <div className="app-panel-header flex items-center justify-between">
-          <span className="flex items-center gap-2">
-            <KeyRound size={16} /> Providers
-          </span>
-          <SecondaryButton type="button" onClick={() => setShowForm((v) => !v)}>
-            <Plus size={14} />
+        action={
+          <SecondaryButton type="button" onClick={() => setShowForm((v) => !v)} startIcon={<Plus size={16} />}>
             Add provider
           </SecondaryButton>
-        </div>
+        }
+      />
 
-        {showForm && (
-          <form className="app-panel-body space-y-3 border-b border-border" onSubmit={onSubmit}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="text-sm">
-                Name
-                <input
-                  className="app-field mt-1"
+      {error && <Alert>{error}</Alert>}
+
+      {showForm && (
+        <Card title="New provider" className="max-w-3xl">
+          <form className="space-y-4" onSubmit={onSubmit}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldLabel label="Name">
+                <Input
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   required
                 />
-              </label>
-              <label className="text-sm">
-                Type
-                <select
-                  className="app-field mt-1"
+              </FieldLabel>
+              <FieldLabel label="Type">
+                <Select
                   value={form.provider_type}
                   onChange={(e) =>
                     setForm({ ...form, provider_type: e.target.value as AuthProviderType })
@@ -133,187 +129,185 @@ export function AdminAuthPage() {
                   <option value="oidc">OIDC (Google, Azure AD, Okta)</option>
                   <option value="saml">SAML 2.0</option>
                   <option value="ldap">LDAP</option>
-                </select>
-              </label>
+                </Select>
+              </FieldLabel>
             </div>
 
             {form.provider_type === 'oidc' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm sm:col-span-2">
-                  Issuer URL
-                  <input
-                    className="app-field mt-1"
-                    placeholder="https://accounts.google.com"
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FieldLabel label="Issuer URL" hint="e.g. https://accounts.google.com">
+                  <Input
                     value={form.issuer_url}
                     onChange={(e) => setForm({ ...form, issuer_url: e.target.value })}
                   />
-                </label>
-                <label className="text-sm">
-                  Client ID
-                  <input
-                    className="app-field mt-1"
+                </FieldLabel>
+                <FieldLabel label="Client ID">
+                  <Input
                     value={form.client_id}
                     onChange={(e) => setForm({ ...form, client_id: e.target.value })}
                   />
-                </label>
-                <label className="text-sm">
-                  Client secret
-                  <input
-                    className="app-field mt-1"
+                </FieldLabel>
+                <FieldLabel label="Client secret">
+                  <Input
                     type="password"
                     value={form.client_secret}
                     onChange={(e) => setForm({ ...form, client_secret: e.target.value })}
                   />
-                </label>
+                </FieldLabel>
               </div>
             )}
 
             {form.provider_type === 'saml' && (
-              <div className="grid gap-3">
-                <label className="text-sm">
-                  IdP entity ID
-                  <input
-                    className="app-field mt-1"
+              <div className="space-y-4">
+                <FieldLabel label="IdP entity ID">
+                  <Input
                     value={form.idp_entity_id}
                     onChange={(e) => setForm({ ...form, idp_entity_id: e.target.value })}
                   />
-                </label>
-                <label className="text-sm">
-                  IdP SSO URL
-                  <input
-                    className="app-field mt-1"
+                </FieldLabel>
+                <FieldLabel label="IdP SSO URL">
+                  <Input
                     value={form.idp_sso_url}
                     onChange={(e) => setForm({ ...form, idp_sso_url: e.target.value })}
                   />
-                </label>
-                <label className="text-sm">
-                  IdP certificate (PEM)
-                  <textarea
-                    className="app-field mt-1 min-h-24 font-mono text-xs"
+                </FieldLabel>
+                <FieldLabel label="IdP certificate (PEM)">
+                  <Textarea
+                    className="min-h-24 font-mono text-theme-xs"
                     value={form.idp_certificate}
                     onChange={(e) => setForm({ ...form, idp_certificate: e.target.value })}
                   />
-                </label>
+                </FieldLabel>
               </div>
             )}
 
             {form.provider_type === 'ldap' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm sm:col-span-2">
-                  LDAP URL
-                  <input
-                    className="app-field mt-1"
-                    placeholder="ldaps://ldap.example.com:636"
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FieldLabel label="LDAP URL" hint="ldaps://ldap.example.com:636">
+                  <Input
                     value={form.ldap_url}
                     onChange={(e) => setForm({ ...form, ldap_url: e.target.value })}
                   />
-                </label>
-                <label className="text-sm">
-                  Bind DN
-                  <input
-                    className="app-field mt-1"
+                </FieldLabel>
+                <FieldLabel label="Bind DN">
+                  <Input
                     value={form.ldap_bind_dn}
                     onChange={(e) => setForm({ ...form, ldap_bind_dn: e.target.value })}
                   />
-                </label>
-                <label className="text-sm">
-                  Bind password
-                  <input
-                    className="app-field mt-1"
+                </FieldLabel>
+                <FieldLabel label="Bind password">
+                  <Input
                     type="password"
                     value={form.ldap_bind_password}
                     onChange={(e) => setForm({ ...form, ldap_bind_password: e.target.value })}
                   />
-                </label>
-                <label className="text-sm sm:col-span-2">
-                  Base DN
-                  <input
-                    className="app-field mt-1"
+                </FieldLabel>
+                <FieldLabel label="Base DN">
+                  <Input
                     value={form.ldap_base_dn}
                     onChange={(e) => setForm({ ...form, ldap_base_dn: e.target.value })}
                   />
-                </label>
+                </FieldLabel>
               </div>
             )}
 
-            <PrimaryButton type="submit" disabled={createProvider.isPending}>
-              {createProvider.isPending ? (
-                <>
-                  <Loader2 size={14} className="animate-spin" /> Saving…
-                </>
-              ) : (
-                'Create provider'
-              )}
-            </PrimaryButton>
+            <div className="flex gap-2">
+              <PrimaryButton type="submit" disabled={createProvider.isPending}>
+                {createProvider.isPending ? 'Saving…' : 'Create provider'}
+              </PrimaryButton>
+              <SecondaryButton type="button" onClick={() => setShowForm(false)}>
+                Cancel
+              </SecondaryButton>
+            </div>
           </form>
-        )}
+        </Card>
+      )}
 
-        {isLoading && <div className="p-6 text-sm text-text-secondary">Loading…</div>}
+      <div className="shell-card max-w-3xl">
+        <div className="shell-card-header">
+          <span className="flex items-center gap-2">
+            <KeyRound size={16} />
+            Providers
+          </span>
+          <span className="font-normal text-gray-500 dark:text-gray-400">{providers.length}</span>
+        </div>
+
+        {isLoading && (
+          <div className="shell-card-body flex items-center justify-center gap-2 py-12 text-theme-sm text-gray-500 dark:text-gray-400">
+            <Loader2 size={16} className="animate-spin" />
+            Loading providers…
+          </div>
+        )}
 
         {!isLoading && providers.length === 0 && (
-          <div className="p-6 text-sm text-text-secondary">No providers configured.</div>
+          <div className="shell-card-body py-12 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+            No providers configured.
+          </div>
         )}
 
-        {providers.length > 0 && (
-          <table className="app-list-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {providers.map(({ provider }) => (
-                <tr key={provider.id}>
-                  <td className="font-medium">{provider.name}</td>
-                  <td className="text-sm uppercase">{provider.provider_type}</td>
-                  <td>
-                    <label className="text-sm flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={provider.enabled}
-                        onChange={(e) =>
-                          toggleProvider.mutate({ id: provider.id, enabled: e.target.checked })
-                        }
-                      />
-                      {provider.enabled ? 'Enabled' : 'Disabled'}
-                    </label>
-                  </td>
-                  <td className="text-right space-x-2">
-                    {loginUrl(provider) && (
-                      <a
-                        className="text-xs text-accent hover:underline"
-                        href={loginUrl(provider)!}
-                      >
-                        Test login
-                      </a>
-                    )}
-                    <SecondaryButton
-                      type="button"
-                      className="px-2 py-1"
-                      onClick={() => {
-                        if (window.confirm(`Delete provider "${provider.name}"?`)) {
-                          deleteProvider.mutate(provider.id)
-                        }
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </SecondaryButton>
-                  </td>
+        {!isLoading && providers.length > 0 && (
+          <div className="overflow-x-auto">
+            <table className="shell-table w-full">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {providers.map(({ provider }) => (
+                  <tr key={provider.id}>
+                    <td className="font-medium text-gray-800 dark:text-white/90">{provider.name}</td>
+                    <td>
+                      <StatusBadge variant="gray">{provider.provider_type.toUpperCase()}</StatusBadge>
+                    </td>
+                    <td>
+                      <CheckboxField
+                        label={provider.enabled ? 'Enabled' : 'Disabled'}
+                        checked={provider.enabled}
+                        onChange={(enabled) => toggleProvider.mutate({ id: provider.id, enabled })}
+                      />
+                    </td>
+                    <td>
+                      <div className="flex items-center justify-end gap-2">
+                        {loginUrl(provider) && (
+                          <a
+                            className="text-theme-xs text-brand-500 hover:text-brand-600 dark:text-brand-400"
+                            href={loginUrl(provider)!}
+                          >
+                            Test login
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          className="rounded-lg p-2 text-gray-500 hover:bg-error-50 hover:text-error-500 dark:hover:bg-error-500/10"
+                          title="Delete provider"
+                          onClick={() => {
+                            if (window.confirm(`Delete provider "${provider.name}"?`)) {
+                              deleteProvider.mutate(provider.id)
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      <p className="text-sm text-text-secondary max-w-3xl">
-        OIDC redirect URI: <code className="text-text">{API_BASE}/auth/oidc/callback</code>.
-        SAML ACS URL pattern: <code className="text-text">{API_BASE}/auth/saml/&lt;id&gt;/acs</code>.
+      <p className="max-w-3xl text-theme-sm text-gray-500 dark:text-gray-400">
+        OIDC redirect URI: <code className="text-gray-800 dark:text-white/90">{API_BASE}/auth/oidc/callback</code>.
+        SAML ACS URL pattern:{' '}
+        <code className="text-gray-800 dark:text-white/90">{API_BASE}/auth/saml/&lt;id&gt;/acs</code>.
         LDAP group → team mappings can be added via API after creating an LDAP provider.
       </p>
-    </>
+    </div>
   )
 }

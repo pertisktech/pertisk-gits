@@ -1,18 +1,63 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     borderColor: {
-      DEFAULT: 'var(--color-border)',
+      DEFAULT: 'var(--shell-border)',
     },
     divideColor: {
-      DEFAULT: 'var(--color-border)',
+      DEFAULT: 'var(--shell-border)',
     },
     extend: {
       colors: {
+        brand: {
+          25: 'var(--color-brand-25)',
+          50: 'var(--color-brand-50)',
+          100: 'var(--color-brand-100)',
+          200: 'var(--color-brand-200)',
+          300: 'var(--color-brand-300)',
+          400: 'var(--color-brand-400)',
+          500: 'var(--color-brand-500)',
+          600: 'var(--color-brand-600)',
+          700: 'var(--color-brand-700)',
+          800: 'var(--color-brand-800)',
+          900: 'var(--color-brand-900)',
+          950: 'var(--color-brand-950)',
+        },
+        gray: {
+          25: 'var(--color-gray-25)',
+          50: 'var(--color-gray-50)',
+          100: 'var(--color-gray-100)',
+          200: 'var(--color-gray-200)',
+          300: 'var(--color-gray-300)',
+          400: 'var(--color-gray-400)',
+          500: 'var(--color-gray-500)',
+          600: 'var(--color-gray-600)',
+          700: 'var(--color-gray-700)',
+          800: 'var(--color-gray-800)',
+          900: 'var(--color-gray-900)',
+          950: 'var(--color-gray-950)',
+          dark: 'var(--color-gray-dark)',
+        },
+        success: {
+          50: 'var(--color-success-50)',
+          500: 'var(--color-success-500)',
+          600: 'var(--color-success-600)',
+        },
+        error: {
+          50: 'var(--color-error-50)',
+          500: 'var(--color-error-500)',
+          600: 'var(--color-error-600)',
+        },
+        warning: {
+          50: 'var(--color-warning-50)',
+          500: 'var(--color-warning-500)',
+          600: 'var(--color-warning-600)',
+        },
         bg: "var(--color-bg)",
         surface: "var(--color-surface)",
         "surface-elevated": "var(--color-surface-elevated)",
@@ -26,7 +71,6 @@ export default {
         primary: "var(--color-primary)",
         card: "var(--color-card)",
         sidebar: "var(--color-sidebar)",
-        /* Naturals palette */
         "naturals-n0":  "var(--color-naturals-n0)",
         "naturals-n1":  "var(--color-naturals-n1)",
         "naturals-n2":  "var(--color-naturals-n2)",
@@ -42,14 +86,12 @@ export default {
         "naturals-n12": "var(--color-naturals-n12)",
         "naturals-n13": "var(--color-naturals-n13)",
         "naturals-n14": "var(--color-naturals-n14)",
-        /* Primary palette */
         "primary-p1": "var(--color-primary-p1)",
         "primary-p2": "var(--color-primary-p2)",
         "primary-p3": "var(--color-primary-p3)",
         "primary-p4": "var(--color-primary-p4)",
         "primary-p5": "var(--color-primary-p5)",
         "primary-p6": "var(--color-primary-p6)",
-        /* Semantic named colors */
         "green-g1": "var(--color-green-g1)",
         "green-g2": "var(--color-green-g2)",
         "red-r1":   "var(--color-red-r1)",
@@ -57,12 +99,10 @@ export default {
         "yellow-y1": "var(--color-yellow-y1)",
         "yellow-y2": "var(--color-yellow-y2)",
         "blue-b1":  "var(--color-blue-b1)",
-        /* Icon / status */
         "icon-success": "var(--color-icon-success)",
         "icon-warning": "var(--color-icon-warning)",
         "icon-danger": "var(--color-icon-danger)",
         "icon-info": "var(--color-icon-info)",
-        /* Dashboard status colors */
         "dashboard-success": "var(--color-dashboard-success)",
         "dashboard-success-bg": "var(--color-dashboard-success-bg)",
         "dashboard-warning": "var(--color-dashboard-warning)",
@@ -71,7 +111,6 @@ export default {
         "dashboard-danger-bg": "var(--color-dashboard-danger-bg)",
         "dashboard-info": "var(--color-dashboard-info)",
         "dashboard-info-bg": "var(--color-dashboard-info-bg)",
-        /* Dashboard metric colors */
         "dashboard-metric-primary": "var(--color-dashboard-metric-primary)",
         "dashboard-metric-primary-bg": "var(--color-dashboard-metric-primary-bg)",
         "dashboard-metric-secondary": "var(--color-dashboard-metric-secondary)",
@@ -85,6 +124,20 @@ export default {
         sans: "var(--font-sans)",
         mono: "var(--font-mono)",
       },
+      fontSize: {
+        'theme-xs': ['0.75rem', { lineHeight: '1.125rem' }],
+        'theme-sm': ['0.875rem', { lineHeight: '1.25rem' }],
+        'title-sm': ['1.875rem', { lineHeight: '2.375rem' }],
+      },
+      boxShadow: {
+        'theme-xs': 'var(--shadow-theme-xs)',
+        'theme-sm': 'var(--shadow-theme-sm)',
+        'theme-md': 'var(--shadow-theme-md)',
+        'theme-lg': 'var(--shadow-theme-lg)',
+        sm: "var(--shadow-sm)",
+        md: "var(--shadow-md)",
+        lg: "var(--shadow-lg)",
+      },
       spacing: {
         "safe": "var(--radius-md)",
       },
@@ -94,11 +147,6 @@ export default {
         md: "var(--radius-md)",
         lg: "var(--radius-lg)",
         xl: "var(--radius-xl)",
-      },
-      boxShadow: {
-        sm: "var(--shadow-sm)",
-        md: "var(--shadow-md)",
-        lg: "var(--shadow-sidebar)",
       },
       transitionDuration: {
         fast: "var(--transition-fast)",

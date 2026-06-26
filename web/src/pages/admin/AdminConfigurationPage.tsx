@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
-import { Breadcrumbs, PageHeader } from '../../components/ui'
+import { Alert, Breadcrumbs, PageHeader } from '../../components/ui'
 
 export function AdminConfigurationPage() {
   const { token } = useAuth()
@@ -16,7 +16,7 @@ export function AdminConfigurationPage() {
   })
 
   return (
-    <>
+    <div className="space-y-6">
       <Breadcrumbs
         items={[
           { label: 'Admin', to: '/admin' },
@@ -29,20 +29,16 @@ export function AdminConfigurationPage() {
       />
 
       {isLoading && (
-        <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
+        <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
           <Loader2 size={16} className="animate-spin" />
           Loading configuration…
         </div>
       )}
 
-      {error && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(error as Error).message}
-        </div>
-      )}
+      {error && <Alert>{(error as Error).message}</Alert>}
 
       {data && (
-        <div className="space-y-4 max-w-3xl">
+        <div className="max-w-3xl space-y-4">
           <InfoPanel title="API">
             <InfoRow label="Host" value={<code>{data.api_host}</code>} />
             <InfoRow label="Port" value={data.api_port} />
@@ -69,7 +65,7 @@ export function AdminConfigurationPage() {
             <InfoRow
               label="SSO / LDAP"
               value={
-                <Link to="/admin/auth" className="text-primary hover:underline text-sm">
+                <Link to="/admin/auth" className="text-theme-sm text-brand-500 hover:text-brand-600 dark:text-brand-400">
                   Manage auth providers
                 </Link>
               }
@@ -77,6 +73,6 @@ export function AdminConfigurationPage() {
           </InfoPanel>
         </div>
       )}
-    </>
+    </div>
   )
 }

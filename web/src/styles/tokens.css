@@ -1,0 +1,188 @@
+/**
+ * Pertisk Gits design tokens (TailAdmin structure, violet brand).
+ * See web/docs/THEME.md for pertisk → tailadmin mapping.
+ */
+
+:root {
+  /* ── Brand (violet — Pertisk identity) ─────────────────────────────────── */
+  --color-brand-25: #faf8ff;
+  --color-brand-50: #f4effe;
+  --color-brand-100: #e8dffd;
+  --color-brand-200: #d8c8fd;
+  --color-brand-300: #b89ef9;
+  --color-brand-400: #9a7bf7;
+  --color-brand-500: #7c59f0;
+  --color-brand-600: #5f3fd4;
+  --color-brand-700: #4a2fb8;
+  --color-brand-800: #3a2594;
+  --color-brand-900: #281a5e;
+  --color-brand-950: #1a1040;
+
+  /* ── Gray (TailAdmin cool gray) ──────────────────────────────────────── */
+  --color-gray-25: #fcfcfd;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f2f4f7;
+  --color-gray-200: #e4e7ec;
+  --color-gray-300: #d0d5dd;
+  --color-gray-400: #98a2b3;
+  --color-gray-500: #667085;
+  --color-gray-600: #475467;
+  --color-gray-700: #344054;
+  --color-gray-800: #1d2939;
+  --color-gray-900: #101828;
+  --color-gray-950: #0c111d;
+  --color-gray-dark: #1a2231;
+
+  /* ── Semantic ramps ──────────────────────────────────────────────────── */
+  --color-success-50: #ecfdf3;
+  --color-success-500: #12b76a;
+  --color-success-600: #039855;
+  --color-error-50: #fef3f2;
+  --color-error-500: #f04438;
+  --color-error-600: #d92d20;
+  --color-warning-50: #fffaeb;
+  --color-warning-500: #f79009;
+  --color-warning-600: #dc6803;
+  --color-info-50: #f0f9ff;
+  --color-info-500: #0ba5ec;
+
+  /* ── Shadows (TailAdmin) ─────────────────────────────────────────────── */
+  --shadow-theme-xs: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  --shadow-theme-sm: 0px 1px 3px 0px rgba(16, 24, 40, 0.1),
+    0px 1px 2px 0px rgba(16, 24, 40, 0.06);
+  --shadow-theme-md: 0px 4px 8px -2px rgba(16, 24, 40, 0.1),
+    0px 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-theme-lg: 0px 12px 16px -4px rgba(16, 24, 40, 0.08),
+    0px 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-focus-ring: 0px 0px 0px 4px rgba(124, 89, 240, 0.14);
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  --font-sans: "Outfit", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
+  --text-theme-xs: 0.75rem;
+  --text-theme-sm: 0.875rem;
+  --text-title-sm: 1.875rem;
+
+  /* ── Radius ──────────────────────────────────────────────────────────── */
+  --radius-shell: 0.5rem;
+  --radius-card: 1rem;
+  --radius-card-lg: 1.25rem;
+
+  /* ── Shell surfaces (light default for TailAdmin-style pages) ────────── */
+  --shell-bg: var(--color-gray-50);
+  --shell-surface: #ffffff;
+  --shell-sidebar-bg: #ffffff;
+  --shell-border: var(--color-gray-200);
+  --shell-text: var(--color-gray-900);
+  --shell-text-secondary: var(--color-gray-500);
+  --shell-text-muted: var(--color-gray-400);
+  --shell-menu-hover: var(--color-gray-100);
+  --shell-menu-active-bg: var(--color-brand-50);
+  --shell-menu-active-text: var(--color-brand-500);
+}
+
+/* Dark shell (Pertisk default) */
+html.dark {
+  --shell-bg: var(--color-gray-900);
+  --shell-surface: var(--color-gray-dark);
+  --shell-sidebar-bg: var(--color-gray-900);
+  --shell-border: var(--color-gray-800);
+  --shell-text: rgba(255, 255, 255, 0.9);
+  --shell-text-secondary: var(--color-gray-400);
+  --shell-text-muted: var(--color-gray-500);
+  --shell-menu-hover: rgba(255, 255, 255, 0.05);
+  --shell-menu-active-bg: rgba(124, 89, 240, 0.12);
+  --shell-menu-active-text: var(--color-brand-400);
+  --color-brand-400: #9a7bf7;
+}
+
+/* Legacy variable bridge (existing pages keep working) */
+:root {
+  --color-primary-p1: var(--color-brand-200);
+  --color-primary-p2: var(--color-brand-300);
+  --color-primary-p3: var(--color-brand-400);
+  --color-primary-p4: var(--color-brand-500);
+  --color-primary-p5: var(--color-brand-600);
+  --color-primary-p6: var(--color-brand-900);
+  --color-primary: var(--color-brand-400);
+  --color-primary-hover: var(--color-brand-300);
+
+  --color-naturals-n0: var(--color-gray-900);
+  --color-naturals-n1: var(--color-gray-dark);
+  --color-naturals-n2: #131421;
+  --color-naturals-n3: #181a2c;
+  --color-naturals-n4: var(--color-gray-800);
+  --color-naturals-n5: var(--color-gray-700);
+  --color-naturals-n6: var(--color-gray-600);
+  --color-naturals-n7: var(--color-gray-500);
+  --color-naturals-n8: var(--color-gray-400);
+  --color-naturals-n9: var(--color-gray-400);
+  --color-naturals-n10: var(--color-gray-300);
+  --color-naturals-n11: var(--color-gray-200);
+  --color-naturals-n12: var(--color-gray-100);
+  --color-naturals-n13: rgba(255, 255, 255, 0.9);
+  --color-naturals-n14: #ffffff;
+
+  --color-bg: var(--color-gray-900);
+  --color-surface: var(--color-gray-dark);
+  --color-surface-elevated: #131421;
+  --color-hover: rgba(255, 255, 255, 0.05);
+  --color-border: var(--color-gray-800);
+  --color-text: rgba(255, 255, 255, 0.9);
+  --color-text-secondary: var(--color-gray-400);
+  --color-muted: var(--color-gray-500);
+  --color-card: #131421;
+  --color-sidebar: var(--color-gray-900);
+  --color-bg-gradient-start: var(--color-gray-900);
+  --color-bg-gradient-end: var(--color-gray-dark);
+
+  --color-green-g1: #4ade9b;
+  --color-green-g2: #22a06b;
+  --color-red-r1: #ff5c56;
+  --color-red-r2: #6e2f30;
+  --color-yellow-y1: #fbbf24;
+  --color-yellow-y2: #d97706;
+  --color-blue-b1: #60a5fa;
+
+  --shadow-sm: var(--shadow-theme-sm);
+  --shadow-md: var(--shadow-theme-md);
+  --shadow-lg: var(--shadow-theme-lg);
+  --shadow-sidebar: var(--shadow-theme-sm);
+}
+
+html.light {
+  --color-primary: var(--color-brand-500);
+  --color-primary-hover: var(--color-brand-400);
+  --color-naturals-n0: #ffffff;
+  --color-naturals-n1: var(--color-gray-50);
+  --color-naturals-n2: #ffffff;
+  --color-naturals-n3: var(--color-gray-100);
+  --color-naturals-n4: var(--color-gray-200);
+  --color-naturals-n5: var(--color-gray-300);
+  --color-naturals-n6: var(--color-gray-400);
+  --color-naturals-n7: var(--color-gray-500);
+  --color-naturals-n8: var(--color-gray-500);
+  --color-naturals-n9: var(--color-gray-500);
+  --color-naturals-n10: var(--color-gray-600);
+  --color-naturals-n11: var(--color-gray-700);
+  --color-naturals-n12: var(--color-gray-800);
+  --color-naturals-n13: var(--color-gray-900);
+  --color-naturals-n14: var(--color-gray-950);
+  --color-bg: var(--color-gray-50);
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-hover: var(--color-gray-100);
+  --color-border: var(--color-gray-200);
+  --color-text: var(--color-gray-900);
+  --color-text-secondary: var(--color-gray-600);
+  --color-muted: var(--color-gray-500);
+  --color-card: #ffffff;
+  --color-sidebar: #ffffff;
+  --color-bg-gradient-start: var(--color-gray-50);
+  --color-bg-gradient-end: #ffffff;
+  --bottom-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.94));
+  --bottom-panel-tabbar-bg: color-mix(in srgb, #ffffff 90%, var(--color-hover));
+  --bottom-panel-tab-active-bg: #ffffff;
+  --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 26%, var(--color-border));
+  --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 72%, #ffffff);
+}

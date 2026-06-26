@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { StatusBadge, visibilityVariant } from './StatusBadge'
+import { EntityHeader } from './ui/EntityHeader'
 import type { ReactNode } from 'react'
 
 export function RepoHeader({
@@ -18,21 +19,26 @@ export function RepoHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="app-repo-header flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h1 className="app-repo-title">
-          <Link to={`/groups/${orgSlug}`}>{orgName}</Link>
-          <span className="sep">/</span>
+    <EntityHeader
+      title={
+        <>
+          <Link
+            to={`/groups/${orgSlug}`}
+            className="text-brand-500 hover:text-brand-600 no-underline"
+          >
+            {orgName}
+          </Link>
+          <span className="font-normal text-gray-400 dark:text-gray-500">/</span>
           <span>{repoName}</span>
-          {visibility && (
-            <StatusBadge variant={visibilityVariant(visibility)} className="ml-1">
-              {visibility}
-            </StatusBadge>
-          )}
-        </h1>
-        {description && <p className="app-repo-desc">{description}</p>}
-      </div>
-      {action}
-    </div>
+        </>
+      }
+      description={description}
+      badge={
+        visibility ? (
+          <StatusBadge variant={visibilityVariant(visibility)}>{visibility}</StatusBadge>
+        ) : undefined
+      }
+      actions={action}
+    />
   )
 }

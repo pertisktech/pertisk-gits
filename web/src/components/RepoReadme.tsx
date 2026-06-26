@@ -21,12 +21,12 @@ export function RepoReadme({ token, orgSlug, repoSlug, ref, readmePath }: RepoRe
 
   if (isLoading) {
     return (
-      <div className="app-panel">
-        <div className="app-panel-header flex items-center gap-2">
-          <FileText size={14} className="text-primary" />
+      <div className="shell-card">
+        <div className="shell-card-header flex items-center gap-2">
+          <FileText size={14} className="text-brand-500" />
           {readmePath}
         </div>
-        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
+        <div className="shell-card-body flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
           <Loader2 size={16} className="animate-spin" />
           Loading README…
         </div>
@@ -39,12 +39,12 @@ export function RepoReadme({ token, orgSlug, repoSlug, ref, readmePath }: RepoRe
   }
 
   return (
-    <div className="app-panel markdown-viewer">
-      <div className="app-panel-header flex items-center gap-2">
-        <FileText size={14} className="text-primary" />
+    <div className="shell-card markdown-viewer">
+      <div className="shell-card-header flex items-center gap-2">
+        <FileText size={14} className="text-brand-500" />
         {readmePath}
       </div>
-      <div className="app-panel-body markdown-viewer-content text-sm text-text">
+      <div className="markdown-viewer-content shell-card-body text-theme-sm text-gray-800 dark:text-white/90">
         <ReactMarkdown remarkPlugins={[remarkGfm]}>{data.content}</ReactMarkdown>
       </div>
     </div>

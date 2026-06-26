@@ -1,15 +1,15 @@
 import { useState, type FormEvent } from 'react'
-import { Moon, Sun, UserPlus } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { AppVersion } from '../components/AppVersion'
-import { useTheme } from '../context/ThemeContext'
-import styles from './AuthPage.module.css'
+import { AuthLayout } from '../components/auth/AuthLayout'
+import { Alert } from '../components/ui'
+import { Button } from '../components/ui/Button'
+import { FieldLabel, Input } from '../components/ui/Input'
 
 export function RegisterPage() {
   const { setSession } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -33,64 +33,40 @@ export function RegisterPage() {
   }
 
   return (
-    <div className={styles.wrap}>
-      <header className={styles.topBar}>
-        <button type="button" className={styles.themeToggle} onClick={toggleTheme} data-no-global-button-hover="true">
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          {isDark ? 'Light' : 'Dark'}
-        </button>
-      </header>
+    <AuthLayout
+      title="Create account"
+      subtitle="Join your team on Pertisk Gits"
+      icon={<UserPlus size={20} className="text-brand-500" />}
+    >
+      {error && <Alert className="mb-4">{error}</Alert>}
 
-      <div className={styles.brand}>
-        <img src="/favicon.svg" alt="" className={styles.brandLogo} />
-        <span className={styles.brandName}>Pertisk Gits</span>
-      </div>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <FieldLabel label="Username">
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} required />
+        </FieldLabel>
+        <FieldLabel label="Email">
+          <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </FieldLabel>
+        <FieldLabel label="Password" hint="At least 8 characters">
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+        </FieldLabel>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? 'Creating…' : 'Create account'}
+        </Button>
+      </form>
 
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <h1 className={styles.title}>
-            <UserPlus size={20} /> Create account
-          </h1>
-          <p className={styles.subtitle}>Join your team on Pertisk Gits</p>
-        </div>
-
-        {error && <p className={styles.error}>{error}</p>}
-
-        <form onSubmit={onSubmit} className={styles.form}>
-          <label className={styles.label}>
-            Username
-            <input className={styles.input} value={username} onChange={(e) => setUsername(e.target.value)} required />
-          </label>
-          <label className={styles.label}>
-            Email
-            <input className={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </label>
-          <label className={styles.label}>
-            Password
-            <input
-              className={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              minLength={8}
-              required
-            />
-          </label>
-          <button type="submit" className={styles.button} disabled={loading} data-no-global-button-hover="true">
-            {loading ? 'Creating…' : 'Create account'}
-          </button>
-        </form>
-
-        <p className={styles.linkRow} style={{ marginTop: '1rem' }}>
-          Already have an account? <Link to="/login">Sign in</Link>
-        </p>
-      </div>
-
-      <footer className={styles.footer}>
-        <p className={styles.version}>
-          <AppVersion />
-        </p>
-      </footer>
-    </div>
+      <p className="mt-6 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+        Already have an account?{' '}
+        <Link to="/login" className="font-medium text-brand-500 hover:text-brand-600 no-underline">
+          Sign in
+        </Link>
+      </p>
+    </AuthLayout>
   )
 }

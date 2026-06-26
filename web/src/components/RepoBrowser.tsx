@@ -15,6 +15,7 @@ import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
 import { CodeFileView } from './CodeFileView'
 import { RepoReadme } from './RepoReadme'
+import { Select } from './ui/Input'
 
 interface RepoBrowserProps {
   token?: string | null
@@ -22,6 +23,8 @@ interface RepoBrowserProps {
   repoSlug: string
   defaultBranch: string
 }
+
+const compactSelect = '!w-auto !py-1.5 !text-theme-sm min-w-[8rem]'
 
 export function RepoBrowser({
   token,
@@ -92,8 +95,8 @@ export function RepoBrowser({
 
   if (browserLoading) {
     return (
-      <div className="app-panel">
-        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
+      <div className="shell-card">
+        <div className="shell-card-body flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
           <Loader2 size={16} className="animate-spin" />
           Loading repository…
         </div>
@@ -103,11 +106,11 @@ export function RepoBrowser({
 
   if (browser?.empty) {
     return (
-      <div className="app-panel">
-        <div className="app-panel-body text-center py-12">
-          <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
-          <p className="text-text font-medium">This repository is empty</p>
-          <p className="text-sm text-text-secondary mt-1 max-w-md mx-auto">
+      <div className="shell-card">
+        <div className="shell-card-body py-12 text-center">
+          <Folder size={40} className="mx-auto mb-3 text-gray-400 opacity-50" />
+          <p className="font-medium text-gray-800 dark:text-white/90">This repository is empty</p>
+          <p className="mx-auto mt-1 max-w-md text-theme-sm text-gray-500 dark:text-gray-400">
             Push your first commit using the Code dropdown above, then files will appear here.
           </p>
         </div>
@@ -116,10 +119,10 @@ export function RepoBrowser({
   }
 
   return (
-    <div className="space-y-4 min-w-0">
-      <div className="app-panel">
-        <div className="app-toolbar">
-          <select
+    <div className="min-w-0 space-y-4">
+      <div className="shell-card">
+        <div className="shell-repo-toolbar">
+          <Select
             id="ref-kind-select"
             value={refKind}
             onChange={(e) => {
@@ -128,22 +131,23 @@ export function RepoBrowser({
               setRefOverride(null)
               navigateTo('')
             }}
-            className="app-branch-select"
+            className={compactSelect}
             aria-label="Reference type"
           >
             <option value="branch">Branch</option>
             <option value="tag">Tag</option>
-          </select>
+          </Select>
 
-          <select
+          <Select
             id="branch-select"
             value={activeRef}
             onChange={(e) => {
               setRefOverride(e.target.value)
               navigateTo('')
             }}
-            className="app-branch-select min-w-[8rem]"
+            className={compactSelect}
             disabled={refList.length === 0}
+            aria-label="Reference"
           >
             {refList.length === 0 ? (
               <option value={activeRef}>{refKind === 'tag' ? 'No tags' : activeRef}</option>
@@ -154,23 +158,32 @@ export function RepoBrowser({
                 </option>
               ))
             )}
-          </select>
+          </Select>
 
-          <span className="text-sm text-text-secondary whitespace-nowrap">
+          <span className="whitespace-nowrap text-theme-sm text-gray-500 dark:text-gray-400">
             {branchCount} Branch.{`  ${tagCount} Tags`}
           </span>
 
           {pathParts.length > 0 && (
-            <div className="app-path-crumb flex-1 min-w-0">
-              <button type="button" onClick={() => navigateTo('')} aria-label="Repository root">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 text-theme-sm">
+              <button
+                type="button"
+                className="text-brand-500 hover:underline dark:text-brand-400"
+                onClick={() => navigateTo('')}
+                aria-label="Repository root"
+              >
                 /
               </button>
               {pathParts.map((part, i) => {
                 const subPath = pathParts.slice(0, i + 1).join('/')
                 return (
                   <span key={subPath} className="inline-flex items-center gap-1">
-                    <ChevronRight size={12} className="text-muted" />
-                    <button type="button" onClick={() => navigateTo(subPath)}>
+                    <ChevronRight size={12} className="text-gray-400" />
+                    <button
+                      type="button"
+                      className="text-brand-500 hover:underline dark:text-brand-400"
+                      onClick={() => navigateTo(subPath)}
+                    >
                       {part}
                     </button>
                   </span>
@@ -181,68 +194,70 @@ export function RepoBrowser({
         </div>
 
         {treeLoading ? (
-          <div className="flex items-center gap-2 text-text-secondary text-sm p-6">
+          <div className="flex items-center gap-2 p-6 text-theme-sm text-gray-500 dark:text-gray-400">
             <Loader2 size={16} className="animate-spin" />
             Loading files…
           </div>
         ) : (
-          <table className="app-file-table app-file-table-commits">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th className="hidden md:table-cell">Last commit message</th>
-                <th className="w-32 text-right hidden md:table-cell" aria-label="Last edit" />
-              </tr>
-            </thead>
-            <tbody>
-              {(treeData?.entries ?? []).map((entry) => (
-                <tr key={entry.path} onClick={() => openEntry(entry)}>
-                  <td>
-                    <span className="name-cell">
-                      {entry.kind === 'tree' ? (
-                        <Folder size={15} className="text-primary shrink-0" />
-                      ) : (
-                        <File size={15} className="text-muted shrink-0" />
-                      )}
-                      {entry.name}
-                    </span>
-                    {entry.last_commit && (
-                      <div className="md:hidden flex items-start justify-between gap-3 text-xs text-text-secondary mt-0.5 pl-[1.35rem] min-w-0">
-                        <span className="truncate">{entry.last_commit.message}</span>
-                        <span className="shrink-0 whitespace-nowrap">
-                          {formatRelativeTime(entry.last_commit.committed_at)}
-                        </span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="hidden md:table-cell text-text-secondary text-sm">
-                    {entry.last_commit ? (
-                      <Link
-                        to={commitUrl(orgSlug, repoSlug, entry.last_commit.sha)}
-                        className="hover:text-primary hover:underline truncate block max-w-md"
-                        onClick={(e) => e.stopPropagation()}
-                        title={entry.last_commit.message}
-                      >
-                        {entry.last_commit.message}
-                      </Link>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="text-right text-text-secondary text-sm whitespace-nowrap hidden md:table-cell">
-                    {entry.last_commit ? formatRelativeTime(entry.last_commit.committed_at) : '—'}
-                  </td>
-                </tr>
-              ))}
-              {(treeData?.entries ?? []).length === 0 && (
+          <div className="overflow-x-auto">
+            <table className="shell-table shell-file-table w-full">
+              <thead>
                 <tr>
-                  <td colSpan={3} className="text-center text-text-secondary py-8">
-                    This folder is empty.
-                  </td>
+                  <th>Name</th>
+                  <th className="hidden md:table-cell">Last commit message</th>
+                  <th className="hidden w-32 text-right md:table-cell" aria-label="Last edit" />
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(treeData?.entries ?? []).map((entry) => (
+                  <tr key={entry.path} onClick={() => openEntry(entry)}>
+                    <td>
+                      <span className="name-cell">
+                        {entry.kind === 'tree' ? (
+                          <Folder size={15} className="shrink-0 text-brand-500" />
+                        ) : (
+                          <File size={15} className="shrink-0 text-gray-400" />
+                        )}
+                        {entry.name}
+                      </span>
+                      {entry.last_commit && (
+                        <div className="mt-0.5 flex min-w-0 items-start justify-between gap-3 pl-[1.35rem] text-theme-xs text-gray-500 dark:text-gray-400 md:hidden">
+                          <span className="truncate">{entry.last_commit.message}</span>
+                          <span className="shrink-0 whitespace-nowrap">
+                            {formatRelativeTime(entry.last_commit.committed_at)}
+                          </span>
+                        </div>
+                      )}
+                    </td>
+                    <td className="hidden text-theme-sm text-gray-500 dark:text-gray-400 md:table-cell">
+                      {entry.last_commit ? (
+                        <Link
+                          to={commitUrl(orgSlug, repoSlug, entry.last_commit.sha)}
+                          className="block max-w-md truncate text-brand-500 hover:underline dark:text-brand-400"
+                          onClick={(e) => e.stopPropagation()}
+                          title={entry.last_commit.message}
+                        >
+                          {entry.last_commit.message}
+                        </Link>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                    <td className="hidden whitespace-nowrap text-right text-theme-sm text-gray-500 dark:text-gray-400 md:table-cell">
+                      {entry.last_commit ? formatRelativeTime(entry.last_commit.committed_at) : '—'}
+                    </td>
+                  </tr>
+                ))}
+                {(treeData?.entries ?? []).length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="py-8 text-center text-gray-500 dark:text-gray-400">
+                      This folder is empty.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -257,16 +272,16 @@ export function RepoBrowser({
       )}
 
       {selectedFile && (
-        <div className="app-panel">
-          <div className="app-panel-header flex items-center justify-between gap-2">
-            <span className="font-mono text-xs truncate">{selectedFile}</span>
+        <div className="shell-card">
+          <div className="shell-card-header gap-2">
+            <span className="truncate font-mono text-theme-xs">{selectedFile}</span>
             <a
               href={api.repoRawUrl(orgSlug, repoSlug, {
                 ref: activeRef,
                 path: selectedFile,
                 ref_kind: refKind,
               })}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
+              className="inline-flex shrink-0 items-center gap-1 text-theme-xs text-brand-500 hover:underline dark:text-brand-400"
               onClick={(e) => {
                 e.preventDefault()
                 const url = api.repoRawUrl(orgSlug, repoSlug, {
@@ -298,14 +313,16 @@ export function RepoBrowser({
               Raw
             </a>
           </div>
-          <div className="app-panel-body flush">
+          <div className="shell-card-body flush">
             {blobLoading ? (
-              <div className="flex items-center gap-2 text-text-secondary text-sm p-4">
+              <div className="flex items-center gap-2 p-4 text-theme-sm text-gray-500 dark:text-gray-400">
                 <Loader2 size={16} className="animate-spin" />
                 Loading file…
               </div>
             ) : blobData?.is_binary ? (
-              <p className="text-sm text-text-secondary p-4">Binary file — preview not available.</p>
+              <p className="p-4 text-theme-sm text-gray-500 dark:text-gray-400">
+                Binary file — preview not available.
+              </p>
             ) : (
               <CodeFileView path={selectedFile} content={blobData?.content ?? ''} />
             )}

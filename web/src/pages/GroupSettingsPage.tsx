@@ -5,10 +5,8 @@ import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
-import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
-
-const fieldClass =
-  'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
+import { Alert, Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
+import { FieldLabel, Input, Textarea } from '../components/ui/Input'
 
 export function GroupSettingsPage() {
   const { slug = '' } = useParams()
@@ -74,7 +72,7 @@ export function GroupSettingsPage() {
 
   if (groupsLoading || membersLoading) {
     return (
-      <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
+      <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
         <Loader2 size={16} className="animate-spin" />
         Loading group settings…
       </div>
@@ -82,11 +80,7 @@ export function GroupSettingsPage() {
   }
 
   if (!group) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        Group not found.
-      </div>
-    )
+    return <Alert>Group not found.</Alert>
   }
 
   if (!canManage) {
@@ -111,54 +105,37 @@ export function GroupSettingsPage() {
 
       <Card className="max-w-xl">
         <form onSubmit={onSubmit} className="space-y-4">
-          {updateGroup.error && (
-            <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-              {(updateGroup.error as Error).message}
-            </div>
-          )}
+          {updateGroup.error && <Alert>{(updateGroup.error as Error).message}</Alert>}
           {saved && (
-            <div className="p-3 rounded-lg border border-green-g1/30 bg-dashboard-success-bg text-dashboard-success text-sm">
+            <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-theme-sm text-success-600 dark:bg-success-500/10 dark:text-success-500">
               Group settings saved.
             </div>
           )}
 
-          <label className="block text-sm font-semibold text-text">
-            Group name
-            <input
-              className={`${fieldClass} mt-1.5`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-            />
-          </label>
+          <FieldLabel label="Group name">
+            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+          </FieldLabel>
 
-          <label className="block text-sm font-semibold text-text">
-            Group URL
-            <input
-              className={`${fieldClass} mt-1.5 font-mono`}
+          <FieldLabel label="Group URL">
+            <Input
+              className="font-mono"
               value={newSlug}
               onChange={(e) => setNewSlug(e.target.value)}
               required
             />
-            <span className="text-xs text-text-secondary mt-1 block font-mono">
+            <span className="mt-1 block font-mono text-theme-xs text-gray-500 dark:text-gray-400">
               pertisk-gits/{newSlug || 'your-group'}
             </span>
             {slugChanged && (
-              <span className="text-xs text-dashboard-danger mt-1 block">
+              <span className="mt-1 block text-theme-xs text-error-500">
                 Changing the slug updates clone URLs and moves repository storage on disk.
               </span>
             )}
-          </label>
+          </FieldLabel>
 
-          <label className="block text-sm font-semibold text-text">
-            Description (optional)
-            <textarea
-              className={`${fieldClass} mt-1.5`}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </label>
+          <FieldLabel label="Description (optional)">
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </FieldLabel>
 
           <div className="flex gap-2 pt-2">
             <PrimaryButton type="submit" disabled={updateGroup.isPending}>

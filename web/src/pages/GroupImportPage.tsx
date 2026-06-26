@@ -7,10 +7,14 @@ import type { ImportJobDetail, ImportProvider, RemoteNamespace, RemoteRepo } fro
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { Card } from '../components/Card'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
-
-const fieldClass =
-  'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
+import {
+  Alert,
+  Breadcrumbs,
+  PageHeader,
+  PrimaryButton,
+  SecondaryButton,
+} from '../components/ui'
+import { CheckboxField, FieldLabel, Input, Select } from '../components/ui/Input'
 
 function jobStatusVariant(status: string) {
   if (status === 'done') return 'green' as const
@@ -196,7 +200,7 @@ export function GroupImportPage() {
   }
 
   return (
-    <>
+    <div className="space-y-6">
       <Breadcrumbs
         items={[
           { label: 'Groups', to: '/groups' },
@@ -209,33 +213,24 @@ export function GroupImportPage() {
         subtitle="Mirror projects from GitHub or GitLab into this group. Git history is preserved; optionally import issues and open pull/merge requests."
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <h2 className="text-sm font-semibold text-text mb-3">1. Connect</h2>
-          <div className="space-y-3">
-            <form
-              autoComplete="off"
-              onSubmit={(e) => e.preventDefault()}
-              className="space-y-3"
-            >
-            <label className="block text-sm font-medium text-text">
-              Source
-              <select
-                className={`${fieldClass} mt-1`}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card title="1. Connect">
+          <form autoComplete="off" onSubmit={(e) => e.preventDefault()} className="space-y-4">
+            <FieldLabel label="Source">
+              <Select
                 value={provider}
                 onChange={(e) => setProvider(e.target.value as ImportProvider)}
                 autoComplete="off"
               >
                 <option value="github">GitHub</option>
                 <option value="gitlab">GitLab</option>
-              </select>
-            </label>
+              </Select>
+            </FieldLabel>
 
             {provider === 'gitlab' && (
-              <label className="block text-sm font-medium text-text">
-                GitLab URL (optional)
-                <input
-                  className={`${fieldClass} mt-1 font-mono`}
+              <FieldLabel label="GitLab URL (optional)">
+                <Input
+                  className="font-mono"
                   placeholder="https://gitlab.com"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
@@ -244,14 +239,16 @@ export function GroupImportPage() {
                   readOnly
                   onFocus={(e) => e.currentTarget.removeAttribute('readonly')}
                 />
-              </label>
+              </FieldLabel>
             )}
 
             {provider === 'github' && (
-              <label className="block text-sm font-medium text-text">
-                GitHub URL (optional)
-                <input
-                  className={`${fieldClass} mt-1 font-mono`}
+              <FieldLabel
+                label="GitHub URL (optional)"
+                hint="Leave blank for github.com. For GitHub Enterprise Server, use your instance URL (e.g. https://github.mycompany.com)."
+              >
+                <Input
+                  className="font-mono"
                   placeholder="https://github.com"
                   value={baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
@@ -260,18 +257,12 @@ export function GroupImportPage() {
                   readOnly
                   onFocus={(e) => e.currentTarget.removeAttribute('readonly')}
                 />
-                <span className="text-xs text-text-secondary mt-1 block">
-                  Leave blank for github.com. For GitHub Enterprise Server, use your instance URL
-                  (e.g. https://github.mycompany.com).
-                </span>
-              </label>
+              </FieldLabel>
             )}
 
             {credentials.length > 0 && (
-              <label className="block text-sm font-medium text-text">
-                Saved credential
-                <select
-                  className={`${fieldClass} mt-1`}
+              <FieldLabel label="Saved credential">
+                <Select
                   value={credentialId ?? ''}
                   onChange={(e) => setCredentialId(e.target.value || null)}
                 >
@@ -281,15 +272,21 @@ export function GroupImportPage() {
                       {cred.label ?? cred.provider}
                     </option>
                   ))}
-                </select>
-              </label>
+                </Select>
+              </FieldLabel>
             )}
 
-            <label className="block text-sm font-medium text-text">
-              Personal access token
-              <input
+            <FieldLabel
+              label="Personal access token"
+              hint={
+                provider === 'github'
+                  ? 'Classic PAT: enable repo + read:org scopes. Fine-grained PAT: read Contents and Metadata for target repositories.'
+                  : 'Needs read_api and read_repository scopes. Stored encrypted; never shown again.'
+              }
+            >
+              <Input
                 type="password"
-                className={`${fieldClass} mt-1 font-mono`}
+                className="font-mono"
                 placeholder={provider === 'github' ? 'ghp_…' : 'glpat-…'}
                 value={pat}
                 onChange={(e) => setPat(e.target.value)}
@@ -300,24 +297,13 @@ export function GroupImportPage() {
                 readOnly
                 onFocus={(e) => e.currentTarget.removeAttribute('readonly')}
               />
-              <span className="text-xs text-text-secondary mt-1 block">
-                {provider === 'github'
-                  ? 'Classic PAT: enable the repo scope. Fine-grained PAT: grant read access to Contents and Metadata for target repositories.'
-                  : 'Needs read_api and read_repository scopes. Stored encrypted; never shown again.'}
-              </span>
-            </label>
+            </FieldLabel>
 
             {(discover.error || saveCredential.error) && (
-              <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-                {((discover.error ?? saveCredential.error) as Error).message}
-              </div>
+              <Alert>{((discover.error ?? saveCredential.error) as Error).message}</Alert>
             )}
 
-            <PrimaryButton
-              type="button"
-              disabled={discover.isPending}
-              onClick={() => discover.mutate()}
-            >
+            <PrimaryButton type="button" disabled={discover.isPending} onClick={() => discover.mutate()}>
               {discover.isPending ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
@@ -327,21 +313,19 @@ export function GroupImportPage() {
                 'List repositories'
               )}
             </PrimaryButton>
-            </form>
-          </div>
+          </form>
         </Card>
 
-        <Card>
-          <h2 className="text-sm font-semibold text-text mb-3">2. Select repositories</h2>
+        <Card title="2. Select repositories">
           {remoteRepos.length === 0 && (
-            <p className="text-sm text-text-secondary">
+            <p className="text-theme-sm text-gray-500 dark:text-gray-400">
               Connect with a token to see repositories you can import.
             </p>
           )}
           {account && (
-            <p className="text-xs text-muted mb-3">
-              Signed in as <span className="font-mono">{account}</span> · {remoteRepos.length}{' '}
-              repositories
+            <p className="mb-4 text-theme-xs text-gray-500 dark:text-gray-400">
+              Signed in as <span className="font-mono text-gray-700 dark:text-gray-300">{account}</span>{' '}
+              · {remoteRepos.length} repositories
               {namespacePath ? (
                 <>
                   {' '}
@@ -351,64 +335,51 @@ export function GroupImportPage() {
             </p>
           )}
           {namespaces.length > 0 && (
-            <label className="block text-sm font-medium text-text mb-3">
-              {provider === 'github' ? 'Organization' : 'Group'}
-              <select
-                className={`${fieldClass} mt-1`}
-                value={namespacePath}
-                onChange={(e) => setNamespacePath(e.target.value)}
-                disabled={refreshRepos.isPending}
-              >
-                <option value="">All accessible repositories</option>
-                {namespaces.map((ns) => (
-                  <option key={ns.id} value={ns.path}>
-                    {ns.name}
-                  </option>
-                ))}
-              </select>
+            <div className="mb-4 space-y-2">
+              <FieldLabel label={provider === 'github' ? 'Organization' : 'Group'}>
+                <Select
+                  value={namespacePath}
+                  onChange={(e) => setNamespacePath(e.target.value)}
+                  disabled={refreshRepos.isPending}
+                >
+                  <option value="">All accessible repositories</option>
+                  {namespaces.map((ns) => (
+                    <option key={ns.id} value={ns.path}>
+                      {ns.name}
+                    </option>
+                  ))}
+                </Select>
+              </FieldLabel>
               {credentialId && (
                 <SecondaryButton
                   type="button"
-                  className="mt-2"
                   disabled={refreshRepos.isPending}
                   onClick={() => refreshRepos.mutate()}
                 >
                   {refreshRepos.isPending ? 'Refreshing…' : 'Refresh list'}
                 </SecondaryButton>
               )}
-            </label>
-          )}
-          {refreshRepos.error && (
-            <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm mb-3">
-              {(refreshRepos.error as Error).message}
             </div>
           )}
+          {refreshRepos.error && <Alert className="mb-4">{(refreshRepos.error as Error).message}</Alert>}
           {remoteRepos.length > 0 && (
-            <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={importIssues}
-                  onChange={(e) => setImportIssues(e.target.checked)}
-                />
-                Import issues, labels, and milestones (open and closed)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={importPullRequests}
-                  onChange={(e) => setImportPullRequests(e.target.checked)}
-                />
-                Import open pull/merge requests (title, body, branches)
-              </label>
-              <div className="flex flex-wrap items-center gap-2 text-sm">
+            <div className="space-y-4">
+              <CheckboxField
+                label="Import issues, labels, and milestones (open and closed)"
+                checked={importIssues}
+                onChange={setImportIssues}
+              />
+              <CheckboxField
+                label="Import open pull/merge requests (title, body, branches)"
+                checked={importPullRequests}
+                onChange={setImportPullRequests}
+              />
+              <div className="flex flex-wrap items-center gap-2">
                 <SecondaryButton
                   type="button"
                   onClick={() => {
                     const next: Record<string, boolean> = {}
-                    for (const repo of remoteRepos) {
-                      next[repo.id] = true
-                    }
+                    for (const repo of remoteRepos) next[repo.id] = true
                     setSelected(next)
                   }}
                 >
@@ -418,40 +389,38 @@ export function GroupImportPage() {
                   type="button"
                   onClick={() => {
                     const next: Record<string, boolean> = {}
-                    for (const repo of remoteRepos) {
-                      next[repo.id] = false
-                    }
+                    for (const repo of remoteRepos) next[repo.id] = false
                     setSelected(next)
                   }}
                 >
                   Clear
                 </SecondaryButton>
                 {remoteRepos.length > 200 && (
-                  <span className="text-xs text-dashboard-danger">
+                  <span className="text-theme-xs text-error-500">
                     This list has {remoteRepos.length} repos; import at most 200 per job.
                   </span>
                 )}
               </div>
-              <div className="max-h-72 overflow-y-auto border border-naturals-n4 rounded-lg divide-y divide-naturals-n4">
+              <div className="max-h-72 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-200 dark:border-gray-800 dark:divide-gray-800">
                 {remoteRepos.map((repo) => (
                   <label
                     key={repo.id}
-                    className="flex items-start gap-3 px-3 py-2 hover:bg-surface-hover cursor-pointer"
+                    className="flex cursor-pointer items-start gap-3 px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-white/5"
                   >
                     <input
                       type="checkbox"
-                      className="mt-1"
+                      className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-500 focus:ring-brand-500/30 dark:border-gray-600"
                       checked={Boolean(selected[repo.id])}
                       onChange={(e) =>
                         setSelected((prev) => ({ ...prev, [repo.id]: e.target.checked }))
                       }
                     />
                     <span className="min-w-0">
-                      <span className="font-mono text-sm text-text block truncate">
+                      <span className="block truncate font-mono text-theme-sm text-gray-800 dark:text-white/90">
                         {repo.full_name}
                       </span>
                       {repo.description && (
-                        <span className="text-xs text-text-secondary line-clamp-2">
+                        <span className="line-clamp-2 text-theme-xs text-gray-500 dark:text-gray-400">
                           {repo.description}
                         </span>
                       )}
@@ -460,11 +429,7 @@ export function GroupImportPage() {
                 ))}
               </div>
 
-              {startImport.error && (
-                <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-                  {(startImport.error as Error).message}
-                </div>
-              )}
+              {startImport.error && <Alert>{(startImport.error as Error).message}</Alert>}
 
               <PrimaryButton
                 type="button"
@@ -479,56 +444,89 @@ export function GroupImportPage() {
       </div>
 
       {(activeJob || jobs.length > 0) && (
-        <Card className="mt-4">
-          <h2 className="text-sm font-semibold text-text mb-3 flex items-center gap-2">
-            <Download size={16} />
-            Import jobs
-          </h2>
-
+        <Card
+          title={
+            <span className="inline-flex items-center gap-2">
+              <Download size={16} />
+              Import jobs
+            </span>
+          }
+        >
           {activeJob && (
-            <div className="mb-4 p-3 rounded-lg border border-naturals-n4 bg-surface">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <span className="font-mono text-xs text-muted">{activeJob.id}</span>
-                <StatusBadge variant={jobStatusVariant(activeJob.status)}>
-                  {activeJob.status}
-                </StatusBadge>
+            <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <span className="font-mono text-theme-xs text-gray-500 dark:text-gray-400">
+                  {activeJob.id}
+                </span>
+                <StatusBadge variant={jobStatusVariant(activeJob.status)}>{activeJob.status}</StatusBadge>
               </div>
               {activeJob.error_message && (
-                <p className="text-sm text-dashboard-danger mb-2">{activeJob.error_message}</p>
+                <p className="mb-3 text-theme-sm text-error-500">{activeJob.error_message}</p>
               )}
-              <table className="app-list-table text-sm">
+              <div className="overflow-x-auto">
+                <table className="shell-table w-full">
+                  <thead>
+                    <tr>
+                      <th>Source</th>
+                      <th>Target</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeJob.repos.map((repo) => (
+                      <tr key={repo.id}>
+                        <td className="font-mono text-theme-xs">{repo.source_full_name}</td>
+                        <td>
+                          {repo.repository_id ? (
+                            <Link
+                              to={`/groups/${slug}/projects/${repo.target_slug}`}
+                              className="font-mono text-brand-500 hover:text-brand-600"
+                            >
+                              {slug}/{repo.target_slug}
+                            </Link>
+                          ) : (
+                            <span className="font-mono text-gray-500 dark:text-gray-400">
+                              {slug}/{repo.target_slug}
+                            </span>
+                          )}
+                        </td>
+                        <td>
+                          <StatusBadge variant={jobStatusVariant(repo.status)}>{repo.status}</StatusBadge>
+                          {repo.error_message && (
+                            <div className="mt-1 text-theme-xs text-error-500">{repo.error_message}</div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {jobs.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="shell-table w-full">
                 <thead>
                   <tr>
-                    <th>Source</th>
-                    <th>Target</th>
+                    <th>Started</th>
+                    <th>Provider</th>
                     <th>Status</th>
+                    <th />
                   </tr>
                 </thead>
                 <tbody>
-                  {activeJob.repos.map((repo) => (
-                    <tr key={repo.id}>
-                      <td className="font-mono">{repo.source_full_name}</td>
+                  {jobs.map((job) => (
+                    <tr key={job.id}>
+                      <td className="text-theme-sm">{new Date(job.created_at).toLocaleString()}</td>
+                      <td className="capitalize">{job.provider}</td>
                       <td>
-                        {repo.repository_id ? (
-                          <Link
-                            to={`/groups/${slug}/projects/${repo.target_slug}`}
-                            className="font-mono text-primary hover:underline"
-                          >
-                            {slug}/{repo.target_slug}
-                          </Link>
-                        ) : (
-                          <span className="font-mono text-text-secondary">
-                            {slug}/{repo.target_slug}
-                          </span>
-                        )}
+                        <StatusBadge variant={jobStatusVariant(job.status)}>{job.status}</StatusBadge>
                       </td>
-                      <td>
-                        <StatusBadge variant={jobStatusVariant(repo.status)}>
-                          {repo.status}
-                        </StatusBadge>
-                        {repo.error_message && (
-                          <div className="text-xs text-dashboard-danger mt-1">{repo.error_message}</div>
-                        )}
+                      <td className="text-right">
+                        <SecondaryButton type="button" onClick={() => setActiveJobId(job.id)}>
+                          View
+                        </SecondaryButton>
                       </td>
                     </tr>
                   ))}
@@ -536,37 +534,8 @@ export function GroupImportPage() {
               </table>
             </div>
           )}
-
-          {jobs.length > 0 && (
-            <table className="app-list-table text-sm">
-              <thead>
-                <tr>
-                  <th>Started</th>
-                  <th>Provider</th>
-                  <th>Status</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {jobs.map((job) => (
-                  <tr key={job.id}>
-                    <td>{new Date(job.created_at).toLocaleString()}</td>
-                    <td className="capitalize">{job.provider}</td>
-                    <td>
-                      <StatusBadge variant={jobStatusVariant(job.status)}>{job.status}</StatusBadge>
-                    </td>
-                    <td>
-                      <SecondaryButton type="button" onClick={() => setActiveJobId(job.id)}>
-                        View
-                      </SecondaryButton>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
         </Card>
       )}
-    </>
+    </div>
   )
 }

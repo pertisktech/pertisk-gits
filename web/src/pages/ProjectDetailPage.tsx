@@ -11,7 +11,7 @@ import { RepoPullRequests } from '../components/RepoPullRequests'
 import { RepoPipelines } from '../components/RepoPipelines'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
-import { Breadcrumbs } from '../components/ui'
+import { Breadcrumbs, Alert } from '../components/ui'
 import { useProjectNav } from '../hooks/useProjectNav'
 import type { ProjectTab } from '../lib/projectRoute'
 import { projectTabPath } from '../lib/projectRoute'
@@ -75,15 +75,13 @@ export function ProjectDetailPage() {
   }, [searchParams, token, navigate, basePath])
 
   if (isLoading) {
-    return <div className="text-text-secondary text-sm py-8">Loading repository…</div>
+    return (
+      <div className="py-8 text-theme-sm text-gray-500 dark:text-gray-400">Loading repository…</div>
+    )
   }
 
   if (error) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error).message}
-      </div>
-    )
+    return <Alert>{(error as Error).message}</Alert>
   }
 
   if (!project) return null

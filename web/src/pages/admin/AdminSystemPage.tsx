@@ -3,7 +3,8 @@ import { Loader2 } from 'lucide-react'
 import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
-import { Breadcrumbs, PageHeader } from '../../components/ui'
+import { Badge } from '../../components/ui/Badge'
+import { Alert, Breadcrumbs, PageHeader } from '../../components/ui'
 import { formatDateTime } from '../../lib/collaboration'
 import { formatBytes, formatPercent } from '../../lib/formatBytes'
 
@@ -11,18 +12,20 @@ function usageBar(used: number, total: number) {
   if (total <= 0) return null
   const pct = Math.min(100, (used / total) * 100)
   return (
-    <div className="admin-usage-bar" aria-hidden>
-      <div className="admin-usage-bar-fill" style={{ width: `${pct}%` }} />
+    <div className="h-1 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-800" aria-hidden>
+      <div className="h-full rounded-full bg-brand-500" style={{ width: `${pct}%` }} />
     </div>
   )
 }
 
 function pathWithBadge(path: string, exists: boolean) {
   return (
-    <>
+    <span className="inline-flex flex-wrap items-center gap-2">
       <code>{path}</code>
-      <span className="admin-info-badge">{exists ? 'exists' : 'missing'}</span>
-    </>
+      <Badge color={exists ? 'success' : 'error'} variant="light">
+        {exists ? 'exists' : 'missing'}
+      </Badge>
+    </span>
   )
 }
 
@@ -37,7 +40,7 @@ export function AdminSystemPage() {
   })
 
   return (
-    <>
+    <div className="space-y-6">
       <Breadcrumbs
         items={[
           { label: 'Admin', to: '/admin' },
@@ -50,20 +53,16 @@ export function AdminSystemPage() {
       />
 
       {isLoading && (
-        <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
+        <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
           <Loader2 size={16} className="animate-spin" />
           Loading system information…
         </div>
       )}
 
-      {error && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(error as Error).message}
-        </div>
-      )}
+      {error && <Alert>{(error as Error).message}</Alert>}
 
       {data && (
-        <div className="space-y-4 max-w-3xl">
+        <div className="max-w-3xl space-y-4">
           <InfoPanel title="Runtime">
             <InfoRow label="Application version" value={<code>{data.version}</code>} />
             <InfoRow label="Rust toolchain" value={<code>{data.rust_version}</code>} />
@@ -83,7 +82,7 @@ export function AdminSystemPage() {
             <InfoRow
               label="Memory"
               value={
-                <div className="admin-usage-cell">
+                <div className="flex flex-col gap-1.5">
                   <span>
                     {formatBytes(data.host.memory_used_bytes)} / {formatBytes(data.host.memory_total_bytes)}
                     {' · '}
@@ -100,7 +99,7 @@ export function AdminSystemPage() {
             <InfoRow
               label="Disk"
               value={
-                <div className="admin-usage-cell">
+                <div className="flex flex-col gap-1.5">
                   <span>
                     {formatBytes(data.host.disk_used_bytes)} used · {formatBytes(data.host.disk_free_bytes)} free
                     {' · '}
@@ -114,14 +113,8 @@ export function AdminSystemPage() {
 
           <InfoPanel title="Application process">
             <InfoRow label="PID" value={data.process.pid} />
-            <InfoRow
-              label="Memory"
-              value={formatBytes(data.process.memory_bytes)}
-            />
-            <InfoRow
-              label="CPU"
-              value={formatPercent(data.process.cpu_usage_percent)}
-            />
+            <InfoRow label="Memory" value={formatBytes(data.process.memory_bytes)} />
+            <InfoRow label="CPU" value={formatPercent(data.process.cpu_usage_percent)} />
           </InfoPanel>
 
           <InfoPanel title="Counts">
@@ -136,7 +129,7 @@ export function AdminSystemPage() {
             <InfoRow
               label="Git repositories"
               value={
-                <div className="admin-usage-cell">
+                <div className="flex flex-col gap-1.5">
                   {pathWithBadge(data.storage.repos_root, data.storage.repos_root_exists)}
                   <span>{formatBytes(data.storage.repos_disk_bytes)} on disk</span>
                 </div>
@@ -145,7 +138,7 @@ export function AdminSystemPage() {
             <InfoRow
               label="CI artifacts"
               value={
-                <div className="admin-usage-cell">
+                <div className="flex flex-col gap-1.5">
                   {pathWithBadge(data.storage.artifacts_root, data.storage.artifacts_root_exists)}
                   <span>
                     {data.storage.artifacts_count} files · {formatBytes(data.storage.artifacts_db_bytes)} recorded
@@ -158,7 +151,7 @@ export function AdminSystemPage() {
             <InfoRow
               label="Container registry"
               value={
-                <div className="admin-usage-cell">
+                <div className="flex flex-col gap-1.5">
                   {pathWithBadge(data.storage.registry_root, data.storage.registry_root_exists)}
                   <span>
                     {data.storage.registry_blob_count} blobs · {formatBytes(data.storage.registry_db_bytes)} recorded
@@ -171,6 +164,6 @@ export function AdminSystemPage() {
           </InfoPanel>
         </div>
       )}
-    </>
+    </div>
   )
 }

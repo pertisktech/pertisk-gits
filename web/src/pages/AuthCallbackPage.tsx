@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 
@@ -27,19 +27,19 @@ export function AuthCallbackPage() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="app-panel max-w-md w-full p-6 text-center">
-          <p className="text-dashboard-danger mb-4">{error}</p>
-          <a href="/login" className="text-accent hover:underline">
+      <div className="flex min-h-screen items-center justify-center p-6">
+        <div className="shell-card w-full max-w-md p-6 text-center">
+          <p className="mb-4 text-theme-sm text-error-500">{error}</p>
+          <Link to="/login" className="text-theme-sm text-brand-500 hover:underline dark:text-brand-400">
             Back to login
-          </a>
+          </Link>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center text-text-secondary text-sm">
+    <div className="flex min-h-screen items-center justify-center text-theme-sm text-gray-500 dark:text-gray-400">
       Completing sign-in…
     </div>
   )

@@ -1,19 +1,19 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { Moon, Shield, Sun } from 'lucide-react'
+import { Shield } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuthProviderPublic } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { AppVersion } from '../components/AppVersion'
-import { useTheme } from '../context/ThemeContext'
-import styles from './AuthPage.module.css'
+import { AuthLayout } from '../components/auth/AuthLayout'
+import { Alert } from '../components/ui'
+import { Button } from '../components/ui/Button'
+import { FieldLabel, Input } from '../components/ui/Input'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
 export function LoginPage() {
   const { setSession } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
@@ -72,127 +72,83 @@ export function LoginPage() {
   }
 
   return (
-    <div className={styles.wrap}>
-      <header className={styles.topBar}>
-        <button
-          type="button"
-          className={styles.themeToggle}
-          onClick={toggleTheme}
-          data-no-global-button-hover="true"
-        >
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          {isDark ? 'Light' : 'Dark'}
-        </button>
-      </header>
+    <AuthLayout
+      title="Welcome back"
+      subtitle="Sign in to your Git platform"
+      icon={<Shield size={20} className="text-brand-500" />}
+    >
+      {error && <Alert className="mb-4">{error}</Alert>}
 
-      <div className={styles.brand}>
-        <img src="/favicon.svg" alt="" className={styles.brandLogo} />
-        <span className={styles.brandName}>Pertisk Gits</span>
-      </div>
+      <form onSubmit={onSubmit} className="space-y-4">
+        <FieldLabel label="Username or email">
+          <Input
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
+            autoComplete="username"
+            required
+          />
+        </FieldLabel>
+        <FieldLabel label="Password">
+          <Input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </FieldLabel>
+        <Button type="submit" className="w-full" disabled={loading}>
+          {loading ? 'Signing in…' : 'Sign in'}
+        </Button>
+      </form>
 
-      <div className={styles.card}>
-        <div className={styles.cardHeader}>
-          <h1 className={styles.title}>
-            <Shield size={20} /> Welcome back
-          </h1>
-          <p className={styles.subtitle}>Sign in to your Git platform</p>
-        </div>
-
-        {error && <p className={styles.error}>{error}</p>}
-
-        <form onSubmit={onSubmit} className={styles.form}>
-          <label className={styles.label}>
-            Username or email
-            <input
-              className={styles.input}
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              autoComplete="username"
-              required
-            />
-          </label>
-          <label className={styles.label}>
-            Password
-            <input
-              className={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          <button type="submit" className={styles.button} disabled={loading} data-no-global-button-hover="true">
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
-
-        {oidcProviders.length > 0 && (
-          <div className={styles.linkRow} style={{ marginTop: '1.25rem' }}>
-            <p className="text-sm text-text-secondary mb-2">Or continue with</p>
-            <div className="flex flex-col gap-2">
-              {oidcProviders.map((provider) => (
-                <a
-                  key={provider.id}
-                  href={ssoLoginUrl(provider)}
-                  className={styles.button}
-                  style={{ textAlign: 'center', textDecoration: 'none' }}
-                >
-                  {provider.name}
-                </a>
-              ))}
-            </div>
+      {oidcProviders.length > 0 && (
+        <div className="mt-6 space-y-3 border-t border-gray-200 pt-6 dark:border-gray-800">
+          <p className="text-center text-theme-sm text-gray-500 dark:text-gray-400">Or continue with</p>
+          <div className="flex flex-col gap-2">
+            {oidcProviders.map((provider) => (
+              <a
+                key={provider.id}
+                href={ssoLoginUrl(provider)}
+                className="inline-flex w-full items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-theme-sm font-medium text-white shadow-theme-xs hover:bg-brand-600 no-underline"
+              >
+                {provider.name}
+              </a>
+            ))}
           </div>
-        )}
+        </div>
+      )}
 
-        {ldapProviders.map((provider) => (
-          <form
-            key={provider.id}
-            className={styles.form}
-            style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}
-            onSubmit={(e) => onLdapSubmit(e, provider.id)}
-          >
-            <p className="text-sm text-text-secondary mb-2">{provider.name} (LDAP)</p>
-            <label className={styles.label}>
-              Username
-              <input
-                className={styles.input}
-                value={ldapUser}
-                onChange={(e) => setLdapUser(e.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.label}>
-              Password
-              <input
-                className={styles.input}
-                type="password"
-                value={ldapPass}
-                onChange={(e) => setLdapPass(e.target.value)}
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className={styles.button}
-              disabled={ldapLoading}
-              data-no-global-button-hover="true"
-            >
-              {ldapLoading ? 'Signing in…' : `Sign in with ${provider.name}`}
-            </button>
-          </form>
-        ))}
+      {ldapProviders.map((provider) => (
+        <form
+          key={provider.id}
+          className="mt-6 space-y-4 border-t border-gray-200 pt-6 dark:border-gray-800"
+          onSubmit={(e) => onLdapSubmit(e, provider.id)}
+        >
+          <p className="text-theme-sm text-gray-500 dark:text-gray-400">{provider.name} (LDAP)</p>
+          <FieldLabel label="Username">
+            <Input value={ldapUser} onChange={(e) => setLdapUser(e.target.value)} required />
+          </FieldLabel>
+          <FieldLabel label="Password">
+            <Input
+              type="password"
+              value={ldapPass}
+              onChange={(e) => setLdapPass(e.target.value)}
+              required
+            />
+          </FieldLabel>
+          <Button type="submit" className="w-full" disabled={ldapLoading}>
+            {ldapLoading ? 'Signing in…' : `Sign in with ${provider.name}`}
+          </Button>
+        </form>
+      ))}
 
-        <p className={styles.linkRow} style={{ marginTop: '1rem' }}>
-          New here? <Link to="/register">Create an account</Link>
-        </p>
-      </div>
-
-      <footer className={styles.footer}>
-        <p className={styles.version}>
-          <AppVersion />
-        </p>
-      </footer>
-    </div>
+      <p className="mt-6 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+        New here?{' '}
+        <Link to="/register" className="font-medium text-brand-500 hover:text-brand-600 no-underline">
+          Create an account
+        </Link>
+      </p>
+    </AuthLayout>
   )
 }

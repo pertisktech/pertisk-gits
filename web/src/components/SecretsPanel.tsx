@@ -2,7 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { CiSecret, CiSecretKind } from '../api/types'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { Alert, PrimaryButton, SecondaryButton } from './ui'
+import { FieldLabel, Input, Select, Textarea } from './ui/Input'
 
 interface SecretsPanelProps {
   token: string
@@ -88,42 +89,38 @@ export function SecretsPanel({
   }
 
   return (
-    <div className="app-panel max-w-3xl">
-      <div className="app-panel-header flex items-center gap-2">
+    <div className="shell-card max-w-3xl">
+      <div className="shell-card-header flex items-center gap-2">
         <KeyRound size={16} />
         {title}
       </div>
-      <div className="app-panel-body space-y-4">
-        <p className="text-sm text-text-secondary">{description}</p>
-        <p className="text-xs text-text-secondary">
+      <div className="shell-card-body space-y-4">
+        <p className="text-theme-sm text-gray-500 dark:text-gray-400">{description}</p>
+        <p className="text-theme-xs text-gray-500 dark:text-gray-400">
           Reference in pipelines as{' '}
-          <code className="rounded bg-surface-2 px-1 py-0.5">{'${{ secrets.NAME }}'}</code>.
+          <code className="rounded bg-gray-100 px-1 py-0.5 dark:bg-gray-800">{'${{ secrets.NAME }}'}</code>.
           File secrets are written to a temp path; the reference resolves to that path.
         </p>
 
-        {error && (
-          <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-            {error}
-          </div>
-        )}
+        {error && <Alert>{error}</Alert>}
 
         {isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-text-secondary">
+          <div className="flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
             <Loader2 size={14} className="animate-spin" />
             Loading secrets…
           </div>
         ) : secrets.length === 0 ? (
-          <p className="text-sm text-text-secondary">No secrets configured yet.</p>
+          <p className="text-theme-sm text-gray-500 dark:text-gray-400">No secrets configured yet.</p>
         ) : (
-          <ul className="divide-y divide-border rounded-md border border-border">
+          <ul className="divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 dark:divide-gray-800 dark:border-gray-800">
             {secrets.map((secret) => (
               <li
                 key={secret.id}
-                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
+                className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-theme-sm"
               >
                 <div>
-                  <div className="font-mono font-medium text-text">{secret.name}</div>
-                  <div className="text-xs text-text-secondary capitalize">
+                  <div className="font-mono font-medium text-gray-800 dark:text-white/90">{secret.name}</div>
+                  <div className="text-theme-xs capitalize text-gray-500 dark:text-gray-400">
                     {secret.secret_kind} · updated {new Date(secret.updated_at).toLocaleString()}
                   </div>
                 </div>
@@ -135,17 +132,19 @@ export function SecretsPanel({
                   >
                     Update value
                   </SecondaryButton>
-                  <SecondaryButton
+                  <button
                     type="button"
+                    className="rounded-lg p-2 text-gray-500 hover:bg-error-50 hover:text-error-500 dark:hover:bg-error-500/10"
                     onClick={() => {
                       if (window.confirm(`Delete secret ${secret.name}?`)) {
                         deleteMutation.mutate(secret.id)
                       }
                     }}
                     disabled={deleteMutation.isPending}
+                    title="Delete secret"
                   >
                     <Trash2 size={14} />
-                  </SecondaryButton>
+                  </button>
                 </div>
               </li>
             ))}
@@ -153,50 +152,40 @@ export function SecretsPanel({
         )}
 
         {showForm ? (
-          <form onSubmit={onCreate} className="space-y-3 rounded-md border border-border p-4">
+          <form onSubmit={onCreate} className="space-y-3 rounded-lg border border-gray-200 p-4 dark:border-gray-800">
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text" htmlFor="secret-name">
-                  Name
-                </label>
-                <input
+              <FieldLabel label="Name">
+                <Input
                   id="secret-name"
-                  className="app-field font-mono"
+                  className="font-mono"
                   value={name}
                   onChange={(e) => setName(e.target.value.toUpperCase())}
                   placeholder="API_TOKEN"
                   pattern="[A-Z][A-Z0-9_]*"
                   required
                 />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text" htmlFor="secret-kind">
-                  Type
-                </label>
-                <select
+              </FieldLabel>
+              <FieldLabel label="Type">
+                <Select
                   id="secret-kind"
-                  className="app-field"
                   value={kind}
                   onChange={(e) => setKind(e.target.value as CiSecretKind)}
                 >
                   <option value="variable">Variable</option>
                   <option value="file">File (PEM, key material)</option>
-                </select>
-              </div>
+                </Select>
+              </FieldLabel>
             </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-text" htmlFor="secret-value">
-                Value
-              </label>
-              <textarea
+            <FieldLabel label="Value">
+              <Textarea
                 id="secret-value"
-                className="app-field font-mono text-xs"
+                className="font-mono text-theme-xs"
                 rows={kind === 'file' ? 6 : 2}
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 required
               />
-            </div>
+            </FieldLabel>
             <div className="flex items-center gap-2">
               <PrimaryButton type="submit" disabled={createMutation.isPending}>
                 {createMutation.isPending ? 'Saving…' : 'Add secret'}
@@ -207,8 +196,7 @@ export function SecretsPanel({
             </div>
           </form>
         ) : (
-          <SecondaryButton type="button" onClick={() => setShowForm(true)}>
-            <Plus size={14} />
+          <SecondaryButton type="button" onClick={() => setShowForm(true)} startIcon={<Plus size={14} />}>
             Add secret
           </SecondaryButton>
         )}

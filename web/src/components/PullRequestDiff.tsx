@@ -5,9 +5,9 @@ import { api } from '../api/client'
 import type { PullRequestCommentDetail } from '../api/types'
 import { MarkdownBody } from '../lib/collaboration'
 import { parseUnifiedDiff } from '../lib/unifiedDiff'
-import { PrimaryButton } from './ui'
+import { PrimaryButton, SecondaryButton } from './ui'
+import { Textarea } from './ui/Input'
 import { DiffViewer } from './DiffViewer'
-import { cn } from '../utils/cn'
 
 interface PullRequestDiffProps {
   token?: string | null
@@ -107,11 +107,10 @@ export function PullRequestDiff({
                   })
                 }}
               >
-                <textarea
+                <Textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   rows={3}
-                  className="app-field w-full resize-y text-sm"
                   placeholder={`Comment on line ${activeLine.line}`}
                   required
                 />
@@ -119,13 +118,9 @@ export function PullRequestDiff({
                   <PrimaryButton type="submit" disabled={commentMutation.isPending}>
                     Add review comment
                   </PrimaryButton>
-                  <button
-                    type="button"
-                    className={cn('text-sm text-text-secondary hover:text-text')}
-                    onClick={() => setActiveLine(null)}
-                  >
+                  <SecondaryButton type="button" onClick={() => setActiveLine(null)}>
                     Cancel
-                  </button>
+                  </SecondaryButton>
                 </div>
               </form>
             )}

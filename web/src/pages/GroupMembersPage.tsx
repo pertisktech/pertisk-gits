@@ -7,7 +7,9 @@ import type { OrgMember, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { UserPicker } from '../components/UserPicker'
-import { PrimaryButton, SecondaryButton } from '../components/ui'
+import { Card } from '../components/Card'
+import { Alert, Breadcrumbs, PageHeader, PrimaryButton } from '../components/ui'
+import { Select } from '../components/ui/Input'
 
 type OrgRole = OrgMember['role']
 
@@ -100,27 +102,28 @@ export function GroupMembersPage() {
   }
 
   return (
-    <>
-      <div className="app-repo-header mb-4">
-        <h1 className="app-repo-title">
-          <span>Members</span>
-        </h1>
-        <p className="app-repo-desc">
-          Manage who belongs to {group?.name ?? slug} and their group role.
-        </p>
-      </div>
+    <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Groups', to: '/groups' },
+          { label: group?.name ?? slug, to: `/groups/${slug}` },
+          { label: 'Members' },
+        ]}
+      />
+      <PageHeader
+        title="Members"
+        subtitle={`Manage who belongs to ${group?.name ?? slug} and their group role.`}
+      />
+
+      {error && <Alert>{error}</Alert>}
 
       {canManage && (
-        <div className="app-panel max-w-3xl mb-5">
-          <div className="app-panel-header flex items-center gap-2">
-            <UserPlus size={16} />
-            Add member
-          </div>
-          <form className="app-panel-body space-y-4" onSubmit={onAddMember}>
-            <p className="text-sm text-text-secondary">
+        <Card title="Add member" className="max-w-3xl">
+          <form className="space-y-4" onSubmit={onAddMember}>
+            <p className="text-theme-sm text-gray-500 dark:text-gray-400">
               Search for an existing account by username, email, or display name.
             </p>
-            <div className="flex flex-wrap gap-3 items-start">
+            <div className="flex flex-wrap items-start gap-3">
               <UserPicker
                 token={token!}
                 value={selectedUser}
@@ -128,8 +131,8 @@ export function GroupMembersPage() {
                 excludeUserIds={memberIds}
                 disabled={addMember.isPending}
               />
-              <select
-                className="app-field w-40"
+              <Select
+                className="w-40"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as OrgRole)}
                 disabled={addMember.isPending}
@@ -137,116 +140,118 @@ export function GroupMembersPage() {
                 {isOwner && <option value="owner">Owner</option>}
                 <option value="admin">Admin</option>
                 <option value="member">Member</option>
-              </select>
-              <PrimaryButton type="submit" disabled={addMember.isPending || !selectedUser}>
-                {addMember.isPending ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Adding…
-                  </>
-                ) : (
-                  'Add member'
-                )}
+              </Select>
+              <PrimaryButton
+                type="submit"
+                disabled={addMember.isPending || !selectedUser}
+                startIcon={addMember.isPending ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} />}
+              >
+                {addMember.isPending ? 'Adding…' : 'Add member'}
               </PrimaryButton>
             </div>
           </form>
-        </div>
+        </Card>
       )}
 
-      {error && (
-        <div className="mb-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm max-w-3xl">
-          {error}
-        </div>
-      )}
-
-      <div className="app-panel max-w-3xl">
-        <div className="app-panel-header flex items-center justify-between">
-          <span>Members</span>
-          <span className="font-normal text-text-secondary">{members.length}</span>
+      <div className="shell-card max-w-3xl">
+        <div className="shell-card-header">
+          <span>All members</span>
+          <span className="font-normal text-gray-500 dark:text-gray-400">{members.length}</span>
         </div>
 
-        {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
+        {isLoading && (
+          <div className="shell-card-body py-12 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+            Loading…
+          </div>
+        )}
 
         {!isLoading && members.length > 0 && (
-          <table className="app-list-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                {canManage && <th className="w-28" />}
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((member) => {
-                const isSelf = member.user.id === user?.id
-                const canEditTarget =
-                  canManage && (isOwner || member.role !== 'owner') && !(member.role === 'owner' && !isOwner)
+          <div className="overflow-x-auto">
+            <table className="shell-table w-full">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  {canManage && <th />}
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((member) => {
+                  const isSelf = member.user.id === user?.id
+                  const canEditTarget =
+                    canManage && (isOwner || member.role !== 'owner') && !(member.role === 'owner' && !isOwner)
 
-                return (
-                  <tr key={member.user.id}>
-                    <td>
-                      <div className="font-medium text-text">@{member.user.username}</div>
-                      <div className="text-xs text-text-secondary mt-0.5">
-                        {member.user.display_name ?? member.user.email}
-                      </div>
-                    </td>
-                    <td>
-                      {canEditTarget ? (
-                        <select
-                          className="app-field py-1 text-sm"
-                          value={member.role}
-                          disabled={updateMember.isPending}
-                          onChange={(e) =>
-                            updateMember.mutate({
-                              userId: member.user.id,
-                              role: e.target.value as OrgRole,
-                            })
-                          }
-                        >
-                          {roleOptionsForTarget(member).map((role) => (
-                            <option key={role} value={role}>
-                              {role}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <StatusBadge variant={roleVariant(member.role)}>{member.role}</StatusBadge>
-                      )}
-                    </td>
-                    {canManage && (
-                      <td className="text-right">
-                        {canEditTarget && !isSelf && (
-                          <SecondaryButton
-                            type="button"
-                            className="px-2 py-1"
-                            disabled={removeMember.isPending}
-                            onClick={() => {
-                              if (window.confirm(`Remove @${member.user.username} from this group?`)) {
-                                removeMember.mutate(member.user.id)
-                              }
-                            }}
+                  return (
+                    <tr key={member.user.id}>
+                      <td>
+                        <div className="font-medium text-gray-800 dark:text-white/90">
+                          @{member.user.username}
+                        </div>
+                        <div className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
+                          {member.user.display_name ?? member.user.email}
+                        </div>
+                      </td>
+                      <td>
+                        {canEditTarget ? (
+                          <Select
+                            className="!py-1.5 text-theme-sm"
+                            value={member.role}
+                            disabled={updateMember.isPending}
+                            onChange={(e) =>
+                              updateMember.mutate({
+                                userId: member.user.id,
+                                role: e.target.value as OrgRole,
+                              })
+                            }
                           >
-                            <Trash2 size={14} />
-                          </SecondaryButton>
+                            {roleOptionsForTarget(member).map((role) => (
+                              <option key={role} value={role}>
+                                {role}
+                              </option>
+                            ))}
+                          </Select>
+                        ) : (
+                          <StatusBadge variant={roleVariant(member.role)}>{member.role}</StatusBadge>
                         )}
                       </td>
-                    )}
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+                      {canManage && (
+                        <td>
+                          {canEditTarget && !isSelf && (
+                            <div className="flex justify-end">
+                              <button
+                                type="button"
+                                className="rounded-lg p-2 text-gray-500 hover:bg-error-50 hover:text-error-500 dark:hover:bg-error-500/10"
+                                disabled={removeMember.isPending}
+                                title="Remove member"
+                                onClick={() => {
+                                  if (window.confirm(`Remove @${member.user.username} from this group?`)) {
+                                    removeMember.mutate(member.user.id)
+                                  }
+                                }}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      )}
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
-      <div className="max-w-3xl mt-5 text-sm text-text-secondary space-y-2">
+      <div className="max-w-3xl space-y-2 text-theme-sm text-gray-500 dark:text-gray-400">
         <p>
-          <strong className="text-text">Owner / Admin</strong> — can push to all repositories in the group.
+          <strong className="text-gray-800 dark:text-white/90">Owner / Admin</strong> — can push to all repositories in the group.
         </p>
         <p>
-          <strong className="text-text">Member</strong> — can read private repositories; push only with a direct repository role.
+          <strong className="text-gray-800 dark:text-white/90">Member</strong> — can read private repositories; push only with a direct repository role.
         </p>
       </div>
-    </>
+    </div>
   )
 }

@@ -4,7 +4,8 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { RepoCollaborator, User } from '../api/types'
 import { UserPicker } from './UserPicker'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { Alert, PrimaryButton } from './ui'
+import { Select } from './ui/Input'
 
 type RepoRole = RepoCollaborator['role']
 
@@ -82,18 +83,18 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
   }
 
   return (
-    <div className="app-panel max-w-2xl">
-      <div className="app-panel-header flex items-center gap-2">
+    <div className="shell-card max-w-2xl">
+      <div className="shell-card-header flex items-center gap-2">
         <UserPlus size={16} />
         Direct access
       </div>
-      <div className="app-panel-body space-y-5">
-        <p className="text-sm text-text-secondary">
+      <div className="shell-card-body space-y-5">
+        <p className="text-theme-sm text-gray-500 dark:text-gray-400">
           Grant push or admin access to users who are not group members, or override access for a specific repository.
           Group owners and admins already have full access.
         </p>
 
-        <form className="flex flex-wrap gap-3 items-start" onSubmit={onAddCollaborator}>
+        <form className="flex flex-wrap items-start gap-3" onSubmit={onAddCollaborator}>
           <UserPicker
             token={token}
             value={selectedUser}
@@ -101,8 +102,8 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
             excludeUserIds={collaboratorIds}
             disabled={addCollaborator.isPending}
           />
-          <select
-            className="app-field w-36"
+          <Select
+            className="w-36"
             value={newRole}
             onChange={(e) => setNewRole(e.target.value as RepoRole)}
             disabled={addCollaborator.isPending}
@@ -110,86 +111,84 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
             <option value="read">Read</option>
             <option value="write">Write</option>
             <option value="admin">Admin</option>
-          </select>
-          <PrimaryButton type="submit" disabled={addCollaborator.isPending || !selectedUser}>
-            {addCollaborator.isPending ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Adding…
-              </>
-            ) : (
-              'Add'
-            )}
+          </Select>
+          <PrimaryButton type="submit" disabled={addCollaborator.isPending || !selectedUser} startIcon={addCollaborator.isPending ? <Loader2 size={14} className="animate-spin" /> : undefined}>
+            {addCollaborator.isPending ? 'Adding…' : 'Add'}
           </PrimaryButton>
         </form>
 
-        {error && (
-          <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-            {error}
-          </div>
+        {error && <Alert>{error}</Alert>}
+
+        {isLoading && (
+          <div className="text-theme-sm text-gray-500 dark:text-gray-400">Loading collaborators…</div>
         )}
 
-        {isLoading && <div className="text-sm text-text-secondary">Loading collaborators…</div>}
-
         {!isLoading && collaborators.length === 0 && (
-          <p className="text-sm text-text-secondary">No direct repository permissions yet.</p>
+          <p className="text-theme-sm text-gray-500 dark:text-gray-400">No direct repository permissions yet.</p>
         )}
 
         {!isLoading && collaborators.length > 0 && (
-          <table className="app-list-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Role</th>
-                <th className="w-28" />
-              </tr>
-            </thead>
-            <tbody>
-              {collaborators.map((collaborator) => (
-                <tr key={collaborator.user.id}>
-                  <td>
-                    <div className="font-medium text-text">@{collaborator.user.username}</div>
-                    <div className="text-xs text-text-secondary mt-0.5">
-                      {collaborator.user.display_name ?? collaborator.user.email}
-                    </div>
-                  </td>
-                  <td>
-                    <select
-                      className="app-field py-1 text-sm"
-                      value={collaborator.role}
-                      disabled={updateCollaborator.isPending}
-                      onChange={(e) =>
-                        updateCollaborator.mutate({
-                          userId: collaborator.user.id,
-                          role: e.target.value as RepoRole,
-                        })
-                      }
-                    >
-                      <option value="read">Read</option>
-                      <option value="write">Write</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </td>
-                  <td className="text-right">
-                    <SecondaryButton
-                      type="button"
-                      className="px-2 py-1"
-                      disabled={removeCollaborator.isPending}
-                      onClick={() => {
-                        if (
-                          window.confirm(`Remove direct access for @${collaborator.user.username}?`)
-                        ) {
-                          removeCollaborator.mutate(collaborator.user.id)
-                        }
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </SecondaryButton>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="shell-table w-full">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th />
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {collaborators.map((collaborator) => (
+                  <tr key={collaborator.user.id}>
+                    <td>
+                      <div className="font-medium text-gray-800 dark:text-white/90">
+                        @{collaborator.user.username}
+                      </div>
+                      <div className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
+                        {collaborator.user.display_name ?? collaborator.user.email}
+                      </div>
+                    </td>
+                    <td>
+                      <Select
+                        className="!py-1.5 text-theme-sm"
+                        value={collaborator.role}
+                        disabled={updateCollaborator.isPending}
+                        onChange={(e) =>
+                          updateCollaborator.mutate({
+                            userId: collaborator.user.id,
+                            role: e.target.value as RepoRole,
+                          })
+                        }
+                      >
+                        <option value="read">Read</option>
+                        <option value="write">Write</option>
+                        <option value="admin">Admin</option>
+                      </Select>
+                    </td>
+                    <td>
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          className="rounded-lg p-2 text-gray-500 hover:bg-error-50 hover:text-error-500 dark:hover:bg-error-500/10"
+                          disabled={removeCollaborator.isPending}
+                          title="Remove collaborator"
+                          onClick={() => {
+                            if (
+                              window.confirm(`Remove direct access for @${collaborator.user.username}?`)
+                            ) {
+                              removeCollaborator.mutate(collaborator.user.id)
+                            }
+                          }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>

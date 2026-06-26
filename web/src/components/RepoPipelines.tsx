@@ -13,7 +13,7 @@ import {
 } from '../lib/pipelineStatus'
 import { PipelineGraph } from './PipelineGraph'
 import { PipelineRunsTable } from './PipelineRunsTable'
-import { EmptyState, PrimaryButton } from './ui'
+import { Alert, EmptyState, PrimaryButton } from './ui'
 
 export const PIPELINE_CONFIG_FILES = new Set([
   '.pertisk-ci.yaml',
@@ -111,7 +111,7 @@ export function RepoPipelines({
 
   if (browserLoading || configLoading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
+      <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
         <Loader2 size={16} className="animate-spin" />
         Loading pipelines…
       </div>
@@ -132,18 +132,18 @@ export function RepoPipelines({
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-base font-semibold text-text">Pipelines</h2>
-          <p className="text-sm text-text-secondary mt-0.5">
+          <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Pipelines</h2>
+          <p className="mt-0.5 text-theme-sm text-gray-500 dark:text-gray-400">
             Add a CI config file to the repository root to get started.
           </p>
         </div>
-        <div className="app-panel">
+        <div className="shell-card">
           <EmptyState
             icon={<Workflow size={40} />}
             title="Set up CI/CD"
             description="Commit a .pertisk-ci.yaml file on the default branch. Migrating from GitLab? Use the same job structure with .pertisk-ci.yaml instead of .gitlab-ci.yml."
             action={
-              <pre className="text-left text-xs font-mono bg-naturals-n2 border border-naturals-n4 rounded-md p-4 max-w-lg mx-auto overflow-x-auto text-text-secondary">
+              <pre className="mx-auto max-w-lg overflow-x-auto rounded-lg border border-gray-200 bg-gray-50 p-4 text-left font-mono text-theme-xs text-gray-500 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
 {`# .pertisk-ci.yaml
 jobs:
   build:
@@ -161,7 +161,7 @@ jobs:
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
+      <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
         <Loader2 size={16} className="animate-spin" />
         Loading pipelines…
       </div>
@@ -169,22 +169,18 @@ jobs:
   }
 
   if (error) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error).message}
-      </div>
-    )
+    return <Alert>{(error as Error).message}</Alert>
   }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-text">Pipelines</h2>
-          <p className="text-sm text-text-secondary mt-0.5">
-            CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
+          <h2 className="text-base font-semibold text-gray-800 dark:text-white/90">Pipelines</h2>
+          <p className="mt-0.5 text-theme-sm text-gray-500 dark:text-gray-400">
+            CI from <code className="font-mono text-theme-xs">.pertisk-ci.yaml</code>
             {runs.length > 0 && (
-              <span className="text-muted"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
+              <span className="text-gray-400"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
             )}
           </p>
         </div>
@@ -202,17 +198,9 @@ jobs:
         </PrimaryButton>
       </div>
 
-      {triggerMutation.isError && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(triggerMutation.error as Error).message}
-        </div>
-      )}
+      {triggerMutation.isError && <Alert>{(triggerMutation.error as Error).message}</Alert>}
 
-      {rerunMutation.isError && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(rerunMutation.error as Error).message}
-        </div>
-      )}
+      {rerunMutation.isError && <Alert>{(rerunMutation.error as Error).message}</Alert>}
 
       <PipelineConfigGraph
         token={token}
@@ -265,23 +253,16 @@ function PipelineConfigGraph({
   const selectedJob = data?.jobs.find((job) => job.name === selectedJobName) ?? null
 
   if (isError) {
-    return (
-      <div className="rounded-lg border border-red-r1/30 bg-dashboard-danger-bg p-4 text-sm text-dashboard-danger">
-        <p className="font-medium">Could not load pipeline config</p>
-        <p className="mt-1 text-dashboard-danger/90">
-          {(error as Error).message.replace(/^validation error:\s*/i, '')}
-        </p>
-      </div>
-    )
+    return <Alert>{(error as Error).message.replace(/^validation error:\s*/i, '')}</Alert>
   }
 
   return (
-    <div className="rounded-lg border border-naturals-n4 overflow-hidden">
-      <div className="px-3 py-2 border-b border-naturals-n4 bg-naturals-n3 flex flex-wrap items-center justify-between gap-2">
+    <div className="shell-card overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-3 dark:border-gray-800">
         <div>
-          <h3 className="text-sm font-semibold text-text font-mono">pipeline graph</h3>
+          <h3 className="font-mono text-theme-sm font-semibold text-gray-800 dark:text-white/90">pipeline graph</h3>
           {data && (
-            <p className="text-xs text-text-secondary font-mono mt-0.5">
+            <p className="mt-0.5 font-mono text-theme-xs text-gray-500 dark:text-gray-400">
               {data.config_path} @ {shortSha(data.commit_sha)} ({refLabel(data.ref)})
             </p>
           )}
@@ -295,13 +276,13 @@ function PipelineConfigGraph({
         onJobSelect={setSelectedJobName}
       />
       {selectedJob && (
-        <div className="pipeline-step-preview border-t border-naturals-n4">
-          <div className="px-3 py-2 bg-naturals-n3 border-b border-naturals-n4">
-            <p className="text-xs font-mono text-text-secondary">
-              steps in <strong className="text-text">{selectedJob.name}</strong>
+        <div className="pipeline-step-preview border-t border-gray-200 dark:border-gray-800">
+          <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-800 dark:bg-gray-900/50">
+            <p className="font-mono text-theme-xs text-gray-500 dark:text-gray-400">
+              steps in <strong className="text-gray-800 dark:text-white/90">{selectedJob.name}</strong>
             </p>
           </div>
-          <div className="divide-y divide-naturals-n4">
+          <div className="divide-y divide-gray-200 dark:divide-gray-800">
             {selectedJob.steps.map((step) => (
               <div key={step.name} className="pipeline-step-preview-row">
                 <span className="pipeline-step-preview-name">{step.name}</span>

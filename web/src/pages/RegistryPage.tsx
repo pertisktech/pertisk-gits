@@ -6,11 +6,15 @@ import { api } from '../api/client'
 import type { ContainerImageSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import {
+  Alert,
+  Breadcrumbs,
   EmptyState,
   LinkButton,
+  PageHeader,
   PrimaryButton,
   SecondaryButton,
 } from '../components/ui'
+import { FieldLabel, Input, Select } from '../components/ui/Input'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -29,6 +33,13 @@ export function RegistryPage() {
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const decodedImage = imageName ? decodeURIComponent(imageName) : null
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => api.listOrganizations(token!),
+    enabled: Boolean(token),
+  })
+  const group = groups.find((g) => g.slug === slug)
 
   const { data: images = [], isLoading: listLoading } = useQuery({
     queryKey: ['registry-images', slug],
@@ -92,46 +103,46 @@ export function RegistryPage() {
   const registryBase = `/groups/${slug}/registry`
 
   return (
-    <>
-      <div className="app-repo-header mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="app-repo-title">
-            <span>{decodedImage ?? 'Container registry'}</span>
-          </h1>
-          <p className="app-repo-desc">
-            OCI images for @{slug} — push with docker login &amp;&amp; docker push host/{slug}/image:tag
-          </p>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <SecondaryButton
-            type="button"
-            disabled={runGc.isPending}
-            onClick={() => runGc.mutate()}
-          >
-            {runGc.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
-            Run GC
-          </SecondaryButton>
-          {decodedImage && (
-            <LinkButton to={registryBase}>All images</LinkButton>
-          )}
-        </div>
-      </div>
+    <div className="space-y-6">
+      <Breadcrumbs
+        items={[
+          { label: 'Groups', to: '/groups' },
+          { label: group?.name ?? slug, to: `/groups/${slug}` },
+          { label: 'Registry', to: decodedImage ? registryBase : undefined },
+          ...(decodedImage ? [{ label: decodedImage }] : []),
+        ]}
+      />
+      <PageHeader
+        title={decodedImage ?? 'Container registry'}
+        subtitle={`OCI images for @${slug} — push with docker login && docker push host/${slug}/image:tag`}
+        action={
+          <div className="flex shrink-0 gap-2">
+            <SecondaryButton
+              type="button"
+              disabled={runGc.isPending}
+              onClick={() => runGc.mutate()}
+              startIcon={runGc.isPending ? <Loader2 size={14} className="animate-spin" /> : undefined}
+            >
+              Run GC
+            </SecondaryButton>
+            {decodedImage && <LinkButton to={registryBase}>All images</LinkButton>}
+          </div>
+        }
+      />
 
-      {error && (
-        <div className="mb-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {error}
-        </div>
-      )}
+      {error && <Alert>{error}</Alert>}
 
       {!decodedImage && (
-        <div className="app-panel">
-          <div className="app-panel-header flex items-center justify-between">
+        <div className="shell-card">
+          <div className="shell-card-header">
             <span>Images</span>
-            <span className="font-normal text-text-secondary">{images.length}</span>
+            <span className="font-normal text-gray-500 dark:text-gray-400">{images.length}</span>
           </div>
 
           {listLoading && (
-            <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>
+            <div className="shell-card-body py-12 text-center text-theme-sm text-gray-500 dark:text-gray-400">
+              Loading…
+            </div>
           )}
 
           {!listLoading && images.length === 0 && (
@@ -143,84 +154,77 @@ export function RegistryPage() {
           )}
 
           {!listLoading && images.length > 0 && (
-            <table className="app-list-table">
-              <thead>
-                <tr>
-                  <th>Image</th>
-                  <th>Tags</th>
-                  <th>Linked repo</th>
-                  <th>Updated</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {images.map((image: ContainerImageSummary) => (
-                  <tr key={image.id}>
-                    <td>
-                      <Link
-                        to={`${registryBase}/${encodeURIComponent(image.name)}`}
-                        className="font-mono text-sm text-primary hover:underline"
-                      >
-                        {slug}/{image.name}
-                      </Link>
-                      {image.description && (
-                        <div className="text-xs text-text-secondary mt-0.5">{image.description}</div>
-                      )}
-                    </td>
-                    <td className="font-mono text-sm">{image.tag_count}</td>
-                    <td className="font-mono text-sm text-text-secondary">
-                      {image.linked_repository_slug ?? '—'}
-                    </td>
-                    <td className="text-sm text-text-secondary">
-                      {new Date(image.updated_at).toLocaleString()}
-                    </td>
-                    <td className="text-right">
-                      <button
-                        type="button"
-                        className="text-dashboard-danger hover:underline text-xs"
-                        disabled={deleteImage.isPending}
-                        onClick={() => {
-                          if (confirm(`Delete image ${image.name} and all tags?`)) {
-                            deleteImage.mutate(image.name)
-                          }
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="shell-table w-full">
+                <thead>
+                  <tr>
+                    <th>Image</th>
+                    <th>Tags</th>
+                    <th>Linked repo</th>
+                    <th>Updated</th>
+                    <th />
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {images.map((image: ContainerImageSummary) => (
+                    <tr key={image.id}>
+                      <td>
+                        <Link
+                          to={`${registryBase}/${encodeURIComponent(image.name)}`}
+                          className="font-mono text-theme-sm text-brand-500 hover:underline dark:text-brand-400"
+                        >
+                          {slug}/{image.name}
+                        </Link>
+                        {image.description && (
+                          <div className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
+                            {image.description}
+                          </div>
+                        )}
+                      </td>
+                      <td className="font-mono text-theme-sm">{image.tag_count}</td>
+                      <td className="font-mono text-theme-sm text-gray-500 dark:text-gray-400">
+                        {image.linked_repository_slug ?? '—'}
+                      </td>
+                      <td className="text-theme-sm text-gray-500 dark:text-gray-400">
+                        {new Date(image.updated_at).toLocaleString()}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="text-theme-xs text-error-500 hover:underline"
+                          disabled={deleteImage.isPending}
+                          onClick={() => {
+                            if (confirm(`Delete image ${image.name} and all tags?`)) {
+                              deleteImage.mutate(image.name)
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       )}
 
       {decodedImage && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Link to={registryBase} className="text-sm text-primary hover:underline">
-              ← All images
-            </Link>
-            <span className="font-mono text-sm text-text">{slug}/{decodedImage}</span>
-          </div>
-
           {detailLoading && (
-            <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>
+            <div className="py-8 text-center text-theme-sm text-gray-500 dark:text-gray-400">Loading…</div>
           )}
 
           {detail && (
             <>
-              <div className="app-panel p-4 max-w-xl">
-                <h2 className="text-sm font-semibold text-text mb-4">Metadata</h2>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label htmlFor="registry-image-description" className="text-sm font-medium text-text">
-                      Description
-                    </label>
-                    <input
+              <div className="shell-card max-w-xl">
+                <div className="shell-card-header">Metadata</div>
+                <div className="shell-card-body space-y-4">
+                  <FieldLabel label="Description">
+                    <Input
                       id="registry-image-description"
-                      className="app-field"
                       defaultValue={detail.description ?? ''}
                       placeholder="Optional description"
                       onBlur={(e) => {
@@ -230,14 +234,14 @@ export function RegistryPage() {
                         }
                       }}
                     />
-                  </div>
-                  <div className="space-y-2">
-                    <label htmlFor="registry-linked-repo" className="text-sm font-medium text-text">
-                      Linked git repository
-                    </label>
-                    <select
+                  </FieldLabel>
+                  <FieldLabel
+                    label="Linked git repository"
+                    hint="Tag commit links use this repository when a commit SHA is set on push."
+                  >
+                    <Select
                       id="registry-linked-repo"
-                      className="app-field mono"
+                      className="font-mono"
                       value={detail.linked_repository_id ?? ''}
                       onChange={(e) => {
                         const value = e.target.value || null
@@ -250,98 +254,99 @@ export function RegistryPage() {
                           {p.slug}
                         </option>
                       ))}
-                    </select>
-                    <p className="text-xs text-text-secondary">
-                      Tag commit links use this repository when a commit SHA is set on push.
-                    </p>
+                    </Select>
+                  </FieldLabel>
+                  <div className="flex gap-2 border-t border-gray-200 pt-4 dark:border-gray-800">
+                    <PrimaryButton
+                      type="button"
+                      disabled={deleteImage.isPending}
+                      startIcon={<Trash2 size={14} />}
+                      onClick={() => {
+                        if (confirm(`Delete ${decodedImage} and all tags?`)) {
+                          deleteImage.mutate(decodedImage)
+                        }
+                      }}
+                    >
+                      Delete image
+                    </PrimaryButton>
                   </div>
-                </div>
-                <div className="flex gap-2 pt-4 mt-4 border-t border-naturals-n4">
-                  <PrimaryButton
-                    type="button"
-                    disabled={deleteImage.isPending}
-                    onClick={() => {
-                      if (confirm(`Delete ${decodedImage} and all tags?`)) {
-                        deleteImage.mutate(decodedImage)
-                      }
-                    }}
-                  >
-                    <Trash2 size={14} />
-                    Delete image
-                  </PrimaryButton>
                 </div>
               </div>
 
-              <div className="app-panel">
-                <div className="app-panel-header flex items-center justify-between">
+              <div className="shell-card">
+                <div className="shell-card-header">
                   <span>Tags</span>
-                  <span className="font-normal text-text-secondary">{detail.tags.length}</span>
+                  <span className="font-normal text-gray-500 dark:text-gray-400">{detail.tags.length}</span>
                 </div>
                 {detail.tags.length === 0 ? (
-                  <div className="p-6 text-sm text-text-secondary">No tags pushed yet.</div>
+                  <div className="shell-card-body text-theme-sm text-gray-500 dark:text-gray-400">
+                    No tags pushed yet.
+                  </div>
                 ) : (
-                  <table className="app-list-table">
-                    <thead>
-                      <tr>
-                        <th>Tag</th>
-                        <th>Digest</th>
-                        <th>Commit</th>
-                        <th>Compressed size</th>
-                        <th>Updated</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {detail.tags.map((tag) => (
-                        <tr key={tag.name}>
-                          <td className="font-mono text-sm">{tag.name}</td>
-                          <td className="font-mono text-xs text-text-secondary" title={tag.manifest_digest}>
-                            {shortDigest(tag.manifest_digest)}
-                          </td>
-                          <td className="font-mono text-xs">
-                            {tag.commit_sha ? (
-                              detail.linked_repository_slug ? (
-                                <Link
-                                  to={`/groups/${slug}/projects/${detail.linked_repository_slug}/commit/${tag.commit_sha}`}
-                                  className="text-primary hover:underline"
-                                >
-                                  {tag.commit_sha.slice(0, 7)}
-                                </Link>
-                              ) : (
-                                tag.commit_sha.slice(0, 7)
-                              )
-                            ) : (
-                              '—'
-                            )}
-                          </td>
-                          <td className="text-sm">{formatBytes(tag.size_bytes)}</td>
-                          <td className="text-sm text-text-secondary">
-                            {new Date(tag.updated_at).toLocaleString()}
-                          </td>
-                          <td className="text-right">
-                            <button
-                              type="button"
-                              className="text-dashboard-danger hover:underline text-xs"
-                              disabled={deleteTag.isPending}
-                              onClick={() => {
-                                if (confirm(`Delete tag ${tag.name}?`)) {
-                                  deleteTag.mutate(tag.name)
-                                }
-                              }}
-                            >
-                              Delete
-                            </button>
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="shell-table w-full">
+                      <thead>
+                        <tr>
+                          <th>Tag</th>
+                          <th>Digest</th>
+                          <th>Commit</th>
+                          <th>Compressed size</th>
+                          <th>Updated</th>
+                          <th />
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {detail.tags.map((tag) => (
+                          <tr key={tag.name}>
+                            <td className="font-mono text-theme-sm">{tag.name}</td>
+                            <td className="font-mono text-theme-xs text-gray-500 dark:text-gray-400" title={tag.manifest_digest}>
+                              {shortDigest(tag.manifest_digest)}
+                            </td>
+                            <td className="font-mono text-theme-xs">
+                              {tag.commit_sha ? (
+                                detail.linked_repository_slug ? (
+                                  <Link
+                                    to={`/groups/${slug}/projects/${detail.linked_repository_slug}/commit/${tag.commit_sha}`}
+                                    className="text-brand-500 hover:underline dark:text-brand-400"
+                                  >
+                                    {tag.commit_sha.slice(0, 7)}
+                                  </Link>
+                                ) : (
+                                  tag.commit_sha.slice(0, 7)
+                                )
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                            <td className="text-theme-sm">{formatBytes(tag.size_bytes)}</td>
+                            <td className="text-theme-sm text-gray-500 dark:text-gray-400">
+                              {new Date(tag.updated_at).toLocaleString()}
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="text-theme-xs text-error-500 hover:underline"
+                                disabled={deleteTag.isPending}
+                                onClick={() => {
+                                  if (confirm(`Delete tag ${tag.name}?`)) {
+                                    deleteTag.mutate(tag.name)
+                                  }
+                                }}
+                              >
+                                Delete
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
               </div>
             </>
           )}
         </div>
       )}
-    </>
+    </div>
   )
 }

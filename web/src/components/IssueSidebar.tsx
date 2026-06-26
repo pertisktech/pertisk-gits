@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { IssueDetail, Milestone } from '../api/types'
 import { LabelBadge } from './LabelBadge'
-import { PrimaryButton } from './ui'
+import { Alert, PrimaryButton } from './ui'
+import { Input, Select, Textarea } from './ui/Input'
 
 interface IssueSidebarProps {
   token: string
@@ -59,17 +60,17 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
 
   return (
     <aside className="app-issue-sidebar space-y-3">
-      <div className="app-panel">
-        <div className="app-panel-header">Assignees</div>
-        <div className="app-panel-body">
-          <select
+      <div className="shell-card">
+        <div className="shell-card-header">Assignees</div>
+        <div className="shell-card-body">
+          <Select
             value={assignee?.id ?? ''}
             onChange={(e) =>
               updateMutation.mutate({
                 assignee_id: e.target.value || null,
               })
             }
-            className="app-field !py-1.5 !text-sm"
+            className="!py-2 text-theme-sm"
             disabled={updateMutation.isPending}
           >
             <option value="">No assignee</option>
@@ -78,18 +79,18 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
                 @{user.username}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
-      <div className="app-panel">
-        <div className="app-panel-header flex items-center gap-1.5">
+      <div className="shell-card">
+        <div className="shell-card-header flex items-center gap-1.5">
           <Tag size={14} />
           Labels
         </div>
-        <div className="app-panel-body space-y-2">
+        <div className="shell-card-body space-y-2">
           {allLabels.length === 0 ? (
-            <p className="text-xs text-text-secondary">No labels yet.</p>
+            <p className="text-theme-xs text-gray-500 dark:text-gray-400">No labels yet.</p>
           ) : (
             <div className="flex flex-wrap gap-1.5">
               {allLabels.map((label) => {
@@ -113,17 +114,17 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
         </div>
       </div>
 
-      <div className="app-panel">
-        <div className="app-panel-header">Milestone</div>
-        <div className="app-panel-body">
-          <select
+      <div className="shell-card">
+        <div className="shell-card-header">Milestone</div>
+        <div className="shell-card-body">
+          <Select
             value={milestone?.id ?? ''}
             onChange={(e) =>
               updateMutation.mutate({
                 milestone_id: e.target.value || null,
               })
             }
-            className="app-field !py-1.5 !text-sm"
+            className="!py-2 text-theme-sm"
             disabled={updateMutation.isPending}
           >
             <option value="">No milestone</option>
@@ -133,22 +134,24 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
                 {m.due_on ? ` · due ${m.due_on}` : ''}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
-      <div className="app-panel">
-        <div className="app-panel-header">Metadata</div>
-        <div className="app-panel-body text-xs text-text-secondary space-y-1">
-          <div>State: <span className="text-text">{issue.state}</span></div>
+      <div className="shell-card">
+        <div className="shell-card-header">Metadata</div>
+        <div className="shell-card-body space-y-1 text-theme-xs text-gray-500 dark:text-gray-400">
+          <div>
+            State: <span className="text-gray-800 dark:text-white/90">{issue.state}</span>
+          </div>
           {assignee && (
             <div>
-              Assigned to <span className="text-text">@{assignee.username}</span>
+              Assigned to <span className="text-gray-800 dark:text-white/90">@{assignee.username}</span>
             </div>
           )}
           {milestone && (
             <div>
-              Milestone: <span className="text-text">{milestone.title}</span>
+              Milestone: <span className="text-gray-800 dark:text-white/90">{milestone.title}</span>
             </div>
           )}
         </div>
@@ -187,25 +190,29 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
   })
 
   return (
-    <div className="app-panel">
-      <div className="app-panel-header flex items-center justify-between gap-2">
+    <div className="shell-card">
+      <div className="shell-card-header gap-2">
         <span className="flex items-center gap-1.5">
           <Tag size={14} />
           Labels
         </span>
         <button
           type="button"
-          className="text-xs text-primary hover:underline"
+          className="text-theme-xs font-normal text-brand-500 hover:text-brand-600 dark:text-brand-400"
           onClick={() => setShowForm((v) => !v)}
         >
           {showForm ? 'Cancel' : 'New label'}
         </button>
       </div>
-      <div className="app-panel-body space-y-3">
+      <div className="shell-card-body space-y-3">
         <div className="flex flex-wrap gap-1.5">
           <button
             type="button"
-            className={`text-xs px-2 py-0.5 rounded-full border ${!activeLabel ? 'border-primary text-primary' : 'border-naturals-n4 text-text-secondary'}`}
+            className={`rounded-full border px-2 py-0.5 text-theme-xs ${
+              !activeLabel
+                ? 'border-brand-500 text-brand-500 dark:text-brand-400'
+                : 'border-gray-200 text-gray-500 dark:border-gray-700 dark:text-gray-400'
+            }`}
             onClick={() => onFilterLabel(undefined)}
           >
             All
@@ -215,7 +222,7 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
               key={label.id}
               type="button"
               onClick={() => onFilterLabel(label.name)}
-              className={activeLabel === label.name ? 'ring-1 ring-primary rounded-full' : ''}
+              className={activeLabel === label.name ? 'rounded-full ring-1 ring-brand-500' : ''}
             >
               <LabelBadge label={label} />
             </button>
@@ -224,24 +231,24 @@ export function RepoLabelsPanel({ token, orgSlug, repoSlug, activeLabel, onFilte
 
         {showForm && (
           <form
-            className="flex flex-wrap items-end gap-2 pt-2 border-t border-naturals-n4"
+            className="flex flex-wrap items-end gap-2 border-t border-gray-200 pt-3 dark:border-gray-800"
             onSubmit={(e) => {
               e.preventDefault()
               createMutation.mutate()
             }}
           >
-            <input
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Label name"
               required
-              className="app-field flex-1 min-w-[8rem] !py-1.5 !text-sm"
+              className="min-w-[8rem] flex-1 !py-2 text-theme-sm"
             />
             <input
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="h-9 w-12 rounded border border-naturals-n4 bg-surface cursor-pointer"
+              className="h-10 w-12 cursor-pointer rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900"
               title="Label color"
             />
             <PrimaryButton type="submit" disabled={createMutation.isPending || !name.trim()}>
@@ -290,36 +297,38 @@ export function RepoMilestonesPanel({ token, orgSlug, repoSlug }: RepoMilestones
   })
 
   return (
-    <div className="app-panel">
-      <div className="app-panel-header flex items-center justify-between gap-2">
+    <div className="shell-card">
+      <div className="shell-card-header gap-2">
         <span className="flex items-center gap-1.5">
           <Target size={14} />
           Milestones
         </span>
         <button
           type="button"
-          className="text-xs text-primary hover:underline"
+          className="text-theme-xs font-normal text-brand-500 hover:text-brand-600 dark:text-brand-400"
           onClick={() => setShowForm((v) => !v)}
         >
           {showForm ? 'Cancel' : 'New milestone'}
         </button>
       </div>
-      <div className="app-panel-body space-y-3">
+      <div className="shell-card-body space-y-3">
         {milestones.length === 0 && !showForm && (
-          <p className="text-xs text-text-secondary">No milestones yet.</p>
+          <p className="text-theme-xs text-gray-500 dark:text-gray-400">No milestones yet.</p>
         )}
         {milestones.length > 0 && (
-          <ul className="space-y-2 text-sm">
+          <ul className="space-y-2 text-theme-sm">
             {milestones.map((milestone) => (
               <li key={milestone.id} className="flex items-start justify-between gap-2">
                 <div>
-                  <div className="font-medium text-text">{milestone.title}</div>
+                  <div className="font-medium text-gray-800 dark:text-white/90">{milestone.title}</div>
                   {milestone.description && (
-                    <div className="text-xs text-text-secondary mt-0.5">{milestone.description}</div>
+                    <div className="mt-0.5 text-theme-xs text-gray-500 dark:text-gray-400">
+                      {milestone.description}
+                    </div>
                   )}
                 </div>
                 {milestone.due_on && (
-                  <span className="text-xs text-muted whitespace-nowrap">due {milestone.due_on}</span>
+                  <span className="whitespace-nowrap text-theme-xs text-gray-400">due {milestone.due_on}</span>
                 )}
               </li>
             ))}
@@ -328,37 +337,37 @@ export function RepoMilestonesPanel({ token, orgSlug, repoSlug }: RepoMilestones
 
         {showForm && (
           <form
-            className="space-y-2 pt-2 border-t border-naturals-n4"
+            className="space-y-2 border-t border-gray-200 pt-3 dark:border-gray-800"
             onSubmit={(e) => {
               e.preventDefault()
               createMutation.mutate()
             }}
           >
-            <input
+            <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="Milestone title"
               required
-              className="app-field w-full !py-1.5 !text-sm"
+              className="!py-2 text-theme-sm"
             />
-            <textarea
+            <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Description (optional)"
               rows={2}
-              className="app-field w-full !py-1.5 !text-sm resize-y"
+              className="!py-2 text-theme-sm"
             />
-            <input
+            <Input
               type="date"
               value={dueOn}
               onChange={(e) => setDueOn(e.target.value)}
-              className="app-field w-full !py-1.5 !text-sm"
+              className="!py-2 text-theme-sm"
             />
             <PrimaryButton type="submit" disabled={createMutation.isPending || !title.trim()}>
               Create milestone
             </PrimaryButton>
             {createMutation.error && (
-              <p className="text-xs text-dashboard-danger">{(createMutation.error as Error).message}</p>
+              <Alert>{(createMutation.error as Error).message}</Alert>
             )}
           </form>
         )}

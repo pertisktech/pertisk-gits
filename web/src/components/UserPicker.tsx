@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { User as UserType } from '../api/types'
 import { cn } from '../utils/cn'
+import { fieldClass, Input } from './ui/Input'
 
 interface UserPickerProps {
   token: string
@@ -87,12 +88,12 @@ export function UserPicker({
   return (
     <div ref={containerRef} className={cn('relative min-w-[12rem] flex-1', className)}>
       {value ? (
-        <div className="app-field flex items-center gap-2 py-1.5 pr-1">
-          <User size={14} className="text-muted shrink-0" />
-          <span className="min-w-0 flex-1 text-sm">
-            <span className="font-medium text-text">@{value.username}</span>
+        <div className={cn(fieldClass, 'flex items-center gap-2 !py-2 pr-1')}>
+          <User size={14} className="shrink-0 text-gray-400" />
+          <span className="min-w-0 flex-1 text-theme-sm">
+            <span className="font-medium text-gray-800 dark:text-white/90">@{value.username}</span>
             {(value.display_name ?? value.email) && (
-              <span className="text-text-secondary ml-2 truncate">
+              <span className="ml-2 truncate text-gray-500 dark:text-gray-400">
                 {value.display_name ?? value.email}
               </span>
             )}
@@ -100,7 +101,7 @@ export function UserPicker({
           {!disabled && (
             <button
               type="button"
-              className="p-1 rounded hover:bg-hover text-muted hover:text-text"
+              className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-white/90"
               onClick={clearSelection}
               aria-label="Clear selected user"
             >
@@ -110,8 +111,11 @@ export function UserPicker({
         </div>
       ) : (
         <>
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-          <input
+          <Search
+            size={14}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <Input
             ref={inputRef}
             id={id}
             type="search"
@@ -141,7 +145,7 @@ export function UserPicker({
               }
             }}
             placeholder={placeholder}
-            className="app-field w-full pl-8"
+            className="pl-9"
             aria-label="Search users"
             aria-expanded={showDropdown}
             aria-autocomplete="list"
@@ -153,16 +157,16 @@ export function UserPicker({
 
       {showDropdown && (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-naturals-n4 bg-surface shadow-lg overflow-hidden"
+          className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-theme-md dark:border-gray-800 dark:bg-gray-dark"
           role="listbox"
         >
           {isFetching && options.length === 0 ? (
-            <div className="px-3 py-2.5 text-sm text-text-secondary flex items-center gap-2">
+            <div className="flex items-center gap-2 px-3 py-2.5 text-theme-sm text-gray-500 dark:text-gray-400">
               <Loader2 size={14} className="animate-spin" />
               Searching…
             </div>
           ) : options.length === 0 ? (
-            <div className="px-3 py-2.5 text-sm text-text-secondary">
+            <div className="px-3 py-2.5 text-theme-sm text-gray-500 dark:text-gray-400">
               No users found for “{debouncedQuery.trim()}”
             </div>
           ) : (
@@ -174,17 +178,21 @@ export function UserPicker({
                     role="option"
                     aria-selected={index === activeIndex}
                     className={cn(
-                      'w-full px-3 py-2 text-left flex items-start gap-2',
-                      index === activeIndex ? 'bg-hover' : 'hover:bg-hover',
+                      'flex w-full items-start gap-2 px-3 py-2 text-left',
+                      index === activeIndex
+                        ? 'bg-gray-50 dark:bg-white/5'
+                        : 'hover:bg-gray-50 dark:hover:bg-white/5',
                     )}
                     onMouseDown={(e) => e.preventDefault()}
                     onMouseEnter={() => setActiveIndex(index)}
                     onClick={() => selectUser(user)}
                   >
-                    <User size={14} className="text-primary shrink-0 mt-0.5" />
+                    <User size={14} className="mt-0.5 shrink-0 text-brand-500" />
                     <span className="min-w-0">
-                      <span className="block text-sm text-text truncate">@{user.username}</span>
-                      <span className="block text-xs text-muted truncate">
+                      <span className="block truncate text-theme-sm text-gray-800 dark:text-white/90">
+                        @{user.username}
+                      </span>
+                      <span className="block truncate text-theme-xs text-gray-500 dark:text-gray-400">
                         {user.display_name ?? user.email}
                       </span>
                     </span>

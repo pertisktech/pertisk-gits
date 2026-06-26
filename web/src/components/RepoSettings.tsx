@@ -3,7 +3,8 @@ import { Loader2 } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { Repository } from '../api/types'
-import { PrimaryButton } from './ui'
+import { Alert, PrimaryButton } from './ui'
+import { FieldLabel, Input, Select, Textarea } from './ui/Input'
 import { RepoCollaborators } from './RepoCollaborators'
 import { SecretsPanel } from './SecretsPanel'
 
@@ -79,97 +80,62 @@ export function RepoSettings({
 
   return (
     <div className="space-y-5">
-      <div className="app-panel max-w-2xl">
-      <div className="app-panel-header">Repository settings</div>
-      <form className="app-panel-body space-y-5" onSubmit={onSubmit}>
-        <div className="space-y-2">
-          <label htmlFor="repo-name" className="text-sm font-medium text-text">
-            Name
-          </label>
-          <input
-            id="repo-name"
-            className="app-field"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-        </div>
+      <div className="shell-card max-w-2xl">
+        <div className="shell-card-header">Repository settings</div>
+        <form className="shell-card-body space-y-5" onSubmit={onSubmit}>
+          <FieldLabel label="Name">
+            <Input id="repo-name" value={name} onChange={(e) => setName(e.target.value)} required />
+          </FieldLabel>
 
-        <div className="space-y-2">
-          <label htmlFor="repo-description" className="text-sm font-medium text-text">
-            Description
-          </label>
-          <textarea
-            id="repo-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="app-field"
-            placeholder="Short description of this repository"
-          />
-        </div>
+          <FieldLabel label="Description">
+            <Textarea
+              id="repo-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Short description of this repository"
+            />
+          </FieldLabel>
 
-        <div className="space-y-2">
-          <label htmlFor="repo-visibility" className="text-sm font-medium text-text">
-            Visibility
-          </label>
-          <select
-            id="repo-visibility"
-            className="app-field"
-            value={visibility}
-            onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
-          >
-            <option value="private">Private</option>
-            <option value="public">Public</option>
-          </select>
-        </div>
+          <FieldLabel label="Visibility">
+            <Select
+              id="repo-visibility"
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
+            >
+              <option value="private">Private</option>
+              <option value="public">Public</option>
+            </Select>
+          </FieldLabel>
 
-        <div className="space-y-2">
-          <label htmlFor="repo-default-branch" className="text-sm font-medium text-text">
-            Default branch
-          </label>
-          <select
-            id="repo-default-branch"
-            className="app-field"
-            value={defaultBranch}
-            onChange={(e) => setDefaultBranch(e.target.value)}
-          >
-            {branchOptions.map((branch) => (
-              <option key={branch} value={branch}>
-                {branch}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-text-secondary">
-            Used when opening the repository and for clone instructions.
-          </p>
-        </div>
+          <FieldLabel label="Default branch" hint="Used when opening the repository and for clone instructions.">
+            <Select
+              id="repo-default-branch"
+              value={defaultBranch}
+              onChange={(e) => setDefaultBranch(e.target.value)}
+            >
+              {branchOptions.map((branch) => (
+                <option key={branch} value={branch}>
+                  {branch}
+                </option>
+              ))}
+            </Select>
+          </FieldLabel>
 
-        {error && (
-          <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-            {error}
+          {error && <Alert>{error}</Alert>}
+
+          {saved && (
+            <div className="rounded-lg border border-success-500/30 bg-success-50 px-4 py-3 text-theme-sm text-success-600 dark:bg-success-500/10 dark:text-success-500">
+              Settings saved.
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <PrimaryButton type="submit" disabled={mutation.isPending} startIcon={mutation.isPending ? <Loader2 size={14} className="animate-spin" /> : undefined}>
+              {mutation.isPending ? 'Saving…' : 'Save changes'}
+            </PrimaryButton>
           </div>
-        )}
-
-        {saved && (
-          <div className="p-3 rounded-md border border-green-g1/30 bg-dashboard-success-bg text-dashboard-success text-sm">
-            Settings saved.
-          </div>
-        )}
-
-        <div className="flex items-center gap-3 pt-1">
-          <PrimaryButton type="submit" disabled={mutation.isPending}>
-            {mutation.isPending ? (
-              <>
-                <Loader2 size={14} className="animate-spin" />
-                Saving…
-              </>
-            ) : (
-              'Save changes'
-            )}
-          </PrimaryButton>
-        </div>
-      </form>
+        </form>
       </div>
 
       <RepoCollaborators token={token} orgSlug={orgSlug} repoSlug={repoSlug} />

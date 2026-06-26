@@ -131,14 +131,14 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
               title={collapsed ? label : undefined}
               className={globalLinkClass}
             >
-              <Icon size={16} className="shrink-0" aria-hidden />
+              <Icon size={20} className="shrink-0" aria-hidden />
               <span>{label}</span>
             </NavLink>
           ))}
 
         {!project && !group && !admin && isSuperAdmin && (
           <NavLink to="/admin" className={globalLinkClass} title={collapsed ? 'Admin' : undefined}>
-            <Shield size={16} className="shrink-0" aria-hidden />
+            <Shield size={20} className="shrink-0" aria-hidden />
             <span>Admin</span>
           </NavLink>
         )}
@@ -159,7 +159,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
                 title={collapsed ? label : undefined}
                 className={({ isActive }) => projectLinkClass(isActive, false)}
               >
-                <Icon size={16} className="shrink-0" aria-hidden />
+                <Icon size={20} className="shrink-0" aria-hidden />
                 <span>{label}</span>
               </NavLink>
             ))}
@@ -189,7 +189,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
                 title={collapsed ? label : undefined}
                 className={({ isActive }) => projectLinkClass(isActive, false)}
               >
-                <Icon size={16} className="shrink-0" aria-hidden />
+                <Icon size={20} className="shrink-0" aria-hidden />
                 <span>{label}</span>
               </NavLink>
             ))}
@@ -225,7 +225,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
                   title={collapsed ? label : undefined}
                   className={({ isActive }) => projectLinkClass(isActive, false)}
                 >
-                  <Icon size={16} className="shrink-0" aria-hidden />
+                  <Icon size={20} className="shrink-0" aria-hidden />
                   <span>{label}</span>
                 </NavLink>
               ))}

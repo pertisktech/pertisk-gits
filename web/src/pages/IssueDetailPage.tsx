@@ -7,7 +7,8 @@ import { useAuth } from '../auth/AuthContext'
 import { IssueSidebar } from '../components/IssueSidebar'
 import { LabelBadge } from '../components/LabelBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
-import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { Alert, Breadcrumbs, PrimaryButton } from '../components/ui'
+import { Textarea } from '../components/ui/Input'
 import { projectTabPath } from '../lib/projectRoute'
 
 export function IssueDetailPage() {
@@ -54,7 +55,7 @@ export function IssueDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
+      <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
         <Loader2 size={16} className="animate-spin" />
         Loading issue…
       </div>
@@ -62,11 +63,7 @@ export function IssueDetailPage() {
   }
 
   if (error || !data) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error)?.message ?? 'Issue not found'}
-      </div>
-    )
+    return <Alert>{(error as Error)?.message ?? 'Issue not found'}</Alert>
   }
 
   const { issue, author, assignee, labels } = data
@@ -85,20 +82,24 @@ export function IssueDetailPage() {
 
       <div className="app-issue-grid">
         <div className="min-w-0 space-y-4">
-          <div className="app-panel">
-            <div className="app-panel-body space-y-4">
+          <div className="shell-card">
+            <div className="shell-card-body space-y-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
+                <div className="flex min-w-0 items-start gap-3">
                   <CircleDot
                     size={20}
-                    className={issue.state === 'open' ? 'text-dashboard-success shrink-0 mt-1' : 'text-muted shrink-0 mt-1'}
+                    className={
+                      issue.state === 'open'
+                        ? 'mt-1 shrink-0 text-success-500'
+                        : 'mt-1 shrink-0 text-gray-400'
+                    }
                   />
                   <div>
-                    <h1 className="text-lg font-semibold text-text">
+                    <h1 className="text-lg font-semibold text-gray-800 dark:text-white/90">
                       {issue.title}{' '}
-                      <span className="text-muted font-normal">#{issue.number}</span>
+                      <span className="font-normal text-gray-400">#{issue.number}</span>
                     </h1>
-                    <p className="text-sm text-text-secondary mt-1">
+                    <p className="mt-1 text-theme-sm text-gray-500 dark:text-gray-400">
                       opened by {author.username}
                       {assignee ? ` · assigned to ${assignee.username}` : ''}
                       {' · '}
@@ -126,20 +127,20 @@ export function IssueDetailPage() {
               )}
 
               {issue.body && (
-                <div className="markdown-viewer border-t border-naturals-n4 pt-4">
+                <div className="markdown-viewer border-t border-gray-200 pt-4 dark:border-gray-800">
                   <MarkdownBody content={issue.body} orgSlug={orgSlug} repoSlug={projectSlug} />
                 </div>
               )}
             </div>
           </div>
 
-          <div className="app-panel">
-            <div className="app-panel-header">{comments.length} comments</div>
-            <div className="app-panel-body space-y-4">
+          <div className="shell-card">
+            <div className="shell-card-header">{comments.length} comments</div>
+            <div className="shell-card-body space-y-4">
               {comments.map(({ comment: c, author: commentAuthor }) => (
-                <div key={c.id} className="border-b border-naturals-n4 pb-4 last:border-0 last:pb-0">
-                  <div className="text-xs text-text-secondary mb-2">
-                    <span className="font-medium text-text">{commentAuthor.username}</span>
+                <div key={c.id} className="border-b border-gray-200 pb-4 last:border-0 last:pb-0 dark:border-gray-800">
+                  <div className="mb-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                    <span className="font-medium text-gray-800 dark:text-white/90">{commentAuthor.username}</span>
                     {' · '}
                     {formatDateTime(c.created_at)}
                   </div>
@@ -155,12 +156,11 @@ export function IssueDetailPage() {
                     commentMutation.mutate()
                   }}
                 >
-                  <textarea
+                  <Textarea
                     value={comment}
                     onChange={(e) => setComment(e.target.value)}
                     placeholder="Leave a comment — @username, #123, !456"
                     rows={4}
-                    className="app-field resize-y"
                     required
                   />
                   <PrimaryButton type="submit" disabled={commentMutation.isPending || !comment.trim()}>
@@ -168,8 +168,11 @@ export function IssueDetailPage() {
                   </PrimaryButton>
                 </form>
               ) : (
-                <p className="text-sm text-text-secondary">
-                  <Link to="/login" className="text-primary hover:underline">Sign in</Link> to comment.
+                <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+                  <Link to="/login" className="text-brand-500 hover:underline dark:text-brand-400">
+                    Sign in
+                  </Link>{' '}
+                  to comment.
                 </p>
               )}
             </div>

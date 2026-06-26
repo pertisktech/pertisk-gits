@@ -9,7 +9,8 @@ import { PullRequestDiff } from '../components/PullRequestDiff'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
-import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { Breadcrumbs, PrimaryButton, Alert } from '../components/ui'
+import { Select, Textarea } from '../components/ui/Input'
 import { projectTabPath } from '../lib/projectRoute'
 import { cn } from '../utils/cn'
 
@@ -148,7 +149,7 @@ export function PullRequestDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
+      <div className="flex items-center gap-2 py-8 text-theme-sm text-gray-500 dark:text-gray-400">
         <Loader2 size={16} className="animate-spin" />
         Loading pull request…
       </div>
@@ -156,11 +157,7 @@ export function PullRequestDetailPage() {
   }
 
   if (error || !data) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error)?.message ?? 'Pull request not found'}
-      </div>
-    )
+    return <Alert>{(error as Error)?.message ?? 'Pull request not found'}</Alert>
   }
 
   const { pull_request: pr, author, compare, review_summary: reviewSummary } = data
@@ -179,15 +176,15 @@ export function PullRequestDetailPage() {
         ]}
       />
 
-      <div className="app-panel mb-4">
-        <div className="app-panel-body space-y-4">
+      <div className="shell-card mb-4">
+        <div className="shell-card-body space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0">
-              <GitPullRequest size={20} className="text-primary shrink-0 mt-1" />
+            <div className="flex min-w-0 items-start gap-3">
+              <GitPullRequest size={20} className="mt-1 shrink-0 text-brand-500" />
               <div>
-                <h1 className="text-lg font-semibold text-text">
+                <h1 className="text-lg font-semibold text-gray-800 dark:text-white/90">
                   {pr.title}{' '}
-                  <span className="text-muted font-normal">#{pr.number}</span>
+                  <span className="font-normal text-gray-400">#{pr.number}</span>
                 </h1>
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <StatusBadge variant={prStateVariant(pr.state)}>{prStateLabel(pr.state)}</StatusBadge>
@@ -204,26 +201,27 @@ export function PullRequestDetailPage() {
                   )}
                 </div>
                 {pr.state === 'open' && approvedCount > 0 && (
-                  <p className="text-xs text-text-secondary mt-2">
-                    Approval recorded. The pull request stays <strong className="text-text">Open</strong> until someone merges it.
+                  <p className="mt-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                    Approval recorded. The pull request stays{' '}
+                    <strong className="text-gray-800 dark:text-white/90">Open</strong> until someone merges it.
                   </p>
                 )}
-                <p className="text-sm text-text-secondary mt-1">
+                <p className="mt-1 text-theme-sm text-gray-500 dark:text-gray-400">
                   {pr.source_branch} → {pr.target_branch} · {author.username} · {formatDateTime(pr.created_at)}
                 </p>
               </div>
             </div>
             {token && pr.state === 'open' && compare?.mergeable && !ciBlocking && (
               <div className="flex flex-wrap items-center gap-2">
-                <select
-                  className="app-field !py-1.5 !text-sm"
+                <Select
+                  className="!w-auto !py-2 text-theme-sm"
                   value={mergeStrategy}
                   onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash')}
                   disabled={mergeMutation.isPending}
                 >
                   <option value="merge">Create merge commit</option>
                   <option value="squash">Squash and merge</option>
-                </select>
+                </Select>
                 <PrimaryButton
                   type="button"
                   onClick={() => mergeMutation.mutate()}
@@ -235,18 +233,14 @@ export function PullRequestDetailPage() {
             )}
           </div>
 
-          {mergeError && (
-            <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-              {mergeError}
-            </div>
-          )}
+          {mergeError && <Alert>{mergeError}</Alert>}
 
           {compare && !compare.mergeable && pr.state === 'open' && (
-            <p className="text-sm text-dashboard-danger">This branch has merge conflicts.</p>
+            <p className="text-theme-sm text-error-500">This branch has merge conflicts.</p>
           )}
 
           {pr.state === 'open' && compare?.mergeable && ciBlocking && (
-            <p className="text-sm text-dashboard-danger">
+            <p className="text-theme-sm text-error-500">
               {ciStatuses.some((s) => s.required && s.state === 'pending')
                 ? 'CI checks are still running. Merge is disabled until they finish.'
                 : 'CI checks failed. Fix the pipeline before merging.'}
@@ -254,11 +248,11 @@ export function PullRequestDetailPage() {
           )}
 
           {compare && (
-            <div className="text-xs text-text-secondary flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-3 text-theme-xs text-gray-500 dark:text-gray-400">
               <span>{compare.commits.length} commits</span>
               <span>{compare.files_changed} files changed</span>
-              <span className="text-dashboard-success">+{compare.insertions}</span>
-              <span className="text-dashboard-danger">−{compare.deletions}</span>
+              <span className="text-success-500">+{compare.insertions}</span>
+              <span className="text-error-500">−{compare.deletions}</span>
               {reviews.length > 0 && <span>{approvedCount} approval{approvedCount === 1 ? '' : 's'}</span>}
             </div>
           )}
@@ -273,23 +267,20 @@ export function PullRequestDetailPage() {
           )}
 
           {pr.body && (
-            <div className="markdown-viewer border-t border-naturals-n4 pt-4">
+            <div className="markdown-viewer border-t border-gray-200 pt-4 dark:border-gray-800">
               <MarkdownBody content={pr.body} orgSlug={orgSlug} repoSlug={projectSlug} />
             </div>
           )}
 
           {latestReviews.length > 0 && (
-            <div className="border-t border-naturals-n4 pt-4 space-y-2">
-              <h2 className="text-sm font-medium text-text">Reviews</h2>
+            <div className="space-y-2 border-t border-gray-200 pt-4 dark:border-gray-800">
+              <h2 className="text-theme-sm font-medium text-gray-800 dark:text-white/90">Reviews</h2>
               <ul className="space-y-2">
                 {latestReviews.map(({ review, reviewer }) => (
-                  <li
-                    key={review.id}
-                    className="flex flex-wrap items-center gap-2 text-sm"
-                  >
-                    <span className="font-medium text-text">@{reviewer.username}</span>
+                  <li key={review.id} className="flex flex-wrap items-center gap-2 text-theme-sm">
+                    <span className="font-medium text-gray-800 dark:text-white/90">@{reviewer.username}</span>
                     <StatusBadge variant={reviewVariant(review.state)}>{reviewLabel(review.state)}</StatusBadge>
-                    <span className="text-xs text-text-secondary">{formatDateTime(review.created_at)}</span>
+                    <span className="text-theme-xs text-gray-500 dark:text-gray-400">{formatDateTime(review.created_at)}</span>
                   </li>
                 ))}
               </ul>
@@ -297,15 +288,15 @@ export function PullRequestDetailPage() {
           )}
 
           {token && pr.state === 'open' && (
-            <div className="border-t border-naturals-n4 pt-4 space-y-3">
+            <div className="space-y-3 border-t border-gray-200 pt-4 dark:border-gray-800">
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
+                    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-theme-sm',
                     myLatestReview?.review.state === 'approved'
-                      ? 'border-green-g1/40 bg-dashboard-success-bg text-dashboard-success'
-                      : 'border-naturals-n4 hover:bg-hover',
+                      ? 'border-success-500/40 bg-success-50 text-success-600 dark:bg-success-500/10 dark:text-success-500'
+                      : 'border-gray-200 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5',
                   )}
                   onClick={() => reviewMutation.mutate('approved')}
                   disabled={reviewMutation.isPending}
@@ -320,10 +311,10 @@ export function PullRequestDetailPage() {
                 <button
                   type="button"
                   className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
+                    'inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-theme-sm',
                     myLatestReview?.review.state === 'changes_requested'
-                      ? 'border-red-r1/40 bg-dashboard-danger-bg text-dashboard-danger'
-                      : 'border-naturals-n4 hover:bg-hover',
+                      ? 'border-error-500/40 bg-error-50 text-error-600 dark:bg-error-500/10 dark:text-error-500'
+                      : 'border-gray-200 hover:bg-gray-50 dark:border-gray-800 dark:hover:bg-white/5',
                   )}
                   onClick={() => reviewMutation.mutate('changes_requested')}
                   disabled={reviewMutation.isPending}
@@ -338,25 +329,19 @@ export function PullRequestDetailPage() {
               </div>
 
               {reviewMessage && (
-                <div className="p-3 rounded-md border border-green-g1/30 bg-dashboard-success-bg text-dashboard-success text-sm">
-                  {reviewMessage}
-                </div>
+                <Alert variant="info">{reviewMessage}</Alert>
               )}
 
-              {reviewError && (
-                <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-                  {reviewError}
-                </div>
-              )}
+              {reviewError && <Alert>{reviewError}</Alert>}
             </div>
           )}
         </div>
       </div>
 
       {compare?.diff && (
-        <div className="app-panel mb-4">
-          <div className="app-panel-header">Changes</div>
-          <div className="app-panel-body flush">
+        <div className="shell-card mb-4">
+          <div className="shell-card-header">Changes</div>
+          <div className="shell-card-body flush">
             <PullRequestDiff
               token={token}
               orgSlug={orgSlug}
@@ -369,13 +354,13 @@ export function PullRequestDetailPage() {
         </div>
       )}
 
-      <div className="app-panel">
-        <div className="app-panel-header">{generalComments.length} comments</div>
-        <div className="app-panel-body space-y-4">
+      <div className="shell-card">
+        <div className="shell-card-header">{generalComments.length} comments</div>
+        <div className="shell-card-body space-y-4">
           {generalComments.map(({ comment: c, author: commentAuthor }) => (
-            <div key={c.id} className="border-b border-naturals-n4 pb-4 last:border-0 last:pb-0">
-              <div className="text-xs text-text-secondary mb-2">
-                <span className="font-medium text-text">{commentAuthor.username}</span>
+            <div key={c.id} className="border-b border-gray-200 pb-4 last:border-0 last:pb-0 dark:border-gray-800">
+              <div className="mb-2 text-theme-xs text-gray-500 dark:text-gray-400">
+                <span className="font-medium text-gray-800 dark:text-white/90">{commentAuthor.username}</span>
                 {' · '}
                 {formatDateTime(c.created_at)}
               </div>
@@ -391,12 +376,11 @@ export function PullRequestDetailPage() {
                 commentMutation.mutate()
               }}
             >
-              <textarea
+              <Textarea
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Leave a comment"
                 rows={4}
-                className="app-field resize-y"
                 required
               />
               <PrimaryButton type="submit" disabled={commentMutation.isPending || !comment.trim()}>
@@ -404,8 +388,8 @@ export function PullRequestDetailPage() {
               </PrimaryButton>
             </form>
           ) : (
-            <p className="text-sm text-text-secondary">
-              <Link to="/login" className="text-primary hover:underline">Sign in</Link> to comment.
+            <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+              <Link to="/login" className="text-brand-500 hover:underline dark:text-brand-400">Sign in</Link> to comment.
             </p>
           )}
         </div>

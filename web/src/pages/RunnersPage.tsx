@@ -7,7 +7,8 @@ import { useAuth } from '../auth/AuthContext'
 import { DeleteRunnerConfirm, RotateRunnerConfirm } from '../components/ConfirmModal'
 import { RunnerCard, TokenModal } from '../components/RunnerCard'
 import { parseRunnerLabels } from '../lib/runnerLabels'
-import { Breadcrumbs, PageHeader, PrimaryButton } from '../components/ui'
+import { Alert, Breadcrumbs, PageHeader, PrimaryButton } from '../components/ui'
+import { FieldLabel, Input } from '../components/ui/Input'
 
 type RunnerConfirm =
   | { action: 'rotate'; runner: Runner }
@@ -140,80 +141,59 @@ export function RunnersPage() {
 
       <div className="space-y-5">
         <div className="grid gap-5 xl:grid-cols-[minmax(0,24rem)_1fr] xl:items-start">
-        <div className="app-panel">
-          <div className="app-panel-header flex items-center gap-2">
-            <Server size={15} className="text-primary" />
+        <div className="shell-card">
+          <div className="shell-card-header flex items-center gap-2">
+            <Server size={15} className="text-brand-500" />
             Register runner
           </div>
-          <div className="app-panel-body space-y-4">
-            <p className="text-sm text-text-secondary">
-              Install <span className="font-mono text-text">pertisk-runner</span> on a host, register
+          <div className="shell-card-body space-y-4">
+            <p className="text-theme-sm text-gray-500 dark:text-gray-400">
+              Install <span className="font-mono text-gray-800 dark:text-white/90">pertisk-runner</span> on a host, register
               it here with labels, then copy the token into{' '}
-              <span className="font-mono text-text">/etc/pertisk-runner/pertisk-runner.conf</span>.
+              <span className="font-mono text-gray-800 dark:text-white/90">/etc/pertisk-runner/pertisk-runner.conf</span>.
               Jobs run on runners whose labels match{' '}
-              <span className="font-mono text-text">runs-on</span> in the pipeline file.
+              <span className="font-mono text-gray-800 dark:text-white/90">runs-on</span> in the pipeline file.
             </p>
             <form className="space-y-4" onSubmit={onSubmit}>
-              <div className="grid gap-4">
-                <div className="space-y-2">
-                  <label htmlFor="runner-name" className="text-sm font-medium text-text">
-                    Runner name
-                  </label>
-                  <input
-                    id="runner-name"
-                    className="app-field"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="pertisk-proxy"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="runner-labels" className="text-sm font-medium text-text">
-                    Labels
-                  </label>
-                  <input
-                    id="runner-labels"
-                    className="app-field font-mono text-sm"
-                    value={labels}
-                    onChange={(e) => setLabels(e.target.value)}
-                    placeholder="linux, docker, amd64"
-                    required
-                  />
-                  <p className="text-xs text-text-secondary">
-                    Comma-separated labels. A job with <code>runs-on: docker</code> runs only on
-                    runners that include the <code>docker</code> label.
-                  </p>
-                </div>
-              </div>
-              <PrimaryButton type="submit" disabled={registerRunner.isPending}>
-                {registerRunner.isPending ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Registering…
-                  </>
-                ) : (
-                  'Register runner'
-                )}
+              <FieldLabel label="Runner name">
+                <Input
+                  id="runner-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="pertisk-proxy"
+                  required
+                />
+              </FieldLabel>
+              <FieldLabel
+                label="Labels"
+                hint="Comma-separated. A job with runs-on: docker runs only on runners that include the docker label."
+              >
+                <Input
+                  id="runner-labels"
+                  className="font-mono text-theme-sm"
+                  value={labels}
+                  onChange={(e) => setLabels(e.target.value)}
+                  placeholder="linux, docker, amd64"
+                  required
+                />
+              </FieldLabel>
+              <PrimaryButton type="submit" disabled={registerRunner.isPending} startIcon={registerRunner.isPending ? <Loader2 size={14} className="animate-spin" /> : undefined}>
+                {registerRunner.isPending ? 'Registering…' : 'Register runner'}
               </PrimaryButton>
             </form>
           </div>
         </div>
 
-        <div className="space-y-4 min-w-0">
-        {error && (
-          <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-            {error}
-          </div>
-        )}
+        <div className="min-w-0 space-y-4">
+        {error && <Alert>{error}</Alert>}
 
-        <div className="app-panel">
-          <div className="app-panel-header">Registered runners</div>
-          <div className="app-panel-body">
+        <div className="shell-card">
+          <div className="shell-card-header">Registered runners</div>
+          <div className="shell-card-body">
             {isLoading ? (
-              <div className="text-sm text-text-secondary">Loading runners…</div>
+              <div className="text-theme-sm text-gray-500 dark:text-gray-400">Loading runners…</div>
             ) : runners.length === 0 ? (
-              <p className="text-sm text-text-secondary">No runners registered yet.</p>
+              <p className="text-theme-sm text-gray-500 dark:text-gray-400">No runners registered yet.</p>
             ) : (
               <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
                 {runners.map((runner) => (

@@ -4,7 +4,10 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { pullUrl } from '../lib/collaboration'
-import { PrimaryButton, EmptyState } from './ui'
+import { ShellInlineTabs } from './AppSegment'
+import { Card } from './Card'
+import { Alert, PrimaryButton, EmptyState, SecondaryButton } from './ui'
+import { FieldLabel, Input, Select, Textarea } from './ui/Input'
 
 interface RepoPullRequestsProps {
   token?: string | null
@@ -56,8 +59,8 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
 
   if (isLoading) {
     return (
-      <div className="app-panel">
-        <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
+      <div className="shell-card">
+        <div className="shell-card-body flex items-center gap-2 text-theme-sm text-gray-500 dark:text-gray-400">
           <Loader2 size={16} className="animate-spin" />
           Loading pull requests…
         </div>
@@ -66,32 +69,23 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
   }
 
   if (error) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error).message}
-      </div>
-    )
+    return <Alert>{(error as Error).message}</Alert>
   }
 
   const pulls = data?.pull_requests ?? []
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="app-segment inline-flex !mb-0 !border-b-0">
-          {(['open', 'closed', 'all'] as const).map((state) => (
-            <button
-              key={state}
-              type="button"
-              className={`app-segment-tab ${stateFilter === state ? 'active' : ''}`}
-              onClick={() => setStateFilter(state)}
-            >
-              {state === 'open' && `${data?.open_count ?? 0} Open`}
-              {state === 'closed' && `${(data?.closed_count ?? 0)} Closed`}
-              {state === 'all' && 'All'}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <ShellInlineTabs
+          tabs={[
+            { id: 'open', label: `${data?.open_count ?? 0} Open` },
+            { id: 'closed', label: `${data?.closed_count ?? 0} Closed` },
+            { id: 'all', label: 'All' },
+          ]}
+          active={stateFilter}
+          onChange={(id) => setStateFilter(id as 'open' | 'closed' | 'all')}
+        />
         {token && (
           <PrimaryButton type="button" className="ml-auto" onClick={() => setShowNew((v) => !v)}>
             <Plus size={14} />
@@ -101,37 +95,54 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
       </div>
 
       {showNew && token && (
-        <div className="app-panel">
-          <div className="app-panel-header">New pull request</div>
+        <Card title="New pull request">
           <form
-            className="app-panel-body space-y-3"
+            className="space-y-4"
             onSubmit={(e) => {
               e.preventDefault()
               createMutation.mutate()
             }}
           >
-            <div className="flex flex-wrap gap-2 items-center text-sm">
-              <select value={sourceBranch} onChange={(e) => setSourceBranch(e.target.value)} className="app-branch-select" required>
+            <div className="flex flex-wrap items-center gap-2 text-theme-sm">
+              <Select
+                value={sourceBranch}
+                onChange={(e) => setSourceBranch(e.target.value)}
+                className="!w-auto !py-1.5"
+                required
+              >
                 <option value="">Source branch</option>
                 {branches.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
-              </select>
-              <span className="text-muted">→</span>
-              <select value={targetBranch} onChange={(e) => setTargetBranch(e.target.value)} className="app-branch-select" required>
+              </Select>
+              <span className="text-gray-400">→</span>
+              <Select
+                value={targetBranch}
+                onChange={(e) => setTargetBranch(e.target.value)}
+                className="!w-auto !py-1.5"
+                required
+              >
                 {branches.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
-              </select>
+              </Select>
             </div>
-            <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" required className="app-field" />
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Describe your changes (Markdown supported)"
-              rows={5}
-              className="app-field resize-y"
-            />
+            <FieldLabel label="Title">
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Title"
+                required
+              />
+            </FieldLabel>
+            <FieldLabel label="Description">
+              <Textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Describe your changes (Markdown supported)"
+                rows={5}
+              />
+            </FieldLabel>
             <div className="flex gap-2">
               <PrimaryButton
                 type="submit"
@@ -139,18 +150,18 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
               >
                 {createMutation.isPending ? 'Creating…' : 'Create pull request'}
               </PrimaryButton>
-              <button type="button" className="px-3 py-2 text-sm text-text-secondary" onClick={() => setShowNew(false)}>
+              <SecondaryButton type="button" onClick={() => setShowNew(false)}>
                 Cancel
-              </button>
+              </SecondaryButton>
             </div>
             {createMutation.error && (
-              <p className="text-sm text-dashboard-danger">{(createMutation.error as Error).message}</p>
+              <Alert>{(createMutation.error as Error).message}</Alert>
             )}
           </form>
-        </div>
+        </Card>
       )}
 
-      <div className="app-panel">
+      <div className="shell-card">
         {pulls.length === 0 ? (
           <EmptyState
             icon={<GitPullRequest size={40} />}
@@ -162,45 +173,48 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
             }
             action={
               token && stateFilter !== 'closed' ? (
-                <PrimaryButton type="button" onClick={() => setShowNew(true)}>
-                  <Plus size={14} />
+                <PrimaryButton type="button" onClick={() => setShowNew(true)} startIcon={<Plus size={14} />}>
                   New pull request
                 </PrimaryButton>
               ) : undefined
             }
           />
         ) : (
-          <ul className="divide-y divide-naturals-n4">
+          <ul className="divide-y divide-gray-200 dark:divide-gray-800">
             {pulls.map(({ pull_request: pr, author, review_summary: reviewSummary }) => (
               <li key={pr.id}>
                 <Link
                   to={pullUrl(orgSlug, repoSlug, pr.number)}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-hover no-underline text-inherit"
+                  className="flex items-start gap-3 px-4 py-3 no-underline text-inherit transition-colors hover:bg-gray-50 dark:hover:bg-white/5"
                 >
                   <GitPullRequest
                     size={16}
                     className={
                       pr.state === 'open'
                         ? reviewSummary.approved_count > 0
-                          ? 'text-primary shrink-0 mt-0.5'
-                          : 'text-dashboard-success shrink-0 mt-0.5'
+                          ? 'mt-0.5 shrink-0 text-brand-500'
+                          : 'mt-0.5 shrink-0 text-success-500'
                         : pr.state === 'merged'
-                          ? 'text-primary shrink-0 mt-0.5'
-                          : 'text-muted shrink-0 mt-0.5'
+                          ? 'mt-0.5 shrink-0 text-brand-500'
+                          : 'mt-0.5 shrink-0 text-gray-400'
                     }
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-text">{pr.title}</span>
-                      <span className="text-xs text-muted">#{pr.number}</span>
+                      <span className="font-medium text-gray-800 dark:text-white/90">{pr.title}</span>
+                      <span className="text-theme-xs text-gray-400">#{pr.number}</span>
                       {pr.state === 'open' && reviewSummary.approved_count > 0 && (
-                        <span className="text-xs px-2 py-0.5 rounded-full status-green">Approved</span>
+                        <span className="rounded-full bg-success-50 px-2 py-0.5 text-theme-xs text-success-600 dark:bg-success-500/15 dark:text-success-500">
+                          Approved
+                        </span>
                       )}
                       {pr.state === 'open' && reviewSummary.changes_requested_count > 0 && (
-                        <span className="text-xs px-2 py-0.5 rounded-full status-red">Changes requested</span>
+                        <span className="rounded-full bg-error-50 px-2 py-0.5 text-theme-xs text-error-600 dark:bg-error-500/15 dark:text-error-500">
+                          Changes requested
+                        </span>
                       )}
                     </div>
-                    <div className="text-xs text-text-secondary mt-1">
+                    <div className="mt-1 text-theme-xs text-gray-500 dark:text-gray-400">
                       {pr.source_branch} → {pr.target_branch} · {author.username}
                     </div>
                   </div>

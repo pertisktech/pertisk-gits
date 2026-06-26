@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
-import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
+import { Alert, Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
+import { FieldLabel, Input, Textarea } from '../components/ui/Input'
 
 function slugify(value: string) {
   return value
@@ -13,9 +14,6 @@ function slugify(value: string) {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
 }
-
-const fieldClass =
-  'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
 
 export function NewGroupPage() {
   const { token } = useAuth()
@@ -56,19 +54,13 @@ export function NewGroupPage() {
 
       <Card className="max-w-xl">
         <form onSubmit={onSubmit} className="space-y-4">
-          {createGroup.error && (
-            <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-              {(createGroup.error as Error).message}
-            </div>
-          )}
-          <label className="block text-sm font-semibold text-text">
-            Group name
-            <input className={`${fieldClass} mt-1.5`} value={name} onChange={(e) => onNameChange(e.target.value)} required />
-          </label>
-          <label className="block text-sm font-semibold text-text">
-            Group URL
-            <input
-              className={`${fieldClass} mt-1.5 font-mono`}
+          {createGroup.error && <Alert>{(createGroup.error as Error).message}</Alert>}
+          <FieldLabel label="Group name">
+            <Input value={name} onChange={(e) => onNameChange(e.target.value)} required />
+          </FieldLabel>
+          <FieldLabel label="Group URL">
+            <Input
+              className="font-mono"
               value={slug}
               onChange={(e) => {
                 setSlugTouched(true)
@@ -76,17 +68,13 @@ export function NewGroupPage() {
               }}
               required
             />
-            <span className="text-xs text-text-secondary mt-1 block font-mono">pertisk-gits/{slug || 'your-group'}</span>
-          </label>
-          <label className="block text-sm font-semibold text-text">
-            Description (optional)
-            <textarea
-              className={`${fieldClass} mt-1.5`}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-            />
-          </label>
+            <span className="mt-1 block font-mono text-theme-xs text-gray-500 dark:text-gray-400">
+              pertisk-gits/{slug || 'your-group'}
+            </span>
+          </FieldLabel>
+          <FieldLabel label="Description (optional)">
+            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
+          </FieldLabel>
           <div className="flex gap-2 pt-2">
             <PrimaryButton type="submit" disabled={createGroup.isPending}>
               {createGroup.isPending ? 'Creating…' : 'Create group'}
