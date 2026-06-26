@@ -1,0 +1,13 @@
+apiVersion: v2
+name: pertisk-runner
+description: Pertisk Gits CI runner — polls the API and executes pipeline jobs
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - pertisk
+  - ci
+  - runner
+home: https://github.com/pertisk-tech/pertisk-gits
+maintainers:
+  - name: Pertisk

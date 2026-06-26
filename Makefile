@@ -6,7 +6,8 @@
 	release release-amd release-arm \
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm \
 	install-runner deploy-runner-rpm \
-	runner-image runner-image-multi runner-compose-up runner-compose-down
+	runner-image runner-image-multi runner-compose-up runner-compose-down \
+	helm-runner-lint helm-runner-template helm-runner-install
 
 CARGO ?= cargo
 COMPOSE ?= docker compose -f deploy/docker-compose.yml
@@ -302,6 +303,27 @@ runner-compose-up:
 
 runner-compose-down:
 	$(COMPOSE_RUNNER) down
+
+# --- Runner Helm chart ---
+HELM_RUNNER_CHART = deploy/helm/pertisk-runner
+HELM_RUNNER_RELEASE ?= pertisk-runner
+HELM_RUNNER_NAMESPACE ?= pertisk
+
+helm-runner-lint:
+	helm lint $(HELM_RUNNER_CHART)
+
+helm-runner-template:
+	helm template $(HELM_RUNNER_RELEASE) $(HELM_RUNNER_CHART) \
+	  --set apiUrl=https://git.example.com \
+	  --set runnerToken=ptr_example
+
+helm-runner-install:
+	@test -n "$(RUNNER_TOKEN)" || (echo "Set RUNNER_TOKEN=ptr_..." && exit 1)
+	helm upgrade --install $(HELM_RUNNER_RELEASE) $(HELM_RUNNER_CHART) \
+	  --namespace $(HELM_RUNNER_NAMESPACE) --create-namespace \
+	  --set apiUrl="$(PERTISK_API_URL)" \
+	  --set runnerToken="$(RUNNER_TOKEN)" \
+	  --set image.tag="$(VERSION)"
 
 # Delete a tag (local and remote).
 delete-tag:

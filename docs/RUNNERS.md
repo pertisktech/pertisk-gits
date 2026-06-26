@@ -120,7 +120,49 @@ Set `RUNNER_USER=0:0` in `.env.runner` if the Docker socket is not accessible to
 
 ## Kubernetes
 
-Manifests in `deploy/k8s/runner/`:
+### Helm (recommended)
+
+Chart: `deploy/helm/pertisk-runner`
+
+```bash
+# Register runner in UI → copy ptr_… token
+helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
+  --namespace pertisk --create-namespace \
+  --set apiUrl=https://git.example.com \
+  --set runnerToken=ptr_... \
+  --set image.tag=0.1.82
+```
+
+Production — use an existing Secret instead of `--set runnerToken`:
+
+```bash
+kubectl create secret generic pertisk-runner-secret \
+  --namespace pertisk \
+  --from-literal=token=ptr_...
+
+helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
+  --namespace pertisk \
+  --set apiUrl=https://git.example.com \
+  --set existingSecret.name=pertisk-runner-secret
+```
+
+Useful values:
+
+| Value | Description |
+|-------|-------------|
+| `replicaCount` | Number of runner pods (register one token per replica) |
+| `dockerSock.enabled` | Mount host `/var/run/docker.sock` (default `true`) |
+| `runAsRoot` | Set `true` if docker.sock permission errors |
+| `nodeSelector` / `tolerations` | Pin to dedicated build nodes |
+
+```bash
+helm lint deploy/helm/pertisk-runner
+helm template pertisk-runner deploy/helm/pertisk-runner --set runnerToken=test
+```
+
+### Raw manifests
+
+Manifests in `deploy/k8s/runner/` (same layout, no templating):
 
 ```bash
 cp deploy/k8s/runner/secret.yaml.example deploy/k8s/runner/secret.yaml

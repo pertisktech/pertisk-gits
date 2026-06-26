@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pertisk-runner.fullname" . }}
+  labels:
+    {{- include "pertisk-runner.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "pertisk-runner.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "pertisk-runner.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "pertisk-runner.serviceAccountName" . }}
+      {{- if .Values.runAsRoot }}
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+      {{- else if .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: runner
+          image: "{{ .Values.image.repository }}:{{ include "pertisk-runner.imageTag" . }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: PERTISK_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "pertisk-runner.fullname" . }}
+                  key: api_url
+            - name: PERTISK_RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "pertisk-runner.secretName" . }}
+                  key: {{ .Values.existingSecret.key | default "token" }}
+            - name: RUST_LOG
+              value: {{ .Values.rustLog | quote }}
+            {{- if .Values.reposRoot }}
+            - name: PERTISK_REPOS_ROOT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "pertisk-runner.fullname" . }}
+                  key: repos_root
+            {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if and (not .Values.runAsRoot) .Values.securityContext }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /var/lib/pertisk-runner
+            {{- if .Values.dockerSock.enabled }}
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+            {{- end }}
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        {{- if .Values.dockerSock.enabled }}
+        - name: docker-sock
+          hostPath:
+            path: {{ .Values.dockerSock.hostPath }}
+            type: Socket
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

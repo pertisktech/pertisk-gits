@@ -1,0 +1,19 @@
+Pertisk CI runner deployed.
+
+  Release:   {{ .Release.Name }}
+  Namespace: {{ .Release.Namespace }}
+  Replicas:  {{ .Values.replicaCount }}
+  API URL:   {{ .Values.apiUrl }}
+
+Check runner status in the Pertisk UI (Runners page) or:
+
+  kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} -f
+
+Each replica needs its own registration token unless you scale to 1.
+Register runners at: {{ .Values.apiUrl }}/runners
+
+Upgrade:
+
+  helm upgrade {{ .Release.Name }} ./deploy/helm/pertisk-runner \
+    --set runnerToken=ptr_... \
+    --set apiUrl={{ .Values.apiUrl }}

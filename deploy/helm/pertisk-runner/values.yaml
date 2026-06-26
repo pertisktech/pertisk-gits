@@ -1,0 +1,62 @@
+# Default values for pertisk-runner.
+# Register a runner in the UI first, then set runnerToken or existingSecret.
+
+replicaCount: 1
+
+image:
+  repository: pertisk-runner
+  tag: "" # defaults to Chart.appVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Pertisk API base URL (no trailing slash)
+apiUrl: "https://git.example.com"
+
+# Runner token from POST /api/v1/runners/register (ptr_…)
+# Prefer existingSecret in production instead of committing tokens.
+runnerToken: ""
+
+existingSecret:
+  # name: pertisk-runner-secret
+  name: ""
+  key: token
+
+# Optional — bare repo path when colocated with git server
+reposRoot: ""
+
+rustLog: "info,pertisk_runner=info"
+
+# Mount host Docker socket for pipeline jobs with runs-on: docker
+dockerSock:
+  enabled: true
+  hostPath: /var/run/docker.sock
+
+# Run as root when docker.sock GID does not match container user
+runAsRoot: false
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "4"
+    memory: 4Gi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+podAnnotations: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+serviceAccount:
+  create: false
+  name: ""

@@ -144,7 +144,7 @@ Runners poll the API for jobs (`GET /runner/jobs`), execute shell steps on the h
 | **Colocated git host** | Set `PERTISK_REPOS_ROOT` = server `REPOS_ROOT` for fast checkout; optional `docker` group for `docker build` steps | Done |
 | **Docker image** | OCI image `pertisk-runner` — `make runner-image`; `docker/Dockerfile.runner.release` target `runtime` | Done |
 | **Docker Compose** | `deploy/docker-compose.runner.yml` + `make runner-compose-up` | Done |
-| **Kubernetes runner** | `deploy/k8s/runner/` Deployment + ConfigMap/Secret; manual scale | Done (MVP) |
+| **Kubernetes runner** | `deploy/k8s/runner/` Deployment + ConfigMap/Secret; Helm chart `deploy/helm/pertisk-runner` | Done (MVP) |
 
 ### Configuration (all modes)
 
@@ -178,8 +178,12 @@ See [docs/RUNNERS.md](./RUNNERS.md) for `docker run`, Compose, and troubleshooti
 ### Kubernetes runner
 
 ```bash
-kubectl apply -f deploy/k8s/runner/
+helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
+  --set apiUrl=https://git.example.com \
+  --set runnerToken=ptr_...
 ```
+
+Raw manifests: `kubectl apply -f deploy/k8s/runner/`
 
 HPA / queue-depth autoscale — Phase 7.
 
@@ -354,6 +358,7 @@ pertisk-gits/
 ├── web/                  # React app
 ├── migrations/           # SQLx migrations
 ├── deploy/               # Docker Compose, Helm
+│   └── helm/pertisk-runner/  # CI runner chart
 └── docs/
     └── PHASES.md         # This file
 ```

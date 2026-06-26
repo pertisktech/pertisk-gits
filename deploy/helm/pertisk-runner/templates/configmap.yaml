@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pertisk-runner.fullname" . }}
+  labels:
+    {{- include "pertisk-runner.labels" . | nindent 4 }}
+data:
+  api_url: {{ .Values.apiUrl | quote }}
+  {{- if .Values.reposRoot }}
+  repos_root: {{ .Values.reposRoot | quote }}
+  {{- end }}

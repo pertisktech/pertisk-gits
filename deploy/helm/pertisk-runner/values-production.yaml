@@ -1,0 +1,39 @@
+# Example overrides for production (use with -f values-production.yaml)
+
+replicaCount: 2
+
+apiUrl: "https://git.example.com"
+
+# Do not commit tokens — create secret separately:
+# kubectl create secret generic pertisk-runner-secret --from-literal=token=ptr_...
+existingSecret:
+  name: pertisk-runner-secret
+  key: token
+
+image:
+  repository: registry.example.com/pertisk-runner
+  tag: "0.1.82"
+  pullPolicy: IfNotPresent
+
+dockerSock:
+  enabled: true
+
+# Uncomment for docker.sock GID issues on nodes
+# runAsRoot: true
+
+nodeSelector:
+  pertisk.dev/ci-runner: "true"
+
+tolerations:
+  - key: pertisk.dev/ci-runner
+    operator: Equal
+    value: "true"
+    effect: NoSchedule
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "8"
+    memory: 8Gi
