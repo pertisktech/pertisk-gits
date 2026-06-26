@@ -1046,6 +1046,7 @@ export const api = {
     orgSlug: string,
     payload: {
       credential_id: string
+      import_issues?: boolean
       repos: Array<{
         source_id: string
         source_full_name: string

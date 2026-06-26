@@ -16,6 +16,7 @@ function jobStatusVariant(status: string) {
   if (status === 'done') return 'green' as const
   if (status === 'failed') return 'red' as const
   if (status === 'pending') return 'gray' as const
+  if (status === 'metadata') return 'violet' as const
   return 'yellow' as const
 }
 
@@ -31,6 +32,7 @@ export function GroupImportPage() {
   const [account, setAccount] = useState<string | null>(null)
   const [remoteRepos, setRemoteRepos] = useState<RemoteRepo[]>([])
   const [selected, setSelected] = useState<Record<string, boolean>>({})
+  const [importIssues, setImportIssues] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
 
   const { data: members = [] } = useQuery({
@@ -132,7 +134,11 @@ export function GroupImportPage() {
           visibility: repo.visibility,
           default_branch: repo.default_branch,
         }))
-      return api.createImportJob(token!, slug, { credential_id: id, repos })
+      return api.createImportJob(token!, slug, {
+        credential_id: id,
+        import_issues: importIssues,
+        repos,
+      })
     },
     onSuccess: (job) => {
       setActiveJobId(job.id)
@@ -297,6 +303,14 @@ export function GroupImportPage() {
           )}
           {remoteRepos.length > 0 && (
             <div className="space-y-3">
+              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={importIssues}
+                  onChange={(e) => setImportIssues(e.target.checked)}
+                />
+                Import issues, labels, and milestones (open and closed)
+              </label>
               <div className="max-h-72 overflow-y-auto border border-naturals-n4 rounded-lg divide-y divide-naturals-n4">
                 {remoteRepos.map((repo) => (
                   <label

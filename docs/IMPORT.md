@@ -12,10 +12,11 @@ MVP scope:
 - List accessible repositories
 - `git clone --mirror` into bare repos under `REPOS_ROOT`
 - Repository metadata: name, description, default branch, visibility
+- Optional **issues, labels, and milestones** (checkbox when starting import)
 - Background job with progress in the UI
 - Audit log entries for import start and completion
 
-Not included yet: issues, labels, milestones, merge requests, wiki, CI config conversion, bulk org/group import, registry image mirror.
+Not included yet: issue comments, merge requests, wiki, CI config conversion, bulk org/group import, registry image mirror.
 
 ## Requirements
 
@@ -49,23 +50,24 @@ For self-hosted GitLab, enter the instance URL (e.g. `https://git.example.com`) 
 | `POST` | `/organizations/{org}/import/credentials` | Save or update encrypted PAT |
 | `DELETE` | `/organizations/{org}/import/credentials/{id}` | Remove saved credential |
 | `POST` | `/organizations/{org}/import/discover` | List remote repos (`credential_id` or inline token) |
-| `POST` | `/organizations/{org}/import/jobs` | Start import job (up to 50 repos) |
+| `POST` | `/organizations/{org}/import/jobs` | Start import job (`import_issues` optional; up to 50 repos) |
 | `GET` | `/organizations/{org}/import/jobs` | List recent jobs |
 | `GET` | `/organizations/{org}/import/jobs/{id}` | Job detail with per-repo status |
 
 ## Job lifecycle
 
 ```
-pending → mirroring → done | failed
+pending → mirroring → metadata (optional) → done | failed
 ```
 
-The worker:
+The background processor (in `pertisk-api`, optional `pertisk-worker` backup):
 
 1. Claims pending jobs
 2. Creates (or reuses) Pertisk repository records
 3. Runs `git clone --mirror` (or `git remote update` on re-import)
 4. Sets `default_branch` from the mirrored bare repo
-5. Writes audit events
+5. When `import_issues` is enabled: imports labels, milestones, and issues (preserves issue numbers; skips PRs/MRs)
+6. Writes audit events
 
 Re-importing the same target slug updates the mirror in place.
 
@@ -75,7 +77,7 @@ Re-importing the same target slug updates the mirror in place.
 - `import_jobs` — background job header
 - `import_job_repos` — per-repository import state
 
-Migration: `migrations/20250709100000_phase65_import.sql`
+Migration: `migrations/20250709100000_phase65_import.sql`, `migrations/20250710100000_import_issues.sql`
 
 ## Security
 

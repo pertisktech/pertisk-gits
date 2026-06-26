@@ -633,6 +633,7 @@ pub struct ImportJob {
     pub created_by: Uuid,
     pub credential_id: Uuid,
     pub provider: ImportProvider,
+    pub import_issues: bool,
     pub status: ImportJobStatus,
     pub error_message: Option<String>,
     pub started_at: Option<DateTime<Utc>>,

@@ -246,7 +246,7 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 ---
 
-## Phase 6.5 — Import from GitHub & GitLab (In progress)
+## Phase 6.5 — Import from GitHub & GitLab (Done — MVP; phase 2 in progress)
 
 **Goal:** Onboard teams by importing existing projects from GitHub or GitLab without manual `git clone` + push.
 
@@ -254,17 +254,18 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 | Component | Approach | Status |
 |-----------|----------|--------|
-| Import wizard UI | Group → Import — pick source (GitHub / GitLab), list repos, start job | Done (MVP) |
-| Auth | Personal access token (PAT) — list accessible repos; encrypted storage | Done (MVP) |
-| Git mirror | `git clone --mirror` → bare repo under `REPOS_ROOT`; re-import updates mirror | Done (MVP) |
-| Repo metadata | Name, description, default branch, visibility (public/private) | Done (MVP) |
-| Progress + audit | Background job (`pertisk-worker`), status in UI, `audit_events` entry | Done (MVP) |
+| Import wizard UI | Group → Import — pick source (GitHub / GitLab), list repos, start job | Done |
+| Auth | Personal access token (PAT) — list accessible repos; encrypted storage | Done |
+| Git mirror | `git clone --mirror` → bare repo under `REPOS_ROOT`; re-import updates mirror | Done |
+| Repo metadata | Name, description, default branch, visibility (public/private) | Done |
+| Progress + audit | Background processor in `pertisk-api` (+ optional `pertisk-worker`), status in UI, `audit_events` | Done |
+| GitHub API fix | `api.github.com` (not `github.com/api/v3`); PAT scope hints in UI | Done |
 
 ### Optional (phase 2 of import)
 
 | Component | Notes | Status |
 |-----------|-------|--------|
-| Issues + labels + milestones | Map via GitHub/GitLab REST API into Pertisk tables | Planned |
+| Issues + labels + milestones | Map via GitHub/GitLab REST API into Pertisk tables; optional checkbox on import | Done (MVP) |
 | Pull/merge requests | Import open MRs/PRs (title, body, branches); closed history later | Planned |
 | Wiki pages | Export wiki repo or API → Pertisk wiki (Phase 3) | Deferred |
 | CI config | Detect `.gitlab-ci.yml` / GitHub Actions; suggest `.pertisk-ci.yaml` conversion | Planned |
@@ -273,8 +274,8 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 ### Technical notes
 
-- **Worker job:** `import_jobs` table — `pending` → `mirroring` → `metadata` → `done` / `failed`
-- **Credentials:** Encrypted PAT stored per user or org import token; never logged
+- **Background processor:** `pertisk-api` polls `import_jobs` every 2s; `pertisk-worker` is optional backup
+- **Credentials:** Encrypted PAT stored per user/org; never logged
 - **Rate limits:** Respect GitHub/GitLab API quotas; resumable mirror on failure
 - **Idempotency:** Re-import updates mirror; skip or merge metadata conflicts
 

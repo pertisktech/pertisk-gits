@@ -4097,6 +4097,7 @@ dependencies = [
  "pertisk-cicd",
  "pertisk-domain",
  "pertisk-git",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -4104,6 +4105,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "urlencoding",
  "uuid",
 ]
 

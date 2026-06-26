@@ -596,6 +596,7 @@ export interface ImportJob {
   created_by: string
   credential_id: string
   provider: ImportProvider
+  import_issues: boolean
   status: ImportJobStatus
   error_message: string | null
   started_at: string | null

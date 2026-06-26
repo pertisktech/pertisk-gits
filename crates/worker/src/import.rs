@@ -46,7 +46,7 @@ impl ImportWorker {
                 FOR UPDATE SKIP LOCKED
             ) picked
             WHERE j.id = picked.id
-            RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text
+            RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text, j.import_issues
             "#,
         )
         .fetch_all(&self.pool)
@@ -63,7 +63,7 @@ impl ImportWorker {
     }
 
     async fn process_job(&self, job: JobRow) -> anyhow::Result<()> {
-        let (provider, token, _base_url) = self.load_credential(job.credential_id).await?;
+        let (provider, token, base_url) = self.load_credential(job.credential_id).await?;
         let org_slug = self.org_slug(job.organization_id).await?;
 
         let repos = sqlx::query_as::<_, RepoRow>(
@@ -89,6 +89,7 @@ impl ImportWorker {
                     &org_slug,
                     provider,
                     &token,
+                    &base_url,
                     &repo,
                 )
                 .await
@@ -168,6 +169,7 @@ impl ImportWorker {
         org_slug: &str,
         provider: ImportProvider,
         token: &str,
+        base_url: &str,
         repo: &RepoRow,
     ) -> anyhow::Result<()> {
         let visibility = match repo.visibility.as_str() {
@@ -218,6 +220,43 @@ impl ImportWorker {
         .bind(&default_branch)
         .execute(&self.pool)
         .await?;
+
+        if job.import_issues {
+            sqlx::query(
+                r#"
+                UPDATE import_job_repos
+                SET status = 'metadata', updated_at = NOW()
+                WHERE id = $1
+                "#,
+            )
+            .bind(repo.id)
+            .execute(&self.pool)
+            .await?;
+
+            match crate::metadata::import_repo_metadata(
+                &self.pool,
+                provider,
+                token,
+                base_url,
+                &repo.source_full_name,
+                repository_id,
+                job.created_by,
+            )
+            .await
+            {
+                Ok(stats) => tracing::info!(
+                    repo = %repo.source_full_name,
+                    labels = stats.labels,
+                    milestones = stats.milestones,
+                    issues = stats.issues,
+                    "imported repository metadata"
+                ),
+                Err(err) => tracing::warn!(
+                    repo = %repo.source_full_name,
+                    "metadata import failed: {err:#}"
+                ),
+            }
+        }
 
         sqlx::query(
             r#"
@@ -282,6 +321,17 @@ impl ImportWorker {
         )
         .bind(repo_id)
         .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO repository_counters (repository_id)
+            VALUES ($1)
+            ON CONFLICT (repository_id) DO NOTHING
+            "#,
+        )
+        .bind(repo_id)
         .execute(&mut *tx)
         .await?;
 
@@ -511,6 +561,7 @@ struct JobRow {
     credential_id: Uuid,
     #[allow(dead_code)]
     provider: String,
+    import_issues: bool,
 }
 
 #[derive(sqlx::FromRow)]

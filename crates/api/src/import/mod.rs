@@ -91,6 +91,8 @@ struct ImportRepoSelection {
 struct CreateImportJobRequest {
     pub credential_id: Uuid,
     pub repos: Vec<ImportRepoSelection>,
+    #[serde(default)]
+    pub import_issues: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -284,10 +286,10 @@ async fn create_import_job(
 
     let job = sqlx::query_as::<_, ImportJob>(
         r#"
-        INSERT INTO import_jobs (organization_id, created_by, credential_id, provider, status)
-        VALUES ($1, $2, $3, $4, 'pending')
+        INSERT INTO import_jobs (organization_id, created_by, credential_id, provider, import_issues, status)
+        VALUES ($1, $2, $3, $4, $5, 'pending')
         RETURNING
-            id, organization_id, created_by, credential_id, provider, status,
+            id, organization_id, created_by, credential_id, provider, import_issues, status,
             error_message, started_at, finished_at, created_at, updated_at
         "#,
     )
@@ -295,6 +297,7 @@ async fn create_import_job(
     .bind(auth.user_id)
     .bind(body.credential_id)
     .bind(credential.0)
+    .bind(body.import_issues)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
@@ -403,7 +406,7 @@ async fn list_import_jobs(
     let jobs = sqlx::query_as::<_, ImportJob>(
         r#"
         SELECT
-            id, organization_id, created_by, credential_id, provider, status,
+            id, organization_id, created_by, credential_id, provider, import_issues, status,
             error_message, started_at, finished_at, created_at, updated_at
         FROM import_jobs
         WHERE organization_id = $1
@@ -430,7 +433,7 @@ async fn get_import_job(
     let job = sqlx::query_as::<_, ImportJob>(
         r#"
         SELECT
-            id, organization_id, created_by, credential_id, provider, status,
+            id, organization_id, created_by, credential_id, provider, import_issues, status,
             error_message, started_at, finished_at, created_at, updated_at
         FROM import_jobs
         WHERE id = $1 AND organization_id = $2
