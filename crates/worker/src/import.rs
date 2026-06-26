@@ -36,11 +36,13 @@ impl ImportWorker {
         let jobs = sqlx::query_as::<_, JobRow>(
             r#"
             UPDATE import_jobs j
-            SET status = 'mirroring', started_at = NOW(), updated_at = NOW()
+            SET status = 'mirroring',
+                started_at = COALESCE(j.started_at, NOW()),
+                updated_at = NOW()
             FROM (
                 SELECT id
                 FROM import_jobs
-                WHERE status = 'pending'
+                WHERE status IN ('pending', 'mirroring', 'metadata')
                 ORDER BY created_at ASC
                 LIMIT 5
                 FOR UPDATE SKIP LOCKED
@@ -70,9 +72,9 @@ impl ImportWorker {
             r#"
             SELECT
                 id, source_full_name, source_clone_url, target_slug, target_name,
-                description, visibility::text, default_branch
+                description, visibility::text, default_branch, repository_id, status::text
             FROM import_job_repos
-            WHERE job_id = $1 AND status = 'pending'
+            WHERE job_id = $1 AND status IN ('pending', 'mirroring', 'metadata')
             ORDER BY source_full_name
             "#,
         )
@@ -177,61 +179,84 @@ impl ImportWorker {
             _ => RepoVisibility::Private,
         };
 
-        let repository_id = self
-            .ensure_repository(
-                job.organization_id,
-                job.created_by,
-                &repo.target_slug,
-                &repo.target_name,
-                repo.description.as_deref(),
-                visibility,
+        let repository_id = match repo.repository_id {
+            Some(id) => id,
+            None => {
+                self.ensure_repository(
+                    job.organization_id,
+                    job.created_by,
+                    &repo.target_slug,
+                    &repo.target_name,
+                    repo.description.as_deref(),
+                    visibility,
+                )
+                .await?
+            }
+        };
+
+        let mut default_branch = if repo.status == "metadata" {
+            sqlx::query_scalar::<_, String>(
+                "SELECT default_branch FROM repositories WHERE id = $1",
             )
-            .await?;
-
-        sqlx::query(
-            r#"
-            UPDATE import_job_repos
-            SET repository_id = $2, status = 'mirroring', updated_at = NOW()
-            WHERE id = $1
-            "#,
-        )
-        .bind(repo.id)
-        .bind(repository_id)
-        .execute(&self.pool)
-        .await?;
-
-        let repo_path = repo_disk_path(&self.repos_root, org_slug, &repo.target_slug);
-        let auth_url = authenticated_clone_url(provider, &repo.source_clone_url, token)?;
-        mirror_repository(&auth_url, &repo_path).await?;
-
-        let default_branch = read_default_branch(&repo_path)
-            .await
+            .bind(repository_id)
+            .fetch_optional(&self.pool)
+            .await?
             .or_else(|| repo.default_branch.clone())
-            .unwrap_or_else(|| "main".into());
+            .unwrap_or_else(|| "main".into())
+        } else {
+            repo.default_branch
+                .clone()
+                .unwrap_or_else(|| "main".into())
+        };
 
-        sqlx::query(
-            r#"
-            UPDATE repositories
-            SET default_branch = $2, updated_at = NOW()
-            WHERE id = $1
-            "#,
-        )
-        .bind(repository_id)
-        .bind(&default_branch)
-        .execute(&self.pool)
-        .await?;
-
-        if job.import_issues || job.import_pull_requests {
+        if repo.status == "pending" || repo.status == "mirroring" {
             sqlx::query(
                 r#"
                 UPDATE import_job_repos
-                SET status = 'metadata', updated_at = NOW()
+                SET repository_id = $2, status = 'mirroring', updated_at = NOW()
                 WHERE id = $1
                 "#,
             )
             .bind(repo.id)
+            .bind(repository_id)
             .execute(&self.pool)
             .await?;
+
+            let repo_path = repo_disk_path(&self.repos_root, org_slug, &repo.target_slug);
+            let auth_url = authenticated_clone_url(provider, &repo.source_clone_url, token)?;
+            mirror_repository(&auth_url, &repo_path).await?;
+
+            default_branch = read_default_branch(&repo_path)
+                .await
+                .or_else(|| repo.default_branch.clone())
+                .unwrap_or_else(|| "main".into());
+
+            sqlx::query(
+                r#"
+                UPDATE repositories
+                SET default_branch = $2, updated_at = NOW()
+                WHERE id = $1
+                "#,
+            )
+            .bind(repository_id)
+            .bind(&default_branch)
+            .execute(&self.pool)
+            .await?;
+        }
+
+        if job.import_issues || job.import_pull_requests {
+            if repo.status != "metadata" {
+                sqlx::query(
+                    r#"
+                    UPDATE import_job_repos
+                    SET status = 'metadata', updated_at = NOW()
+                    WHERE id = $1
+                    "#,
+                )
+                .bind(repo.id)
+                .execute(&self.pool)
+                .await?;
+            }
 
             match crate::metadata::import_repo_metadata(
                 &self.pool,
@@ -417,34 +442,20 @@ async fn mirror_repository(auth_url: &str, repo_path: &Path) -> anyhow::Result<(
     }
 
     if repo_path.join("HEAD").exists() {
-        let status = Command::new("git")
-            .args([
-                "-C",
-                repo_path.to_str().unwrap_or_default(),
-                "remote",
-                "set-url",
-                "origin",
-                auth_url,
-            ])
-            .status()
-            .await?;
-        if !status.success() {
-            anyhow::bail!("git remote set-url failed");
+        let repo = repo_path.to_str().unwrap_or_default();
+        if git_has_remote(repo, "origin").await? {
+            git_run(&["-C", repo, "remote", "set-url", "origin", auth_url], "git remote set-url")
+                .await?;
+        } else {
+            git_run(&["-C", repo, "remote", "add", "origin", auth_url], "git remote add")
+                .await?;
         }
 
-        let status = Command::new("git")
-            .args([
-                "-C",
-                repo_path.to_str().unwrap_or_default(),
-                "remote",
-                "update",
-                "--prune",
-            ])
-            .status()
-            .await?;
-        if !status.success() {
-            anyhow::bail!("git remote update failed");
-        }
+        git_run(
+            &["-C", repo, "remote", "update", "--prune"],
+            "git remote update",
+        )
+        .await?;
         return Ok(());
     }
 
@@ -452,21 +463,38 @@ async fn mirror_repository(auth_url: &str, repo_path: &Path) -> anyhow::Result<(
         tokio::fs::remove_dir_all(repo_path).await?;
     }
 
-    let status = Command::new("git")
-        .args([
+    git_run(
+        &[
             "clone",
             "--mirror",
             auth_url,
             repo_path.to_str().unwrap_or_default(),
-        ])
-        .status()
-        .await?;
-
-    if !status.success() {
-        anyhow::bail!("git clone --mirror failed");
-    }
+        ],
+        "git clone --mirror",
+    )
+    .await?;
 
     Ok(())
+}
+
+async fn git_has_remote(repo_path: &str, name: &str) -> anyhow::Result<bool> {
+    let output = Command::new("git")
+        .args(["-C", repo_path, "remote", "get-url", name])
+        .output()
+        .await?;
+    Ok(output.status.success())
+}
+
+async fn git_run(args: &[&str], label: &str) -> anyhow::Result<()> {
+    let output = Command::new("git").args(args).output().await?;
+    if output.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.is_empty() {
+        anyhow::bail!("{label} failed");
+    }
+    anyhow::bail!("{label} failed: {stderr}");
 }
 
 async fn read_default_branch(repo_path: &Path) -> Option<String> {
@@ -580,4 +608,6 @@ struct RepoRow {
     description: Option<String>,
     visibility: String,
     default_branch: Option<String>,
+    repository_id: Option<Uuid>,
+    status: String,
 }
