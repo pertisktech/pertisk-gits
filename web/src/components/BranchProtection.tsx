@@ -3,7 +3,7 @@ import { Loader2, Shield, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { BranchProtectionRule } from '../api/types'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { Checkbox, PrimaryButton, SecondaryButton } from './ui'
 
 interface BranchProtectionProps {
   token: string
@@ -97,6 +97,29 @@ export function BranchProtection({
     createRule.mutate()
   }
 
+  function ruleCheckbox(
+    rule: BranchProtectionRule,
+    field: keyof Pick<
+      BranchProtectionRule,
+      'require_pull_request' | 'require_status_checks' | 'allow_force_push' | 'allow_admin_bypass'
+    >,
+    label: string,
+  ) {
+    return (
+      <Checkbox
+        row
+        label={label}
+        checked={rule[field]}
+        onChange={(e) =>
+          updateRule.mutate({
+            ruleId: rule.id,
+            payload: { [field]: e.target.checked },
+          })
+        }
+      />
+    )
+  }
+
   return (
     <div className="app-panel max-w-2xl">
       <div className="app-panel-header flex items-center gap-2">
@@ -120,10 +143,10 @@ export function BranchProtection({
             {rules.map((rule) => (
               <li
                 key={rule.id}
-                className="rounded-md border border-border p-3 space-y-3"
+                className="rounded-lg border border-border bg-surface-elevated/40 p-4 space-y-3"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="font-medium text-text">{rule.branch_pattern}</span>
+                  <span className="font-medium text-text font-mono text-sm">{rule.branch_pattern}</span>
                   <SecondaryButton
                     type="button"
                     onClick={() => removeRule.mutate(rule.id)}
@@ -133,67 +156,19 @@ export function BranchProtection({
                     Remove
                   </SecondaryButton>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2 text-sm">
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rule.require_pull_request}
-                      onChange={(e) =>
-                        updateRule.mutate({
-                          ruleId: rule.id,
-                          payload: { require_pull_request: e.target.checked },
-                        })
-                      }
-                    />
-                    Require pull request
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rule.require_status_checks}
-                      onChange={(e) =>
-                        updateRule.mutate({
-                          ruleId: rule.id,
-                          payload: { require_status_checks: e.target.checked },
-                        })
-                      }
-                    />
-                    Require CI checks
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rule.allow_force_push}
-                      onChange={(e) =>
-                        updateRule.mutate({
-                          ruleId: rule.id,
-                          payload: { allow_force_push: e.target.checked },
-                        })
-                      }
-                    />
-                    Allow force push
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={rule.allow_admin_bypass}
-                      onChange={(e) =>
-                        updateRule.mutate({
-                          ruleId: rule.id,
-                          payload: { allow_admin_bypass: e.target.checked },
-                        })
-                      }
-                    />
-                    Admin bypass
-                  </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {ruleCheckbox(rule, 'require_pull_request', 'Require pull request')}
+                  {ruleCheckbox(rule, 'require_status_checks', 'Require CI checks')}
+                  {ruleCheckbox(rule, 'allow_force_push', 'Allow force push')}
+                  {ruleCheckbox(rule, 'allow_admin_bypass', 'Admin bypass')}
                 </div>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="flex items-center gap-2 text-sm text-text-secondary">
                   Required approvals
                   <input
                     type="number"
                     min={0}
                     max={20}
-                    className="app-field w-20"
+                    className="app-field w-20 !py-1.5"
                     value={rule.required_approvals}
                     onChange={(e) =>
                       updateRule.mutate({
@@ -210,10 +185,10 @@ export function BranchProtection({
           <p className="text-sm text-text-secondary">No branch protection rules yet.</p>
         )}
 
-        <form className="space-y-3 border-t border-border pt-4" onSubmit={onCreate}>
+        <form className="space-y-4 border-t border-border pt-4" onSubmit={onCreate}>
           <p className="text-sm font-medium text-text">Add rule</p>
-          <div className="space-y-2">
-            <label htmlFor="branch-pattern" className="text-sm text-text-secondary">
+          <div className="app-control-field">
+            <label htmlFor="branch-pattern" className="app-control-field-label">
               Branch pattern
             </label>
             <input
@@ -231,47 +206,39 @@ export function BranchProtection({
               ))}
             </datalist>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 text-sm">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={requirePullRequest}
-                onChange={(e) => setRequirePullRequest(e.target.checked)}
-              />
-              Require pull request
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={requireStatusChecks}
-                onChange={(e) => setRequireStatusChecks(e.target.checked)}
-              />
-              Require CI checks
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={allowForcePush}
-                onChange={(e) => setAllowForcePush(e.target.checked)}
-              />
-              Allow force push
-            </label>
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={allowAdminBypass}
-                onChange={(e) => setAllowAdminBypass(e.target.checked)}
-              />
-              Admin bypass
-            </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Checkbox
+              row
+              label="Require pull request"
+              checked={requirePullRequest}
+              onChange={(e) => setRequirePullRequest(e.target.checked)}
+            />
+            <Checkbox
+              row
+              label="Require CI checks"
+              checked={requireStatusChecks}
+              onChange={(e) => setRequireStatusChecks(e.target.checked)}
+            />
+            <Checkbox
+              row
+              label="Allow force push"
+              checked={allowForcePush}
+              onChange={(e) => setAllowForcePush(e.target.checked)}
+            />
+            <Checkbox
+              row
+              label="Admin bypass"
+              checked={allowAdminBypass}
+              onChange={(e) => setAllowAdminBypass(e.target.checked)}
+            />
           </div>
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-center gap-2 text-sm text-text-secondary">
             Required approvals
             <input
               type="number"
               min={0}
               max={20}
-              className="app-field w-20"
+              className="app-field w-20 !py-1.5"
               value={requiredApprovals}
               onChange={(e) => setRequiredApprovals(Number(e.target.value))}
             />

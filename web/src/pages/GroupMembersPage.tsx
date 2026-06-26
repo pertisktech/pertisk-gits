@@ -7,7 +7,7 @@ import type { OrgMember, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { UserPicker } from '../components/UserPicker'
-import { PrimaryButton, SecondaryButton } from '../components/ui'
+import { PrimaryButton, SecondaryButton, Select } from '../components/ui'
 
 type OrgRole = OrgMember['role']
 
@@ -128,8 +128,8 @@ export function GroupMembersPage() {
                 excludeUserIds={memberIds}
                 disabled={addMember.isPending}
               />
-              <select
-                className="app-field w-40"
+              <Select
+                className="w-40 !py-1.5"
                 value={newRole}
                 onChange={(e) => setNewRole(e.target.value as OrgRole)}
                 disabled={addMember.isPending}
@@ -137,7 +137,7 @@ export function GroupMembersPage() {
                 {isOwner && <option value="owner">Owner</option>}
                 <option value="admin">Admin</option>
                 <option value="member">Member</option>
-              </select>
+              </Select>
               <PrimaryButton type="submit" disabled={addMember.isPending || !selectedUser}>
                 {addMember.isPending ? (
                   <>
@@ -192,8 +192,8 @@ export function GroupMembersPage() {
                     </td>
                     <td>
                       {canEditTarget ? (
-                        <select
-                          className="app-field py-1 text-sm"
+                        <Select
+                          className="!py-1 text-sm"
                           value={member.role}
                           disabled={updateMember.isPending}
                           onChange={(e) =>
@@ -208,7 +208,7 @@ export function GroupMembersPage() {
                               {role}
                             </option>
                           ))}
-                        </select>
+                        </Select>
                       ) : (
                         <StatusBadge variant={roleVariant(member.role)}>{member.role}</StatusBadge>
                       )}

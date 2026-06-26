@@ -7,7 +7,7 @@ import type { ImportJobDetail, ImportProvider, RemoteNamespace, RemoteRepo } fro
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { Card } from '../components/Card'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
+import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
 
 const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
@@ -385,22 +385,18 @@ export function GroupImportPage() {
           )}
           {remoteRepos.length > 0 && (
             <div className="space-y-3">
-              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={importIssues}
-                  onChange={(e) => setImportIssues(e.target.checked)}
-                />
-                Import issues, labels, and milestones (open and closed)
-              </label>
-              <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={importPullRequests}
-                  onChange={(e) => setImportPullRequests(e.target.checked)}
-                />
-                Import open pull/merge requests (title, body, branches)
-              </label>
+              <Checkbox
+                row
+                label="Import issues, labels, and milestones (open and closed)"
+                checked={importIssues}
+                onChange={(e) => setImportIssues(e.target.checked)}
+              />
+              <Checkbox
+                row
+                label="Import open pull/merge requests (title, body, branches)"
+                checked={importPullRequests}
+                onChange={(e) => setImportPullRequests(e.target.checked)}
+              />
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <SecondaryButton
                   type="button"

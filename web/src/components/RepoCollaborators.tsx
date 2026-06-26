@@ -4,7 +4,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { RepoCollaborator, User } from '../api/types'
 import { UserPicker } from './UserPicker'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { PrimaryButton, SecondaryButton, Select } from './ui'
 
 type RepoRole = RepoCollaborator['role']
 
@@ -101,8 +101,8 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
             excludeUserIds={collaboratorIds}
             disabled={addCollaborator.isPending}
           />
-          <select
-            className="app-field w-36"
+          <Select
+            className="w-36 !py-1.5"
             value={newRole}
             onChange={(e) => setNewRole(e.target.value as RepoRole)}
             disabled={addCollaborator.isPending}
@@ -110,7 +110,7 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
             <option value="read">Read</option>
             <option value="write">Write</option>
             <option value="admin">Admin</option>
-          </select>
+          </Select>
           <PrimaryButton type="submit" disabled={addCollaborator.isPending || !selectedUser}>
             {addCollaborator.isPending ? (
               <>
@@ -154,8 +154,8 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
                     </div>
                   </td>
                   <td>
-                    <select
-                      className="app-field py-1 text-sm"
+                    <Select
+                      className="!py-1 text-sm"
                       value={collaborator.role}
                       disabled={updateCollaborator.isPending}
                       onChange={(e) =>
@@ -168,7 +168,7 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
                       <option value="read">Read</option>
                       <option value="write">Write</option>
                       <option value="admin">Admin</option>
-                    </select>
+                    </Select>
                   </td>
                   <td className="text-right">
                     <SecondaryButton

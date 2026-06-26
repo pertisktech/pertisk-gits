@@ -3,7 +3,7 @@ import { Loader2 } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import type { Repository } from '../api/types'
-import { PrimaryButton } from './ui'
+import { PrimaryButton, Select } from './ui'
 import { RepoCollaborators } from './RepoCollaborators'
 import { BranchProtection } from './BranchProtection'
 import { SecretsPanel } from './SecretsPanel'
@@ -110,41 +110,29 @@ export function RepoSettings({
           />
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="repo-visibility" className="text-sm font-medium text-text">
-            Visibility
-          </label>
-          <select
-            id="repo-visibility"
-            className="app-field"
-            value={visibility}
-            onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
-          >
-            <option value="private">Private</option>
-            <option value="public">Public</option>
-          </select>
-        </div>
+        <Select
+          id="repo-visibility"
+          label="Visibility"
+          value={visibility}
+          onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
+        >
+          <option value="private">Private</option>
+          <option value="public">Public</option>
+        </Select>
 
-        <div className="space-y-2">
-          <label htmlFor="repo-default-branch" className="text-sm font-medium text-text">
-            Default branch
-          </label>
-          <select
-            id="repo-default-branch"
-            className="app-field"
-            value={defaultBranch}
-            onChange={(e) => setDefaultBranch(e.target.value)}
-          >
-            {branchOptions.map((branch) => (
-              <option key={branch} value={branch}>
-                {branch}
-              </option>
-            ))}
-          </select>
-          <p className="text-xs text-text-secondary">
-            Used when opening the repository and for clone instructions.
-          </p>
-        </div>
+        <Select
+          id="repo-default-branch"
+          label="Default branch"
+          hint="Used when opening the repository and for clone instructions."
+          value={defaultBranch}
+          onChange={(e) => setDefaultBranch(e.target.value)}
+        >
+          {branchOptions.map((branch) => (
+            <option key={branch} value={branch}>
+              {branch}
+            </option>
+          ))}
+        </Select>
 
         {error && (
           <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
