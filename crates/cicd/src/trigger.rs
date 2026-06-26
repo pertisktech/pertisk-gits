@@ -87,6 +87,7 @@ mod tests {
                 Job {
                     runs_on: "linux".into(),
                     image: None,
+                    dind: false,
                     needs: vec![],
                     required: true,
                     steps: vec![Step {

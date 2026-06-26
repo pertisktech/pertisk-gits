@@ -5,8 +5,8 @@ use uuid::Uuid;
 
 use crate::api::RunnerApi;
 
-const FLUSH_INTERVAL: Duration = Duration::from_millis(200);
-const FLUSH_BYTES: usize = 512;
+const FLUSH_INTERVAL: Duration = Duration::from_millis(100);
+const FLUSH_BYTES: usize = 128;
 
 pub struct LogStreamer<'a> {
     api: &'a RunnerApi,

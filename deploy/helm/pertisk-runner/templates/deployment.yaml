@@ -64,6 +64,8 @@ spec:
               value: {{ .Values.kubernetes.helperImage | quote }}
             - name: PERTISK_K8S_BUILD_IMAGE
               value: {{ .Values.kubernetes.buildImage | quote }}
+            - name: PERTISK_K8S_DIND_IMAGE
+              value: {{ .Values.kubernetes.dindImage | quote }}
             - name: PERTISK_K8S_TTL_SECONDS
               value: {{ .Values.kubernetes.ttlSecondsAfterFinished | quote }}
             - name: PERTISK_K8S_SERVICE_ACCOUNT

@@ -15,14 +15,15 @@ pub fn render_job_script(
     extra_env: &HashMap<String, String>,
 ) -> String {
     let mut script = format!(
-        r#"#!/usr/bin/env bash
-set -euo pipefail
+        r#"#!/bin/sh
+set -eu
 export CI=true PERTISK_CI=true PYTHONUNBUFFERED=1
 export CI_PROJECT_DIR={project_dir}
 cd "$CI_PROJECT_DIR"
 
 upload_artifact() {{
-  local name="$1" path="$2"
+  name="$1"
+  path="$2"
   echo "=== upload-artifact ${{name}} (running)"
   if [ ! -e "$CI_PROJECT_DIR/$path" ]; then
     echo "artifact path not found: $path"
@@ -32,7 +33,7 @@ upload_artifact() {{
     -H "Authorization: Bearer ${{PERTISK_RUNNER_TOKEN}}" \
     -F "name=${{name}}" -F "path=${{path}}" -F "file=@-;filename=${{name}}.tar.gz;type=application/gzip" \
     "${{PERTISK_API_URL}}/api/v1/runner/jobs/${{PERTISK_JOB_ID}}/artifacts"
-  local code=$?
+  code=$?
   echo "=== upload-artifact ${{name}} (exit ${{code}})"
   return "$code"
 }}
@@ -80,18 +81,22 @@ upload_artifact() {{
             .unwrap_or_else(|| "$CI_PROJECT_DIR".into());
 
         script.push_str(&format!("echo \"=== {step_name} (running)\"\n"));
-        script.push_str(&format!("pushd {cwd} >/dev/null\n"));
+        script.push_str("(\n");
+        script.push_str(&format!("  cd {cwd}\n"));
         for (key, value) in &step.env {
-            script.push_str(&format!("export {}={}\n", key, shell_quote(value)));
+            script.push_str(&format!("  export {}={}\n", key, shell_quote(value)));
         }
-        // Use bash -c (not -lc): login shells reset PATH via /etc/profile and drop
-        // toolchains from official images (golang, rust, node, etc.).
-        script.push_str(&format!("bash -c {}\n", shell_quote(&step.run)));
+        script.push_str(&format!(
+            "  if command -v stdbuf >/dev/null 2>&1; then stdbuf -oL -eL sh -c {}; else sh -c {}; fi\n",
+            shell_quote(&step.run),
+            shell_quote(&step.run)
+        ));
+        script.push_str(")\n");
         script.push_str("step_exit=$?\n");
         script.push_str(&format!(
-            "if [ \"$step_exit\" -ne 0 ]; then echo \"=== {step_name} (exit $step_exit)\"; popd >/dev/null; exit \"$step_exit\"; fi\n"
+            "if [ \"$step_exit\" -ne 0 ]; then echo \"=== {step_name} (exit $step_exit)\"; exit \"$step_exit\"; fi\n"
         ));
-        script.push_str(&format!("echo \"=== {step_name} (exit 0)\"\npopd >/dev/null\n"));
+        script.push_str(&format!("echo \"=== {step_name} (exit 0)\"\n"));
     }
 
     for artifact in artifacts {
@@ -124,8 +129,9 @@ mod tests {
         let script = render_job_script("/workspace", &steps, &[], &HashMap::new());
         assert!(script.contains("make build"));
         assert!(script.contains("=== build (running)"));
-        assert!(script.contains("bash -c 'make build'"));
+        assert!(script.contains("sh -c 'make build'") || script.contains("stdbuf -oL -eL sh -c 'make build'"));
         assert!(!script.contains("bash -lc"));
+        assert!(!script.contains("pushd"));
     }
 
     #[test]

@@ -3,11 +3,10 @@ use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use chrono::Utc;
-use futures::AsyncBufReadExt;
 use k8s_openapi::api::batch::v1::Job;
 use k8s_openapi::api::core::v1::{
-    ConfigMap, ConfigMapVolumeSource, Container, EnvVar, PodSpec, PodTemplateSpec, Volume,
-    VolumeMount,
+    ConfigMap, ConfigMapVolumeSource, Container, EnvVar, PodSpec, PodTemplateSpec, SecurityContext,
+    Volume, VolumeMount,
 };
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
 use k8s_openapi::api::core::v1::Pod;
@@ -46,6 +45,7 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
         k8s_job = %job_name,
         namespace = %config.namespace,
         build_image = %build_image,
+        dind = job.dind,
         executor = "kubernetes",
         "creating Kubernetes job pod"
     );
@@ -73,6 +73,10 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
         "CI_REPOSITORY_SLUG".into(),
         format!("{}/{}", job.org_slug, job.repo_slug),
     );
+    if job.dind {
+        extra_env.insert("BUILDKIT_PROGRESS".into(), "plain".into());
+        extra_env.insert("DOCKER_BUILDKIT".into(), "1".into());
+    }
 
     let script = render_job_script(
         &config.workspace_mount_path,
@@ -97,6 +101,7 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
         job.job_id,
         job.timeout_minutes,
         build_image,
+        job.dind,
     );
 
     let jobs: Api<Job> = Api::namespaced(client.clone(), &config.namespace);
@@ -330,6 +335,7 @@ fn build_job_spec(
     job_id: Uuid,
     timeout_minutes: Option<u32>,
     build_image: &str,
+    dind: bool,
 ) -> Job {
     let workspace = config.workspace_mount_path.clone();
     let init_script = format!(
@@ -365,50 +371,102 @@ echo "=== helper: workspace ready"
         ..Default::default()
     };
 
+    let build_env = common_env;
+    let mut build_command = vec!["/bin/sh".into(), "-c".into()];
+    let mut build_args = Some(vec![EXEC_JOB_SCRIPT.to_string()]);
+    let mut build_mounts = vec![
+        VolumeMount {
+            name: "workspace".into(),
+            mount_path: workspace.clone(),
+            ..Default::default()
+        },
+        VolumeMount {
+            name: "scripts".into(),
+            mount_path: "/scripts".into(),
+            read_only: Some(true),
+            ..Default::default()
+        },
+    ];
+
+    if dind {
+        build_mounts.push(VolumeMount {
+            name: "docker-sock".into(),
+            mount_path: "/var/run".into(),
+            ..Default::default()
+        });
+        build_command = vec!["/bin/sh".into(), "-c".into()];
+        build_args = Some(vec![format!(
+            "{WAIT_FOR_DIND_SCRIPT}\n{EXEC_JOB_SCRIPT}"
+        )]);
+    }
+
     let build = Container {
         name: "build".into(),
         image: Some(build_image.to_string()),
-        command: Some(vec!["/bin/bash".into(), "/scripts/run.sh".into()]),
-        env: Some(common_env),
-        volume_mounts: Some(vec![
-            VolumeMount {
-                name: "workspace".into(),
-                mount_path: workspace,
-                ..Default::default()
-            },
-            VolumeMount {
-                name: "scripts".into(),
-                mount_path: "/scripts".into(),
-                read_only: Some(true),
-                ..Default::default()
-            },
-        ]),
+        command: Some(build_command),
+        args: build_args,
+        env: Some(build_env),
+        volume_mounts: Some(build_mounts),
         ..Default::default()
     };
+
+    let mut containers = Vec::new();
+    if dind {
+        containers.push(Container {
+            name: "dind".into(),
+            image: Some(config.dind_image.clone()),
+            command: Some(vec!["dockerd".into()]),
+            args: Some(vec![
+                "--host=unix:///var/run/docker.sock".into(),
+                "--storage-driver=overlay2".into(),
+            ]),
+            security_context: Some(SecurityContext {
+                privileged: Some(true),
+                ..Default::default()
+            }),
+            env: Some(vec![env_var("DOCKER_TLS_CERTDIR", "")]),
+            volume_mounts: Some(vec![VolumeMount {
+                name: "docker-sock".into(),
+                mount_path: "/var/run".into(),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+    }
+    containers.push(build);
 
     let mut pod_labels = labels.clone();
     pod_labels.insert("job-name".into(), job_name.into());
 
+    let mut volumes = vec![
+        Volume {
+            name: "workspace".into(),
+            empty_dir: Some(Default::default()),
+            ..Default::default()
+        },
+        Volume {
+            name: "scripts".into(),
+            config_map: Some(ConfigMapVolumeSource {
+                name: script_cm_name.into(),
+                default_mode: Some(0o755),
+                ..Default::default()
+            }),
+            ..Default::default()
+        },
+    ];
+    if dind {
+        volumes.push(Volume {
+            name: "docker-sock".into(),
+            empty_dir: Some(Default::default()),
+            ..Default::default()
+        });
+    }
+
     let mut spec = PodSpec {
         restart_policy: Some("Never".into()),
         init_containers: Some(vec![helper]),
-        containers: vec![build],
-        volumes: Some(vec![
-            Volume {
-                name: "workspace".into(),
-                empty_dir: Some(Default::default()),
-                ..Default::default()
-            },
-            Volume {
-                name: "scripts".into(),
-                config_map: Some(ConfigMapVolumeSource {
-                    name: script_cm_name.into(),
-                    default_mode: Some(0o755),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            },
-        ]),
+        containers,
+        volumes: Some(volumes),
         ..Default::default()
     };
 
@@ -451,6 +509,31 @@ fn env_var(name: &str, value: &str) -> EnvVar {
         ..Default::default()
     }
 }
+
+/// Line-buffer job script output so Kubernetes log polling streams lines during long steps.
+const EXEC_JOB_SCRIPT: &str = r#"set -eu
+if command -v apk >/dev/null 2>&1; then
+  apk add --no-cache coreutils >/dev/null 2>&1 || true
+fi
+if command -v stdbuf >/dev/null 2>&1; then
+  exec stdbuf -oL -eL /bin/sh /scripts/run.sh
+fi
+exec /bin/sh /scripts/run.sh
+"#;
+
+const WAIT_FOR_DIND_SCRIPT: &str = r#"set -eu
+echo "=== waiting for docker daemon"
+i=0
+while [ "$i" -lt 90 ]; do
+  if docker info >/dev/null 2>&1; then
+    echo "=== docker daemon ready"
+    break
+  fi
+  i=$((i + 1))
+  sleep 1
+done
+docker info >/dev/null
+"#;
 
 async fn watch_job(
     client: &Client,
@@ -516,12 +599,22 @@ async fn watch_job(
     });
 
     let mut streamer = LogStreamer::new(api, job_id, mask_values);
-    stream_build_logs(&pods, &pod_name, &mut streamer).await?;
+    let (exit_code, timed_out) =
+        follow_build_logs_until_exit(
+            &pods,
+            &jobs,
+            job_name,
+            &pod_name,
+            &mut streamer,
+            timeout_minutes,
+        )
+        .await?;
 
     cancel_handle.abort();
 
-    let (exit_code, timed_out) =
-        wait_for_build_exit(&pods, &jobs, job_name, &pod_name, timeout_minutes).await?;
+    if exit_code != 0 {
+        append_container_logs_on_failure(&pods, &pod_name, api, job_id).await;
+    }
 
     if timed_out {
         api.append_log(
@@ -543,14 +636,19 @@ async fn watch_job(
     Ok((exit_code, cancelled, timed_out))
 }
 
-async fn wait_for_build_exit(
+async fn follow_build_logs_until_exit<'a>(
     pods: &Api<Pod>,
     jobs: &Api<Job>,
     job_name: &str,
     pod_name: &str,
-    _timeout_minutes: Option<u32>,
+    streamer: &mut LogStreamer<'a>,
+    timeout_minutes: Option<u32>,
 ) -> anyhow::Result<(i32, bool)> {
-    let deadline = Instant::now() + Duration::from_secs(120);
+    let max_wait = timeout_minutes
+        .map(|minutes| Duration::from_secs(minutes as u64 * 60))
+        .unwrap_or(Duration::from_secs(3600));
+    let deadline = Instant::now() + max_wait + Duration::from_secs(120);
+    let mut sent_bytes = 0usize;
     let mut timed_out = false;
 
     loop {
@@ -558,7 +656,11 @@ async fn wait_for_build_exit(
             anyhow::bail!("timed out waiting for build container exit for job {job_name}");
         }
 
+        push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+
         if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+            push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+            streamer.flush().await;
             return Ok((exit_code, timed_out));
         }
 
@@ -572,12 +674,16 @@ async fn wait_for_build_exit(
                     timed_out = true;
                 }
                 if status.succeeded.is_some_and(|n| n > 0) {
+                    push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+                    streamer.flush().await;
                     if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
                         return Ok((exit_code, timed_out));
                     }
                     return Ok((0, timed_out));
                 }
                 if status.failed.is_some_and(|n| n > 0) {
+                    push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+                    streamer.flush().await;
                     if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
                         return Ok((exit_code, timed_out));
                     }
@@ -592,6 +698,8 @@ async fn wait_for_build_exit(
                 .as_ref()
                 .and_then(|status| status.phase.as_deref());
             if matches!(phase, Some("Failed") | Some("Succeeded")) {
+                push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+                streamer.flush().await;
                 if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
                     return Ok((exit_code, timed_out));
                 }
@@ -601,6 +709,24 @@ async fn wait_for_build_exit(
         }
 
         tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+async fn push_build_log_delta<'a>(
+    pods: &Api<Pod>,
+    pod_name: &str,
+    streamer: &mut LogStreamer<'a>,
+    sent_bytes: &mut usize,
+) {
+    let full = fetch_container_log(pods, pod_name, "build").await;
+    if full.len() < *sent_bytes {
+        // Container log rotated or truncated — resync from the start.
+        *sent_bytes = 0;
+    }
+    if full.len() > *sent_bytes {
+        streamer.push(&full[*sent_bytes..]).await;
+        *sent_bytes = full.len();
+        streamer.flush().await;
     }
 }
 
@@ -721,6 +847,26 @@ async fn helper_init_exit_code(pods: &Api<Pod>, pod_name: &str) -> anyhow::Resul
         .map(|t| t.exit_code))
 }
 
+async fn append_container_logs_on_failure(
+    pods: &Api<Pod>,
+    pod_name: &str,
+    api: &RunnerApi,
+    job_id: Uuid,
+) {
+    for container in ["build", "dind"] {
+        let log = fetch_container_log(pods, pod_name, container).await;
+        if log.trim().is_empty() {
+            continue;
+        }
+        let _ = api
+            .append_log(
+                job_id,
+                &format!("\n=== {container} container log ===\n{log}\n"),
+            )
+            .await;
+    }
+}
+
 async fn fetch_container_log(pods: &Api<Pod>, pod_name: &str, container: &str) -> String {
     let params = LogParams {
         container: Some(container.into()),
@@ -731,49 +877,6 @@ async fn fetch_container_log(pods: &Api<Pod>, pod_name: &str, container: &str) -
         Err(err) => {
             tracing::warn!(%err, pod = %pod_name, %container, "failed to fetch container log");
             String::new()
-        }
-    }
-}
-
-fn is_pod_initializing_error(err: &kube::Error) -> bool {
-    match err {
-        kube::Error::Api(api) => api.message.contains("PodInitializing"),
-        _ => false,
-    }
-}
-
-async fn stream_build_logs<'a>(
-    pods: &Api<Pod>,
-    pod_name: &str,
-    streamer: &mut LogStreamer<'a>,
-) -> anyhow::Result<()> {
-    let log_params = LogParams {
-        container: Some("build".into()),
-        follow: true,
-        ..Default::default()
-    };
-    let deadline = Instant::now() + Duration::from_secs(120);
-
-    loop {
-        match pods.log_stream(pod_name, &log_params).await {
-            Ok(mut log_stream) => {
-                let mut line_buf = Vec::new();
-                loop {
-                    line_buf.clear();
-                    let read = log_stream.read_until(b'\n', &mut line_buf).await?;
-                    if read == 0 {
-                        break;
-                    }
-                    let chunk = String::from_utf8_lossy(&line_buf);
-                    streamer.push(&chunk).await;
-                }
-                streamer.flush().await;
-                return Ok(());
-            }
-            Err(err) if is_pod_initializing_error(&err) && Instant::now() < deadline => {
-                tokio::time::sleep(Duration::from_secs(2)).await;
-            }
-            Err(err) => return Err(err).context("stream build container logs"),
         }
     }
 }

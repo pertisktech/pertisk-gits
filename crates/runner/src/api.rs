@@ -28,6 +28,8 @@ pub struct PollJobResponse {
     pub timeout_minutes: Option<u32>,
     #[serde(default)]
     pub image: Option<String>,
+    #[serde(default)]
+    pub dind: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

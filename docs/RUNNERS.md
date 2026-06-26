@@ -175,11 +175,23 @@ jobs:
 
 When `image` is omitted, the runner uses `kubernetes.buildImage` / `PERTISK_K8S_BUILD_IMAGE` (default `debian:bookworm-slim`). Official images (`golang`, `rust`, `node`, etc.) work as-is — steps run with `bash -c` so the image `PATH` is preserved (login shells would strip `/usr/local/go/bin`, `/usr/local/cargo/bin`, etc.).
 
+**Docker / buildx in job pods** — set `dind: true` on the job and use a Docker CLI image (e.g. `docker:27-cli`). The runner adds a privileged `docker:dind` sidecar; both containers share a `docker.sock` via `emptyDir` (no unencrypted TCP API). The cluster must allow privileged pods.
+
+```yaml
+jobs:
+  image:
+    runs-on: kubernetes
+    dind: true
+    image: docker:27-cli
+    steps:
+      - run: docker buildx build --push -t registry.example.com/app:latest .
+```
+
 | | **Shell pool** | **Kubernetes executor** |
 |--|----------------|-------------------------|
 | Scale | `replicaCount` on manager | One Job pod per active job |
 | Isolation | Shared runner pod | Per-job pod (`emptyDir` workspace) |
-| Docker builds | `docker.sock` on host (optional) | Use custom `kubernetes.buildImage` with Docker/Kaniko |
+| Docker builds | `docker.sock` on host (optional) | `dind: true` + `image: docker:*-cli` for buildx |
 
 Environment (manager pod):
 
@@ -189,6 +201,7 @@ Environment (manager pod):
 | `PERTISK_K8S_NAMESPACE` | Where job pods are created |
 | `PERTISK_K8S_RELEASE` | Helm release name — labels CI jobs for uninstall cleanup |
 | `PERTISK_K8S_BUILD_IMAGE` | Image for build container (default `debian:bookworm-slim`) |
+| `PERTISK_K8S_DIND_IMAGE` | DinD sidecar image when job sets `dind: true` (default `docker:27.5.1-dind`) |
 | `PERTISK_K8S_HELPER_IMAGE` | Init container image (default `curlimages/curl`) |
 
 `helm uninstall` runs a pre-delete hook that removes `pertisk-job-*` Jobs and script ConfigMaps labeled for that release (`kubernetes.cleanupOnUninstall`, default `true`). Finished job pods are also removed after `kubernetes.ttlSecondsAfterFinished` (default 600s).

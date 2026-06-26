@@ -42,6 +42,9 @@ pub struct Job {
     /// Container image for Kubernetes executor (GitLab-style `image:`).
     #[serde(default)]
     pub image: Option<String>,
+    /// Spawn a privileged Docker-in-Docker sidecar for job pods (Kubernetes executor).
+    #[serde(default)]
+    pub dind: bool,
     #[serde(default)]
     pub needs: Vec<String>,
     #[serde(default = "default_true")]
@@ -297,6 +300,25 @@ jobs:
         )
         .unwrap();
         assert_eq!(cfg.jobs["build"].image.as_deref(), Some("rust:1-bookworm"));
+    }
+
+    #[test]
+    fn parses_job_dind() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  image:
+    runs-on: kubernetes
+    dind: true
+    image: docker:27-cli
+    steps:
+      - run: docker buildx version
+"#,
+        )
+        .unwrap();
+        assert!(cfg.jobs["image"].dind);
+        assert_eq!(cfg.jobs["image"].image.as_deref(), Some("docker:27-cli"));
     }
 
     #[test]

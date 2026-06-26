@@ -29,6 +29,7 @@ kubernetes:
   namespace: ""
   helperImage: curlimages/curl:8.12.1
   buildImage: debian:bookworm-slim
+  dindImage: docker:27.5.1-dind
   ttlSecondsAfterFinished: 600
   # Delete pertisk-job-* Jobs and script ConfigMaps on helm uninstall
   cleanupOnUninstall: true

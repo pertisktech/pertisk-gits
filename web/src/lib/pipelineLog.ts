@@ -207,6 +207,17 @@ export function stepLogText(
         : section.exitCode === 130
           ? `=== ${section.name} (exit cancelled)`
           : `=== ${section.name} (exit ${section.exitCode})`
+    // While a step is running, show the live tail of the job log (K8s polls append continuously).
+    if (
+      section.exitCode === null &&
+      effectiveJobStatus(job, runStatus) === 'running'
+    ) {
+      const marker = `=== ${section.name} (running)`
+      const start = job.log_text.indexOf(marker)
+      if (start >= 0) {
+        return job.log_text.slice(start)
+      }
+    }
     return section.text.trim() ? `${header}\n${section.text.trim()}` : header
   }
 

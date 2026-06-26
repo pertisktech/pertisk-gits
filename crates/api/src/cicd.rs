@@ -569,6 +569,7 @@ struct PollJobResponse {
     artifacts: Value,
     timeout_minutes: Option<i32>,
     image: Option<String>,
+    dind: bool,
 }
 
 #[derive(Deserialize)]
@@ -1223,6 +1224,7 @@ async fn poll_runner_job(
                     j.artifacts_json,
                     j.timeout_minutes,
                     j.image,
+                    j.dind,
                     p.repository_id,
                     p.commit_sha,
                     p.ref_name,
@@ -1253,6 +1255,7 @@ async fn poll_runner_job(
                 artifacts: meta.artifacts_json,
                 timeout_minutes: meta.timeout_minutes,
                 image: meta.image,
+                dind: meta.dind,
             })));
         }
 
@@ -2230,12 +2233,13 @@ async fn materialize_jobs_for_run(
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, steps_json, artifacts_json, needs, timeout_minutes, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'queued')
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
                 image = EXCLUDED.image,
+                dind = EXCLUDED.dind,
                 steps_json = EXCLUDED.steps_json,
                 artifacts_json = EXCLUDED.artifacts_json,
                 needs = EXCLUDED.needs,
@@ -2255,6 +2259,7 @@ async fn materialize_jobs_for_run(
         .bind(&job.name)
         .bind(&job.job.runs_on)
         .bind(job.job.image.as_deref().filter(|image| !image.trim().is_empty()))
+        .bind(job.job.dind)
         .bind(steps_json)
         .bind(artifacts_json)
         .bind(&job.job.needs)
@@ -2949,6 +2954,7 @@ struct JobPollRow {
     artifacts_json: Value,
     timeout_minutes: Option<i32>,
     image: Option<String>,
+    dind: bool,
     repository_id: Uuid,
     commit_sha: String,
     ref_name: String,
