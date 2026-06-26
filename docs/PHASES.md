@@ -175,6 +175,51 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 ---
 
+## Phase 6.5 — Import from GitHub & GitLab (Planned)
+
+**Goal:** Onboard teams by importing existing projects from GitHub or GitLab without manual `git clone` + push.
+
+### MVP scope
+
+| Component | Approach | Status |
+|-----------|----------|--------|
+| Import wizard UI | Org/repo settings — pick source (GitHub / GitLab), target group | Planned |
+| Auth | Personal access token (PAT) or OAuth app — list accessible repos | Planned |
+| Git mirror | `git clone --mirror` (or provider archive API) → bare repo under `REPOS_ROOT` | Planned |
+| Repo metadata | Name, description, default branch, visibility (public/private) | Planned |
+| Progress + audit | Background job, status in UI, `audit_events` entry | Planned |
+
+### Optional (phase 2 of import)
+
+| Component | Notes | Status |
+|-----------|-------|--------|
+| Issues + labels + milestones | Map via GitHub/GitLab REST API into Pertisk tables | Planned |
+| Pull/merge requests | Import open MRs/PRs (title, body, branches); closed history later | Planned |
+| Wiki pages | Export wiki repo or API → Pertisk wiki (Phase 3) | Deferred |
+| CI config | Detect `.gitlab-ci.yml` / GitHub Actions; suggest `.pertisk-ci.yaml` conversion | Planned |
+| Bulk import | Entire GitHub org or GitLab group in one job | Planned |
+| Registry images | Optional mirror of container images to Pertisk registry | Deferred |
+
+### Technical notes
+
+- **Worker job:** `import_jobs` table — `pending` → `mirroring` → `metadata` → `done` / `failed`
+- **Credentials:** Encrypted PAT stored per user or org import token; never logged
+- **Rate limits:** Respect GitHub/GitLab API quotas; resumable mirror on failure
+- **Idempotency:** Re-import updates mirror; skip or merge metadata conflicts
+
+### Provider APIs
+
+| Source | List repos | Mirror git | Issues / MRs |
+|--------|------------|------------|--------------|
+| GitHub | `GET /user/repos`, `GET /orgs/{org}/repos` | `git clone --mirror` or tarball | REST v3 issues + pulls |
+| GitLab | `GET /projects` (membership) | `git clone --mirror` or project export | REST v4 issues + merge_requests |
+
+**Tables (new):** `import_jobs`, `import_job_repos` (optional)
+
+See future [docs/IMPORT.md](./IMPORT.md)
+
+---
+
 ## Phase 7 — Fine-grained Permissions & Kubernetes
 
 ### Fine-grained Permissions
@@ -204,6 +249,7 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 | Built-in Container Registry | 5 |
 | SSO/LDAP Integration | 6 |
 | Audit Logs | 6 |
+| Import from GitHub / GitLab | 6.5 |
 | Fine-grained Permissions | 7 |
 | Kubernetes Integration | 7 |
 
