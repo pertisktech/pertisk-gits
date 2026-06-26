@@ -246,7 +246,7 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 ---
 
-## Phase 6.5 — Import from GitHub & GitLab (Planned)
+## Phase 6.5 — Import from GitHub & GitLab (In progress)
 
 **Goal:** Onboard teams by importing existing projects from GitHub or GitLab without manual `git clone` + push.
 
@@ -254,11 +254,11 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 | Component | Approach | Status |
 |-----------|----------|--------|
-| Import wizard UI | Org/repo settings — pick source (GitHub / GitLab), target group | Planned |
-| Auth | Personal access token (PAT) or OAuth app — list accessible repos | Planned |
-| Git mirror | `git clone --mirror` (or provider archive API) → bare repo under `REPOS_ROOT` | Planned |
-| Repo metadata | Name, description, default branch, visibility (public/private) | Planned |
-| Progress + audit | Background job, status in UI, `audit_events` entry | Planned |
+| Import wizard UI | Group → Import — pick source (GitHub / GitLab), list repos, start job | Done (MVP) |
+| Auth | Personal access token (PAT) — list accessible repos; encrypted storage | Done (MVP) |
+| Git mirror | `git clone --mirror` → bare repo under `REPOS_ROOT`; re-import updates mirror | Done (MVP) |
+| Repo metadata | Name, description, default branch, visibility (public/private) | Done (MVP) |
+| Progress + audit | Background job (`pertisk-worker`), status in UI, `audit_events` entry | Done (MVP) |
 
 ### Optional (phase 2 of import)
 
@@ -287,7 +287,7 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 **Tables (new):** `import_jobs`, `import_job_repos` (optional)
 
-See future [docs/IMPORT.md](./IMPORT.md)
+See [docs/IMPORT.md](./IMPORT.md)
 
 ---
 
@@ -362,7 +362,7 @@ pertisk-gits/
 │   ├── git/              # Phase 1 (git-http, git-ssh)
 │   ├── cicd/             # Phase 4 pipeline engine
 │   ├── runner/           # Phase 4 CI runner
-│   ├── worker/           # Phase 4 scheduler
+│   ├── worker/           # Phase 4 scheduler + Phase 6.5 import jobs
 │   └── registry/         # Phase 5 OCI container registry
 ├── web/                  # React app
 ├── migrations/           # SQLx migrations

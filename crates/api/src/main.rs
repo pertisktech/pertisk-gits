@@ -39,6 +39,7 @@ mod collaboration;
 mod cicd;
 mod config;
 mod db;
+mod import;
 mod password;
 mod permissions;
 mod registry;
@@ -105,6 +106,7 @@ async fn main() -> anyhow::Result<()> {
     let pool = db::connect(&config.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
     cicd::spawn_runner_stale_checker(pool.clone());
+    import::spawn_background_processor(pool.clone(), config.repos_root.clone());
     let artifact_store = artifacts::ArtifactStore::from_env()?;
     let secrets_crypto = Arc::new(SecretsCrypto::from_env()?);
 
@@ -184,6 +186,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(ci_secrets::ci_secrets_write_routes())
         .merge(registry::registry_write_routes())
         .merge(audit::audit_routes())
+        .merge(import::import_routes())
         .merge(admin::admin_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));
 

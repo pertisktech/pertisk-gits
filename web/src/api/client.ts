@@ -19,6 +19,10 @@ import type {
   PullRequestDetail,
   PullRequestReview,
   PullRequestReviewDetail,
+  ImportCredential,
+  ImportJob,
+  ImportJobDetail,
+  RemoteRepo,
   RegisterRunnerResponse,
   RepoBrowser,
   RepoCollaborator,
@@ -989,4 +993,79 @@ export const api = {
       throw new Error(message)
     }
   },
+
+  listImportCredentials: (token: string, orgSlug: string) =>
+    request<ImportCredential[]>(`/organizations/${orgSlug}/import/credentials`, {}, token),
+
+  saveImportCredential: (
+    token: string,
+    orgSlug: string,
+    payload: {
+      provider: 'github' | 'gitlab'
+      token: string
+      base_url?: string
+      label?: string
+    },
+  ) =>
+    request<ImportCredential>(`/organizations/${orgSlug}/import/credentials`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteImportCredential: async (token: string, orgSlug: string, credentialId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/import/credentials/${credentialId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      throw new Error(typeof body.error === 'string' ? body.error : 'Request failed')
+    }
+  },
+
+  discoverImportRepos: (
+    token: string,
+    orgSlug: string,
+    payload: {
+      credential_id?: string
+      provider?: 'github' | 'gitlab'
+      token?: string
+      base_url?: string
+    },
+  ) =>
+    request<{ account: string; repos: RemoteRepo[] }>(
+      `/organizations/${orgSlug}/import/discover`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  createImportJob: (
+    token: string,
+    orgSlug: string,
+    payload: {
+      credential_id: string
+      repos: Array<{
+        source_id: string
+        source_full_name: string
+        source_clone_url: string
+        target_slug?: string
+        target_name?: string
+        description?: string
+        visibility?: 'public' | 'private'
+        default_branch?: string
+      }>
+    },
+  ) =>
+    request<ImportJobDetail>(`/organizations/${orgSlug}/import/jobs`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  listImportJobs: (token: string, orgSlug: string) =>
+    request<ImportJob[]>(`/organizations/${orgSlug}/import/jobs`, {}, token),
+
+  getImportJob: (token: string, orgSlug: string, jobId: string) =>
+    request<ImportJobDetail>(`/organizations/${orgSlug}/import/jobs/${jobId}`, {}, token),
 }

@@ -1,5 +1,5 @@
 .PHONY: build build-local build-package check test run run-release \
-	infra infra-down install-web web-dist web-dist-docker fix-perms \
+	infra infra-down install-web web-dist web-dist-docker fix-perms fix-web-dist-owner \
 	dev dev-vite dev-serve dev-web dev-stop \
 	package package-clean package-amd64 package-arm64 package-deb package-rpm \
 	package-runner package-runner-clean package-runner-amd64 package-runner-arm64 \
@@ -77,15 +77,28 @@ fix-perms:
 
 WEB_VERSION_FILE = web/dist/.app-version
 
+# docker cp (legacy) left root-owned files on macOS; remove so local make targets can clean web/dist.
+.PHONY: fix-web-dist-owner
+fix-web-dist-owner:
+	@if [ -d web/dist ] && find web/dist ! -user $$(id -u) -print -quit 2>/dev/null | grep -q .; then \
+		echo "Removing root-owned web/dist (from an older Docker extract)..."; \
+		if rm -rf web/dist 2>/dev/null; then \
+			:; \
+		elif sudo rm -rf web/dist 2>/dev/null; then \
+			:; \
+		else \
+			echo "Cannot remove web/dist. Run once: sudo make fix-perms"; exit 1; \
+		fi; \
+	fi
+
 .PHONY: web-dist-docker
 web-dist-docker:
 	@echo "Building web UI via Docker (v$(VERSION))..."
+	@$(MAKE) fix-web-dist-owner
 	docker build -f docker/Dockerfile.web --build-arg VERSION="$(VERSION)" -t pertisk-web-dist .
-	rm -rf web/dist && mkdir -p web/dist
-	docker rm -f extract-web-dist 2>/dev/null || true
-	docker create --name extract-web-dist pertisk-web-dist
-	docker cp extract-web-dist:/web/dist/. web/dist/
-	docker rm extract-web-dist
+	rm -rf web/dist 2>/dev/null || $(MAKE) fix-web-dist-owner
+	mkdir -p web/dist
+	docker run --rm pertisk-web-dist tar -C /web/dist -cf - . | tar -xf - -C web/dist
 	@test -f web/dist/index.html
 
 web-dist:
@@ -109,7 +122,10 @@ web-dist:
 				$(MAKE) install-web; \
 			fi; \
 			rm -rf web/dist 2>/dev/null || { \
-				echo "Cannot clean web/dist. Run: sudo make fix-perms"; exit 1; \
+				$(MAKE) fix-web-dist-owner; \
+				rm -rf web/dist 2>/dev/null || { \
+					echo "Cannot clean web/dist. Run: sudo make fix-perms"; exit 1; \
+				}; \
 			}; \
 			cd web && $(RUN_AS_USER)VERSION="$(VERSION)" npm run build && echo "$(VERSION)" > dist/.app-version; \
 		fi; \
@@ -160,6 +176,7 @@ dev-serve: dev
 
 package-clean:
 	rm -f pertisk-gits-linux-amd64 pertisk-gits-linux-arm64
+	@$(MAKE) fix-web-dist-owner
 	rm -f web/dist/.app-version
 	@echo "Removed Linux binaries; next package build will rebuild via Docker."
 

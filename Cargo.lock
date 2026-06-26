@@ -3945,6 +3945,7 @@ dependencies = [
  "pertisk-domain",
  "pertisk-git",
  "pertisk-registry",
+ "pertisk-worker",
  "quick-xml",
  "rand 0.8.6",
  "reqwest",
@@ -4087,13 +4088,18 @@ dependencies = [
 name = "pertisk-worker"
 version = "0.1.0"
 dependencies = [
+ "aes-gcm 0.10.3",
  "anyhow",
+ "base64 0.22.1",
  "chrono",
  "clap 4.6.1",
  "dotenvy",
  "pertisk-cicd",
+ "pertisk-domain",
+ "pertisk-git",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tokio",
  "tracing",

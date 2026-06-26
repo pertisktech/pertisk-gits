@@ -11,6 +11,8 @@ use tokio::process::Command;
 use tracing_subscriber::EnvFilter;
 use uuid::Uuid;
 
+use pertisk_worker::import::ImportWorker;
+
 #[derive(Parser)]
 #[command(name = "pertisk-worker", about = "Pertisk Gits CI scheduler worker")]
 struct Cli {
@@ -42,9 +44,11 @@ async fn main() -> anyhow::Result<()> {
     sqlx::migrate!("../../migrations").run(&pool).await?;
 
     let state = WorkerState {
-        pool,
+        pool: pool.clone(),
         repos_root: Arc::new(cli.repos_root),
     };
+
+    let import_worker = ImportWorker::from_env(pool, state.repos_root.clone())?;
 
     tracing::info!(poll_secs = cli.poll_secs, "pertisk-worker started");
     loop {
@@ -52,6 +56,11 @@ async fn main() -> anyhow::Result<()> {
             Ok(count) if count > 0 => tracing::info!(processed = count, "pipeline triggers processed"),
             Ok(_) => {}
             Err(err) => tracing::warn!("trigger processing failed: {err:#}"),
+        }
+        match import_worker.process_pending_jobs().await {
+            Ok(count) if count > 0 => tracing::info!(processed = count, "import jobs processed"),
+            Ok(_) => {}
+            Err(err) => tracing::warn!("import processing failed: {err:#}"),
         }
         tokio::time::sleep(Duration::from_secs(cli.poll_secs)).await;
     }

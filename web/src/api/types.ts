@@ -537,6 +537,7 @@ export type AuditEventType =
   | 'repo_access'
   | 'permission_change'
   | 'merge'
+  | 'import'
 
 export interface AuditEvent {
   id: string
@@ -565,4 +566,62 @@ export interface CiSecret {
   secret_kind: CiSecretKind
   created_at: string
   updated_at: string
+}
+
+export type ImportProvider = 'github' | 'gitlab'
+
+export type ImportJobStatus = 'pending' | 'mirroring' | 'metadata' | 'done' | 'failed'
+
+export interface ImportCredential {
+  id: string
+  provider: ImportProvider
+  base_url: string | null
+  label: string | null
+  created_at: string
+}
+
+export interface RemoteRepo {
+  id: string
+  full_name: string
+  name: string
+  description: string | null
+  visibility: 'public' | 'private'
+  default_branch: string
+  clone_url: string
+}
+
+export interface ImportJob {
+  id: string
+  organization_id: string
+  created_by: string
+  credential_id: string
+  provider: ImportProvider
+  status: ImportJobStatus
+  error_message: string | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ImportJobRepo {
+  id: string
+  job_id: string
+  source_id: string
+  source_full_name: string
+  source_clone_url: string
+  target_slug: string
+  target_name: string
+  description: string | null
+  visibility: 'public' | 'private'
+  default_branch: string | null
+  repository_id: string | null
+  status: ImportJobStatus
+  error_message: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ImportJobDetail extends ImportJob {
+  repos: ImportJobRepo[]
 }

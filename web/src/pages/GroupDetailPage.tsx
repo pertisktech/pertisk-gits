@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { FolderGit2, Plus, Settings } from 'lucide-react'
+import { FolderGit2, Plus, Settings, Download } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -55,6 +55,12 @@ export function GroupDetailPage() {
           <LinkButton to={`/groups/${slug}/settings`}>
             <Settings size={14} />
             Settings
+          </LinkButton>
+        )}
+        {canManage && (
+          <LinkButton to={`/groups/${slug}/import`}>
+            <Download size={14} />
+            Import
           </LinkButton>
         )}
         <LinkButton to={`/groups/${slug}/projects/new`} primary>

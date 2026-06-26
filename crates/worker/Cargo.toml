@@ -3,12 +3,18 @@ name = "pertisk-worker"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+name = "pertisk_worker"
+path = "src/lib.rs"
+
 [[bin]]
 name = "pertisk-worker"
 path = "src/main.rs"
 
 [dependencies]
 pertisk-cicd = { path = "../cicd" }
+pertisk-domain = { path = "../domain" }
+pertisk-git = { path = "../git" }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }
@@ -20,3 +26,6 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
+aes-gcm = "0.10"
+base64 = "0.22"
+sha2 = "0.10"

@@ -4,6 +4,7 @@ import {
   ChevronRight,
   Code2,
   CircleDot,
+  Download,
   FolderGit2,
   Gauge,
   GitCommit,
@@ -68,6 +69,7 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'registry', label: 'Registry', icon: Package },
   { id: 'members', label: 'Members', icon: Users },
   { id: 'secrets', label: 'Secrets', icon: KeyRound },
+  { id: 'import', label: 'Import', icon: Download },
   { id: 'audit', label: 'Audit log', icon: ScrollText },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
@@ -177,6 +179,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
 
             {groupNavItems
               .filter((item) => item.id !== 'audit' || group.canViewAudit)
+              .filter((item) => item.id !== 'import' || group.canManage)
               .filter((item) => item.id !== 'settings' || group.canManage)
               .map(({ id, label, icon: Icon }) => (
               <NavLink

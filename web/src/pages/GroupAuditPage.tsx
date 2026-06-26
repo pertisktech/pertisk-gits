@@ -14,11 +14,13 @@ const EVENT_TYPES: { value: '' | AuditEventType; label: string }[] = [
   { value: 'sso_login', label: 'SSO login' },
   { value: 'permission_change', label: 'Permission change' },
   { value: 'merge', label: 'Merge' },
+  { value: 'import', label: 'Import' },
   { value: 'repo_access', label: 'Repo access' },
 ]
 
 function eventVariant(type: AuditEventType) {
   if (type === 'merge') return 'green' as const
+  if (type === 'import') return 'violet' as const
   if (type === 'permission_change') return 'violet' as const
   if (type === 'sso_login') return 'yellow' as const
   return 'gray' as const

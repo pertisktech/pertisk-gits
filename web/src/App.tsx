@@ -11,6 +11,7 @@ import { PullRequestDetailPage } from './pages/PullRequestDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GroupAuditPage } from './pages/GroupAuditPage'
 import { GroupSecretsPage } from './pages/GroupSecretsPage'
+import { GroupImportPage } from './pages/GroupImportPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
 import { GroupMembersPage } from './pages/GroupMembersPage'
 import { GroupSettingsPage } from './pages/GroupSettingsPage'
@@ -133,6 +134,7 @@ export default function App() {
                   <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
                   <Route path="/groups/:slug/audit" element={<GroupAuditPage />} />
                   <Route path="/groups/:slug/secrets" element={<GroupSecretsPage />} />
+                  <Route path="/groups/:slug/import" element={<GroupImportPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
                   <Route path="/runners" element={<Navigate to="/admin/runners" replace />} />

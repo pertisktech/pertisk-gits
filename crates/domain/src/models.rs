@@ -22,6 +22,26 @@ pub enum AuditEventType {
     RepoAccess,
     PermissionChange,
     Merge,
+    Import,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "import_provider", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum ImportProvider {
+    Github,
+    Gitlab,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "import_job_status", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum ImportJobStatus {
+    Pending,
+    Mirroring,
+    Metadata,
+    Done,
+    Failed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -593,3 +613,50 @@ pub struct LdapLoginRequest {
     #[validate(length(min = 1))]
     pub password: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ImportCredential {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub user_id: Uuid,
+    pub provider: ImportProvider,
+    pub base_url: Option<String>,
+    pub label: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ImportJob {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub created_by: Uuid,
+    pub credential_id: Uuid,
+    pub provider: ImportProvider,
+    pub status: ImportJobStatus,
+    pub error_message: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub finished_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ImportJobRepo {
+    pub id: Uuid,
+    pub job_id: Uuid,
+    pub source_id: String,
+    pub source_full_name: String,
+    pub source_clone_url: String,
+    pub target_slug: String,
+    pub target_name: String,
+    pub description: Option<String>,
+    pub visibility: RepoVisibility,
+    pub default_branch: Option<String>,
+    pub repository_id: Option<Uuid>,
+    pub status: ImportJobStatus,
+    pub error_message: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
