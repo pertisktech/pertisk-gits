@@ -129,6 +129,59 @@ Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
 ---
 
+## Phase 4.5 — Runner deployment & operations (In progress)
+
+**Goal:** Document and ship repeatable ways to install, configure, and run `pertisk-runner` on bare metal, containers, and Kubernetes.
+
+Runners poll the API for jobs (`GET /runner/jobs`), execute shell steps on the host, stream logs, and upload artifacts. Register via UI or `POST /api/v1/runners/register` with **labels** (e.g. `linux`, `docker`) that match `runs-on` in `.pertisk-ci.yaml`.
+
+### Deployment modes
+
+| Mode | Approach | Status |
+|------|----------|--------|
+| **Linux service (systemd)** | RPM/DEB package — `pertisk-runner` system user, `/etc/pertisk-runner/pertisk-runner.conf`, `systemctl enable --now pertisk-runner` | Done |
+| **Remote RPM install** | `make install-runner DEPLOY_HOST=user@host` or `build/deploy-runner-rpm.sh` | Done |
+| **Colocated git host** | Set `PERTISK_REPOS_ROOT` = server `REPOS_ROOT` for fast checkout; optional `docker` group for `docker build` steps | Done |
+| **Docker image** | OCI image running `pertisk-runner run`; env: `PERTISK_RUNNER_TOKEN`, `PERTISK_API_URL`; mount `docker.sock` when label includes `docker` | Planned |
+| **Docker Compose** | Compose stack for dev/small installs — runner service + shared network to API; optional DinD sidecar | Planned |
+| **Kubernetes runner** | Deployment or Job-based runners; label selectors; HPA / queue-depth autoscale; Helm values for token + API URL | Planned |
+
+### Configuration (all modes)
+
+| Variable | Purpose |
+|----------|---------|
+| `PERTISK_RUNNER_TOKEN` | Runner auth token from registration (`ptr_…`) |
+| `PERTISK_API_URL` | Pertisk API base (e.g. `https://git.example.com`) |
+| `PERTISK_REPOS_ROOT` | Optional — path to bare repos on same host as git server |
+| Labels | Declared at registration; jobs match `runs-on` in pipeline YAML |
+
+### Linux service (current production path)
+
+```bash
+# Register runner (UI or API) → copy token
+sudo vi /etc/pertisk-runner/pertisk-runner.conf   # PERTISK_RUNNER_TOKEN, PERTISK_API_URL
+sudo systemctl enable --now pertisk-runner
+sudo systemctl status pertisk-runner
+```
+
+For `runs-on: docker` jobs: add `pertisk-runner` to the `docker` group and restart (RPM postinstall does this when Docker is present).
+
+### Docker / Compose (planned)
+
+- Publish `pertisk-runner` image (multi-arch) alongside API packages
+- Example `docker run` with token secret, workspace volume, and `/var/run/docker.sock` bind for build jobs
+- `deploy/docker-compose.runner.yml` — runner + infra for local/dev clusters
+
+### Kubernetes runner (planned)
+
+- Long-lived **Deployment** runners (like GitLab shell executor on K8s) or ephemeral **Job** per pipeline
+- ConfigMap/Secret for `PERTISK_API_URL` + token; node selectors / tolerations for dedicated build nodes
+- Integrate with Phase 7 Helm chart; optional cluster-autoscaler on pending `job_runs`
+
+See [docs/CICD.md](./CICD.md) (runner setup today); future [docs/RUNNERS.md](./RUNNERS.md) for full deployment guide.
+
+---
+
 ## Phase 5 — Container Registry (In progress)
 
 **Goal:** OCI registry per org (`registry.host/org/image:tag`).
@@ -230,7 +283,7 @@ See future [docs/IMPORT.md](./IMPORT.md)
 
 ### Kubernetes Integration
 - Helm chart for gateway + API + workers
-- K8s-based CI runners
+- K8s-based CI runners (see Phase 4.5)
 - Optional GitOps webhooks (Argo CD / Flux)
 
 ---
@@ -246,6 +299,7 @@ See future [docs/IMPORT.md](./IMPORT.md)
 | Code Search | 3 |
 | HTTP/3 (Quiche) | 3 |
 | CI/CD | 4 |
+| Runner deployment (systemd / Docker / K8s) | 4.5 |
 | Built-in Container Registry | 5 |
 | SSO/LDAP Integration | 6 |
 | Audit Logs | 6 |
