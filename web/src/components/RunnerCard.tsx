@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
-import { Check, Copy, Cpu, HardDrive, MemoryStick, Network, RefreshCw, Server, Trash2 } from 'lucide-react'
+import { Check, Copy, Cpu, HardDrive, MemoryStick, Network, RefreshCw, Server, Trash2, Boxes } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
-import type { Runner } from '../api/types'
+import type { Runner, RunnerInstance, RunnerK8sPod } from '../api/types'
 import { fetchRunnerApiUrl, formatRunnerConf } from '../lib/runnerConfig'
 import { StatusBadge } from './StatusBadge'
 import { PrimaryButton, SecondaryButton } from './ui'
@@ -38,6 +38,17 @@ function formatVersion(version: string | null) {
   return version.startsWith('v') ? version : `v${version}`
 }
 
+function instanceStatusVariant(status: RunnerInstance['status']) {
+  if (status === 'online') return 'green' as const
+  return 'gray' as const
+}
+
+function k8sPhaseVariant(phase: string) {
+  if (phase === 'running' || phase === 'pending') return 'yellow' as const
+  if (phase === 'succeeded') return 'green' as const
+  return 'gray' as const
+}
+
 function MetricItem({
   icon,
   label,
@@ -58,6 +69,73 @@ function MetricItem({
   )
 }
 
+function RunnerInstancesSection({ instances }: { instances: RunnerInstance[] }) {
+  if (instances.length === 0) return null
+
+  return (
+    <div className="runner-pods-section">
+      <div className="runner-pods-title">
+        <Boxes size={13} />
+        <span>Manager pods ({instances.length})</span>
+      </div>
+      <ul className="runner-pods-list">
+        {instances.map((instance) => {
+          const memory =
+            instance.memory_used_mb !== null && instance.memory_total_mb !== null
+              ? `${formatMb(instance.memory_used_mb)} / ${formatMb(instance.memory_total_mb)}`
+              : '—'
+          return (
+            <li key={instance.instance_id} className="runner-pod-row">
+              <div className="runner-pod-row-main">
+                <span className="runner-pod-name">{instance.instance_id}</span>
+                <StatusBadge variant={instanceStatusVariant(instance.status)}>
+                  {instance.status}
+                </StatusBadge>
+              </div>
+              <div className="runner-pod-row-meta">
+                <span>{instance.host_ip ?? '—'}</span>
+                <span>{instance.cpu_cores !== null ? `${instance.cpu_cores} CPU` : '—'}</span>
+                <span>{memory}</span>
+                <span>Seen {formatRelativeTime(instance.last_seen_at)}</span>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function RunnerK8sPodsSection({ pods }: { pods: RunnerK8sPod[] }) {
+  if (pods.length === 0) return null
+
+  return (
+    <div className="runner-pods-section">
+      <div className="runner-pods-title">
+        <Server size={13} />
+        <span>Job pods ({pods.length})</span>
+      </div>
+      <ul className="runner-pods-list">
+        {pods.map((pod) => (
+          <li key={pod.job_run_id} className="runner-pod-row">
+            <div className="runner-pod-row-main">
+              <span className="runner-pod-name">
+                {pod.k8s_pod_name ?? pod.k8s_job_name}
+              </span>
+              <StatusBadge variant={k8sPhaseVariant(pod.phase)}>{pod.phase}</StatusBadge>
+            </div>
+            <div className="runner-pod-row-meta">
+              <span>{pod.job_name}</span>
+              <span>{pod.k8s_namespace}</span>
+              <span>Started {formatRelativeTime(pod.created_at)}</span>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 export function RunnerCard({
   runner,
   onRotate,
@@ -73,6 +151,10 @@ export function RunnerCard({
     runner.memory_used_mb !== null && runner.memory_total_mb !== null
       ? `${formatMb(runner.memory_used_mb)} / ${formatMb(runner.memory_total_mb)}`
       : '—'
+
+  const instances = runner.instances ?? []
+  const k8sPods = runner.k8s_pods ?? []
+  const showPodSections = instances.length > 0 || k8sPods.length > 0
 
   return (
     <li className="runner-card">
@@ -150,6 +232,13 @@ export function RunnerCard({
           value={formatVersion(runner.version)}
         />
       </div>
+
+      {showPodSections ? (
+        <>
+          <RunnerInstancesSection instances={instances} />
+          <RunnerK8sPodsSection pods={k8sPods} />
+        </>
+      ) : null}
 
       <div className="runner-card-footer text-xs text-text-secondary font-mono">
         <span>

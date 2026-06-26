@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,7 +9,7 @@ use axum::{
     http::{header, HeaderMap, StatusCode},
     response::Response,
     response::IntoResponse,
-    routing::{delete, get, post},
+    routing::{delete, get, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -75,6 +76,16 @@ async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
     .bind(RUNNER_OFFLINE_AFTER_SECS as f64)
     .execute(pool)
     .await?;
+
+    sqlx::query(
+        r#"
+        DELETE FROM runner_instances
+        WHERE last_seen_at < NOW() - make_interval(hours => 24)
+        "#,
+    )
+    .execute(pool)
+    .await?;
+
     Ok(())
 }
 
@@ -289,6 +300,7 @@ pub fn runner_routes() -> Router<AppState> {
         .route("/runner/jobs/{job_id}/workspace", get(runner_job_workspace))
         .route("/runner/jobs/{job_id}/control", get(runner_job_control))
         .route("/runner/jobs/{job_id}/secrets", get(runner_job_secrets))
+        .route("/runner/jobs/{job_id}/k8s-pod", put(upsert_runner_k8s_pod))
         .layer(DefaultBodyLimit::max(MAX_RUNNER_ARTIFACT_BYTES))
 }
 
@@ -415,6 +427,29 @@ struct RegisterRunnerResponse {
 }
 
 #[derive(Serialize)]
+struct RunnerInstanceResponse {
+    instance_id: String,
+    host_ip: Option<String>,
+    version: Option<String>,
+    cpu_cores: Option<i32>,
+    memory_total_mb: Option<i64>,
+    memory_used_mb: Option<i64>,
+    status: &'static str,
+    last_seen_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
+struct RunnerK8sPodResponse {
+    job_run_id: Uuid,
+    job_name: String,
+    k8s_namespace: String,
+    k8s_job_name: String,
+    k8s_pod_name: Option<String>,
+    phase: String,
+    created_at: DateTime<Utc>,
+}
+
+#[derive(Serialize)]
 struct RunnerResponse {
     id: Uuid,
     name: String,
@@ -434,6 +469,8 @@ struct RunnerResponse {
     current_job_name: Option<String>,
     last_seen_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
+    instances: Vec<RunnerInstanceResponse>,
+    k8s_pods: Vec<RunnerK8sPodResponse>,
 }
 
 #[derive(Serialize)]
@@ -876,27 +913,105 @@ async fn list_runners(
     .await
     .map_err(sqlx_error)?;
 
+    let runner_ids: Vec<Uuid> = rows.iter().map(|row| row.id).collect();
+    let mut instances_by_runner: HashMap<Uuid, Vec<RunnerInstanceResponse>> = HashMap::new();
+    let mut k8s_pods_by_runner: HashMap<Uuid, Vec<RunnerK8sPodResponse>> = HashMap::new();
+
+    if !runner_ids.is_empty() {
+        let instance_rows = sqlx::query_as::<_, RunnerInstanceRow>(
+            r#"
+            SELECT runner_id, instance_id, host_ip, version, cpu_cores, memory_total_mb, memory_used_mb, last_seen_at
+            FROM runner_instances
+            WHERE runner_id = ANY($1)
+            ORDER BY last_seen_at DESC
+            "#,
+        )
+        .bind(&runner_ids)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+        for row in instance_rows {
+            instances_by_runner
+                .entry(row.runner_id)
+                .or_default()
+                .push(RunnerInstanceResponse {
+                    instance_id: row.instance_id,
+                    host_ip: row.host_ip,
+                    version: row.version,
+                    cpu_cores: row.cpu_cores,
+                    memory_total_mb: row.memory_total_mb,
+                    memory_used_mb: row.memory_used_mb,
+                    status: instance_status(row.last_seen_at),
+                    last_seen_at: row.last_seen_at,
+                });
+        }
+
+        let k8s_rows = sqlx::query_as::<_, RunnerK8sPodRow>(
+            r#"
+            SELECT
+                rkp.runner_id,
+                rkp.job_run_id,
+                j.job_name,
+                rkp.k8s_namespace,
+                rkp.k8s_job_name,
+                rkp.k8s_pod_name,
+                rkp.phase,
+                rkp.created_at
+            FROM runner_k8s_pods rkp
+            JOIN job_runs j ON j.id = rkp.job_run_id
+            WHERE rkp.runner_id = ANY($1)
+              AND rkp.finished_at IS NULL
+            ORDER BY rkp.created_at DESC
+            "#,
+        )
+        .bind(&runner_ids)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+        for row in k8s_rows {
+            k8s_pods_by_runner
+                .entry(row.runner_id)
+                .or_default()
+                .push(RunnerK8sPodResponse {
+                    job_run_id: row.job_run_id,
+                    job_name: row.job_name,
+                    k8s_namespace: row.k8s_namespace,
+                    k8s_job_name: row.k8s_job_name,
+                    k8s_pod_name: row.k8s_pod_name,
+                    phase: row.phase,
+                    created_at: row.created_at,
+                });
+        }
+    }
+
     Ok(Json(
         rows.into_iter()
-            .map(|row| RunnerResponse {
-                id: row.id,
-                name: row.name,
-                labels: row.labels,
-                status: row.status,
-                version: row.version,
-                host_ip: row.host_ip,
-                host_name: row.host_name,
-                cpu_cores: row.cpu_cores,
-                memory_total_mb: row.memory_total_mb,
-                memory_used_mb: row.memory_used_mb,
-                disk_total_mb: row.disk_total_mb,
-                disk_free_mb: row.disk_free_mb,
-                last_job_name: row.last_job_name,
-                last_job_status: row.last_job_status,
-                last_job_at: row.last_job_at,
-                current_job_name: row.current_job_name,
-                last_seen_at: row.last_seen_at,
-                created_at: row.created_at,
+            .map(|row| {
+                let id = row.id;
+                RunnerResponse {
+                    id,
+                    name: row.name,
+                    labels: row.labels,
+                    status: row.status,
+                    version: row.version,
+                    host_ip: row.host_ip,
+                    host_name: row.host_name,
+                    cpu_cores: row.cpu_cores,
+                    memory_total_mb: row.memory_total_mb,
+                    memory_used_mb: row.memory_used_mb,
+                    disk_total_mb: row.disk_total_mb,
+                    disk_free_mb: row.disk_free_mb,
+                    last_job_name: row.last_job_name,
+                    last_job_status: row.last_job_status,
+                    last_job_at: row.last_job_at,
+                    current_job_name: row.current_job_name,
+                    last_seen_at: row.last_seen_at,
+                    created_at: row.created_at,
+                    instances: instances_by_runner.remove(&id).unwrap_or_default(),
+                    k8s_pods: k8s_pods_by_runner.remove(&id).unwrap_or_default(),
+                }
             })
             .collect(),
     ))
@@ -1187,6 +1302,20 @@ async fn complete_runner_job(
     .await
     .map_err(|e| internal(e.to_string()))?;
 
+    sqlx::query(
+        r#"
+        UPDATE runner_k8s_pods
+        SET phase = $2,
+            finished_at = COALESCE(finished_at, NOW())
+        WHERE job_run_id = $1
+        "#,
+    )
+    .bind(job_id)
+    .bind(k8s_pod_phase_for_status(status))
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1197,7 +1326,13 @@ async fn runner_heartbeat(
 ) -> Result<StatusCode, (StatusCode, String)> {
     let runner_id = authenticate_runner(&state.pool, &headers).await?;
     let body = body.map(|Json(b)| b).unwrap_or_default();
-    let host_ip = request_client_ip(&headers).or(body.host_ip);
+    let host_ip = request_client_ip(&headers).or(body.host_ip.clone());
+    let instance_id = body
+        .host_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string);
 
     sqlx::query(
         r#"
@@ -1224,9 +1359,9 @@ async fn runner_heartbeat(
         "#,
     )
     .bind(runner_id)
-    .bind(body.version)
-    .bind(host_ip)
-    .bind(body.host_name)
+    .bind(&body.version)
+    .bind(&host_ip)
+    .bind(&body.host_name)
     .bind(body.cpu_cores)
     .bind(body.memory_total_mb)
     .bind(body.memory_used_mb)
@@ -1235,7 +1370,122 @@ async fn runner_heartbeat(
     .execute(&state.pool)
     .await
     .map_err(|e| internal(e.to_string()))?;
+
+    if let Some(instance_id) = instance_id {
+        sqlx::query(
+            r#"
+            INSERT INTO runner_instances (
+                runner_id, instance_id, host_ip, version, cpu_cores,
+                memory_total_mb, memory_used_mb, disk_total_mb, disk_free_mb, last_seen_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+            ON CONFLICT (runner_id, instance_id) DO UPDATE SET
+                host_ip = COALESCE(EXCLUDED.host_ip, runner_instances.host_ip),
+                version = COALESCE(EXCLUDED.version, runner_instances.version),
+                cpu_cores = COALESCE(EXCLUDED.cpu_cores, runner_instances.cpu_cores),
+                memory_total_mb = COALESCE(EXCLUDED.memory_total_mb, runner_instances.memory_total_mb),
+                memory_used_mb = COALESCE(EXCLUDED.memory_used_mb, runner_instances.memory_used_mb),
+                disk_total_mb = COALESCE(EXCLUDED.disk_total_mb, runner_instances.disk_total_mb),
+                disk_free_mb = COALESCE(EXCLUDED.disk_free_mb, runner_instances.disk_free_mb),
+                last_seen_at = NOW()
+            "#,
+        )
+        .bind(runner_id)
+        .bind(&instance_id)
+        .bind(&host_ip)
+        .bind(&body.version)
+        .bind(body.cpu_cores)
+        .bind(body.memory_total_mb)
+        .bind(body.memory_used_mb)
+        .bind(body.disk_total_mb)
+        .bind(body.disk_free_mb)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| internal(e.to_string()))?;
+    }
+
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct UpsertK8sPodRequest {
+    k8s_namespace: String,
+    k8s_job_name: String,
+    k8s_pod_name: Option<String>,
+    phase: String,
+    #[serde(default)]
+    finished: bool,
+}
+
+async fn upsert_runner_k8s_pod(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(job_id): Path<Uuid>,
+    Json(body): Json<UpsertK8sPodRequest>,
+) -> Result<StatusCode, (StatusCode, String)> {
+    let runner_id = authenticate_runner(&state.pool, &headers).await?;
+
+    let owned = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM job_runs WHERE id = $1 AND runner_id = $2
+        )
+        "#,
+    )
+    .bind(job_id)
+    .bind(runner_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
+    if !owned {
+        return Err((StatusCode::NOT_FOUND, "job not found".into()));
+    }
+
+    sqlx::query(
+        r#"
+        INSERT INTO runner_k8s_pods (
+            job_run_id, runner_id, k8s_namespace, k8s_job_name, k8s_pod_name, phase, finished_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, CASE WHEN $7 THEN NOW() ELSE NULL END)
+        ON CONFLICT (job_run_id) DO UPDATE SET
+            k8s_pod_name = COALESCE(EXCLUDED.k8s_pod_name, runner_k8s_pods.k8s_pod_name),
+            phase = EXCLUDED.phase,
+            finished_at = CASE
+                WHEN $7 THEN COALESCE(runner_k8s_pods.finished_at, NOW())
+                ELSE runner_k8s_pods.finished_at
+            END
+        "#,
+    )
+    .bind(job_id)
+    .bind(runner_id)
+    .bind(body.k8s_namespace.trim())
+    .bind(body.k8s_job_name.trim())
+    .bind(body.k8s_pod_name)
+    .bind(body.phase.trim())
+    .bind(body.finished)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn instance_status(last_seen_at: DateTime<Utc>) -> &'static str {
+    let age_secs = (Utc::now() - last_seen_at).num_seconds();
+    if age_secs <= RUNNER_OFFLINE_AFTER_SECS {
+        "online"
+    } else {
+        "offline"
+    }
+}
+
+fn k8s_pod_phase_for_status(status: &str) -> &'static str {
+    match status {
+        "success" => "succeeded",
+        "cancelled" => "cancelled",
+        _ => "failed",
+    }
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -2445,6 +2695,30 @@ async fn fetch_pipeline_run(
     .bind(repository_id)
     .fetch_optional(pool)
     .await
+}
+
+#[derive(sqlx::FromRow)]
+struct RunnerInstanceRow {
+    runner_id: Uuid,
+    instance_id: String,
+    host_ip: Option<String>,
+    version: Option<String>,
+    cpu_cores: Option<i32>,
+    memory_total_mb: Option<i64>,
+    memory_used_mb: Option<i64>,
+    last_seen_at: DateTime<Utc>,
+}
+
+#[derive(sqlx::FromRow)]
+struct RunnerK8sPodRow {
+    runner_id: Uuid,
+    job_run_id: Uuid,
+    job_name: String,
+    k8s_namespace: String,
+    k8s_job_name: String,
+    k8s_pod_name: Option<String>,
+    phase: String,
+    created_at: DateTime<Utc>,
 }
 
 #[derive(sqlx::FromRow)]

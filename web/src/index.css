@@ -2494,6 +2494,67 @@ textarea.app-field {
   background: color-mix(in srgb, var(--color-bg) 55%, transparent);
 }
 
+.runner-pods-section {
+  padding: 0.65rem 1rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
+.runner-pods-section + .runner-pods-section {
+  padding-top: 0;
+  border-top: none;
+}
+
+.runner-pods-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.runner-pods-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.runner-pod-row {
+  border: 1px solid color-mix(in srgb, var(--color-border) 65%, transparent);
+  border-radius: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  background: color-mix(in srgb, var(--color-bg) 45%, transparent);
+}
+
+.runner-pod-row-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.2rem;
+}
+
+.runner-pod-name {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.75rem;
+  color: var(--color-text);
+  word-break: break-all;
+}
+
+.runner-pod-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  font-size: 0.68rem;
+  color: var(--color-text-secondary);
+}
+
 .ci-terminal-split {
   display: grid;
   grid-template-columns: minmax(10rem, 13rem) 1fr;

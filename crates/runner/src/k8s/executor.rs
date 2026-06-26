@@ -90,6 +90,17 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
         return Err(err).context("create Kubernetes Job");
     }
 
+    let _ = api
+        .upsert_k8s_pod(
+            job.job_id,
+            &config.namespace,
+            &job_name,
+            None,
+            "pending",
+            false,
+        )
+        .await;
+
     let result = watch_job(
         &client,
         &config.namespace,
@@ -310,6 +321,16 @@ async fn watch_job(
     let jobs: Api<Job> = Api::namespaced(client.clone(), namespace);
 
     let pod_name = wait_for_pod(&pods, job_name).await?;
+    let _ = api
+        .upsert_k8s_pod(
+            job_id,
+            namespace,
+            job_name,
+            Some(&pod_name),
+            "running",
+            false,
+        )
+        .await;
     api.append_log(job_id, &format!("=== kubernetes pod {pod_name} (running)\n"))
         .await?;
 

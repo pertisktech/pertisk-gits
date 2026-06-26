@@ -35,7 +35,11 @@ pub fn collect_host_info() -> HostInfo {
 
     HostInfo {
         version: APP_VERSION.to_string(),
-        host_name: System::host_name().unwrap_or_else(|| "unknown".into()),
+        host_name: std::env::var("HOSTNAME")
+            .ok()
+            .filter(|name| !name.is_empty())
+            .or_else(|| System::host_name())
+            .unwrap_or_else(|| "unknown".into()),
         host_ip: detect_local_ip(),
         cpu_cores,
         memory_total_mb,

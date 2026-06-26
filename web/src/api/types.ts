@@ -391,6 +391,27 @@ export interface CommitStatus {
   updated_at: string
 }
 
+export interface RunnerInstance {
+  instance_id: string
+  host_ip: string | null
+  version: string | null
+  cpu_cores: number | null
+  memory_total_mb: number | null
+  memory_used_mb: number | null
+  status: 'online' | 'offline'
+  last_seen_at: string
+}
+
+export interface RunnerK8sPod {
+  job_run_id: string
+  job_name: string
+  k8s_namespace: string
+  k8s_job_name: string
+  k8s_pod_name: string | null
+  phase: string
+  created_at: string
+}
+
 export interface Runner {
   id: string
   name: string
@@ -410,6 +431,8 @@ export interface Runner {
   current_job_name: string | null
   last_seen_at: string | null
   created_at: string
+  instances: RunnerInstance[]
+  k8s_pods: RunnerK8sPod[]
 }
 
 export interface RegisterRunnerResponse {

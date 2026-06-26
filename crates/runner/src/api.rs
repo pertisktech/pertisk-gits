@@ -147,6 +147,38 @@ impl RunnerApi {
         Ok(())
     }
 
+    pub async fn upsert_k8s_pod(
+        &self,
+        job_id: Uuid,
+        k8s_namespace: &str,
+        k8s_job_name: &str,
+        k8s_pod_name: Option<&str>,
+        phase: &str,
+        finished: bool,
+    ) -> anyhow::Result<()> {
+        let body = serde_json::json!({
+            "k8s_namespace": k8s_namespace,
+            "k8s_job_name": k8s_job_name,
+            "k8s_pod_name": k8s_pod_name,
+            "phase": phase,
+            "finished": finished,
+        });
+        let response = self
+            .client
+            .put(format!("{}/api/v1/runner/jobs/{job_id}/k8s-pod", self.base_url))
+            .bearer_auth(&self.token)
+            .json(&body)
+            .send()
+            .await
+            .context("upsert k8s pod")?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            anyhow::bail!("upsert k8s pod failed ({status}): {body}");
+        }
+        Ok(())
+    }
+
     pub async fn download_workspace(&self, job_id: Uuid) -> anyhow::Result<bytes::Bytes> {
         let response = self
             .client

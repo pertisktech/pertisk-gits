@@ -89,6 +89,7 @@ build_binary_docker() {
   for attempt in 1 2 3; do
     if docker buildx build --builder "$BUILDER_NAME" --platform "linux/$ARCH" \
       -f docker/Dockerfile.runner.release \
+      --target builder \
       "${cache_from[@]}" \
       --cache-to "type=local,dest=${CACHE_DIR},mode=max" \
       --build-arg VERSION="$VERSION" \
