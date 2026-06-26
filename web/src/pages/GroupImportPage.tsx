@@ -15,6 +15,7 @@ import {
   SecondaryButton,
 } from '../components/ui'
 import { CheckboxField, FieldLabel, Input, Select } from '../components/ui/Input'
+import { formatDateTime } from '../lib/collaboration'
 
 function jobStatusVariant(status: string) {
   if (status === 'done') return 'green' as const
@@ -453,15 +454,13 @@ export function GroupImportPage() {
           }
         >
           {activeJob && (
-            <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/50">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <span className="font-mono text-theme-xs text-gray-500 dark:text-gray-400">
-                  {activeJob.id}
-                </span>
+            <div className="shell-detail-panel">
+              <div className="shell-detail-panel-header">
+                <span className="shell-detail-panel-meta">{activeJob.id}</span>
                 <StatusBadge variant={jobStatusVariant(activeJob.status)}>{activeJob.status}</StatusBadge>
               </div>
               {activeJob.error_message && (
-                <p className="mb-3 text-theme-sm text-error-500">{activeJob.error_message}</p>
+                <p className="shell-detail-panel-error">{activeJob.error_message}</p>
               )}
               <div className="overflow-x-auto">
                 <table className="shell-table w-full">
@@ -480,12 +479,12 @@ export function GroupImportPage() {
                           {repo.repository_id ? (
                             <Link
                               to={`/groups/${slug}/projects/${repo.target_slug}`}
-                              className="font-mono text-brand-500 hover:text-brand-600"
+                              className="shell-link text-theme-xs"
                             >
                               {slug}/{repo.target_slug}
                             </Link>
                           ) : (
-                            <span className="font-mono text-gray-500 dark:text-gray-400">
+                            <span className="font-mono text-theme-xs text-[var(--shell-text-secondary)]">
                               {slug}/{repo.target_slug}
                             </span>
                           )}
@@ -517,8 +516,11 @@ export function GroupImportPage() {
                 </thead>
                 <tbody>
                   {jobs.map((job) => (
-                    <tr key={job.id}>
-                      <td className="text-theme-sm">{new Date(job.created_at).toLocaleString()}</td>
+                    <tr
+                      key={job.id}
+                      className={job.id === activeJobId ? 'bg-[color-mix(in_srgb,var(--shell-menu-active-bg)_55%,transparent)]' : undefined}
+                    >
+                      <td className="text-theme-sm">{formatDateTime(job.created_at)}</td>
                       <td className="capitalize">{job.provider}</td>
                       <td>
                         <StatusBadge variant={jobStatusVariant(job.status)}>{job.status}</StatusBadge>

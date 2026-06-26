@@ -400,6 +400,61 @@
   padding: 0;
 }
 
+.shell-detail-panel {
+  margin-bottom: 1.5rem;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--shell-border);
+  background: color-mix(in srgb, var(--shell-bg) 35%, var(--shell-surface));
+  overflow: hidden;
+}
+
+.shell-detail-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  border-bottom: 1px solid var(--shell-border);
+}
+
+.shell-detail-panel-meta {
+  font-family: var(--font-mono);
+  font-size: var(--text-theme-xs);
+  color: var(--shell-text-secondary);
+  word-break: break-all;
+}
+
+.shell-detail-panel-error {
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--shell-border);
+  font-size: var(--text-theme-sm);
+  color: var(--color-error-500);
+}
+
+.shell-detail-panel .shell-table thead th {
+  background: color-mix(in srgb, var(--shell-bg) 60%, var(--shell-surface));
+}
+
+.shell-link {
+  font-family: var(--font-mono);
+  color: var(--color-brand-500);
+  text-decoration: none;
+  transition: color 150ms ease;
+}
+
+.shell-link:hover {
+  color: var(--color-brand-600);
+  text-decoration: underline;
+}
+
+html.dark .shell-link {
+  color: var(--color-brand-400);
+}
+
+html.dark .shell-link:hover {
+  color: var(--color-brand-300);
+}
+
 .shell-page-title {
   font-size: var(--text-title-sm);
   font-weight: 600;
