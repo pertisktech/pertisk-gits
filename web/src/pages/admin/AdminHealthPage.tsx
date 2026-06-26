@@ -27,7 +27,7 @@ export function AdminHealthPage() {
       />
       <PageHeader
         title="Health check"
-        subtitle="Live service and database connectivity status."
+        subtitle="Live service, database, and registry storage connectivity."
         action={
           <SecondaryButton type="button" onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw size={14} className={isFetching ? 'animate-spin' : undefined} />
@@ -77,6 +77,29 @@ export function AdminHealthPage() {
             <InfoRow label="Latency" value={`${data.database_latency_ms} ms`} />
             <InfoRow label="Server" value={<code className="text-xs">{data.database_version}</code>} />
           </InfoPanel>
+
+          {data.s3 && (
+            <InfoPanel title="S3 storage">
+              <InfoRow
+                label="Connection"
+                value={
+                  <StatusBadge variant={data.s3.status === 'ok' ? 'green' : 'red'}>
+                    {data.s3.status}
+                  </StatusBadge>
+                }
+              />
+              <InfoRow label="Latency" value={`${data.s3.latency_ms} ms`} />
+              <InfoRow label="Endpoint" value={<code className="text-xs">{data.s3.endpoint}</code>} />
+              <InfoRow label="Bucket" value={<code>{data.s3.bucket}</code>} />
+              <InfoRow label="Region" value={<code>{data.s3.region}</code>} />
+              {data.s3.error && (
+                <InfoRow
+                  label="Error"
+                  value={<span className="text-dashboard-danger text-xs">{data.s3.error}</span>}
+                />
+              )}
+            </InfoPanel>
+          )}
         </div>
       )}
     </>

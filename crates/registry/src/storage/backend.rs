@@ -132,9 +132,11 @@ pub struct S3Backend {
 
 impl S3Backend {
     pub fn from_env() -> anyhow::Result<Self> {
-        let endpoint = std::env::var("S3_ENDPOINT")
-            .or_else(|_| std::env::var("MINIO_ENDPOINT"))
-            .unwrap_or_else(|_| "http://127.0.0.1:9000".into());
+        let endpoint = normalize_s3_endpoint(
+            std::env::var("S3_ENDPOINT")
+                .or_else(|_| std::env::var("MINIO_ENDPOINT"))
+                .unwrap_or_else(|_| "http://127.0.0.1:9000".into()),
+        );
         let bucket = std::env::var("S3_BUCKET")
             .or_else(|_| std::env::var("REGISTRY_S3_BUCKET"))
             .unwrap_or_else(|_| "pertisk-registry".into());
@@ -166,6 +168,29 @@ impl S3Backend {
             client: aws_sdk_s3::Client::from_conf(config),
             bucket,
         })
+    }
+
+    pub async fn ping(&self) -> anyhow::Result<()> {
+        if self
+            .client
+            .head_bucket()
+            .bucket(&self.bucket)
+            .send()
+            .await
+            .is_ok()
+        {
+            return Ok(());
+        }
+
+        // Some S3-compatible backends (e.g. RustFS) reject HeadBucket but allow ListObjectsV2.
+        self.client
+            .list_objects_v2()
+            .bucket(&self.bucket)
+            .max_keys(1)
+            .send()
+            .await
+            .with_context(|| format!("s3 ping s3://{}", self.bucket))?;
+        Ok(())
     }
 
     async fn put_path(&self, key: &str, path: &std::path::Path) -> anyhow::Result<()> {
@@ -230,5 +255,85 @@ impl BlobBackend for S3Backend {
             .await
             .with_context(|| format!("s3 delete s3://{}/{}", self.bucket, key))?;
         Ok(())
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct S3HealthReport {
+    pub status: &'static str,
+    pub latency_ms: u64,
+    pub endpoint: String,
+    pub bucket: String,
+    pub region: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub fn registry_uses_s3_storage() -> bool {
+    matches!(
+        std::env::var("REGISTRY_STORAGE")
+            .unwrap_or_else(|_| "local".into())
+            .to_lowercase()
+            .as_str(),
+        "s3" | "minio"
+    )
+}
+
+fn normalize_s3_endpoint(endpoint: String) -> String {
+    endpoint.trim().trim_end_matches('/').to_string()
+}
+
+fn s3_env_display() -> Option<(String, String, String)> {
+    if !registry_uses_s3_storage() {
+        return None;
+    }
+    let endpoint = normalize_s3_endpoint(
+        std::env::var("S3_ENDPOINT")
+            .or_else(|_| std::env::var("MINIO_ENDPOINT"))
+            .unwrap_or_else(|_| "http://127.0.0.1:9000".into()),
+    );
+    let bucket = std::env::var("S3_BUCKET")
+        .or_else(|_| std::env::var("REGISTRY_S3_BUCKET"))
+        .unwrap_or_else(|_| "pertisk-registry".into());
+    let region = std::env::var("S3_REGION").unwrap_or_else(|_| "us-east-1".into());
+    Some((endpoint, bucket, region))
+}
+
+pub async fn check_s3_health() -> Option<S3HealthReport> {
+    let (endpoint, bucket, region) = s3_env_display()?;
+    let started = std::time::Instant::now();
+    match S3Backend::from_env() {
+        Ok(backend) => match backend.ping().await {
+            Ok(()) => Some(S3HealthReport {
+                status: "ok",
+                latency_ms: started.elapsed().as_millis() as u64,
+                endpoint,
+                bucket,
+                region,
+                error: None,
+            }),
+            Err(error) => {
+                tracing::warn!(%error, "admin health check: s3 unavailable");
+                Some(S3HealthReport {
+                    status: "error",
+                    latency_ms: started.elapsed().as_millis() as u64,
+                    endpoint,
+                    bucket,
+                    region,
+                    error: Some(format!("{error:#}")),
+                })
+            }
+        },
+        Err(error) => {
+            tracing::warn!(%error, "admin health check: s3 client init failed");
+            Some(S3HealthReport {
+                status: "error",
+                latency_ms: started.elapsed().as_millis() as u64,
+                endpoint,
+                bucket,
+                region,
+                error: Some(format!("{error:#}")),
+            })
+        }
     }
 }

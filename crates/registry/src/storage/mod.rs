@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 mod backend;
 
-pub use backend::{BlobBackend, StorageBackend};
+pub use backend::{check_s3_health, registry_uses_s3_storage, BlobBackend, S3HealthReport, StorageBackend};
 
 #[derive(Clone)]
 pub struct BlobStore {

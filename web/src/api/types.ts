@@ -154,6 +154,15 @@ export interface AdminSystemInfo {
   }
 }
 
+export interface AdminS3Health {
+  status: string
+  latency_ms: number
+  endpoint: string
+  bucket: string
+  region: string
+  error?: string | null
+}
+
 export interface AdminHealth {
   status: string
   version: string
@@ -162,6 +171,7 @@ export interface AdminHealth {
   database_version: string
   api_url: string
   checked_at: string
+  s3?: AdminS3Health | null
 }
 
 export interface AdminConfiguration {

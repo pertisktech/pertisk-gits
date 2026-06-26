@@ -110,6 +110,8 @@ struct AdminHealthResponse {
     database_version: String,
     api_url: String,
     checked_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    s3: Option<pertisk_registry::storage::S3HealthReport>,
 }
 
 #[derive(Serialize)]
@@ -271,15 +273,12 @@ async fn admin_health(
         "unavailable".into()
     };
 
-    let healthy = database == "ok";
-    let status_code = if healthy {
-        StatusCode::OK
-    } else {
-        StatusCode::SERVICE_UNAVAILABLE
-    };
+    let s3 = pertisk_registry::storage::check_s3_health().await;
+    let healthy =
+        database == "ok" && s3.as_ref().map(|report| report.status == "ok").unwrap_or(true);
 
     Ok((
-        status_code,
+        StatusCode::OK,
         Json(AdminHealthResponse {
             status: if healthy { "ok" } else { "unhealthy" },
             version: version::APP_VERSION,
@@ -288,6 +287,7 @@ async fn admin_health(
             database_version,
             api_url: state.config.git_public_base_url.clone(),
             checked_at: Utc::now(),
+            s3,
         }),
     ))
 }
