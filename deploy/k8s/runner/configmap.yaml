@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pertisk-runner-config
+  labels:
+    app.kubernetes.io/name: pertisk-runner
+    app.kubernetes.io/component: ci-runner
+data:
+  # Public API URL (no trailing slash)
+  api_url: "https://git.example.com"

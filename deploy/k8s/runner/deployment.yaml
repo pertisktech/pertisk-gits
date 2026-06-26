@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pertisk-runner
+  labels:
+    app.kubernetes.io/name: pertisk-runner
+    app.kubernetes.io/component: ci-runner
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: pertisk-runner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pertisk-runner
+        app.kubernetes.io/component: ci-runner
+    spec:
+      # Optional: pin runners to dedicated build nodes
+      # nodeSelector:
+      #   pertisk.dev/ci-runner: "true"
+      # tolerations:
+      #   - key: pertisk.dev/ci-runner
+      #     operator: Equal
+      #     value: "true"
+      #     effect: NoSchedule
+      containers:
+        - name: runner
+          image: pertisk-runner:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PERTISK_API_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: pertisk-runner-config
+                  key: api_url
+            - name: PERTISK_RUNNER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: pertisk-runner-secret
+                  key: token
+            - name: RUST_LOG
+              value: info,pertisk_runner=info
+          volumeMounts:
+            - name: workspace
+              mountPath: /var/lib/pertisk-runner
+            # Comment out docker-sock if jobs do not use runs-on: docker
+            - name: docker-sock
+              mountPath: /var/run/docker.sock
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "4"
+              memory: 4Gi
+          # Image runs as pertisk-runner. For docker.sock GID issues, set pod securityContext:
+          # securityContext:
+          #   runAsUser: 0
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: docker-sock
+          hostPath:
+            path: /var/run/docker.sock
+            type: Socket

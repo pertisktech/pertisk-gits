@@ -1,0 +1,31 @@
+# Pertisk CI runner — Docker Compose deployment (Phase 4.5)
+#
+# Setup:
+#   cp deploy/.env.runner.example deploy/.env.runner
+#   # Register runner in UI, paste token into deploy/.env.runner
+#   make runner-image
+#   make runner-compose-up
+#
+# Or pull a pre-built image and set RUNNER_IMAGE in .env.runner
+
+services:
+  runner:
+    image: ${RUNNER_IMAGE:-pertisk-runner:latest}
+    container_name: pertisk-runner
+    restart: unless-stopped
+    env_file:
+      - path: .env.runner
+        required: false
+    environment:
+      PERTISK_API_URL: ${PERTISK_API_URL:?set PERTISK_API_URL in deploy/.env.runner}
+      PERTISK_RUNNER_TOKEN: ${PERTISK_RUNNER_TOKEN:?set PERTISK_RUNNER_TOKEN in deploy/.env.runner}
+      PERTISK_REPOS_ROOT: ${PERTISK_REPOS_ROOT:-}
+      RUST_LOG: ${RUST_LOG:-info,pertisk_runner=info}
+    volumes:
+      - runner_workspace:/var/lib/pertisk-runner
+      # Host Docker socket — for pipeline jobs with runs-on: docker (comment out if unused)
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: ${RUNNER_USER:-}
+
+volumes:
+  runner_workspace:

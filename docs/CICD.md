@@ -76,6 +76,8 @@ export PERTISK_REPOS_ROOT=data/repos
 cargo run -p pertisk-runner
 ```
 
+**Deployment options:** systemd (RPM), Docker, Compose, Kubernetes — see [RUNNERS.md](./RUNNERS.md).
+
 ### Distributed runners
 
 Runners do **not** need to live on the git server. Set `PERTISK_API_URL` to your pertisk-gits API (e.g. `https://git.example.com`). When `PERTISK_REPOS_ROOT` is unset or the bare repo is not on disk, checkout is served by the API from the server's `REPOS_ROOT`.

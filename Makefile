@@ -5,7 +5,8 @@
 	package-runner package-runner-clean package-runner-amd64 package-runner-arm64 \
 	release release-amd release-arm \
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm \
-	install-runner deploy-runner-rpm
+	install-runner deploy-runner-rpm \
+	runner-image runner-image-multi runner-compose-up runner-compose-down
 
 CARGO ?= cargo
 COMPOSE ?= docker compose -f deploy/docker-compose.yml
@@ -262,6 +263,45 @@ deploy-runner-rpm:
 		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
 		PACKAGE_BUILD="$(PACKAGE_BUILD)" RPM_ARCH="$(if $(filter arm64,$(DEPLOY_ARCH)),aarch64,x86_64)" \
 		./build/deploy-runner-rpm.sh
+
+# --- Runner Docker image & Compose ---
+RUNNER_IMAGE ?= pertisk-runner
+RUNNER_IMAGE_TAG ?= $(VERSION)
+RUNNER_BUILDER ?= pertisk-runner-image
+COMPOSE_RUNNER = docker compose -f deploy/docker-compose.runner.yml --env-file deploy/.env.runner
+
+runner-image:
+	@echo "Building $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (linux/amd64)..."
+	export DOCKER_BUILDKIT=1; \
+	docker buildx build --platform linux/amd64 \
+	  -f docker/Dockerfile.runner.release \
+	  --target runtime \
+	  --build-arg VERSION="$(VERSION)" \
+	  -t "$(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)" \
+	  -t "$(RUNNER_IMAGE):latest" \
+	  --load .
+
+runner-image-multi:
+	@echo "Building $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (amd64 + arm64)..."
+	export DOCKER_BUILDKIT=1; \
+	if ! docker buildx inspect "$(RUNNER_BUILDER)" --bootstrap >/dev/null 2>&1; then \
+	  docker buildx create --name "$(RUNNER_BUILDER)" --driver docker-container --bootstrap; \
+	fi; \
+	docker buildx build --builder "$(RUNNER_BUILDER)" \
+	  --platform linux/amd64,linux/arm64 \
+	  -f docker/Dockerfile.runner.release \
+	  --target runtime \
+	  --build-arg VERSION="$(VERSION)" \
+	  -t "$(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)" \
+	  -t "$(RUNNER_IMAGE):latest" \
+	  --push .
+
+runner-compose-up:
+	@test -f deploy/.env.runner || (echo "Copy deploy/.env.runner.example to deploy/.env.runner first" && exit 1)
+	$(COMPOSE_RUNNER) up -d
+
+runner-compose-down:
+	$(COMPOSE_RUNNER) down
 
 # Delete a tag (local and remote).
 delete-tag:

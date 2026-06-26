@@ -6,7 +6,7 @@ ARG BUILDPLATFORM=linux/amd64
 ARG TARGETARCH=amd64
 ARG BUILDARCH=amd64
 
-FROM --platform=$BUILDPLATFORM rust:1-bookworm
+FROM --platform=$BUILDPLATFORM rust:1-bookworm AS builder
 
 ARG TARGETARCH
 ARG BUILDARCH
@@ -90,3 +90,38 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
     fi; \
     cargo build ${BUILD_FLAGS} -p pertisk-runner; \
     cp "${TARGET_DIR}/pertisk-runner" /app/out/pertisk-runner
+
+# --- Runtime image (docker build --target runtime) ---
+FROM debian:bookworm-slim AS runtime
+
+ARG VERSION=0.1.0
+LABEL org.opencontainers.image.title="pertisk-runner" \
+      org.opencontainers.image.version="${VERSION}"
+
+COPY docker/apt-bookworm-install.sh /usr/local/sbin/apt-bookworm-install
+RUN chmod +x /usr/local/sbin/apt-bookworm-install \
+    && apt-bookworm-install \
+    ca-certificates \
+    git \
+    curl \
+    docker.io \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /app/out/pertisk-runner /usr/local/bin/pertisk-runner
+
+RUN groupadd --system pertisk-runner \
+    && useradd --system --gid pertisk-runner --home-dir /var/lib/pertisk-runner \
+       --shell /usr/sbin/nologin --comment "Pertisk Gits CI runner" pertisk-runner \
+    && usermod -aG docker pertisk-runner \
+    && mkdir -p /var/lib/pertisk-runner \
+    && chown pertisk-runner:pertisk-runner /var/lib/pertisk-runner
+
+WORKDIR /var/lib/pertisk-runner
+
+ENV PERTISK_API_URL=http://127.0.0.1:8080 \
+    RUST_LOG=info,pertisk_runner=info
+
+USER pertisk-runner
+
+ENTRYPOINT ["/usr/local/bin/pertisk-runner"]
+CMD ["run"]

@@ -129,7 +129,7 @@ Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
 ---
 
-## Phase 4.5 — Runner deployment & operations (In progress)
+## Phase 4.5 — Runner deployment & operations (Done)
 
 **Goal:** Document and ship repeatable ways to install, configure, and run `pertisk-runner` on bare metal, containers, and Kubernetes.
 
@@ -142,9 +142,9 @@ Runners poll the API for jobs (`GET /runner/jobs`), execute shell steps on the h
 | **Linux service (systemd)** | RPM/DEB package — `pertisk-runner` system user, `/etc/pertisk-runner/pertisk-runner.conf`, `systemctl enable --now pertisk-runner` | Done |
 | **Remote RPM install** | `make install-runner DEPLOY_HOST=user@host` or `build/deploy-runner-rpm.sh` | Done |
 | **Colocated git host** | Set `PERTISK_REPOS_ROOT` = server `REPOS_ROOT` for fast checkout; optional `docker` group for `docker build` steps | Done |
-| **Docker image** | OCI image running `pertisk-runner run`; env: `PERTISK_RUNNER_TOKEN`, `PERTISK_API_URL`; mount `docker.sock` when label includes `docker` | Planned |
-| **Docker Compose** | Compose stack for dev/small installs — runner service + shared network to API; optional DinD sidecar | Planned |
-| **Kubernetes runner** | Deployment or Job-based runners; label selectors; HPA / queue-depth autoscale; Helm values for token + API URL | Planned |
+| **Docker image** | OCI image `pertisk-runner` — `make runner-image`; `docker/Dockerfile.runner.release` target `runtime` | Done |
+| **Docker Compose** | `deploy/docker-compose.runner.yml` + `make runner-compose-up` | Done |
+| **Kubernetes runner** | `deploy/k8s/runner/` Deployment + ConfigMap/Secret; manual scale | Done (MVP) |
 
 ### Configuration (all modes)
 
@@ -166,19 +166,24 @@ sudo systemctl status pertisk-runner
 
 For `runs-on: docker` jobs: add `pertisk-runner` to the `docker` group and restart (RPM postinstall does this when Docker is present).
 
-### Docker / Compose (planned)
+### Docker / Compose
 
-- Publish `pertisk-runner` image (multi-arch) alongside API packages
-- Example `docker run` with token secret, workspace volume, and `/var/run/docker.sock` bind for build jobs
-- `deploy/docker-compose.runner.yml` — runner + infra for local/dev clusters
+```bash
+cp deploy/.env.runner.example deploy/.env.runner
+make runner-image && make runner-compose-up
+```
 
-### Kubernetes runner (planned)
+See [docs/RUNNERS.md](./RUNNERS.md) for `docker run`, Compose, and troubleshooting.
 
-- Long-lived **Deployment** runners (like GitLab shell executor on K8s) or ephemeral **Job** per pipeline
-- ConfigMap/Secret for `PERTISK_API_URL` + token; node selectors / tolerations for dedicated build nodes
-- Integrate with Phase 7 Helm chart; optional cluster-autoscaler on pending `job_runs`
+### Kubernetes runner
 
-See [docs/CICD.md](./CICD.md) (runner setup today); future [docs/RUNNERS.md](./RUNNERS.md) for full deployment guide.
+```bash
+kubectl apply -f deploy/k8s/runner/
+```
+
+HPA / queue-depth autoscale — Phase 7.
+
+Full guide: [docs/RUNNERS.md](./RUNNERS.md)
 
 ---
 
