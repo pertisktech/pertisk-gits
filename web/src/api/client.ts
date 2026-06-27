@@ -633,6 +633,22 @@ export const api = {
     )
   },
 
+  commitRepoContents: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: {
+      branch: string
+      message: string
+      changes: Array<{ path: string; content: string | null }>
+    },
+  ) =>
+    request<{ commit_sha: string; short_sha: string }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/contents`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
   repoRawUrl: (
     orgSlug: string,
     repoSlug: string,

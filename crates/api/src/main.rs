@@ -38,6 +38,7 @@ mod audit;
 mod branch_protection;
 mod ci_secrets;
 mod collaboration;
+mod contents;
 mod custom_roles;
 mod cicd;
 mod code_search;
@@ -202,6 +203,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(collaboration::collaboration_write_routes())
         .merge(wiki::wiki_write_routes())
         .merge(deploy_keys::deploy_key_routes())
+        .merge(contents::contents_routes())
         .merge(api_tokens::api_token_routes())
         .merge(gitops::gitops_routes())
         .merge(cicd::cicd_write_routes())

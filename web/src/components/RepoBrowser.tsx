@@ -1,20 +1,23 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  ArrowLeft,
   ChevronRight,
-  Download,
   File,
+  FilePlus,
   Folder,
   Loader2,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
 import { findReadmePath } from '../lib/readme'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
-import { CodeFileView } from './CodeFileView'
+import { ancestorPathsForFile, RepoFileTree } from './RepoFileTree'
+import { NewFileBar, RepoFileEditor, type OpenFileState } from './RepoFileEditor'
 import { RepoReadme } from './RepoReadme'
+import { SecondaryButton } from './ui'
 
 interface RepoBrowserProps {
   token?: string | null
@@ -29,16 +32,26 @@ export function RepoBrowser({
   repoSlug,
   defaultBranch,
 }: RepoBrowserProps) {
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialFile = searchParams.get('file')
+
   const [path, setPath] = useState(() => {
     if (!initialFile) return ''
     const slash = initialFile.lastIndexOf('/')
     return slash >= 0 ? initialFile.slice(0, slash) : ''
   })
-  const [selectedFile, setSelectedFile] = useState<string | null>(initialFile)
   const [refOverride, setRefOverride] = useState<string | null>(null)
   const [refKind, setRefKind] = useState<'branch' | 'tag'>('branch')
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set())
+  const [openFiles, setOpenFiles] = useState<OpenFileState[]>([])
+  const [activePath, setActivePath] = useState<string | null>(initialFile)
+  const [loadingPath, setLoadingPath] = useState<string | null>(null)
+  const [showNewFile, setShowNewFile] = useState(false)
+  const openFilesRef = useRef(openFiles)
+  openFilesRef.current = openFiles
+
+  const inEditMode = activePath !== null
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
@@ -56,50 +69,259 @@ export function RepoBrowser({
   const ref = refOverride ?? browser?.default_ref ?? defaultBranch
   const activeRef = refList.includes(ref) ? ref : (refList[0] ?? ref)
   const canBrowse = Boolean(browser && !browser.empty && (refKind === 'branch' || refList.length > 0))
+  const canEdit = Boolean(token && refKind === 'branch')
 
   const { data: treeData, isLoading: treeLoading } = useQuery({
     queryKey: ['repo-tree', orgSlug, repoSlug, refKind, activeRef, path, token ?? 'public'],
     queryFn: () => api.getRepoTree(orgSlug, repoSlug, { ref: activeRef, path, ref_kind: refKind }, token),
-    enabled: canBrowse,
+    enabled: canBrowse && !inEditMode,
   })
 
-  const { data: blobData, isLoading: blobLoading } = useQuery({
-    queryKey: ['repo-blob', orgSlug, repoSlug, refKind, activeRef, selectedFile, token ?? 'public'],
-    queryFn: () =>
-      api.getRepoBlob(orgSlug, repoSlug, {
-        ref: activeRef,
-        path: selectedFile!,
-        ref_kind: refKind,
-      }, token),
-    enabled: Boolean(canBrowse && selectedFile),
-  })
-
-  function navigateTo(newPath: string) {
-    setPath(newPath)
-    setSelectedFile(null)
-  }
-
-  function openEntry(entry: TreeEntry) {
-    if (entry.kind === 'tree') {
-      navigateTo(entry.path)
-      return
-    }
-    setSelectedFile(entry.path)
-    if (searchParams.has('file')) {
-      const next = new URLSearchParams(searchParams)
-      next.set('file', entry.path)
-      setSearchParams(next, { replace: true })
-    }
-  }
+  const readmePath =
+    path === '' && !inEditMode && treeData?.entries ? findReadmePath(treeData.entries) : null
 
   const pathParts = path ? path.split('/') : []
-  const readmePath =
-    path === '' && !selectedFile && treeData?.entries
-      ? findReadmePath(treeData.entries)
-      : null
-
   const branchCount = browser?.branches.length ?? 0
   const tagCount = browser?.tags.length ?? 0
+
+  const expandPath = useCallback((filePath: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev)
+      for (const folder of ancestorPathsForFile(filePath)) {
+        next.add(folder)
+      }
+      return next
+    })
+  }, [])
+
+  const openFile = useCallback(
+    async (filePath: string, options?: { isNew?: boolean; content?: string }) => {
+      expandPath(filePath)
+      setActivePath(filePath)
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        next.set('file', filePath)
+        return next
+      }, { replace: true })
+
+      if (openFilesRef.current.some((file) => file.path === filePath)) return
+
+      if (options?.isNew) {
+        const content = options.content ?? ''
+        setOpenFiles((prev) => [
+          ...prev,
+          { path: filePath, content, savedContent: content, isBinary: false, isNew: true },
+        ])
+        return
+      }
+
+      setLoadingPath(filePath)
+      try {
+        const blob = await api.getRepoBlob(
+          orgSlug,
+          repoSlug,
+          { ref: activeRef, path: filePath, ref_kind: refKind },
+          token,
+        )
+        setOpenFiles((prev) => {
+          if (prev.some((file) => file.path === filePath)) return prev
+          return [
+            ...prev,
+            {
+              path: filePath,
+              content: blob.content,
+              savedContent: blob.content,
+              isBinary: blob.is_binary,
+            },
+          ]
+        })
+      } finally {
+        setLoadingPath((current) => (current === filePath ? null : current))
+      }
+    },
+    [activeRef, expandPath, orgSlug, refKind, repoSlug, setSearchParams, token],
+  )
+
+  useEffect(() => {
+    if (!initialFile || !canBrowse) return
+    void openFile(initialFile)
+  }, [initialFile, canBrowse]) // eslint-disable-line react-hooks/exhaustive-deps -- open once on load
+
+  useEffect(() => {
+    if (initialFile) return
+    setOpenFiles([])
+    setActivePath(null)
+  }, [activeRef, refKind, initialFile])
+
+  const navigateTo = useCallback((newPath: string) => {
+    setPath(newPath)
+  }, [])
+
+  const openEntry = useCallback(
+    (entry: TreeEntry) => {
+      if (entry.kind === 'tree') {
+        navigateTo(entry.path)
+        return
+      }
+      void openFile(entry.path)
+    },
+    [navigateTo, openFile],
+  )
+
+  const exitEditMode = useCallback(() => {
+    setOpenFiles([])
+    setActivePath(null)
+    setShowNewFile(false)
+    setSearchParams((params) => {
+      const updated = new URLSearchParams(params)
+      updated.delete('file')
+      return updated
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const toggleExpand = useCallback((folderPath: string) => {
+    setExpandedPaths((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderPath)) {
+        next.delete(folderPath)
+      } else {
+        next.add(folderPath)
+      }
+      return next
+    })
+  }, [])
+
+  const closeFile = useCallback(
+    (filePath: string) => {
+      setOpenFiles((prev) => {
+        const next = prev.filter((file) => file.path !== filePath)
+        if (activePath === filePath) {
+          const closedIndex = prev.findIndex((file) => file.path === filePath)
+          const fallback = next[closedIndex] ?? next[closedIndex - 1] ?? null
+          if (fallback) {
+            setActivePath(fallback.path)
+            setSearchParams((params) => {
+              const updated = new URLSearchParams(params)
+              updated.set('file', fallback.path)
+              return updated
+            }, { replace: true })
+          } else {
+            exitEditMode()
+          }
+        }
+        return next
+      })
+    },
+    [activePath, exitEditMode, setSearchParams],
+  )
+
+  const handleSaved = useCallback(
+    (filePath: string, content: string) => {
+      setOpenFiles((prev) =>
+        prev.map((file) =>
+          file.path === filePath
+            ? { ...file, content, savedContent: content, isNew: false }
+            : file,
+        ),
+      )
+      queryClient.invalidateQueries({ queryKey: ['repo-tree', orgSlug, repoSlug] })
+      queryClient.invalidateQueries({ queryKey: ['repo-blob', orgSlug, repoSlug] })
+      queryClient.invalidateQueries({ queryKey: ['repo-browser', orgSlug, repoSlug] })
+    },
+    [orgSlug, queryClient, repoSlug],
+  )
+
+  const resetBrowseState = useCallback(() => {
+    setPath('')
+    setOpenFiles([])
+    setActivePath(null)
+    setExpandedPaths(new Set())
+    setShowNewFile(false)
+    setSearchParams((params) => {
+      const updated = new URLSearchParams(params)
+      updated.delete('file')
+      return updated
+    }, { replace: true })
+  }, [setSearchParams])
+
+  const toolbar = (
+    <div className="app-toolbar">
+      {inEditMode && (
+        <SecondaryButton
+          type="button"
+          className="!py-1 !px-2 !text-xs shrink-0"
+          onClick={exitEditMode}
+        >
+          <ArrowLeft size={14} />
+          Files
+        </SecondaryButton>
+      )}
+
+      <select
+        id="ref-kind-select"
+        value={refKind}
+        onChange={(e) => {
+          const kind = e.target.value as 'branch' | 'tag'
+          setRefKind(kind)
+          setRefOverride(null)
+          resetBrowseState()
+        }}
+        className="app-branch-select"
+        aria-label="Reference type"
+      >
+        <option value="branch">Branch</option>
+        <option value="tag">Tag</option>
+      </select>
+
+      <select
+        id="branch-select"
+        value={activeRef}
+        onChange={(e) => {
+          setRefOverride(e.target.value)
+          resetBrowseState()
+        }}
+        className="app-branch-select min-w-[8rem]"
+        disabled={refList.length === 0}
+      >
+        {refList.length === 0 ? (
+          <option value={activeRef}>{refKind === 'tag' ? 'No tags' : activeRef}</option>
+        ) : (
+          refList.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))
+        )}
+      </select>
+
+      <span className="text-sm text-text-secondary whitespace-nowrap">
+        {branchCount} Branch.{`  ${tagCount} Tags`}
+      </span>
+
+      {!inEditMode && pathParts.length > 0 && (
+        <div className="app-path-crumb flex-1 min-w-0">
+          <button type="button" onClick={() => navigateTo('')} aria-label="Repository root">
+            /
+          </button>
+          {pathParts.map((part, i) => {
+            const subPath = pathParts.slice(0, i + 1).join('/')
+            return (
+              <span key={subPath} className="inline-flex items-center gap-1">
+                <ChevronRight size={12} className="text-muted" />
+                <button type="button" onClick={() => navigateTo(subPath)}>
+                  {part}
+                </button>
+              </span>
+            )
+          })}
+        </div>
+      )}
+
+      {refKind === 'tag' && (
+        <span className="text-xs text-text-secondary">Tags are read-only</span>
+      )}
+    </div>
+  )
 
   if (browserLoading) {
     return (
@@ -129,135 +351,150 @@ export function RepoBrowser({
   return (
     <div className="space-y-4 min-w-0">
       <div className="app-panel">
-        <div className="app-toolbar">
-          <select
-            id="ref-kind-select"
-            value={refKind}
-            onChange={(e) => {
-              const kind = e.target.value as 'branch' | 'tag'
-              setRefKind(kind)
-              setRefOverride(null)
-              navigateTo('')
-            }}
-            className="app-branch-select"
-            aria-label="Reference type"
-          >
-            <option value="branch">Branch</option>
-            <option value="tag">Tag</option>
-          </select>
+        {toolbar}
 
-          <select
-            id="branch-select"
-            value={activeRef}
-            onChange={(e) => {
-              setRefOverride(e.target.value)
-              navigateTo('')
-            }}
-            className="app-branch-select min-w-[8rem]"
-            disabled={refList.length === 0}
-          >
-            {refList.length === 0 ? (
-              <option value={activeRef}>{refKind === 'tag' ? 'No tags' : activeRef}</option>
-            ) : (
-              refList.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))
-            )}
-          </select>
+        {inEditMode ? (
+          <div className="repo-explorer">
+            <aside className="repo-explorer-sidebar">
+              <div className="repo-explorer-sidebar-header">
+                <span>Explorer</span>
+                {canEdit && (
+                  <SecondaryButton
+                    type="button"
+                    className="!py-0.5 !px-2 !text-xs"
+                    onClick={() => setShowNewFile(true)}
+                  >
+                    <FilePlus size={12} />
+                    New
+                  </SecondaryButton>
+                )}
+              </div>
+              {showNewFile && (
+                <NewFileBar
+                  onCancel={() => setShowNewFile(false)}
+                  onCreate={(filePath) => {
+                    setShowNewFile(false)
+                    void openFile(filePath, { isNew: true, content: '' })
+                  }}
+                />
+              )}
+              {canBrowse ? (
+                <RepoFileTree
+                  orgSlug={orgSlug}
+                  repoSlug={repoSlug}
+                  ref={activeRef}
+                  refKind={refKind}
+                  token={token}
+                  selectedPath={activePath}
+                  expandedPaths={expandedPaths}
+                  onToggleExpand={toggleExpand}
+                  onSelectFile={(filePath) => void openFile(filePath)}
+                />
+              ) : (
+                <p className="px-3 py-2 text-xs text-text-secondary">No refs available</p>
+              )}
+            </aside>
 
-          <span className="text-sm text-text-secondary whitespace-nowrap">
-            {branchCount} Branch.{`  ${tagCount} Tags`}
-          </span>
-
-          {pathParts.length > 0 && (
-            <div className="app-path-crumb flex-1 min-w-0">
-              <button type="button" onClick={() => navigateTo('')} aria-label="Repository root">
-                /
-              </button>
-              {pathParts.map((part, i) => {
-                const subPath = pathParts.slice(0, i + 1).join('/')
-                return (
-                  <span key={subPath} className="inline-flex items-center gap-1">
-                    <ChevronRight size={12} className="text-muted" />
-                    <button type="button" onClick={() => navigateTo(subPath)}>
-                      {part}
-                    </button>
-                  </span>
-                )
-              })}
+            <div className="repo-explorer-main">
+              <RepoFileEditor
+                token={token}
+                orgSlug={orgSlug}
+                repoSlug={repoSlug}
+                branch={activeRef}
+                refKind={refKind}
+                canEdit={canEdit}
+                openFiles={openFiles}
+                activePath={activePath}
+                loadingPath={loadingPath}
+                onActivePathChange={(filePath) => {
+                  setActivePath(filePath)
+                  setSearchParams((params) => {
+                    const updated = new URLSearchParams(params)
+                    updated.set('file', filePath)
+                    return updated
+                  }, { replace: true })
+                }}
+                onCloseFile={closeFile}
+                onUpdateContent={(filePath, content) => {
+                  setOpenFiles((prev) =>
+                    prev.map((file) => (file.path === filePath ? { ...file, content } : file)),
+                  )
+                }}
+                onSaved={handleSaved}
+              />
             </div>
-          )}
-        </div>
-
-        {treeLoading ? (
-          <div className="flex items-center gap-2 text-text-secondary text-sm p-6">
-            <Loader2 size={16} className="animate-spin" />
-            Loading files…
           </div>
         ) : (
-          <table className="app-file-table app-file-table-commits">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th className="hidden md:table-cell">Last commit message</th>
-                <th className="w-32 text-right hidden md:table-cell" aria-label="Last edit" />
-              </tr>
-            </thead>
-            <tbody>
-              {(treeData?.entries ?? []).map((entry) => (
-                <tr key={entry.path} onClick={() => openEntry(entry)}>
-                  <td>
-                    <span className="name-cell">
-                      {entry.kind === 'tree' ? (
-                        <Folder size={15} className="text-primary shrink-0" />
-                      ) : (
-                        <File size={15} className="text-muted shrink-0" />
-                      )}
-                      {entry.name}
-                    </span>
-                    {entry.last_commit && (
-                      <div className="md:hidden flex items-start justify-between gap-3 text-xs text-text-secondary mt-0.5 pl-[1.35rem] min-w-0">
-                        <span className="truncate">{entry.last_commit.message}</span>
-                        <span className="shrink-0 whitespace-nowrap">
-                          {formatRelativeTime(entry.last_commit.committed_at)}
+          <>
+            {treeLoading ? (
+              <div className="flex items-center gap-2 text-text-secondary text-sm p-6">
+                <Loader2 size={16} className="animate-spin" />
+                Loading files…
+              </div>
+            ) : (
+              <table className="app-file-table app-file-table-commits">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th className="hidden md:table-cell">Last commit message</th>
+                    <th className="w-32 text-right hidden md:table-cell" aria-label="Last edit" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(treeData?.entries ?? []).map((entry) => (
+                    <tr key={entry.path} onClick={() => openEntry(entry)}>
+                      <td>
+                        <span className="name-cell">
+                          {entry.kind === 'tree' ? (
+                            <Folder size={15} className="text-primary shrink-0" />
+                          ) : (
+                            <File size={15} className="text-muted shrink-0" />
+                          )}
+                          {entry.name}
                         </span>
-                      </div>
-                    )}
-                  </td>
-                  <td className="hidden md:table-cell text-text-secondary text-sm">
-                    {entry.last_commit ? (
-                      <Link
-                        to={commitUrl(orgSlug, repoSlug, entry.last_commit.sha)}
-                        className="hover:text-primary hover:underline truncate block max-w-md"
-                        onClick={(e) => e.stopPropagation()}
-                        title={entry.last_commit.message}
-                      >
-                        {entry.last_commit.message}
-                      </Link>
-                    ) : (
-                      '—'
-                    )}
-                  </td>
-                  <td className="text-right text-text-secondary text-sm whitespace-nowrap hidden md:table-cell">
-                    {entry.last_commit ? formatRelativeTime(entry.last_commit.committed_at) : '—'}
-                  </td>
-                </tr>
-              ))}
-              {(treeData?.entries ?? []).length === 0 && (
-                <tr>
-                  <td colSpan={3} className="text-center text-text-secondary py-8">
-                    This folder is empty.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                        {entry.last_commit && (
+                          <div className="md:hidden flex items-start justify-between gap-3 text-xs text-text-secondary mt-0.5 pl-[1.35rem] min-w-0">
+                            <span className="truncate">{entry.last_commit.message}</span>
+                            <span className="shrink-0 whitespace-nowrap">
+                              {formatRelativeTime(entry.last_commit.committed_at)}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+                      <td className="hidden md:table-cell text-text-secondary text-sm">
+                        {entry.last_commit ? (
+                          <Link
+                            to={commitUrl(orgSlug, repoSlug, entry.last_commit.sha)}
+                            className="hover:text-primary hover:underline truncate block max-w-md"
+                            onClick={(e) => e.stopPropagation()}
+                            title={entry.last_commit.message}
+                          >
+                            {entry.last_commit.message}
+                          </Link>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="text-right text-text-secondary text-sm whitespace-nowrap hidden md:table-cell">
+                        {entry.last_commit ? formatRelativeTime(entry.last_commit.committed_at) : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                  {(treeData?.entries ?? []).length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="text-center text-text-secondary py-8">
+                        This folder is empty.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </>
         )}
       </div>
 
-      {readmePath && (
+      {readmePath && !inEditMode && (
         <RepoReadme
           token={token}
           orgSlug={orgSlug}
@@ -265,63 +502,6 @@ export function RepoBrowser({
           ref={activeRef}
           readmePath={readmePath}
         />
-      )}
-
-      {selectedFile && (
-        <div className="app-panel">
-          <div className="app-panel-header flex items-center justify-between gap-2">
-            <span className="font-mono text-xs truncate">{selectedFile}</span>
-            <a
-              href={api.repoRawUrl(orgSlug, repoSlug, {
-                ref: activeRef,
-                path: selectedFile,
-                ref_kind: refKind,
-              })}
-              className="inline-flex items-center gap-1 text-xs text-primary hover:underline shrink-0"
-              onClick={(e) => {
-                e.preventDefault()
-                const url = api.repoRawUrl(orgSlug, repoSlug, {
-                  ref: activeRef,
-                  path: selectedFile,
-                  ref_kind: refKind,
-                })
-                fetch(url, {
-                  headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-                })
-                  .then((res) => {
-                    if (!res.ok) throw new Error('Download failed')
-                    return res.blob()
-                  })
-                  .then((blob) => {
-                    const objectUrl = URL.createObjectURL(blob)
-                    const link = document.createElement('a')
-                    link.href = objectUrl
-                    link.download = selectedFile.split('/').pop() ?? 'file'
-                    link.click()
-                    URL.revokeObjectURL(objectUrl)
-                  })
-                  .catch(() => {
-                    window.open(url, '_blank')
-                  })
-              }}
-            >
-              <Download size={12} />
-              Raw
-            </a>
-          </div>
-          <div className="app-panel-body flush">
-            {blobLoading ? (
-              <div className="flex items-center gap-2 text-text-secondary text-sm p-4">
-                <Loader2 size={16} className="animate-spin" />
-                Loading file…
-              </div>
-            ) : blobData?.is_binary ? (
-              <p className="text-sm text-text-secondary p-4">Binary file — preview not available.</p>
-            ) : (
-              <CodeFileView path={selectedFile} content={blobData?.content ?? ''} />
-            )}
-          </div>
-        </div>
       )}
     </div>
   )
