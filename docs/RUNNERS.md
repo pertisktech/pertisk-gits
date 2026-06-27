@@ -85,9 +85,14 @@ make runner-image VERSION=0.1.84
 # Push amd64 to Harbor
 make runner-image-push VERSION=0.1.84
 
-# Push amd64 + arm64
+# Push amd64 + arm64 (separate builds merged into one manifest — required for ARM nodes)
 make runner-image-multi VERSION=0.1.84
+
+# ARM only (Talos / Graviton nodes)
+make runner-image-arm64 VERSION=0.1.84
 ```
+
+Tags `0.2.29` and `0.2.30` shipped an amd64 binary in the arm64 manifest (buildx combined-platform bug). Use **`0.2.31+`** from `runner-image-multi`.
 
 Override registry: `make runner-image-push RUNNER_REGISTRY=my.registry.example/pertisk`
 

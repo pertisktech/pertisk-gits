@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
-# Multi-arch runner image — buildx compiles natively per TARGETPLATFORM.
-# Usage: make runner-image-multi VERSION=x.y.z
+# Multi-arch runner image — build with:
+#   make runner-image-multi VERSION=x.y.z
+# Requires TARGETARCH / TARGETPLATFORM (passed by Makefile or buildx).
 
 ARG TARGETPLATFORM=linux/amd64
 ARG TARGETARCH=amd64
@@ -24,21 +25,18 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pertisk-runner-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=pertisk-runner-git-${TARGETPLATFORM} \
-    cargo fetch --locked
+RUN cargo fetch --locked
 
 ARG CARGO_BUILD_JOBS=1
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 ENV PERTISK_VERSION=${VERSION}
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pertisk-runner-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,id=pertisk-runner-git-${TARGETPLATFORM} \
-    --mount=type=cache,target=/app/target,id=pertisk-runner-target-${TARGETPLATFORM} \
-    set -eu; \
+RUN set -eu; \
+    echo "Building pertisk-runner for TARGETARCH=${TARGETARCH} TARGETPLATFORM=${TARGETPLATFORM}"; \
     cargo build --release --locked -p pertisk-runner; \
     mkdir -p /app/out; \
     cp /app/target/release/pertisk-runner /app/out/pertisk-runner; \
+    file /app/out/pertisk-runner; \
     case "${TARGETARCH}" in \
       amd64) file /app/out/pertisk-runner | grep -Eq 'x86-64' ;; \
       arm64) file /app/out/pertisk-runner | grep -Eq 'aarch64' ;; \
@@ -48,7 +46,6 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=pertisk-runner-regist
 FROM scratch AS export
 COPY --from=builder /app/out/pertisk-runner /pertisk-runner
 
-# --- Runtime image (docker build --target runtime) ---
 FROM --platform=$TARGETPLATFORM debian:bookworm-slim AS runtime
 
 ARG TARGETARCH
@@ -69,6 +66,8 @@ RUN chmod +x /usr/local/sbin/apt-bookworm-install \
 COPY --from=builder /app/out/pertisk-runner /usr/local/bin/pertisk-runner
 
 RUN set -eu; \
+    echo "Runtime verify TARGETARCH=${TARGETARCH}"; \
+    file /usr/local/bin/pertisk-runner; \
     case "${TARGETARCH}" in \
       amd64) file /usr/local/bin/pertisk-runner | grep -Eq 'x86-64' ;; \
       arm64) file /usr/local/bin/pertisk-runner | grep -Eq 'aarch64' ;; \

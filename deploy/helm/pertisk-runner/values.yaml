@@ -47,7 +47,7 @@ kubernetes:
 
 image:
   repository: harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/runner
-  tag: "0.2.30" # use runner-image-multi; 0.2.29 arm64 layer had wrong binary
+  tag: "0.2.32" # fixed arm64 build (explicit TARGETARCH in Makefile)
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

@@ -6,7 +6,7 @@
 	release release-amd release-arm \
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm deploy-rpm-arm64 \
 	install-runner deploy-runner-rpm deploy-runner-rpm-arm64 \
-	runner-image runner-image-push runner-image-multi runner-compose-up runner-compose-down \
+	runner-image runner-image-push runner-image-arm64 runner-image-multi runner-compose-up runner-compose-down \
 	helm-runner-lint helm-runner-template helm-runner-install helm-runner-upgrade \
 	helm-gits-lint helm-gits-template
 
@@ -323,31 +323,44 @@ runner-image:
 runner-image-push:
 	@echo "Pushing $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) to $(RUNNER_REGISTRY) (linux/amd64)..."
 	@echo "Login first if needed: docker login $(RUNNER_REGISTRY)"
-	export DOCKER_BUILDKIT=1; \
-	docker buildx build --platform linux/amd64 \
-	  -f docker/Dockerfile.runner.release \
-	  --target runtime \
-	  --build-arg VERSION="$(VERSION)" \
-	  -t "$(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)" \
-	  -t "$(RUNNER_IMAGE):latest" \
-	  --push .
+	$(MAKE) _runner-image-push-one PLATFORM=linux/amd64 SUFFIX=amd64 VERSION="$(VERSION)" TAG="$(RUNNER_IMAGE_TAG)"
 
-runner-image-multi:
-	@echo "Pushing $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (amd64 + arm64) to $(RUNNER_REGISTRY)..."
+runner-image-arm64:
+	@echo "Pushing $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)-arm64 to $(RUNNER_REGISTRY) (linux/arm64)..."
 	@echo "Login first if needed: docker login $(RUNNER_REGISTRY)"
+	$(MAKE) _runner-image-push-one PLATFORM=linux/arm64 SUFFIX=arm64 VERSION="$(VERSION)" TAG="$(RUNNER_IMAGE_TAG)-arm64"
+
+_runner-image-push-one:
+	@test -n "$(PLATFORM)" && test -n "$(SUFFIX)" && test -n "$(VERSION)" && test -n "$(TAG)"
+	@ARCH=$$(echo "$(PLATFORM)" | cut -d/ -f2); \
 	export DOCKER_BUILDKIT=1; \
 	if ! docker buildx inspect "$(RUNNER_BUILDER)" --bootstrap >/dev/null 2>&1; then \
 	  docker buildx create --name "$(RUNNER_BUILDER)" --driver docker-container --bootstrap; \
 	fi; \
+	echo "Building $(RUNNER_IMAGE):$(TAG) platform=$(PLATFORM) TARGETARCH=$$ARCH"; \
 	docker buildx build --builder "$(RUNNER_BUILDER)" \
-	  --platform linux/amd64,linux/arm64 \
+	  --platform "$(PLATFORM)" \
 	  -f docker/Dockerfile.runner.release \
 	  --target runtime \
 	  --build-arg VERSION="$(VERSION)" \
+	  --build-arg TARGETPLATFORM="$(PLATFORM)" \
+	  --build-arg TARGETARCH="$$ARCH" \
+	  -t "$(RUNNER_IMAGE):$(TAG)" \
+	  $(if $(NO_CACHE),--no-cache,) \
+	  --provenance=false \
+	  --push .
+
+runner-image-multi:
+	@echo "Pushing $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG) (amd64 + arm64, separate builds) to $(RUNNER_REGISTRY)..."
+	@echo "Login first if needed: docker login $(RUNNER_REGISTRY)"
+	$(MAKE) _runner-image-push-one PLATFORM=linux/amd64 SUFFIX=amd64 VERSION="$(VERSION)" TAG="$(VERSION)-amd64" NO_CACHE="$(NO_CACHE)"
+	$(MAKE) _runner-image-push-one PLATFORM=linux/arm64 SUFFIX=arm64 VERSION="$(VERSION)" TAG="$(VERSION)-arm64" NO_CACHE="$(NO_CACHE)"
+	docker buildx imagetools create \
 	  -t "$(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)" \
 	  -t "$(RUNNER_IMAGE):latest" \
-	  $(if $(NO_CACHE),--no-cache,) \
-	  --push .
+	  "$(RUNNER_IMAGE):$(VERSION)-amd64" \
+	  "$(RUNNER_IMAGE):$(VERSION)-arm64"
+	@echo "Verify: docker buildx imagetools inspect $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)"
 
 runner-compose-up:
 	@test -f deploy/.env.runner || (echo "Copy deploy/.env.runner.example to deploy/.env.runner first" && exit 1)
