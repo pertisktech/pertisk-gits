@@ -6,9 +6,10 @@ interface RepoTeamAccessProps {
   token: string
   orgSlug: string
   repoSlug: string
+  embedded?: boolean
 }
 
-export function RepoTeamAccess({ token, orgSlug, repoSlug }: RepoTeamAccessProps) {
+export function RepoTeamAccess({ token, orgSlug, repoSlug, embedded = false }: RepoTeamAccessProps) {
   const { data: teams = [], isLoading, isError } = useQuery({
     queryKey: ['repo-team-access', orgSlug, repoSlug],
     queryFn: () => api.listRepositoryTeamAccess(token, orgSlug, repoSlug),
@@ -20,16 +21,13 @@ export function RepoTeamAccess({ token, orgSlug, repoSlug }: RepoTeamAccessProps
     return null
   }
 
-  return (
-    <div className="app-panel max-w-2xl">
-      <div className="app-panel-header flex items-center gap-2">
-        <UsersRound size={16} />
-        Team access
-      </div>
-      <div className="app-panel-body space-y-3">
-        <p className="text-sm text-text-secondary">
-          Teams that grant access to this repository. Manage teams from the group Teams page.
-        </p>
+  const body = (
+    <div className="space-y-3">
+        {!embedded && (
+          <p className="text-sm text-text-secondary">
+            Teams that grant access to this repository. Manage teams from the group Teams page.
+          </p>
+        )}
         {isLoading ? (
           <p className="text-sm text-text-secondary">Loading team access…</p>
         ) : teams.length === 0 ? (
@@ -47,7 +45,18 @@ export function RepoTeamAccess({ token, orgSlug, repoSlug }: RepoTeamAccessProps
             ))}
           </ul>
         )}
+    </div>
+  )
+
+  if (embedded) return body
+
+  return (
+    <div className="app-panel max-w-2xl">
+      <div className="app-panel-header flex items-center gap-2">
+        <UsersRound size={16} />
+        Team access
       </div>
+      <div className="app-panel-body">{body}</div>
     </div>
   )
 }

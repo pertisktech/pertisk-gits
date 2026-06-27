@@ -1205,6 +1205,196 @@ body,
   padding: 0;
 }
 
+/* Repository settings — sidebar layout */
+.repo-settings {
+  display: grid;
+  grid-template-columns: minmax(11rem, 13.5rem) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+  max-width: 72rem;
+}
+
+.repo-settings-nav {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n2);
+}
+
+.repo-settings-nav-label {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+}
+
+.repo-settings-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.repo-settings-nav-link:hover {
+  background: var(--color-naturals-n3);
+  color: var(--color-text);
+}
+
+.repo-settings-nav-link.active {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+  color: var(--color-primary);
+}
+
+.repo-settings-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.repo-settings-header {
+  margin-bottom: 0.25rem;
+}
+
+.repo-settings-header-title {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.repo-settings-header-desc {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.repo-settings-panel {
+  background: var(--color-naturals-n2);
+  border: 1px solid var(--color-naturals-n4);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.repo-settings-panel-header {
+  padding: 1.125rem 1.25rem 0;
+}
+
+.repo-settings-panel-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.repo-settings-panel-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.repo-settings-panel-desc {
+  margin-top: 0.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.repo-settings-panel-body {
+  padding: 1.125rem 1.25rem 1.25rem;
+}
+
+.repo-settings-panel-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1.25rem;
+  border-top: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n3);
+}
+
+.repo-settings-subsection {
+  padding-top: 1.25rem;
+}
+
+.repo-settings-subsection-bordered {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-naturals-n4);
+}
+
+.repo-settings-subsection-header {
+  margin-bottom: 0.875rem;
+}
+
+.repo-settings-subsection-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.repo-settings-subsection-desc {
+  margin-top: 0.2rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}
+
+.repo-settings-field-row {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .repo-settings-field-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .repo-settings {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .repo-settings-nav {
+    position: static;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .repo-settings-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .repo-settings-nav-label {
+    display: none;
+  }
+
+  .repo-settings-nav-link {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
+
 .app-toolbar {
   display: flex;
   flex-wrap: wrap;

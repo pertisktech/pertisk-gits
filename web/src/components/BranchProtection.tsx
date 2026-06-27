@@ -10,6 +10,7 @@ interface BranchProtectionProps {
   orgSlug: string
   repoSlug: string
   branchOptions: string[]
+  embedded?: boolean
 }
 
 export function BranchProtection({
@@ -17,6 +18,7 @@ export function BranchProtection({
   orgSlug,
   repoSlug,
   branchOptions,
+  embedded = false,
 }: BranchProtectionProps) {
   const queryClient = useQueryClient()
   const [branchPattern, setBranchPattern] = useState(branchOptions[0] ?? 'main')
@@ -120,18 +122,15 @@ export function BranchProtection({
     )
   }
 
-  return (
-    <div className="app-panel max-w-2xl">
-      <div className="app-panel-header flex items-center gap-2">
-        <Shield size={16} />
-        Branch protection
-      </div>
-      <div className="app-panel-body space-y-5">
-        <p className="text-sm text-text-secondary">
-          Protect branches from direct pushes and enforce reviews or CI before merge. Use{' '}
-          <code className="text-xs">*</code> wildcards (e.g. <code className="text-xs">release/*</code>
-          ).
-        </p>
+  const body = (
+    <div className="space-y-5">
+        {!embedded && (
+          <p className="text-sm text-text-secondary">
+            Protect branches from direct pushes and enforce reviews or CI before merge. Use{' '}
+            <code className="text-xs">*</code> wildcards (e.g. <code className="text-xs">release/*</code>
+            ).
+          </p>
+        )}
 
         {isLoading ? (
           <div className="flex items-center gap-2 text-sm text-text-secondary">
@@ -259,7 +258,18 @@ export function BranchProtection({
             )}
           </PrimaryButton>
         </form>
+    </div>
+  )
+
+  if (embedded) return body
+
+  return (
+    <div className="app-panel max-w-2xl">
+      <div className="app-panel-header flex items-center gap-2">
+        <Shield size={16} />
+        Branch protection
       </div>
+      <div className="app-panel-body">{body}</div>
     </div>
   )
 }

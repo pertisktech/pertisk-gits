@@ -8,9 +8,15 @@ interface GitOpsWebhooksPanelProps {
   token: string
   orgSlug: string
   repoSlug: string
+  embedded?: boolean
 }
 
-export function GitOpsWebhooksPanel({ token, orgSlug, repoSlug }: GitOpsWebhooksPanelProps) {
+export function GitOpsWebhooksPanel({
+  token,
+  orgSlug,
+  repoSlug,
+  embedded = false,
+}: GitOpsWebhooksPanelProps) {
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
   const [url, setUrl] = useState('')
@@ -56,16 +62,13 @@ export function GitOpsWebhooksPanel({ token, orgSlug, repoSlug }: GitOpsWebhooks
     createWebhook.mutate()
   }
 
-  return (
-    <div className="app-panel max-w-2xl">
-      <div className="app-panel-header flex items-center gap-2">
-        <GitBranch size={16} />
-        GitOps webhooks
-      </div>
-      <div className="app-panel-body space-y-5">
-        <p className="text-sm text-text-secondary">
-          Notify Argo CD, Flux, or other tools when this repository receives a push.
-        </p>
+  const body = (
+    <div className="space-y-5">
+        {!embedded && (
+          <p className="text-sm text-text-secondary">
+            Notify Argo CD, Flux, or other tools when this repository receives a push.
+          </p>
+        )}
 
         <form className="space-y-3" onSubmit={onSubmit}>
           <input className="app-field" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
@@ -117,7 +120,18 @@ export function GitOpsWebhooksPanel({ token, orgSlug, repoSlug }: GitOpsWebhooks
             ))}
           </ul>
         )}
+    </div>
+  )
+
+  if (embedded) return body
+
+  return (
+    <div className="app-panel max-w-2xl">
+      <div className="app-panel-header flex items-center gap-2">
+        <GitBranch size={16} />
+        GitOps webhooks
       </div>
+      <div className="app-panel-body">{body}</div>
     </div>
   )
 }

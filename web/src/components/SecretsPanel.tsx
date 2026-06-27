@@ -20,6 +20,7 @@ interface SecretsPanelProps {
     payload: { secret_kind?: CiSecretKind; value?: string },
   ) => Promise<CiSecret>
   deleteSecret: (id: string) => Promise<void>
+  embedded?: boolean
 }
 
 export function SecretsPanel({
@@ -31,6 +32,7 @@ export function SecretsPanel({
   createSecret,
   updateSecret,
   deleteSecret,
+  embedded = false,
 }: SecretsPanelProps) {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
@@ -87,14 +89,11 @@ export function SecretsPanel({
     rotateMutation.mutate({ id: secret.id, newValue })
   }
 
-  return (
-    <div className="app-panel max-w-3xl">
-      <div className="app-panel-header flex items-center gap-2">
-        <KeyRound size={16} />
-        {title}
-      </div>
-      <div className="app-panel-body space-y-4">
-        <p className="text-sm text-text-secondary">{description}</p>
+  const body = (
+    <div className="space-y-4">
+        {!embedded && description && (
+          <p className="text-sm text-text-secondary">{description}</p>
+        )}
         <p className="text-xs text-text-secondary">
           Reference in pipelines as{' '}
           <code className="rounded bg-surface-2 px-1 py-0.5">{'${{ secrets.NAME }}'}</code>.
@@ -212,7 +211,18 @@ export function SecretsPanel({
             Add secret
           </SecondaryButton>
         )}
+    </div>
+  )
+
+  if (embedded) return body
+
+  return (
+    <div className="app-panel max-w-3xl">
+      <div className="app-panel-header flex items-center gap-2">
+        <KeyRound size={16} />
+        {title}
       </div>
+      <div className="app-panel-body">{body}</div>
     </div>
   )
 }

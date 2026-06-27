@@ -12,9 +12,10 @@ interface RepoCollaboratorsProps {
   token: string
   orgSlug: string
   repoSlug: string
+  embedded?: boolean
 }
 
-export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaboratorsProps) {
+export function RepoCollaborators({ token, orgSlug, repoSlug, embedded = false }: RepoCollaboratorsProps) {
   const queryClient = useQueryClient()
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [newRole, setNewRole] = useState<RepoRole>('read')
@@ -81,17 +82,14 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
     addCollaborator.mutate()
   }
 
-  return (
-    <div className="app-panel max-w-2xl">
-      <div className="app-panel-header flex items-center gap-2">
-        <UserPlus size={16} />
-        Direct access
-      </div>
-      <div className="app-panel-body space-y-5">
-        <p className="text-sm text-text-secondary">
-          Grant push or admin access to users who are not group members, or override access for a specific repository.
-          Group owners and admins already have full access.
-        </p>
+  const body = (
+    <div className="space-y-5">
+        {!embedded && (
+          <p className="text-sm text-text-secondary">
+            Grant push or admin access to users who are not group members, or override access for a specific repository.
+            Group owners and admins already have full access.
+          </p>
+        )}
 
         <form className="flex flex-wrap gap-3 items-start" onSubmit={onAddCollaborator}>
           <UserPicker
@@ -191,7 +189,18 @@ export function RepoCollaborators({ token, orgSlug, repoSlug }: RepoCollaborator
             </tbody>
           </table>
         )}
+    </div>
+  )
+
+  if (embedded) return body
+
+  return (
+    <div className="app-panel max-w-2xl">
+      <div className="app-panel-header flex items-center gap-2">
+        <UserPlus size={16} />
+        Direct access
       </div>
+      <div className="app-panel-body">{body}</div>
     </div>
   )
 }
