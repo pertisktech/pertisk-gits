@@ -37,6 +37,8 @@ Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React*
 | Branch/tag UI | Done |
 | Repo settings | Done |
 | Web file browser | Done (public repos readable without login) |
+| Web file editor | Done (browse table → edit mode, tree explorer, commit on branch) |
+| Line numbers in code view | Done |
 | Raw file download | Done |
 | Commits UI | Done (blame later) |
 
@@ -69,7 +71,7 @@ Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React*
 | Merge (no-ff) | Done |
 | Squash merge | Done |
 | Merge conflict detection | Done |
-| Rebase merge | Phase 7 |
+| Rebase merge | Phase 7+ |
 | PR status checks | Done |
 
 **Tables:** `issues`, `issue_comments`, `labels`, `milestones`, `pull_requests`, `pr_reviews`, `pr_comments`
@@ -300,7 +302,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 
 ---
 
-## Phase 7 — Fine-grained Permissions & Kubernetes (In progress)
+## Phase 7 — Fine-grained Permissions & Kubernetes (Done — MVP)
 
 ### Fine-grained Permissions
 
@@ -309,6 +311,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Branch protection rules (pattern, PR-only, approvals, CI, force-push) | Done (MVP) |
 | Enforcement on PR merge | Done |
 | Enforcement on Git HTTP push | Done |
+| Enforcement on web file commits | Done |
 | Branch protection UI (repo settings) | Done |
 | Custom roles beyond owner/write/read | Done (MVP) |
 | Custom roles UI | Done |
@@ -317,7 +320,8 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Deploy keys (SSH, per-repo, read-only default) | Done (MVP) |
 | Deploy keys UI (repo settings) | Done |
 | Machine users, scoped API tokens | Done (MVP) |
-| PAT / machine user UI | Done (profile + group) |
+| PAT UI (profile) | Done |
+| Machine users UI (group) | Done |
 
 ### Kubernetes Integration
 
@@ -329,7 +333,21 @@ See [docs/IMPORT.md](./IMPORT.md)
 | HPA / queue-depth autoscale for runners | Done (MVP — metrics endpoint + Helm external metric) |
 | Optional GitOps webhooks (Argo CD / Flux) | Done (MVP) |
 
-**Tables (new):** `branch_protection_rules`, `repository_deploy_keys`, `organization_custom_roles`, `teams`, `team_members`, `team_repository_permissions`
+**Deferred:** rebase merge, catalog API, public registry pulls, Helm/K8s chart registry
+
+**Tables (new):** `branch_protection_rules`, `repository_deploy_keys`, `organization_custom_roles`, `teams`, `team_members`, `team_repository_permissions`, extended `api_tokens`, `gitops_webhooks`
+
+---
+
+## Phase 8 — Platform polish (Next)
+
+| Component | Status |
+|-----------|--------|
+| Rebase merge on PRs | Planned |
+| Registry catalog API | Planned |
+| Public anonymous registry pulls | Planned |
+| Import wiki pages | Planned |
+| Blame / line history in file browser | Planned |
 
 ---
 
@@ -351,6 +369,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Import from GitHub / GitLab | 6.5 |
 | Fine-grained Permissions | 7 |
 | Kubernetes Integration | 7 |
+| Platform polish | 8 |
 
 ---
 

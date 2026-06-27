@@ -1,6 +1,7 @@
 import {
   ArrowLeft,
   BookOpen,
+  Bot,
   ChevronLeft,
   ChevronRight,
   Code2,
@@ -73,6 +74,7 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'members', label: 'Members', icon: Users },
   { id: 'teams', label: 'Teams', icon: UsersRound },
   { id: 'roles', label: 'Custom roles', icon: Shield },
+  { id: 'machine-users', label: 'Machine users', icon: Bot },
   { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'import', label: 'Import', icon: Download },
   { id: 'audit', label: 'Audit log', icon: ScrollText },
@@ -186,7 +188,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
               .filter((item) => item.id !== 'audit' || group.canViewAudit)
               .filter((item) => item.id !== 'import' || group.canManage)
               .filter((item) => item.id !== 'settings' || group.canManage)
-              .filter((item) => (item.id !== 'teams' && item.id !== 'roles') || group.canManage)
+              .filter((item) => (item.id !== 'teams' && item.id !== 'roles' && item.id !== 'machine-users') || group.canManage)
               .map(({ id, label, icon: Icon }) => (
               <NavLink
                 key={id}

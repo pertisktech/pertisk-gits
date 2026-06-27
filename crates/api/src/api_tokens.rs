@@ -19,7 +19,7 @@ pub fn api_token_routes() -> Router<AppState> {
         .route("/me/tokens/{token_id}", delete(delete_my_token))
         .route(
             "/organizations/{org_slug}/machine-users",
-            post(create_machine_user),
+            get(list_machine_users).post(create_machine_user),
         )
 }
 
@@ -40,6 +40,14 @@ struct ApiTokenResponse {
 struct CreateApiTokenResponse {
     token: ApiTokenResponse,
     plaintext: String,
+}
+
+#[derive(Serialize)]
+struct MachineUserListItem {
+    user: UserPublic,
+    role: OrgRole,
+    token_count: i64,
+    latest_token_prefix: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -154,6 +162,66 @@ async fn delete_my_token(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_machine_users(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(org_slug): Path<String>,
+) -> Result<Json<Vec<MachineUserListItem>>, ApiError> {
+    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    permissions::ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+
+    let rows = sqlx::query_as::<_, (Uuid, String, String, Option<String>, chrono::DateTime<chrono::Utc>, OrgRole, i64, Option<String>)>(
+        r#"
+        SELECT
+            u.id,
+            u.username,
+            u.email,
+            u.display_name,
+            u.created_at,
+            m.role,
+            COUNT(t.id) AS token_count,
+            (
+                SELECT token_prefix
+                FROM api_tokens
+                WHERE user_id = u.id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ) AS latest_token_prefix
+        FROM organization_members m
+        INNER JOIN users u ON u.id = m.user_id
+        LEFT JOIN api_tokens t ON t.user_id = u.id
+        WHERE m.organization_id = $1 AND u.is_machine_user = TRUE
+        GROUP BY u.id, u.username, u.email, u.display_name, u.created_at, m.role
+        ORDER BY u.created_at DESC
+        "#,
+    )
+    .bind(org.id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(
+                |(id, username, email, display_name, created_at, role, token_count, latest_token_prefix)| {
+                    MachineUserListItem {
+                        user: UserPublic {
+                            id,
+                            username,
+                            email,
+                            display_name,
+                            created_at,
+                        },
+                        role,
+                        token_count,
+                        latest_token_prefix,
+                    }
+                },
+            )
+            .collect(),
+    ))
 }
 
 async fn create_machine_user(

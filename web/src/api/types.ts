@@ -105,6 +105,19 @@ export interface ApiTokenSummary {
   created_at: string
 }
 
+export interface MachineUserSummary {
+  user: User
+  role: 'owner' | 'admin' | 'member'
+  token_count: number
+  latest_token_prefix?: string | null
+}
+
+export interface CreateMachineUserResponse {
+  user: User
+  role: 'owner' | 'admin' | 'member'
+  token: { token: ApiTokenSummary; plaintext: string }
+}
+
 export interface GitOpsWebhookSummary {
   id: string
   organization_id: string

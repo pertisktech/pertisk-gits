@@ -1,4 +1,4 @@
-export type GroupTab = 'repositories' | 'registry' | 'members' | 'teams' | 'roles' | 'audit' | 'secrets' | 'import' | 'settings'
+export type GroupTab = 'repositories' | 'registry' | 'members' | 'teams' | 'roles' | 'machine-users' | 'audit' | 'secrets' | 'import' | 'settings'
 
 const GROUP_PATH = /^\/groups\/([^/]+)(?:\/(.*))?$/
 
@@ -24,6 +24,8 @@ export function parseGroupRoute(pathname: string) {
     tab = 'teams'
   } else if (rest === 'roles') {
     tab = 'roles'
+  } else if (rest === 'machine-users') {
+    tab = 'machine-users'
   } else if (rest === 'audit') {
     tab = 'audit'
   } else if (rest === 'secrets') {

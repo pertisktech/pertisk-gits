@@ -1081,13 +1081,17 @@ async fn merge_pull_request(
             "Squash merge pull request #{} from {}",
             existing.number, existing.source_branch
         ),
+        "rebase" => format!(
+            "Rebase merge pull request #{} from {}",
+            existing.number, existing.source_branch
+        ),
         "merge" | "no-ff" => format!(
             "Merge pull request #{} from {} into {}",
             existing.number, existing.source_branch, existing.target_branch
         ),
         other => {
             return Err(DomainError::Validation(format!(
-                "unsupported merge strategy '{other}' (use merge or squash)"
+                "unsupported merge strategy '{other}' (use merge, squash, or rebase)"
             ))
             .into());
         }
@@ -1099,6 +1103,13 @@ async fn merge_pull_request(
             &existing.target_branch,
             &existing.source_branch,
             &message,
+        )
+        .await
+        .map_err(map_explorer_error)?,
+        "rebase" => explorer::rebase_branches(
+            &repo_path,
+            &existing.target_branch,
+            &existing.source_branch,
         )
         .await
         .map_err(map_explorer_error)?,

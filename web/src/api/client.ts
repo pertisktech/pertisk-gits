@@ -54,7 +54,9 @@ import type {
   WikiRevisionDetail,
   WikiRevisionSummary,
   ApiTokenSummary,
+  CreateMachineUserResponse,
   GitOpsWebhookSummary,
+  MachineUserSummary,
 } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
@@ -149,6 +151,26 @@ export const api = {
       throw new Error(message)
     }
   },
+
+  listMachineUsers: (token: string, orgSlug: string) =>
+    request<MachineUserSummary[]>(`/organizations/${orgSlug}/machine-users`, {}, token),
+
+  createMachineUser: (
+    token: string,
+    orgSlug: string,
+    payload: {
+      username: string
+      display_name?: string
+      token_name: string
+      scopes?: string[]
+      role?: 'owner' | 'admin' | 'member'
+    },
+  ) =>
+    request<CreateMachineUserResponse>(
+      `/organizations/${orgSlug}/machine-users`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
 
   listRepoGitOpsWebhooks: (token: string, orgSlug: string, repoSlug: string) =>
     request<GitOpsWebhookSummary[]>(
@@ -921,7 +943,7 @@ export const api = {
     orgSlug: string,
     repoSlug: string,
     pullNumber: number,
-    payload?: { merge_strategy?: 'merge' | 'squash' },
+    payload?: { merge_strategy?: 'merge' | 'squash' | 'rebase' },
   ) =>
     request<{ merge_commit_sha: string; pull_request: PullRequestDetail['pull_request'] }>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/merge`,

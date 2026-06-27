@@ -649,6 +649,104 @@ pub async fn squash_branches(
     .await
 }
 
+/// Replay commits from `source_branch` onto `target_branch` and advance the target ref (rebase merge).
+pub async fn rebase_branches(
+    repo_path: &Path,
+    target_branch: &str,
+    source_branch: &str,
+) -> anyhow::Result<String> {
+    if target_branch == source_branch {
+        anyhow::bail!("source and target branches must differ");
+    }
+    if !ref_exists(repo_path, target_branch).await? {
+        anyhow::bail!("branch '{target_branch}' not found");
+    }
+    if !ref_exists(repo_path, source_branch).await? {
+        anyhow::bail!("branch '{source_branch}' not found");
+    }
+
+    let compare = compare_branches(repo_path, target_branch, source_branch).await?;
+    if compare.commits.is_empty() {
+        anyhow::bail!("nothing to merge from '{source_branch}' into '{target_branch}'");
+    }
+    if !compare.mergeable {
+        anyhow::bail!("merge conflict detected");
+    }
+
+    let target_ref = format!("refs/heads/{target_branch}");
+    let source_ref = format!("refs/heads/{source_branch}");
+    let old_target_sha = git(repo_path, &["rev-parse", &target_ref]).await?;
+
+    let temp = tempfile::tempdir().context("create temp dir for rebase")?;
+    let wt_path = temp.path().join("wt");
+
+    let add = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["worktree", "add", "-f"])
+        .arg(&wt_path)
+        .arg(source_branch)
+        .output()
+        .await
+        .context("spawn git worktree add")?;
+
+    if !add.status.success() {
+        anyhow::bail!(format_git_failure(&add, "git worktree add failed"));
+    }
+
+    let rebase = Command::new("git")
+        .current_dir(&wt_path)
+        .args(["rebase", target_branch])
+        .output()
+        .await
+        .context("spawn git rebase")?;
+
+    if !rebase.status.success() {
+        let _ = Command::new("git")
+            .current_dir(&wt_path)
+            .args(["rebase", "--abort"])
+            .output()
+            .await;
+        let _ = Command::new("git")
+            .arg(format!("--git-dir={}", repo_path.display()))
+            .args(["worktree", "remove", "--force"])
+            .arg(&wt_path)
+            .output()
+            .await;
+
+        if git_output_indicates_conflict(&rebase) {
+            anyhow::bail!("merge conflict detected");
+        }
+        anyhow::bail!(format_git_failure(&rebase, "rebase failed"));
+    }
+
+    let new_sha = git(repo_path, &["rev-parse", &source_ref]).await?;
+
+    let update = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["update-ref", &target_ref, &new_sha, &old_target_sha])
+        .output()
+        .await
+        .context("spawn git update-ref")?;
+
+    if !update.status.success() {
+        anyhow::bail!(format_git_failure(&update, "update target branch failed"));
+    }
+
+    let remove = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["worktree", "remove", "--force"])
+        .arg(&wt_path)
+        .output()
+        .await
+        .context("spawn git worktree remove")?;
+
+    if !remove.status.success() {
+        anyhow::bail!(format_git_failure(&remove, "git worktree remove failed"));
+    }
+
+    Ok(new_sha)
+}
+
 async fn prepare_merge(
     repo_path: &Path,
     target_branch: &str,
