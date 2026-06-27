@@ -9,8 +9,11 @@ use serde::Deserialize;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::access::{find_repository, get_or_create_repository, parse_image_name, ContainerRepo};
-use crate::auth::{authorize_registry, registry_err, RegistryAuth, RegistryResult};
+use crate::access::{
+    find_repository, get_or_create_repository, list_catalog_repositories,
+    list_org_catalog_repositories, normalize_catalog_page_size, parse_image_name, ContainerRepo,
+};
+use crate::auth::{authorize_registry, auth_allows_catalog, registry_err, RegistryAuth, RegistryResult};
 use crate::storage::{sha256_digest, BlobStore};
 
 const MANIFEST_V2_MEDIA_TYPE: &str = "application/vnd.docker.distribution.manifest.v2+json";
@@ -48,6 +51,140 @@ pub async fn version_check(
     )
     .await?;
     Ok(Json(serde_json::json!({})).into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CatalogQuery {
+    /// Maximum number of entries to return.
+    pub n: Option<u32>,
+    /// Return entries lexically after this repository name.
+    pub last: Option<String>,
+}
+
+pub async fn get_catalog(
+    State(state): State<RegistryState>,
+    Query(query): Query<CatalogQuery>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    let auth = require_catalog(&state, &headers).await?;
+    let page_size = normalize_catalog_page_size(query.n);
+    let fetch = page_size.saturating_add(1);
+
+    let repos = list_catalog_repositories(
+        &state.pool,
+        auth.user_id,
+        query.last.as_deref(),
+        fetch,
+    )
+    .await
+    .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+    catalog_response(&state, query.n, query.last.as_deref(), repos, None)
+}
+
+pub async fn get_org_catalog(
+    State(state): State<RegistryState>,
+    Path(org): Path<String>,
+    Query(query): Query<CatalogQuery>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    let auth = require_catalog(&state, &headers).await?;
+
+    if !crate::access::is_org_member(&state.pool, &org, auth.user_id)
+        .await
+        .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
+    {
+        return Err(registry_err(StatusCode::FORBIDDEN, "insufficient scope"));
+    }
+
+    let page_size = normalize_catalog_page_size(query.n);
+    let fetch = page_size.saturating_add(1);
+
+    let repos = list_org_catalog_repositories(
+        &state.pool,
+        &org,
+        auth.user_id,
+        query.last.as_deref(),
+        fetch,
+    )
+    .await
+    .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+    catalog_response(
+        &state,
+        query.n,
+        query.last.as_deref(),
+        repos,
+        Some(&org),
+    )
+}
+
+fn catalog_response(
+    _state: &RegistryState,
+    n: Option<u32>,
+    _last: Option<&str>,
+    repos: Vec<String>,
+    org: Option<&str>,
+) -> RegistryResult<Response> {
+    let page_size = normalize_catalog_page_size(n) as usize;
+    let has_more = repos.len() > page_size;
+    let page: Vec<String> = repos.into_iter().take(page_size).collect();
+
+    let mut headers = HeaderMap::new();
+    if has_more {
+        if let Some(last_repo) = page.last() {
+            let link = match org {
+                Some(org_slug) => format!(
+                    "/v2/{org_slug}/_catalog?n={page_size}&last={last_repo}"
+                ),
+                None => format!("/v2/_catalog?n={page_size}&last={last_repo}"),
+            };
+            if let Ok(value) = axum::http::HeaderValue::from_str(&format!(
+                r#"<{link}>; rel="next""#
+            )) {
+                headers.insert(header::LINK, value);
+            }
+        }
+    }
+
+    Ok((
+        StatusCode::OK,
+        headers,
+        Json(serde_json::json!({ "repositories": page })),
+    )
+        .into_response())
+}
+
+async fn require_catalog(
+    state: &RegistryState,
+    headers: &HeaderMap,
+) -> RegistryResult<RegistryAuth> {
+    let auth = authorize_registry(
+        &state.pool,
+        &state.jwt_secret,
+        &state.token_url,
+        &state.service_name,
+        headers,
+        None,
+        None,
+    )
+    .await?;
+
+    if auth_allows_catalog(&auth) {
+        return Ok(auth);
+    }
+
+    if crate::access::user_has_org_membership(&state.pool, auth.user_id)
+        .await
+        .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
+    {
+        return Ok(auth);
+    }
+
+    Err(registry_err(
+        StatusCode::FORBIDDEN,
+        "catalog requires organization membership",
+    ))
 }
 
 pub async fn get_manifest(

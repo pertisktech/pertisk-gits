@@ -73,6 +73,8 @@ docker push -H "X-Pertisk-Commit-Sha: $CI_COMMIT_SHA" ...
 |--------|------|-------------|
 | GET | `/v2/` | API version check |
 | GET | `/service/token` | Issue Bearer token (Basic auth) |
+| GET | `/v2/_catalog` | List repositories (`org/image`) for authenticated members |
+| GET | `/v2/{org}/_catalog` | List image names within one organization |
 | GET/HEAD | `/v2/{org}/{image}/manifests/{tag\|digest}` | Pull manifest |
 | PUT | `/v2/{org}/{image}/manifests/{tag}` | Push manifest + tag |
 | GET/HEAD | `/v2/{org}/{image}/blobs/{digest}` | Pull blob |
@@ -118,7 +120,6 @@ If localhost returns 401 but HTTPS returns 413, the limit is in **ingress/proxy*
 ## Not yet implemented
 
 - Public anonymous pulls
-- `/v2/_catalog`
 - Automated GC in standalone worker (runs in embedded API / registry process today)
 
 See `docs/PHASES.md` Phase 5 for the full roadmap.

@@ -22,6 +22,8 @@ pub fn router() -> Router<RegistryState> {
     Router::new()
         .route("/service/token", get(routes::token::get_token))
         .route("/v2/", get(routes::v2::version_check))
+        .route("/v2/_catalog", get(routes::v2::get_catalog))
+        .route("/v2/{org}/_catalog", get(routes::v2::get_org_catalog))
         .route(
             "/v2/{org}/{image}/manifests/{reference}",
             get(routes::v2::get_manifest)

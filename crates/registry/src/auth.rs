@@ -118,6 +118,10 @@ fn split_scope_entries(scope: &str) -> Vec<String> {
 
 fn parse_single_scope(part: &str) -> Option<(String, Vec<String>)> {
     let part = part.trim();
+    if let Some(actions) = part.strip_prefix("registry:catalog:") {
+        let actions: Vec<String> = actions.split(',').map(str::trim).map(String::from).collect();
+        return Some(("catalog".to_string(), actions));
+    }
     let rest = part.strip_prefix("repository:")?;
     let (name, actions) = rest.rsplit_once(':')?;
     let actions: Vec<String> = actions.split(',').map(str::trim).map(String::from).collect();
@@ -154,6 +158,21 @@ pub async fn authorize_scopes(
 ) -> anyhow::Result<Vec<RegistryAccess>> {
     let mut granted = Vec::new();
     for (name, actions) in scopes {
+        if name == "catalog" {
+            if user_has_catalog_access(pool, user.id).await? {
+                granted.push(RegistryAccess {
+                    access_type: "registry".into(),
+                    name: "catalog".into(),
+                    actions: if actions.is_empty() {
+                        vec!["*".into()]
+                    } else {
+                        actions.clone()
+                    },
+                });
+            }
+            continue;
+        }
+
         let Some((org, _image)) = parse_image_name(name) else {
             continue;
         };
@@ -185,6 +204,16 @@ pub fn auth_allows(auth: &RegistryAuth, repo_name: &str, action: &str) -> bool {
             && entry.name == repo_name
             && entry.actions.iter().any(|a| a == action)
     })
+}
+
+pub fn auth_allows_catalog(auth: &RegistryAuth) -> bool {
+    auth.access.iter().any(|entry| {
+        entry.access_type == "registry" && entry.name == "catalog"
+    })
+}
+
+async fn user_has_catalog_access(pool: &PgPool, user_id: Uuid) -> anyhow::Result<bool> {
+    crate::access::user_has_org_membership(pool, user_id).await
 }
 
 /// Authenticate a registry request via Bearer token or HTTP Basic (docker login).
@@ -314,6 +343,14 @@ pub fn registry_unauthorized(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_catalog_scope() {
+        let scopes = parse_scopes("registry:catalog:*");
+        assert_eq!(scopes.len(), 1);
+        assert_eq!(scopes[0].0, "catalog");
+        assert_eq!(scopes[0].1, vec!["*"]);
+    }
 
     #[test]
     fn split_combined_scope_string() {

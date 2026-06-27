@@ -47,7 +47,7 @@ export function PullRequestDetailPage() {
   const [reviewMessage, setReviewMessage] = useState<string | null>(null)
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [mergeError, setMergeError] = useState<string | null>(null)
-  const [mergeStrategy, setMergeStrategy] = useState<'merge' | 'squash'>('merge')
+  const [mergeStrategy, setMergeStrategy] = useState<'merge' | 'squash' | 'rebase'>('merge')
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -218,11 +218,12 @@ export function PullRequestDetailPage() {
                 <select
                   className="app-field !py-1.5 !text-sm"
                   value={mergeStrategy}
-                  onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash')}
+                  onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash' | 'rebase')}
                   disabled={mergeMutation.isPending}
                 >
                   <option value="merge">Create merge commit</option>
                   <option value="squash">Squash and merge</option>
+                  <option value="rebase">Rebase and merge</option>
                 </select>
                 <PrimaryButton
                   type="button"

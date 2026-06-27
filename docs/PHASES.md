@@ -71,7 +71,7 @@ Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React*
 | Merge (no-ff) | Done |
 | Squash merge | Done |
 | Merge conflict detection | Done |
-| Rebase merge | Phase 7+ |
+| Rebase merge | Done (MVP) |
 | PR status checks | Done |
 
 **Tables:** `issues`, `issue_comments`, `labels`, `milestones`, `pull_requests`, `pr_reviews`, `pr_comments`
@@ -227,7 +227,7 @@ Full guide: [docs/RUNNERS.md](./RUNNERS.md)
 | Git repo link | `repository_id` on image; `commit_sha` on tags (push header) | Done |
 | Link images to commits UI | Tag commit links when repo linked | Done |
 
-**Deferred:** catalog API, public pulls, Helm/K8s chart registry
+**Deferred:** public anonymous pulls, Helm/K8s chart registry
 
 **Gateway route:** `/v2/*` → `registry` service (or embedded API)
 
@@ -343,8 +343,8 @@ See [docs/IMPORT.md](./IMPORT.md)
 
 | Component | Status |
 |-----------|--------|
-| Rebase merge on PRs | Planned |
-| Registry catalog API | Planned |
+| Rebase merge on PRs | Done (MVP) |
+| Registry catalog API | Done (MVP — `/v2/_catalog`, org-scoped catalog) |
 | Public anonymous registry pulls | Planned |
 | Import wiki pages | Planned |
 | Blame / line history in file browser | Planned |
