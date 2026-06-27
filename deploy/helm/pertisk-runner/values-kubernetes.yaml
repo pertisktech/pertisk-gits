@@ -31,3 +31,8 @@ resources:
   limits:
     cpu: "1"
     memory: 512Mi
+
+# ARM clusters (e.g. Talos): schedule manager pods on arm64 nodes.
+# Do not use --set nodeSelector.kubernetes.io/arch=arm64 (Helm splits on dots).
+nodeSelector:
+  kubernetes.io/arch: arm64

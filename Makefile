@@ -7,7 +7,7 @@
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm deploy-rpm-arm64 \
 	install-runner deploy-runner-rpm deploy-runner-rpm-arm64 \
 	runner-image runner-image-push runner-image-multi runner-compose-up runner-compose-down \
-	helm-runner-lint helm-runner-template helm-runner-install \
+	helm-runner-lint helm-runner-template helm-runner-install helm-runner-upgrade \
 	helm-gits-lint helm-gits-template
 
 CARGO ?= cargo
@@ -346,6 +346,7 @@ runner-image-multi:
 	  --build-arg VERSION="$(VERSION)" \
 	  -t "$(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)" \
 	  -t "$(RUNNER_IMAGE):latest" \
+	  $(if $(NO_CACHE),--no-cache,) \
 	  --push .
 
 runner-compose-up:
@@ -375,6 +376,14 @@ helm-runner-install:
 	  --set apiUrl="$(PERTISK_API_URL)" \
 	  --set runnerToken="$(RUNNER_TOKEN)" \
 	  --set image.tag="$(VERSION)"
+
+# Upgrade image tag only (multi-arch: linux/amd64 + linux/arm64). Run runner-image-multi first.
+helm-runner-upgrade:
+	helm upgrade $(HELM_RUNNER_RELEASE) $(HELM_RUNNER_CHART) \
+	  --namespace $(HELM_RUNNER_NAMESPACE) \
+	  --reuse-values \
+	  --set image.tag="$(VERSION)" \
+	  --set image.pullPolicy=Always
 
 HELM_GITS_CHART = deploy/helm/pertisk-gits
 HELM_GITS_RELEASE ?= pertisk-gits

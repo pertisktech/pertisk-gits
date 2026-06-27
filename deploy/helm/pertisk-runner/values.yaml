@@ -47,7 +47,7 @@ kubernetes:
 
 image:
   repository: harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/runner
-  tag: "0.1.85" # defaults to Chart.appVersion
+  tag: "0.2.30" # use runner-image-multi; 0.2.29 arm64 layer had wrong binary
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

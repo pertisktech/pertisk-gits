@@ -158,7 +158,15 @@ helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
   -f deploy/helm/pertisk-runner/values-kubernetes.yaml \
   --namespace pertisk --create-namespace \
   --set apiUrl=https://git.example.com \
-  --set runnerToken=ptr_...
+  --set runnerToken=ptr_... \
+  --set image.tag=0.2.29 \
+  --set image.pullPolicy=Always
+```
+
+`values-kubernetes.yaml` includes `nodeSelector.kubernetes.io/arch: arm64` for ARM clusters. To override from CLI, use JSON (not dotted `--set`, which breaks keys like `kubernetes.io/arch`):
+
+```bash
+--set-json 'nodeSelector={"kubernetes.io/arch":"arm64"}'
 ```
 
 Pipeline jobs must use `runs-on: kubernetes`:
