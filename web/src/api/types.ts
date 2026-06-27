@@ -43,6 +43,15 @@ export interface UserSshKey {
   created_at: string
 }
 
+export interface RepositoryDeployKey {
+  id: string
+  title: string
+  public_key: string
+  fingerprint: string
+  read_only: boolean
+  created_at: string
+}
+
 export interface TreeEntry {
   name: string
   path: string
@@ -383,6 +392,95 @@ export interface PipelineConfigPreview {
   commit_sha: string
   ref: string
   jobs: PipelineJobPreview[]
+}
+
+export type LegacyCiKind = 'gitlab' | 'github_actions'
+
+export interface LegacyCiDetection {
+  kind: LegacyCiKind
+  path: string
+}
+
+export interface CiConvertResult {
+  source_path: string
+  source_kind: LegacyCiKind
+  converted_yaml: string
+  warnings: string[]
+}
+
+export interface PipelineMigrateResponse {
+  has_pertisk_config: boolean
+  detected: LegacyCiDetection[]
+  suggestions: CiConvertResult[]
+}
+
+export interface WikiPageSummary {
+  slug: string
+  title: string
+  parent_slug: string | null
+  position: number
+  updated_at: string
+}
+
+export interface WikiPage {
+  id: string
+  repository_id: string
+  slug: string
+  title: string
+  body: string
+  author_id: string
+  parent_slug: string | null
+  position: number
+  created_at: string
+  updated_at: string
+}
+
+export interface WikiPageDetail {
+  page: WikiPage
+  author: User
+}
+
+export interface WikiRevisionSummary {
+  id: string
+  author: User
+  title: string
+  created_at: string
+}
+
+export interface WikiRevisionDetail {
+  revision: {
+    id: string
+    page_id: string
+    author_id: string
+    title: string
+    body: string
+    created_at: string
+  }
+  author: User
+}
+
+export interface CodeSearchHit {
+  repository_id: string
+  org_slug: string
+  repo_slug: string
+  path: string
+  commit_sha: string
+  ref_name: string
+  snippet: string
+  score: number
+}
+
+export interface CodeSearchResponse {
+  query: string
+  hits: CodeSearchHit[]
+}
+
+export interface CodeSearchStatus {
+  indexed: boolean
+  commit_sha: string | null
+  ref_name: string | null
+  document_count: number | null
+  indexed_at: string | null
 }
 
 export interface PipelineRun {

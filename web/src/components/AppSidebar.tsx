@@ -1,5 +1,6 @@
 import {
   ArrowLeft,
+  BookOpen,
   ChevronLeft,
   ChevronRight,
   Code2,
@@ -51,6 +52,7 @@ const projectNavItems: {
   { id: 'issues', label: 'Issues', icon: CircleDot },
   { id: 'pulls', label: 'Pull requests', icon: GitPullRequest },
   { id: 'commits', label: 'Commits', icon: GitCommit },
+  { id: 'wiki', label: 'Wiki', icon: BookOpen },
   { id: 'pipelines', label: 'Pipelines', icon: Workflow },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]

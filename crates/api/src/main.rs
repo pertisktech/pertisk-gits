@@ -38,7 +38,9 @@ mod branch_protection;
 mod ci_secrets;
 mod collaboration;
 mod cicd;
+mod code_search;
 mod config;
+mod deploy_keys;
 mod db;
 mod import;
 mod password;
@@ -48,6 +50,7 @@ mod secrets_crypto;
 mod sso;
 mod system_metrics;
 mod version;
+mod wiki;
 
 use chrono::Utc;
 use config::Config;
@@ -104,10 +107,16 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Arc::new(Config::from_env()?);
     std::fs::create_dir_all(&config.repos_root)?;
+    std::fs::create_dir_all(&config.search_index_root)?;
     let pool = db::connect(&config.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
     cicd::spawn_runner_stale_checker(pool.clone());
     import::spawn_background_processor(pool.clone(), config.repos_root.clone());
+    code_search::spawn_background_processor(
+        pool.clone(),
+        config.repos_root.clone(),
+        Arc::new(config.search_index_root.clone()),
+    );
     let artifact_store = artifacts::ArtifactStore::from_env()?;
     let secrets_crypto = Arc::new(SecretsCrypto::from_env()?);
 
@@ -153,6 +162,8 @@ async fn main() -> anyhow::Result<()> {
             get(get_repo_commit),
         )
         .merge(collaboration::collaboration_read_routes())
+        .merge(wiki::wiki_read_routes())
+        .merge(code_search::code_search_read_routes())
         .merge(cicd::cicd_read_routes())
         .merge(ci_secrets::ci_secrets_read_routes())
         .merge(registry::registry_read_routes())
@@ -183,6 +194,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .merge(permissions::permissions_routes())
         .merge(collaboration::collaboration_write_routes())
+        .merge(wiki::wiki_write_routes())
+        .merge(deploy_keys::deploy_key_routes())
         .merge(cicd::cicd_write_routes())
         .merge(ci_secrets::ci_secrets_write_routes())
         .merge(registry::registry_write_routes())

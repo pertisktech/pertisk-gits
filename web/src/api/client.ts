@@ -14,6 +14,7 @@ import type {
   Organization,
   OrgMember,
   PipelineConfigPreview,
+  PipelineMigrateResponse,
   PipelineRun,
   PullRequestCommentDetail,
   PullRequestDetail,
@@ -28,6 +29,7 @@ import type {
   RepoBrowser,
   RepoCollaborator,
   BranchProtectionRule,
+  RepositoryDeployKey,
   Repository,
   RepositoryDetail,
   RotateRunnerTokenResponse,
@@ -38,6 +40,12 @@ import type {
   TreeEntry,
   User,
   UserSshKey,
+  CodeSearchResponse,
+  CodeSearchStatus,
+  WikiPageDetail,
+  WikiPageSummary,
+  WikiRevisionDetail,
+  WikiRevisionSummary,
 } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
@@ -258,6 +266,39 @@ export const api = {
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
       `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection/${ruleId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listDeployKeys: (token: string, orgSlug: string, repoSlug: string) =>
+    request<RepositoryDeployKey[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/deploy-keys`,
+      {},
+      token,
+    ),
+
+  createDeployKey: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { title: string; public_key: string; read_only?: boolean },
+  ) =>
+    request<RepositoryDeployKey>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/deploy-keys`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteDeployKey: async (token: string, orgSlug: string, repoSlug: string, keyId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/deploy-keys/${keyId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -497,6 +538,98 @@ export const api = {
       token,
     ),
 
+  listWikiPages: (orgSlug: string, repoSlug: string, token?: string | null) =>
+    request<{ pages: WikiPageSummary[] }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages`,
+      {},
+      token,
+    ),
+
+  getWikiPage: (orgSlug: string, repoSlug: string, pageSlug: string, token?: string | null) =>
+    request<WikiPageDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
+      {},
+      token,
+    ),
+
+  createWikiPage: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { title: string; slug?: string; body?: string; parent_slug?: string | null; position?: number },
+  ) =>
+    request<WikiPageDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  updateWikiPage: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    pageSlug: string,
+    payload: { title?: string; body?: string; parent_slug?: string | null; position?: number },
+  ) =>
+    request<WikiPageDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteWikiPage: (token: string, orgSlug: string, repoSlug: string, pageSlug: string) =>
+    request<void>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
+      { method: 'DELETE' },
+      token,
+    ),
+
+  listWikiRevisions: (orgSlug: string, repoSlug: string, pageSlug: string, token?: string | null) =>
+    request<{ revisions: WikiRevisionSummary[] }>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}/revisions`,
+      {},
+      token,
+    ),
+
+  getWikiRevision: (
+    orgSlug: string,
+    repoSlug: string,
+    pageSlug: string,
+    revisionId: string,
+    token?: string | null,
+  ) =>
+    request<WikiRevisionDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}/revisions/${revisionId}`,
+      {},
+      token,
+    ),
+
+  searchCode: (query: string, token?: string | null, limit = 20) => {
+    const search = new URLSearchParams({ q: query, limit: String(limit) })
+    return request<CodeSearchResponse>(`/search/code?${search}`, {}, token)
+  },
+
+  searchRepoCode: (
+    orgSlug: string,
+    repoSlug: string,
+    query: string,
+    token?: string | null,
+    limit = 20,
+  ) => {
+    const search = new URLSearchParams({ q: query, limit: String(limit) })
+    return request<CodeSearchResponse>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/search/code?${search}`,
+      {},
+      token,
+    )
+  },
+
+  getRepoSearchStatus: (orgSlug: string, repoSlug: string, token?: string | null) =>
+    request<CodeSearchStatus>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/search/status`,
+      {},
+      token,
+    ),
+
   listPullRequests: (
     orgSlug: string,
     repoSlug: string,
@@ -631,6 +764,20 @@ export const api = {
   ) =>
     request<PipelineConfigPreview>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/config${
+        ref ? `?ref=${encodeURIComponent(ref)}` : ''
+      }`,
+      {},
+      token,
+    ),
+
+  getPipelineMigrate: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    ref?: string,
+  ) =>
+    request<PipelineMigrateResponse>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/migrate${
         ref ? `?ref=${encodeURIComponent(ref)}` : ''
       }`,
       {},

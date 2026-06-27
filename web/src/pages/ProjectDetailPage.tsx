@@ -4,11 +4,13 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { RepoBrowser } from '../components/RepoBrowser'
+import { RepoCodeSearch } from '../components/RepoCodeSearch'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
 import { RepoIssues } from '../components/RepoIssues'
 import { RepoPullRequests } from '../components/RepoPullRequests'
 import { RepoPipelines } from '../components/RepoPipelines'
+import { RepoWiki } from '../components/RepoWiki'
 import { RepoHeader } from '../components/RepoHeader'
 import { RepoSettings } from '../components/RepoSettings'
 import { Breadcrumbs } from '../components/ui'
@@ -59,7 +61,7 @@ export function ProjectDetailPage() {
       return
     }
 
-    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'pipelines', 'settings']
+    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'pipelines', 'wiki', 'settings']
     if (!legacyTabs.includes(requested as ProjectTab)) {
       navigate(basePath, { replace: true })
       return
@@ -121,12 +123,15 @@ export function ProjectDetailPage() {
 
       <div className="min-w-0 space-y-4">
         {tab === 'code' && (
-          <RepoBrowser
-            token={token}
-            orgSlug={orgSlug}
-            repoSlug={projectSlug}
-            defaultBranch={project.default_branch}
-          />
+          <div className="space-y-4">
+            <RepoCodeSearch token={token} orgSlug={orgSlug} repoSlug={projectSlug} />
+            <RepoBrowser
+              token={token}
+              orgSlug={orgSlug}
+              repoSlug={projectSlug}
+              defaultBranch={project.default_branch}
+            />
+          </div>
         )}
 
         {tab === 'issues' && (
@@ -158,6 +163,10 @@ export function ProjectDetailPage() {
             repoSlug={projectSlug}
             defaultBranch={project.default_branch}
           />
+        )}
+
+        {tab === 'wiki' && (
+          <RepoWiki token={token} orgSlug={orgSlug} repoSlug={projectSlug} />
         )}
 
         {tab === 'settings' && token && (

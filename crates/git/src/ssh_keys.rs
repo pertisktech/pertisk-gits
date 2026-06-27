@@ -44,3 +44,21 @@ pub async fn find_user_by_fingerprint(
 
     Ok(row.map(|(id, username)| AuthUser { id, username }))
 }
+
+pub async fn deploy_key_fingerprint_exists(
+    pool: &PgPool,
+    fingerprint: &str,
+) -> anyhow::Result<bool> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM repository_deploy_keys WHERE fingerprint = $1
+        )
+        "#,
+    )
+    .bind(fingerprint)
+    .fetch_one(pool)
+    .await?;
+
+    Ok(exists)
+}

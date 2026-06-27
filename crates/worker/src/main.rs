@@ -48,7 +48,14 @@ async fn main() -> anyhow::Result<()> {
         repos_root: Arc::new(cli.repos_root),
     };
 
-    let import_worker = ImportWorker::from_env(pool, state.repos_root.clone())?;
+    let import_worker = ImportWorker::from_env(pool.clone(), state.repos_root.clone())?;
+    let index_root = Arc::new(pertisk_worker::search::default_index_root());
+    pertisk_worker::search::ensure_index_root(&index_root)?;
+    let search_worker = pertisk_worker::search::CodeIndexWorker::new(
+        pool.clone(),
+        state.repos_root.clone(),
+        index_root,
+    );
 
     tracing::info!(poll_secs = cli.poll_secs, "pertisk-worker started");
     loop {
@@ -61,6 +68,11 @@ async fn main() -> anyhow::Result<()> {
             Ok(count) if count > 0 => tracing::info!(processed = count, "import jobs processed"),
             Ok(_) => {}
             Err(err) => tracing::warn!("import processing failed: {err:#}"),
+        }
+        match search_worker.process_pending_jobs().await {
+            Ok(count) if count > 0 => tracing::info!(processed = count, "code index jobs processed"),
+            Ok(_) => {}
+            Err(err) => tracing::warn!("code index processing failed: {err:#}"),
         }
         tokio::time::sleep(Duration::from_secs(cli.poll_secs)).await;
     }

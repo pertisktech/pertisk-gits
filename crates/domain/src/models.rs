@@ -135,6 +135,32 @@ pub struct ApiToken {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct RepositoryDeployKey {
+    pub id: Uuid,
+    pub repository_id: Uuid,
+    pub title: String,
+    pub public_key: String,
+    pub fingerprint: String,
+    pub read_only: bool,
+    pub created_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateDeployKeyRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub title: String,
+    #[validate(length(min = 1))]
+    pub public_key: String,
+    #[serde(default = "default_read_only_deploy_key")]
+    pub read_only: bool,
+}
+
+fn default_read_only_deploy_key() -> bool {
+    true
+}
+
 #[derive(Debug, Deserialize, Validate)]
 pub struct RegisterRequest {
     #[validate(length(min = 3, max = 39))]
@@ -696,5 +722,48 @@ pub struct UpdateBranchProtectionRequest {
     pub require_status_checks: Option<bool>,
     pub allow_force_push: Option<bool>,
     pub allow_admin_bypass: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct WikiPage {
+    pub id: Uuid,
+    pub repository_id: Uuid,
+    pub slug: String,
+    pub title: String,
+    pub body: String,
+    pub author_id: Uuid,
+    pub parent_slug: Option<String>,
+    pub position: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct WikiPageRevision {
+    pub id: Uuid,
+    pub page_id: Uuid,
+    pub author_id: Uuid,
+    pub title: String,
+    pub body: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateWikiPageRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub title: String,
+    pub slug: Option<String>,
+    pub body: Option<String>,
+    pub parent_slug: Option<String>,
+    pub position: Option<i32>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateWikiPageRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub parent_slug: Option<String>,
+    pub position: Option<i32>,
 }
 

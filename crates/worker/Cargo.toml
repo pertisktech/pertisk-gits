@@ -15,6 +15,7 @@ path = "src/main.rs"
 pertisk-cicd = { path = "../cicd" }
 pertisk-domain = { path = "../domain" }
 pertisk-git = { path = "../git" }
+pertisk-search = { path = "../search" }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 clap = { version = "4", features = ["derive", "env"] }

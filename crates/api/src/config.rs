@@ -10,6 +10,7 @@ pub struct Config {
     pub git_ssh_public_host: Option<String>,
     pub git_ssh_port: Option<u16>,
     pub git_ssh_host_key_path: PathBuf,
+    pub search_index_root: PathBuf,
     /// When set, static SPA files are served on `/` (single-port deploy).
     pub web_dist: Option<PathBuf>,
 }
@@ -38,6 +39,9 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("data/ssh_host_key"));
 
+        let search_index_root = std::env::var("SEARCH_INDEX_ROOT")
+            .unwrap_or_else(|_| "data/search".into());
+
         Ok(Self {
             host: std::env::var("API_HOST").unwrap_or_else(|_| "0.0.0.0".into()),
             port: std::env::var("API_PORT")
@@ -52,6 +56,7 @@ impl Config {
             git_ssh_public_host,
             git_ssh_port,
             git_ssh_host_key_path,
+            search_index_root: PathBuf::from(search_index_root),
             web_dist,
         })
     }

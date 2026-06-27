@@ -1,4 +1,4 @@
-export type ProjectTab = 'code' | 'issues' | 'pulls' | 'commits' | 'pipelines' | 'settings'
+export type ProjectTab = 'code' | 'issues' | 'pulls' | 'commits' | 'pipelines' | 'wiki' | 'settings'
 
 const PROJECT_PATH = /^\/groups\/([^/]+)\/projects\/([^/]+)(?:\/(.*))?$/
 
@@ -20,6 +20,8 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
     tab = 'commits'
   } else if (rest.startsWith('pipelines')) {
     tab = 'pipelines'
+  } else if (rest.startsWith('wiki')) {
+    tab = 'wiki'
   } else if (rest === 'settings') {
     tab = 'settings'
   } else if (!rest) {
@@ -29,6 +31,7 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
       requested === 'pulls' ||
       requested === 'commits' ||
       requested === 'pipelines' ||
+      requested === 'wiki' ||
       requested === 'settings'
     ) {
       tab = requested
@@ -41,4 +44,8 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
 export function projectTabPath(basePath: string, tab: ProjectTab) {
   if (tab === 'code') return basePath
   return `${basePath}/${tab}`
+}
+
+export function wikiPagePath(basePath: string, pageSlug: string) {
+  return `${basePath}/${encodeURIComponent(pageSlug)}`
 }

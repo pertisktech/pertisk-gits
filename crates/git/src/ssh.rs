@@ -10,7 +10,7 @@ use russh::{Channel, ChannelId};
 use sqlx::PgPool;
 use tokio::sync::Mutex;
 
-use crate::access::{self, AuthUser};
+use crate::access::{self};
 use crate::command::{parse_ssh_command, GitService};
 use crate::config::repo_disk_path;
 use crate::refs::{diff_refs, snapshot_refs};
@@ -99,7 +99,7 @@ impl russh::server::Server for SshServer {
 
 struct SshSession {
     state: Arc<GitSshState>,
-    user: Option<AuthUser>,
+    principal: Option<access::GitPrincipal>,
     channels: Arc<Mutex<HashMap<ChannelId, Channel<Msg>>>>,
 }
 
@@ -107,7 +107,7 @@ impl SshSession {
     fn new(state: Arc<GitSshState>) -> Self {
         Self {
             state,
-            user: None,
+            principal: None,
             channels: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -130,14 +130,19 @@ impl russh::server::Handler for SshSession {
         }
 
         let fingerprint = fingerprint_of_key(public_key);
-        let Some(auth_user) =
+        if let Some(auth_user) =
             crate::ssh_keys::find_user_by_fingerprint(&self.state.pool, &fingerprint).await?
-        else {
-            return Ok(Auth::reject());
-        };
+        {
+            self.principal = Some(access::GitPrincipal::User(auth_user));
+            return Ok(Auth::Accept);
+        }
 
-        self.user = Some(auth_user);
-        Ok(Auth::Accept)
+        if crate::ssh_keys::deploy_key_fingerprint_exists(&self.state.pool, &fingerprint).await? {
+            self.principal = Some(access::GitPrincipal::DeployKey { fingerprint });
+            return Ok(Auth::Accept);
+        }
+
+        Ok(Auth::reject())
     }
 
     async fn channel_open_session(
@@ -155,7 +160,7 @@ impl russh::server::Handler for SshSession {
         command: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let Some(user) = self.user.clone() else {
+        let Some(principal) = self.principal.clone() else {
             session.channel_failure(channel_id)?;
             return Ok(());
         };
@@ -177,14 +182,20 @@ impl russh::server::Handler for SshSession {
 
         let allowed = match git_cmd.service {
             GitService::UploadPack => {
-                access::can_read_repo(&self.state.pool, &repo, Some(&user)).await?
+                access::can_read_repo_principal(&self.state.pool, &repo, &principal).await?
             }
-            GitService::ReceivePack => access::can_write_repo(&self.state.pool, &repo, &user).await?,
+            GitService::ReceivePack => {
+                access::can_write_repo_principal(&self.state.pool, &repo, &principal).await?
+            }
         };
 
         if !allowed {
+            let actor = match &principal {
+                access::GitPrincipal::User(user) => user.username.clone(),
+                access::GitPrincipal::DeployKey { fingerprint } => format!("deploy-key:{fingerprint}"),
+            };
             tracing::warn!(
-                user = %user.username,
+                user = %actor,
                 repo = %format!("{}/{}", git_cmd.org_slug, git_cmd.repo_slug),
                 "ssh git access denied"
             );

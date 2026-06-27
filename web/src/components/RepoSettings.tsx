@@ -6,6 +6,7 @@ import type { Repository } from '../api/types'
 import { PrimaryButton, Select } from './ui'
 import { RepoCollaborators } from './RepoCollaborators'
 import { BranchProtection } from './BranchProtection'
+import { DeployKeysPanel } from './DeployKeysPanel'
 import { SecretsPanel } from './SecretsPanel'
 
 interface RepoSettingsProps {
@@ -169,6 +170,8 @@ export function RepoSettings({
         repoSlug={repoSlug}
         branchOptions={branchOptions}
       />
+
+      <DeployKeysPanel token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
 
       <SecretsPanel
         token={token}

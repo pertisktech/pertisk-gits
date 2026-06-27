@@ -13,6 +13,7 @@ pertisk-git = { path = "../git" }
 pertisk-registry = { path = "../registry" }
 pertisk-cicd = { path = "../cicd" }
 pertisk-worker = { path = "../worker" }
+pertisk-search = { path = "../search" }
 anyhow = { workspace = true }
 argon2 = { workspace = true }
 axum = { workspace = true }

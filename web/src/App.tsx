@@ -117,6 +117,14 @@ export default function App() {
                   element={<ProjectDetailPage />}
                 />
                 <Route
+                  path="/groups/:slug/projects/:projectSlug/wiki/:pageSlug"
+                  element={<ProjectDetailPage />}
+                />
+                <Route
+                  path="/groups/:slug/projects/:projectSlug/wiki"
+                  element={<ProjectDetailPage />}
+                />
+                <Route
                   path="/groups/:slug/projects/:projectSlug/pipelines"
                   element={<ProjectDetailPage />}
                 />

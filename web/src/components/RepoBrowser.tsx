@@ -7,7 +7,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
 import { findReadmePath } from '../lib/readme'
@@ -29,8 +29,14 @@ export function RepoBrowser({
   repoSlug,
   defaultBranch,
 }: RepoBrowserProps) {
-  const [path, setPath] = useState('')
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialFile = searchParams.get('file')
+  const [path, setPath] = useState(() => {
+    if (!initialFile) return ''
+    const slash = initialFile.lastIndexOf('/')
+    return slash >= 0 ? initialFile.slice(0, slash) : ''
+  })
+  const [selectedFile, setSelectedFile] = useState<string | null>(initialFile)
   const [refOverride, setRefOverride] = useState<string | null>(null)
   const [refKind, setRefKind] = useState<'branch' | 'tag'>('branch')
 
@@ -79,6 +85,11 @@ export function RepoBrowser({
       return
     }
     setSelectedFile(entry.path)
+    if (searchParams.has('file')) {
+      const next = new URLSearchParams(searchParams)
+      next.set('file', entry.path)
+      setSearchParams(next, { replace: true })
+    }
   }
 
   const pathParts = path ? path.split('/') : []

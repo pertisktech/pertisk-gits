@@ -14,10 +14,19 @@ MVP scope:
 - Repository metadata: name, description, default branch, visibility
 - Optional **issues, labels, milestones** and **open pull/merge requests** (checkboxes when starting import)
 - **Bulk import** — filter by GitHub org or GitLab group, select all, import up to 200 repos per job
+- **CI config migration** — Pipelines tab detects `.gitlab-ci.yml` / `.github/workflows/*` and suggests `.pertisk-ci.yaml`
 - Background job with progress in the UI
 - Audit log entries for import start and completion
 
-Not included yet: issue comments, closed/merged PR history, wiki, CI config conversion, registry image mirror.
+Not included yet: issue comments, closed/merged PR history, wiki, registry image mirror.
+
+## CI config migration
+
+After import (or on any repo without `.pertisk-ci.yaml`), open **Project → Pipelines**. If the default branch contains `.gitlab-ci.yml` or `.github/workflows/*.yml`, Pertisk suggests a converted `.pertisk-ci.yaml` with copy-to-clipboard.
+
+API: `GET /organizations/{org}/repositories/{repo}/pipelines/migrate?ref=main`
+
+Conversion is best-effort — review `runs-on` labels, triggers, and GitHub Action steps before committing.
 
 ## Requirements
 

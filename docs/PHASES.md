@@ -76,22 +76,30 @@ Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React*
 
 ---
 
-## Phase 3 — Wiki & Code Search
+## Phase 3 — Wiki & Code Search (Done)
 
 ### Wiki
-- Per-repo wiki (Git-backed or DB-backed)
-- Markdown pages, history, sidebar nav
+| Feature | Status |
+|---------|--------|
+| Per-repo wiki (DB-backed MVP) | Done |
+| Markdown pages | Done |
+| Revision history | Done |
+| Sidebar nav | Done |
 
 ### Code Search
-- Index on push via worker job
-- Tantivy or Meilisearch
-- Global + repo-scoped search UI
+| Feature | Status |
+|---------|--------|
+| Index on push via worker job | Done (MVP) |
+| Tantivy full-text index | Done (MVP) |
+| Global + repo-scoped search UI | Done (MVP) |
 
 ### HTTP/3 (optional)
 - [Quiche](https://github.com/cloudflare/quiche) listener for web UI + API
 - `tokio-quiche` integration at edge
 
----
+**Tables:** `wiki_pages`, `wiki_page_revisions`, `code_index_jobs`, `code_search_index_meta`
+
+See [docs/WIKI.md](./WIKI.md), [docs/CODE_SEARCH.md](./CODE_SEARCH.md)
 
 ## Phase 4 — CI/CD (Done)
 
@@ -268,7 +276,7 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 | Issues + labels + milestones | Map via GitHub/GitLab REST API into Pertisk tables; optional checkbox on import | Done (MVP) |
 | Pull/merge requests | Import open MRs/PRs (title, body, branches); closed history later | Done (MVP) |
 | Wiki pages | Export wiki repo or API → Pertisk wiki (Phase 3) | Deferred |
-| CI config | Detect `.gitlab-ci.yml` / GitHub Actions; suggest `.pertisk-ci.yaml` conversion | Planned |
+| CI config | Detect `.gitlab-ci.yml` / GitHub Actions; suggest `.pertisk-ci.yaml` conversion | Done (MVP) |
 | Bulk import | Entire GitHub org or GitLab group in one job | Done (MVP) |
 | Registry images | Optional mirror of container images to Pertisk registry | Deferred |
 
@@ -304,7 +312,9 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Branch protection UI (repo settings) | Done |
 | Custom roles beyond owner/write/read | Planned |
 | Teams → repo access with role templates | Planned |
-| Deploy keys, machine users, scoped API tokens | Planned |
+| Deploy keys (SSH, per-repo, read-only default) | Done (MVP) |
+| Deploy keys UI (repo settings) | Done |
+| Machine users, scoped API tokens | Planned |
 
 ### Kubernetes Integration
 
@@ -316,7 +326,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 | HPA / queue-depth autoscale for runners | Planned |
 | Optional GitOps webhooks (Argo CD / Flux) | Planned |
 
-**Tables (new):** `branch_protection_rules`
+**Tables (new):** `branch_protection_rules`, `repository_deploy_keys`
 
 ---
 
@@ -378,6 +388,7 @@ pertisk-gits/
 │   ├── runner/           # Phase 4 CI runner
 │   ├── worker/           # Phase 4 scheduler + Phase 6.5 import jobs
 │   └── registry/         # Phase 5 OCI container registry
+│   └── search/           # Phase 3 Tantivy code search
 ├── web/                  # React app
 ├── migrations/           # SQLx migrations
 ├── deploy/               # Docker Compose, Helm

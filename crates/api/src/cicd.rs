@@ -14,8 +14,8 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use pertisk_cicd::{
-    parse_pipeline_yaml, PipelineEvent, ScheduledJob, Scheduler, TriggerMatcher,
-    CONFIG_PATHS,
+    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, PipelineEvent, ScheduledJob,
+    Scheduler, TriggerMatcher, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -311,6 +311,10 @@ pub fn cicd_read_routes() -> Router<AppState> {
             get(get_pipeline_config_preview),
         )
         .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/migrate",
+            get(get_pipeline_migrate),
+        )
+        .route(
             "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}",
             get(get_pipeline_run),
         )
@@ -390,6 +394,11 @@ pub fn post_receive_hook(
                 tracing::warn!("failed to enqueue pipeline triggers: {err:#}");
                 return;
             }
+            if let Err(err) =
+                pertisk_worker::search::enqueue_index_jobs(&state.pool, repository_id, &updates).await
+            {
+                tracing::warn!("failed to enqueue code index jobs: {err:#}");
+            }
             if let Err(err) = flush_pending_triggers(&state).await {
                 tracing::warn!("failed to process pipeline triggers: {err:#}");
             }
@@ -454,6 +463,13 @@ struct PipelineConfigPreviewResponse {
     commit_sha: String,
     r#ref: String,
     jobs: Vec<PipelineJobPreview>,
+}
+
+#[derive(Serialize)]
+struct PipelineMigrateResponse {
+    has_pertisk_config: bool,
+    detected: Vec<pertisk_cicd::LegacyCiDetection>,
+    suggestions: Vec<pertisk_cicd::CiConvertResult>,
 }
 
 #[derive(Serialize)]
@@ -582,6 +598,53 @@ struct CompleteJobRequest {
 #[derive(Deserialize)]
 struct AppendLogRequest {
     append: String,
+}
+
+async fn get_pipeline_migrate(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Query(query): Query<PipelineConfigQuery>,
+) -> Result<Json<PipelineMigrateResponse>, ApiError> {
+    let (_org, repo, repo_path) =
+        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+
+    let ref_name = query
+        .r#ref
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or_else(|| repo.default_branch.clone());
+    let commit_sha = resolve_git_ref(&repo_path, &ref_name).await?;
+
+    let has_pertisk_config = read_pipeline_config(&repo_path, &commit_sha)
+        .await
+        .is_some();
+
+    let root_entries = list_git_tree_names(&repo_path, &commit_sha, "").await;
+    let workflow_entries =
+        list_git_tree_names(&repo_path, &commit_sha, GITHUB_WORKFLOWS_DIR).await;
+
+    let root_names: Vec<&str> = root_entries.iter().map(String::as_str).collect();
+    let workflow_names: Vec<&str> = workflow_entries.iter().map(String::as_str).collect();
+    let detected = detect_legacy_ci(&root_names, &workflow_names);
+
+    let mut suggestions = Vec::new();
+    for item in &detected {
+        let Some(raw) = read_file_at_commit(&repo_path, &commit_sha, &item.path).await else {
+            continue;
+        };
+        match convert_legacy_ci(item.kind, &item.path, &raw) {
+            Ok(result) => suggestions.push(result),
+            Err(err) => {
+                tracing::warn!(path = %item.path, %err, "CI config conversion failed");
+            }
+        }
+    }
+
+    Ok(Json(PipelineMigrateResponse {
+        has_pertisk_config,
+        detected,
+        suggestions,
+    }))
 }
 
 async fn get_pipeline_config_preview(
@@ -2372,6 +2435,53 @@ async fn read_pipeline_config(repo_path: &FsPath, commit_sha: &str) -> Option<(S
         }
     }
     None
+}
+
+async fn read_file_at_commit(repo_path: &FsPath, commit_sha: &str, path: &str) -> Option<String> {
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["show", &format!("{commit_sha}:{path}")])
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let content = String::from_utf8_lossy(&output.stdout).into_owned();
+    if content.trim().is_empty() {
+        None
+    } else {
+        Some(content)
+    }
+}
+
+async fn list_git_tree_names(repo_path: &FsPath, commit_sha: &str, dir: &str) -> Vec<String> {
+    let spec = if dir.is_empty() {
+        commit_sha.to_string()
+    } else {
+        format!("{commit_sha}:{dir}")
+    };
+
+    let output = Command::new("git")
+        .current_dir(repo_path)
+        .args(["ls-tree", "--name-only", &spec])
+        .output()
+        .await;
+
+    let Ok(out) = output else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 async fn insert_trigger(

@@ -9,6 +9,7 @@ members = [
     "crates/runner",
     "crates/worker",
     "crates/registry",
+    "crates/search",
 ]
 default-members = ["crates/api"]
 

@@ -18,6 +18,22 @@ pub struct AuthUser {
     pub username: String,
 }
 
+#[derive(Debug, Clone)]
+pub enum GitPrincipal {
+    User(AuthUser),
+    /// SSH public key matched a deploy key; access is checked per repository at git command time.
+    DeployKey { fingerprint: String },
+}
+
+impl GitPrincipal {
+    pub fn user(&self) -> Option<&AuthUser> {
+        match self {
+            GitPrincipal::User(user) => Some(user),
+            GitPrincipal::DeployKey { fingerprint: _ } => None,
+        }
+    }
+}
+
 pub async fn find_repo(pool: &PgPool, org_slug: &str, repo_slug: &str) -> anyhow::Result<Option<RepoRecord>> {
     let row = sqlx::query_as::<_, (Uuid, RepoVisibility)>(
         r#"
@@ -72,19 +88,70 @@ pub async fn authenticate_basic(
 }
 
 pub async fn can_read_repo(pool: &PgPool, repo: &RepoRecord, user: Option<&AuthUser>) -> anyhow::Result<bool> {
-    if repo.visibility == RepoVisibility::Public {
-        return Ok(true);
+    match user {
+        Some(user) => can_read_repo_principal(pool, repo, &GitPrincipal::User(user.clone())).await,
+        None if repo.visibility == RepoVisibility::Public => Ok(true),
+        None => Ok(false),
     }
-
-    let Some(user) = user else {
-        return Ok(false);
-    };
-
-    Ok(has_repo_access(pool, repo, user.id, false).await?)
 }
 
 pub async fn can_write_repo(pool: &PgPool, repo: &RepoRecord, user: &AuthUser) -> anyhow::Result<bool> {
-    has_repo_access(pool, repo, user.id, true).await
+    can_write_repo_principal(pool, repo, &GitPrincipal::User(user.clone())).await
+}
+
+pub async fn can_read_repo_principal(
+    pool: &PgPool,
+    repo: &RepoRecord,
+    principal: &GitPrincipal,
+) -> anyhow::Result<bool> {
+    match principal {
+        GitPrincipal::DeployKey { fingerprint } => Ok(
+            find_deploy_key_for_repo(pool, fingerprint, repo.id)
+                .await?
+                .is_some(),
+        ),
+        GitPrincipal::User(user) => {
+            if repo.visibility == RepoVisibility::Public {
+                return Ok(true);
+            }
+            has_repo_access(pool, repo, user.id, false).await
+        }
+    }
+}
+
+pub async fn can_write_repo_principal(
+    pool: &PgPool,
+    repo: &RepoRecord,
+    principal: &GitPrincipal,
+) -> anyhow::Result<bool> {
+    match principal {
+        GitPrincipal::DeployKey { fingerprint } => Ok(
+            find_deploy_key_for_repo(pool, fingerprint, repo.id)
+                .await?
+                .is_some_and(|(_, read_only)| !read_only),
+        ),
+        GitPrincipal::User(user) => has_repo_access(pool, repo, user.id, true).await,
+    }
+}
+
+async fn find_deploy_key_for_repo(
+    pool: &PgPool,
+    fingerprint: &str,
+    repository_id: Uuid,
+) -> anyhow::Result<Option<(Uuid, bool)>> {
+    let row = sqlx::query_as::<_, (Uuid, bool)>(
+        r#"
+        SELECT id, read_only
+        FROM repository_deploy_keys
+        WHERE fingerprint = $1 AND repository_id = $2
+        "#,
+    )
+    .bind(fingerprint)
+    .bind(repository_id)
+    .fetch_optional(pool)
+    .await?;
+
+    Ok(row)
 }
 
 async fn has_repo_access(

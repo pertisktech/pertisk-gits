@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Play, Workflow } from 'lucide-react'
-import { useState } from 'react'
+import { Check, Copy, Loader2, Play, Workflow } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import type { CiConvertResult } from '../api/types'
 import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
 import {
   isRunInProgress,
@@ -13,7 +14,85 @@ import {
 } from '../lib/pipelineStatus'
 import { PipelineGraph } from './PipelineGraph'
 import { PipelineRunsTable } from './PipelineRunsTable'
-import { EmptyState, PrimaryButton } from './ui'
+import { EmptyState, PrimaryButton, SecondaryButton } from './ui'
+
+function PipelineMigratePanel({
+  suggestions,
+}: {
+  suggestions: CiConvertResult[]
+}) {
+  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [copied, setCopied] = useState(false)
+
+  const active = suggestions[Math.min(selectedIndex, suggestions.length - 1)]
+
+  const copyYaml = async () => {
+    if (!active) return
+    try {
+      await navigator.clipboard.writeText(active.converted_yaml)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard may be unavailable
+    }
+  }
+
+  if (!active) return null
+
+  const sourceLabel =
+    active.source_kind === 'gitlab' ? 'GitLab CI' : 'GitHub Actions'
+
+  return (
+    <div className="app-panel space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-text">Migrate CI config</h3>
+        <p className="text-sm text-text-secondary mt-1">
+          Found {sourceLabel} at <code className="text-xs">{active.source_path}</code>.
+          Copy the suggested <code className="text-xs">.pertisk-ci.yaml</code>, commit it on the default branch, then review runner labels.
+        </p>
+      </div>
+
+      {suggestions.length > 1 ? (
+        <div className="flex flex-wrap gap-2">
+          {suggestions.map((item, index) => (
+            <button
+              key={item.source_path}
+              type="button"
+              className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${
+                index === selectedIndex
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-naturals-n4 text-text-secondary hover:text-text hover:bg-hover'
+              }`}
+              onClick={() => setSelectedIndex(index)}
+            >
+              {item.source_path}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {active.warnings.length > 0 ? (
+        <ul className="text-xs text-yellow-y1 space-y-1 list-disc pl-4">
+          {active.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+
+      <div className="relative">
+        <pre className="text-left text-xs font-mono bg-naturals-n2 border border-naturals-n4 rounded-md p-4 overflow-x-auto text-text-secondary max-h-96">
+          {active.converted_yaml}
+        </pre>
+        <div className="absolute top-2 right-2">
+          <SecondaryButton type="button" onClick={copyYaml}>
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? 'Copied' : 'Copy YAML'}
+          </SecondaryButton>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export const PIPELINE_CONFIG_FILES = new Set([
   '.pertisk-ci.yaml',
@@ -65,6 +144,19 @@ export function RepoPipelines({
     enabled: Boolean(token && orgSlug && repoSlug && defaultBranch && browserData && !repoEmpty),
   })
 
+  const { data: migrateData, isLoading: migrateLoading } = useQuery({
+    queryKey: ['pipeline-migrate', orgSlug, repoSlug, defaultBranch],
+    queryFn: () => api.getPipelineMigrate(token, orgSlug, repoSlug, defaultBranch),
+    enabled: Boolean(
+      token && orgSlug && repoSlug && defaultBranch && browserData && !repoEmpty && !hasPipelineConfig,
+    ),
+  })
+
+  const migrationSuggestions = useMemo(
+    () => migrateData?.suggestions ?? [],
+    [migrateData?.suggestions],
+  )
+
   const { data: runs = [], isLoading, error } = useQuery({
     queryKey: ['pipeline-runs', orgSlug, repoSlug],
     queryFn: () => api.listPipelineRuns(token, orgSlug, repoSlug),
@@ -109,7 +201,7 @@ export function RepoPipelines({
     },
   })
 
-  if (browserLoading || configLoading) {
+  if (browserLoading || configLoading || (migrateLoading && !hasPipelineConfig)) {
     return (
       <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
         <Loader2 size={16} className="animate-spin" />
@@ -137,24 +229,29 @@ export function RepoPipelines({
             Add a CI config file to the repository root to get started.
           </p>
         </div>
-        <div className="app-panel">
-          <EmptyState
-            icon={<Workflow size={40} />}
-            title="Set up CI/CD"
-            description="Commit a .pertisk-ci.yaml file on the default branch. Migrating from GitLab? Use the same job structure with .pertisk-ci.yaml instead of .gitlab-ci.yml."
-            action={
-              <pre className="text-left text-xs font-mono bg-naturals-n2 border border-naturals-n4 rounded-md p-4 max-w-lg mx-auto overflow-x-auto text-text-secondary">
+        {migrationSuggestions.length > 0 ? (
+          <PipelineMigratePanel suggestions={migrationSuggestions} />
+        ) : (
+          <div className="app-panel">
+            <EmptyState
+              icon={<Workflow size={40} />}
+              title="Set up CI/CD"
+              description="Commit a .pertisk-ci.yaml file on the default branch. Migrating from GitLab or GitHub Actions? Pertisk can suggest a converted config when .gitlab-ci.yml or .github/workflows/* is present."
+              action={
+                <pre className="text-left text-xs font-mono bg-naturals-n2 border border-naturals-n4 rounded-md p-4 max-w-lg mx-auto overflow-x-auto text-text-secondary">
 {`# .pertisk-ci.yaml
+on: push
 jobs:
   build:
-    runs_on: docker
+    runs-on: docker
     steps:
       - name: test
         run: echo "hello"`}
-              </pre>
-            }
-          />
-        </div>
+                </pre>
+              }
+            />
+          </div>
+        )}
       </div>
     )
   }
