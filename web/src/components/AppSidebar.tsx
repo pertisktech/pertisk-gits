@@ -11,6 +11,7 @@ import {
   Gauge,
   GitCommit,
   GitPullRequest,
+  HardDrive,
   HeartPulse,
   KeyRound,
   LayoutDashboard,
@@ -20,17 +21,22 @@ import {
   Settings,
   Shield,
   SlidersHorizontal,
+  UserCheck,
   UserCog,
   Users,
   UsersRound,
   Workflow,
+  Zap,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import { useActivityNav } from '../hooks/useActivityNav'
 import { useAdminNav } from '../hooks/useAdminNav'
 import { useGroupNav } from '../hooks/useGroupNav'
 import { useProjectNav } from '../hooks/useProjectNav'
 import { useSuperAdmin } from '../hooks/useSuperAdmin'
+import type { ActivityTab } from '../lib/activityRoute'
+import { activityTabPath } from '../lib/activityRoute'
 import type { AdminTab } from '../lib/adminRoute'
 import { adminTabPath } from '../lib/adminRoute'
 import type { GroupTab } from '../lib/groupRoute'
@@ -42,6 +48,7 @@ import { AppVersion } from './AppVersion'
 
 const globalNavItems: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
+  { to: '/activity/merge-requests', label: 'Activity', icon: Zap, end: false },
   { to: '/groups', label: 'Groups', icon: Users },
 ]
 
@@ -59,12 +66,18 @@ const projectNavItems: {
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 
+const activityNavItems: { id: ActivityTab; label: string; icon: LucideIcon; superAdminOnly?: boolean }[] = [
+  { id: 'merge-requests', label: 'Merge requests', icon: GitPullRequest },
+  { id: 'approve-users', label: 'Approve users', icon: UserCheck, superAdminOnly: true },
+]
+
 const adminNavItems: { id: AdminTab; label: string; icon: LucideIcon }[] = [
   { id: 'system', label: 'System information', icon: Gauge },
   { id: 'health', label: 'Health check', icon: HeartPulse },
   { id: 'configuration', label: 'Configuration', icon: SlidersHorizontal },
   { id: 'auth', label: 'SSO / LDAP', icon: KeyRound },
   { id: 'users', label: 'Users', icon: UserCog },
+  { id: 'backups', label: 'Backups', icon: HardDrive },
   { id: 'runners', label: 'Runners', icon: Server },
 ]
 
@@ -98,6 +111,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
   const project = useProjectNav()
   const group = useGroupNav()
   const admin = useAdminNav()
+  const activity = useActivityNav()
   const isSuperAdmin = useSuperAdmin()
 
   return (
@@ -129,7 +143,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
       </div>
 
       <nav className="app-sidebar-nav">
-        {!project && !group && !admin &&
+        {!project && !group && !admin && !activity &&
           globalNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
@@ -143,14 +157,38 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
             </NavLink>
           ))}
 
-        {!project && !group && !admin && isSuperAdmin && (
+        {!project && !group && !admin && !activity && isSuperAdmin && (
           <NavLink to="/admin" className={globalLinkClass} title={collapsed ? 'Admin' : undefined}>
             <Shield size={16} className="shrink-0" aria-hidden />
             <span>Admin</span>
           </NavLink>
         )}
 
-        {admin && !project && !group && (
+        {activity && !project && !group && !admin && (
+          <div className="app-sidebar-section">
+            <p className="app-sidebar-section-label">Activity</p>
+            <NavLink to="/dashboard" className="app-sidebar-back" title={collapsed ? 'Dashboard' : undefined}>
+              <ArrowLeft size={14} aria-hidden />
+              <span>Dashboard</span>
+            </NavLink>
+
+            {activityNavItems
+              .filter((item) => !item.superAdminOnly || isSuperAdmin)
+              .map(({ id, label, icon: Icon }) => (
+                <NavLink
+                  key={id}
+                  to={activityTabPath(activity.basePath, id)}
+                  title={collapsed ? label : undefined}
+                  className={({ isActive }) => projectLinkClass(isActive, false)}
+                >
+                  <Icon size={16} className="shrink-0" aria-hidden />
+                  <span>{label}</span>
+                </NavLink>
+              ))}
+          </div>
+        )}
+
+        {admin && !project && !group && !activity && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Administration</p>
             <NavLink to="/dashboard" className="app-sidebar-back" title={collapsed ? 'Dashboard' : undefined}>
@@ -173,7 +211,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
           </div>
         )}
 
-        {group && !project && !admin && (
+        {group && !project && !admin && !activity && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Group</p>
             <NavLink to="/groups" className="app-sidebar-back" title={collapsed ? 'Groups' : undefined}>
@@ -204,7 +242,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
           </div>
         )}
 
-        {project && !admin && (
+        {project && !admin && !activity && (
           <div className="app-sidebar-section">
             <p className="app-sidebar-section-label">Repository</p>
             <NavLink

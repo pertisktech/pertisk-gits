@@ -4,6 +4,8 @@ import { AuthProvider } from './auth/AuthContext'
 import { AppLayout } from './components/AppLayout'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthCallbackPage } from './pages/AuthCallbackPage'
+import { ActivityApproveUsersPage } from './pages/activity/ActivityApproveUsersPage'
+import { ActivityMergeRequestsPage } from './pages/activity/ActivityMergeRequestsPage'
 import { AdminAuthPage } from './pages/admin/AdminAuthPage'
 import { CommitDetailPage } from './pages/CommitDetailPage'
 import { IssueDetailPage } from './pages/IssueDetailPage'
@@ -29,6 +31,7 @@ import { RegisterPage } from './pages/RegisterPage'
 import { RegistryPage } from './pages/RegistryPage'
 import { RunnersPage } from './pages/RunnersPage'
 import { SuperAdminRoute } from './routes/SuperAdminRoute'
+import { AdminBackupPage } from './pages/admin/AdminBackupPage'
 import { AdminConfigurationPage } from './pages/admin/AdminConfigurationPage'
 import { AdminHealthPage } from './pages/admin/AdminHealthPage'
 import { AdminSystemPage } from './pages/admin/AdminSystemPage'
@@ -41,6 +44,7 @@ const RESERVED_PATHS = new Set([
   'login',
   'register',
   'dashboard',
+  'activity',
   'groups',
   'runners',
   'profile',
@@ -151,6 +155,11 @@ export default function App() {
                   <Route path="/groups/:slug/import" element={<GroupImportPage />} />
                   <Route path="/groups/:slug" element={<GroupDetailPage />} />
                   <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
+                  <Route path="/activity" element={<Navigate to="/activity/merge-requests" replace />} />
+                  <Route path="/activity/merge-requests" element={<ActivityMergeRequestsPage />} />
+                  <Route element={<SuperAdminRoute />}>
+                    <Route path="/activity/approve-users" element={<ActivityApproveUsersPage />} />
+                  </Route>
                   <Route path="/runners" element={<Navigate to="/admin/runners" replace />} />
                   <Route element={<SuperAdminRoute />}>
                     <Route path="/admin" element={<AdminSystemPage />} />
@@ -158,6 +167,7 @@ export default function App() {
                     <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
                     <Route path="/admin/auth" element={<AdminAuthPage />} />
                     <Route path="/admin/users" element={<AdminUsersPage />} />
+                    <Route path="/admin/backups" element={<AdminBackupPage />} />
                     <Route path="/admin/runners" element={<RunnersPage />} />
                   </Route>
                   <Route path="/profile" element={<ProfilePage />} />

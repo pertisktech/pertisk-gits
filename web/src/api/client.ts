@@ -2,6 +2,9 @@ import type {
   AdminConfiguration,
   AdminHealth,
   AdminSystemInfo,
+  BackupComponentId,
+  BackupJob,
+  BackupOverview,
   AdminUser,
   AuthResponse,
   RegisterResponse,
@@ -1496,6 +1499,72 @@ export const api = {
 
   rejectAdminUser: (token: string, userId: string) =>
     request<AdminUser>(`/admin/users/${userId}/reject`, { method: 'POST' }, token),
+
+  getBackupOverview: (token: string) =>
+    request<BackupOverview>('/admin/backups/overview', {}, token),
+
+  listBackups: (token: string) => request<BackupJob[]>('/admin/backups', {}, token),
+
+  createBackup: (token: string, components: BackupComponentId[]) =>
+    request<BackupJob>(
+      '/admin/backups',
+      { method: 'POST', body: JSON.stringify({ components }) },
+      token,
+    ),
+
+  getBackup: (token: string, backupId: string) =>
+    request<BackupJob>(`/admin/backups/${backupId}`, {}, token),
+
+  deleteBackup: async (token: string, backupId: string) => {
+    const headers = new Headers()
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/admin/backups/${backupId}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  downloadBackup: async (token: string, backupId: string) => {
+    const headers = new Headers()
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/admin/backups/${backupId}/download`, { headers })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Download failed'
+      throw new Error(message)
+    }
+    return response.blob()
+  },
+
+  restoreBackup: async (
+    token: string,
+    archive: File,
+    components: BackupComponentId[],
+    confirm: string,
+  ) => {
+    const form = new FormData()
+    form.append('archive', archive)
+    form.append('components', JSON.stringify(components))
+    form.append('confirm', confirm)
+    const headers = new Headers()
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/admin/backups/restore`, {
+      method: 'POST',
+      headers,
+      body: form,
+    })
+    const body = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      const message = typeof body.error === 'string' ? body.error : 'Restore failed'
+      throw new Error(message)
+    }
+    return body as BackupJob
+  },
 
   listImportCredentials: (token: string, orgSlug: string) =>
     request<ImportCredential[]>(`/organizations/${orgSlug}/import/credentials`, {}, token),

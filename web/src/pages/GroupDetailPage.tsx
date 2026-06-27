@@ -111,16 +111,12 @@ export function GroupDetailPage() {
                   <td>
                     <Link
                       to={`/groups/${slug}/projects/${project.slug}`}
-                      className="font-medium text-text hover:text-primary font-mono text-sm"
+                      className="font-medium text-text hover:text-primary text-sm"
                     >
-                      {project.name}
+                      <span className="text-text-secondary font-normal">{slug}</span>
+                      <span className="text-muted mx-1">/</span>
+                      <span className="font-mono">{project.name}</span>
                     </Link>
-                    <div className="text-xs text-muted font-mono mt-0.5">
-                      {slug}/{project.slug}
-                    </div>
-                    {project.description && (
-                      <div className="text-xs text-text-secondary mt-1">{project.description}</div>
-                    )}
                   </td>
                   <td>
                     <StatusBadge variant={visibilityVariant(project.visibility)}>

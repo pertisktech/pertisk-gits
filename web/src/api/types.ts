@@ -331,6 +331,35 @@ export interface AdminConfiguration {
   super_admin_env_override: boolean
 }
 
+export type BackupComponentId = 'db' | 'registry' | 'artifacts'
+
+export type BackupJobStatus = 'pending' | 'running' | 'completed' | 'failed'
+
+export interface BackupOverviewComponent {
+  id: BackupComponentId
+  label: string
+  available: boolean
+  size_bytes: number
+  storage: string
+  path: string
+}
+
+export interface BackupOverview {
+  backups_root: string
+  registry_storage: string
+  components: BackupOverviewComponent[]
+}
+
+export interface BackupJob {
+  id: string
+  status: BackupJobStatus
+  components: BackupComponentId[]
+  created_at: string
+  completed_at: string | null
+  error: string | null
+  archive_size_bytes: number | null
+}
+
 export interface Label {
   id: string
   repository_id: string

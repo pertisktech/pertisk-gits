@@ -35,6 +35,7 @@ mod admin;
 mod api_tokens;
 mod artifacts;
 mod audit;
+mod backup;
 mod branch_protection;
 mod ci_secrets;
 mod collaboration;
@@ -213,6 +214,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(audit::audit_routes())
         .merge(import::import_routes())
         .merge(admin::admin_routes())
+        .merge(backup::backup_routes())
         .merge(branch_protection::branch_protection_read_routes())
         .merge(branch_protection::branch_protection_write_routes())
         .layer(from_fn_with_state(state.clone(), auth_middleware));

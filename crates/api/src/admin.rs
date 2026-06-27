@@ -208,11 +208,11 @@ struct ListAdminUsersQuery {
     approval_status: Option<UserApprovalStatus>,
 }
 
-fn artifacts_root() -> String {
+pub fn artifacts_root() -> String {
     std::env::var("ARTIFACTS_ROOT").unwrap_or_else(|_| "data/artifacts".into())
 }
 
-fn registry_root() -> String {
+pub fn registry_root() -> String {
     std::env::var("REGISTRY_ROOT").unwrap_or_else(|_| "data/registry".into())
 }
 
