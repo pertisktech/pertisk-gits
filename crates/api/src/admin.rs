@@ -74,8 +74,8 @@ pub fn registration_enabled() -> bool {
 
 pub fn registration_requires_approval() -> bool {
     std::env::var("REQUIRE_REGISTRATION_APPROVAL")
-        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
-        .unwrap_or(false)
+        .map(|value| value != "0" && !value.eq_ignore_ascii_case("false"))
+        .unwrap_or(true)
 }
 
 pub async fn ensure_user_approved(pool: &PgPool, user_id: Uuid) -> Result<(), ApiError> {

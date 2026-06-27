@@ -66,8 +66,8 @@ export function AdminConfigurationPage() {
               label="Registration approval"
               value={
                 data.require_registration_approval
-                  ? 'Required (super admin must approve new accounts)'
-                  : 'Not required'
+                  ? 'Required (new accounts start pending until approved)'
+                  : 'Not required (new accounts are auto-approved)'
               }
             />
             <InfoRow
