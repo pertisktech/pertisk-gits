@@ -1,4 +1,7 @@
-use pertisk_domain::models::{OrgRole, RepoRole, RepoVisibility};
+use pertisk_domain::{
+    models::{OrgRole, RepoRole, RepoVisibility},
+    permissions::{max_repo_role, repo_role_allows_read, repo_role_allows_write, CustomRolePermissions},
+};
 use sqlx::PgPool;
 use uuid::Uuid;
 
@@ -160,61 +163,184 @@ async fn has_repo_access(
     user_id: Uuid,
     write_required: bool,
 ) -> anyhow::Result<bool> {
-    let org_member = sqlx::query_scalar::<_, bool>(
-        r#"
-        SELECT EXISTS(
-            SELECT 1 FROM organization_members m
-            INNER JOIN organizations o ON o.id = m.organization_id
-            WHERE o.slug = $1 AND m.user_id = $2
-        )
-        "#,
-    )
-    .bind(&repo.org_slug)
-    .bind(user_id)
-    .fetch_one(pool)
-    .await?;
-
-    if org_member && !write_required {
-        return Ok(true);
+    let role = effective_repo_role(pool, repo, user_id).await?;
+    match role {
+        Some(role) if write_required => Ok(repo_role_allows_write(role)),
+        Some(role) => Ok(repo_role_allows_read(role)),
+        None => Ok(false),
     }
+}
 
-    let role = sqlx::query_as::<_, (Option<RepoRole>,)>(
+pub async fn effective_repo_role(
+    pool: &PgPool,
+    repo: &RepoRecord,
+    user_id: Uuid,
+) -> anyhow::Result<Option<RepoRole>> {
+    let mut effective: Option<RepoRole> = None;
+
+    if let Some(direct) = sqlx::query_scalar::<_, RepoRole>(
         r#"
-        SELECT rp.role
-        FROM repository_permissions rp
-        WHERE rp.repository_id = $1 AND rp.user_id = $2
+        SELECT role
+        FROM repository_permissions
+        WHERE repository_id = $1 AND user_id = $2
         "#,
     )
     .bind(repo.id)
     .bind(user_id)
     .fetch_optional(pool)
-    .await?;
-
-    if let Some((Some(role),)) = role {
-        return Ok(match role {
-            RepoRole::Read => !write_required,
-            RepoRole::Write | RepoRole::Admin => true,
-        });
+    .await?
+    {
+        effective = max_repo_role(effective, Some(direct));
     }
 
-    if org_member && write_required {
-        let org_role = sqlx::query_scalar::<_, OrgRole>(
-            r#"
-            SELECT m.role
-            FROM organization_members m
-            INNER JOIN organizations o ON o.id = m.organization_id
-            WHERE o.slug = $1 AND m.user_id = $2
-            "#,
-        )
-        .bind(&repo.org_slug)
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?;
+    let team_roles = sqlx::query_scalar::<_, RepoRole>(
+        r#"
+        SELECT trp.role
+        FROM team_repository_permissions trp
+        INNER JOIN team_members tm ON tm.team_id = trp.team_id
+        INNER JOIN teams t ON t.id = trp.team_id
+        INNER JOIN organizations o ON o.id = t.organization_id
+        WHERE trp.repository_id = $1 AND tm.user_id = $2 AND o.slug = $3
+        "#,
+    )
+    .bind(repo.id)
+    .bind(user_id)
+    .bind(&repo.org_slug)
+    .fetch_all(pool)
+    .await?;
 
-        return Ok(matches!(org_role, Some(OrgRole::Owner) | Some(OrgRole::Admin)));
+    for team_role in team_roles {
+        effective = max_repo_role(effective, Some(team_role));
+    }
+
+    let membership = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
+        r#"
+        SELECT m.role, cr.permissions
+        FROM organization_members m
+        INNER JOIN organizations o ON o.id = m.organization_id
+        LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
+        WHERE o.slug = $1 AND m.user_id = $2
+        "#,
+    )
+    .bind(&repo.org_slug)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((org_role, custom_permissions)) = membership {
+        let baseline = match org_role {
+            OrgRole::Owner | OrgRole::Admin => Some(RepoRole::Write),
+            OrgRole::Member => Some(RepoRole::Read),
+        };
+        effective = max_repo_role(effective, baseline);
+
+        if let Some(custom) = custom_permissions {
+            if let Some(default_access) = custom.0.default_repo_access {
+                effective = max_repo_role(effective, Some(default_access));
+            }
+        }
+    }
+
+    Ok(effective)
+}
+
+pub async fn can_admin_repo(
+    pool: &PgPool,
+    org_id: Uuid,
+    repository_id: Uuid,
+    user_id: Uuid,
+) -> anyhow::Result<bool> {
+    if sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM repository_permissions
+            WHERE repository_id = $1 AND user_id = $2 AND role = 'admin'
+        )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?
+    {
+        return Ok(true);
+    }
+
+    if sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1
+            FROM team_repository_permissions trp
+            INNER JOIN team_members tm ON tm.team_id = trp.team_id
+            WHERE trp.repository_id = $1 AND tm.user_id = $2 AND trp.role = 'admin'
+        )
+        "#,
+    )
+    .bind(repository_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await?
+    {
+        return Ok(true);
+    }
+
+    let membership = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
+        r#"
+        SELECT m.role, cr.permissions
+        FROM organization_members m
+        LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
+        WHERE m.organization_id = $1 AND m.user_id = $2
+        "#,
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    if let Some((org_role, custom_permissions)) = membership {
+        if matches!(org_role, OrgRole::Owner | OrgRole::Admin) {
+            return Ok(true);
+        }
+        if let Some(custom) = custom_permissions {
+            if custom.0.default_repo_access == Some(RepoRole::Admin) {
+                return Ok(true);
+            }
+        }
     }
 
     Ok(false)
+}
+
+pub async fn org_member_has_permission(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+    check: impl FnOnce(&CustomRolePermissions) -> bool,
+) -> anyhow::Result<bool> {
+    let membership = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
+        r#"
+        SELECT m.role, cr.permissions
+        FROM organization_members m
+        LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
+        WHERE m.organization_id = $1 AND m.user_id = $2
+        "#,
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some((org_role, custom_permissions)) = membership else {
+        return Ok(false);
+    };
+
+    if matches!(org_role, OrgRole::Owner | OrgRole::Admin) {
+        return Ok(true);
+    }
+
+    Ok(custom_permissions
+        .map(|permissions| check(&permissions.0))
+        .unwrap_or(false))
 }
 
 pub fn parse_basic_auth(header: &str) -> Option<(String, String)> {

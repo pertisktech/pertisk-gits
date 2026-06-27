@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{find_org_for_member, ApiError, AppState, AuthUser};
+use crate::{find_org_for_member, permissions, ApiError, AppState, AuthUser};
 
 pub fn audit_routes() -> Router<AppState> {
     Router::new()
@@ -121,7 +121,7 @@ async fn list_audit_events(
     Query(query): Query<AuditListQuery>,
 ) -> Result<Json<AuditListResponse>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_view_audit(&state.pool, org.id, auth.user_id).await?;
+    permissions::ensure_can_view_audit(&state.pool, org.id, auth.user_id).await?;
 
     let limit = query.limit.clamp(1, 200);
     let offset = query.offset.max(0);
@@ -185,7 +185,7 @@ async fn export_audit_events(
     Query(query): Query<AuditListQuery>,
 ) -> Result<Response, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_view_audit(&state.pool, org.id, auth.user_id).await?;
+    permissions::ensure_can_view_audit(&state.pool, org.id, auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, AuditEvent>(&format!(
         r#"
@@ -293,24 +293,4 @@ async fn enrich_audit_events(
         });
     }
     Ok(out)
-}
-
-async fn ensure_can_view_audit(
-    pool: &PgPool,
-    org_id: Uuid,
-    user_id: Uuid,
-) -> Result<(), ApiError> {
-    let role: Option<OrgRole> = sqlx::query_scalar(
-        "SELECT role FROM organization_members WHERE organization_id = $1 AND user_id = $2",
-    )
-    .bind(org_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
-
-    match role {
-        Some(OrgRole::Owner) | Some(OrgRole::Admin) => Ok(()),
-        _ => Err(DomainError::Forbidden.into()),
-    }
 }

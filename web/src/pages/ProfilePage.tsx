@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
+import { PersonalAccessTokensPanel } from '../components/PersonalAccessTokensPanel'
 import { Breadcrumbs, PageHeader, PrimaryButton } from '../components/ui'
 
 export function ProfilePage() {
@@ -168,6 +169,8 @@ export function ProfilePage() {
             )}
           </div>
         </div>
+
+        <PersonalAccessTokensPanel token={token!} />
       </div>
     </>
   )

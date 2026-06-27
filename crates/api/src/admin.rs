@@ -416,7 +416,7 @@ async fn update_admin_user(
 
     let existing = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,
@@ -508,7 +508,7 @@ async fn delete_admin_user(
 
     let existing = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,

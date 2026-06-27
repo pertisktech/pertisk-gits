@@ -21,6 +21,7 @@ import {
   SlidersHorizontal,
   UserCog,
   Users,
+  UsersRound,
   Workflow,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -70,6 +71,8 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'repositories', label: 'Repositories', icon: FolderGit2 },
   { id: 'registry', label: 'Registry', icon: Package },
   { id: 'members', label: 'Members', icon: Users },
+  { id: 'teams', label: 'Teams', icon: UsersRound },
+  { id: 'roles', label: 'Custom roles', icon: Shield },
   { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'import', label: 'Import', icon: Download },
   { id: 'audit', label: 'Audit log', icon: ScrollText },
@@ -183,6 +186,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
               .filter((item) => item.id !== 'audit' || group.canViewAudit)
               .filter((item) => item.id !== 'import' || group.canManage)
               .filter((item) => item.id !== 'settings' || group.canManage)
+              .filter((item) => (item.id !== 'teams' && item.id !== 'roles') || group.canManage)
               .map(({ id, label, icon: Icon }) => (
               <NavLink
                 key={id}

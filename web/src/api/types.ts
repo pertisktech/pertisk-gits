@@ -93,9 +93,102 @@ export interface RepoBrowser {
   empty: boolean
 }
 
+export interface ApiTokenSummary {
+  id: string
+  name: string
+  token_prefix?: string | null
+  scopes: string[]
+  organization_id?: string | null
+  repository_id?: string | null
+  last_used_at?: string | null
+  expires_at?: string | null
+  created_at: string
+}
+
+export interface GitOpsWebhookSummary {
+  id: string
+  organization_id: string
+  repository_id?: string | null
+  name: string
+  url: string
+  provider: string
+  events: string[]
+  enabled: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface OrgMemberCustomRole {
+  id: string
+  name: string
+  slug: string
+}
+
+export interface CustomRolePermissions {
+  manage_members?: boolean
+  manage_settings?: boolean
+  view_audit?: boolean
+  manage_teams?: boolean
+  manage_custom_roles?: boolean
+  create_repositories?: boolean
+  manage_org_secrets?: boolean
+  default_repo_access?: 'admin' | 'write' | 'read' | null
+}
+
+export interface OrganizationCustomRole {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  permissions: CustomRolePermissions
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamSummary {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  member_count: number
+  repository_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamDetail {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TeamMemberEntry {
+  user: User
+  created_at: string
+}
+
+export interface TeamRepositoryAccess {
+  repository_id: string
+  repo_slug: string
+  repo_name: string
+  role: 'admin' | 'write' | 'read'
+  created_at: string
+}
+
+export interface RepositoryTeamAccess {
+  team_id: string
+  team_slug: string
+  team_name: string
+  role: 'admin' | 'write' | 'read'
+}
+
 export interface OrgMember {
   user: User
   role: 'owner' | 'admin' | 'member'
+  custom_role?: OrgMemberCustomRole | null
 }
 
 export interface RepoCollaborator {

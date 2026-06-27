@@ -13,7 +13,9 @@ import { GroupAuditPage } from './pages/GroupAuditPage'
 import { GroupSecretsPage } from './pages/GroupSecretsPage'
 import { GroupImportPage } from './pages/GroupImportPage'
 import { GroupDetailPage } from './pages/GroupDetailPage'
+import { GroupCustomRolesPage } from './pages/GroupCustomRolesPage'
 import { GroupMembersPage } from './pages/GroupMembersPage'
+import { GroupTeamsPage } from './pages/GroupTeamsPage'
 import { GroupSettingsPage } from './pages/GroupSettingsPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { LoginPage } from './pages/LoginPage'
@@ -140,6 +142,8 @@ export default function App() {
                   <Route path="/groups/:slug/registry/:imageName" element={<RegistryPage />} />
                   <Route path="/groups/:slug/settings" element={<GroupSettingsPage />} />
                   <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
+                  <Route path="/groups/:slug/teams" element={<GroupTeamsPage />} />
+                  <Route path="/groups/:slug/roles" element={<GroupCustomRolesPage />} />
                   <Route path="/groups/:slug/audit" element={<GroupAuditPage />} />
                   <Route path="/groups/:slug/secrets" element={<GroupSecretsPage />} />
                   <Route path="/groups/:slug/import" element={<GroupImportPage />} />

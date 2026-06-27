@@ -14,7 +14,6 @@ use validator::Validate;
 use crate::{
     audit::{self, AuditEventInput},
     find_org_for_member,
-    permissions::ensure_can_manage_org,
     ApiError, AppState, AuthUser,
 };
 
@@ -116,7 +115,7 @@ async fn list_credentials(
     Path(org_slug): Path<String>,
 ) -> Result<Json<Vec<CredentialResponse>>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, ImportCredential>(
         r#"
@@ -155,7 +154,7 @@ async fn save_credential(
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let base_url = normalize_base_url(body.provider, body.base_url.as_deref());
     let token = providers::normalize_token(&body.token);
@@ -213,7 +212,7 @@ async fn delete_credential(
     Path((org_slug, credential_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let result = sqlx::query(
         r#"
@@ -242,7 +241,7 @@ async fn discover_repos(
     Json(body): Json<DiscoverRequest>,
 ) -> Result<Json<DiscoverResponse>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let (provider, token, base_url) = resolve_credential(&state, org.id, auth.user_id, &body).await?;
     let account = validate_token(provider, &token, &base_url)
@@ -300,7 +299,7 @@ async fn create_import_job(
     }
 
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let credential = sqlx::query_as::<_, (ImportProvider, Vec<u8>, Option<String>)>(
         r#"
@@ -441,7 +440,7 @@ async fn list_import_jobs(
     Path(org_slug): Path<String>,
 ) -> Result<Json<Vec<ImportJob>>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let jobs = sqlx::query_as::<_, ImportJob>(
         r#"
@@ -468,7 +467,7 @@ async fn get_import_job(
     Path((org_slug, job_id)): Path<(String, Uuid)>,
 ) -> Result<Json<ImportJobDetail>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let job = sqlx::query_as::<_, ImportJob>(
         r#"

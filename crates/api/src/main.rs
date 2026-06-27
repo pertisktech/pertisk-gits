@@ -32,16 +32,19 @@ use uuid::Uuid;
 use validator::Validate;
 
 mod admin;
+mod api_tokens;
 mod artifacts;
 mod audit;
 mod branch_protection;
 mod ci_secrets;
 mod collaboration;
+mod custom_roles;
 mod cicd;
 mod code_search;
 mod config;
 mod deploy_keys;
 mod db;
+mod gitops;
 mod import;
 mod password;
 mod permissions;
@@ -49,6 +52,7 @@ mod registry;
 mod secrets_crypto;
 mod sso;
 mod system_metrics;
+mod teams;
 mod version;
 mod wiki;
 
@@ -193,9 +197,13 @@ async fn main() -> anyhow::Result<()> {
             patch(update_repository),
         )
         .merge(permissions::permissions_routes())
+        .merge(custom_roles::custom_role_routes())
+        .merge(teams::team_routes())
         .merge(collaboration::collaboration_write_routes())
         .merge(wiki::wiki_write_routes())
         .merge(deploy_keys::deploy_key_routes())
+        .merge(api_tokens::api_token_routes())
+        .merge(gitops::gitops_routes())
         .merge(cicd::cicd_write_routes())
         .merge(ci_secrets::ci_secrets_write_routes())
         .merge(registry::registry_write_routes())
@@ -209,7 +217,8 @@ async fn main() -> anyhow::Result<()> {
     let api_routes = Router::new()
         .merge(repo_read_routes)
         .merge(protected_routes)
-        .merge(cicd::runner_routes());
+        .merge(cicd::runner_routes())
+        .merge(cicd::runner_autoscale_routes());
 
     let push_pool = state.pool.clone();
     let validate_push: pertisk_git::http::ValidatePushHook = Arc::new(
@@ -386,7 +395,7 @@ async fn register(
         r#"
         INSERT INTO users (username, email, password_hash, display_name)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
+        RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
         "#,
     )
     .bind(&body.username)
@@ -423,7 +432,7 @@ async fn login(
 
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
         FROM users
         WHERE username = $1 OR email = $1
         "#,
@@ -649,9 +658,17 @@ async fn list_organizations(
 }
 
 #[derive(Serialize)]
+struct OrgMemberCustomRoleSummary {
+    id: Uuid,
+    name: String,
+    slug: String,
+}
+
+#[derive(Serialize)]
 struct OrgMemberResponse {
     user: UserPublic,
     role: OrgRole,
+    custom_role: Option<OrgMemberCustomRoleSummary>,
 }
 
 #[derive(sqlx::FromRow)]
@@ -662,6 +679,9 @@ struct OrgMemberRow {
     display_name: Option<String>,
     created_at: chrono::DateTime<chrono::Utc>,
     role: OrgRole,
+    custom_role_id: Option<Uuid>,
+    custom_role_name: Option<String>,
+    custom_role_slug: Option<String>,
 }
 
 async fn list_organization_members(
@@ -673,10 +693,20 @@ async fn list_organization_members(
 
     let rows = sqlx::query_as::<_, OrgMemberRow>(
         r#"
-        SELECT u.id, u.username, u.email, u.display_name, u.created_at, m.role
+        SELECT
+            u.id,
+            u.username,
+            u.email,
+            u.display_name,
+            u.created_at,
+            m.role,
+            cr.id AS custom_role_id,
+            cr.name AS custom_role_name,
+            cr.slug AS custom_role_slug
         FROM organization_members m
         INNER JOIN users u ON u.id = m.user_id
         INNER JOIN organizations o ON o.id = m.organization_id
+        LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
         WHERE o.slug = $1
         ORDER BY u.username
         "#,
@@ -697,6 +727,11 @@ async fn list_organization_members(
                     created_at: row.created_at,
                 },
                 role: row.role,
+                custom_role: row.custom_role_id.map(|id| OrgMemberCustomRoleSummary {
+                    id,
+                    name: row.custom_role_name.unwrap_or_default(),
+                    slug: row.custom_role_slug.unwrap_or_default(),
+                }),
             })
             .collect(),
     ))
@@ -768,7 +803,7 @@ async fn update_organization(
     }
 
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    permissions::ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let name = body.name.unwrap_or_else(|| org.name.clone());
     let new_slug = body.slug.unwrap_or_else(|| org.slug.clone());
@@ -1482,6 +1517,13 @@ async fn optional_auth_middleware(
                 user_id: claims.sub,
                 username: claims.username,
             });
+        } else if let Ok(Some(api_auth)) =
+            api_tokens::authenticate_api_token(&state.pool, token).await
+        {
+            req.extensions_mut().insert(AuthUser {
+                user_id: api_auth.user_id,
+                username: api_auth.username,
+            });
         }
     }
 
@@ -1519,13 +1561,22 @@ async fn auth_middleware(
         .and_then(|v| v.strip_prefix("Bearer "))
         .ok_or(DomainError::Unauthorized)?;
 
-    let claims = verify_token(&state.config.jwt_secret, token)
-        .map_err(|_| DomainError::Unauthorized)?;
-
-    req.extensions_mut().insert(AuthUser {
-        user_id: claims.sub,
-        username: claims.username,
-    });
+    if let Ok(claims) = verify_token(&state.config.jwt_secret, token) {
+        req.extensions_mut().insert(AuthUser {
+            user_id: claims.sub,
+            username: claims.username,
+        });
+    } else if let Some(api_auth) = api_tokens::authenticate_api_token(&state.pool, token)
+        .await
+        .map_err(|_| DomainError::Unauthorized)?
+    {
+        req.extensions_mut().insert(AuthUser {
+            user_id: api_auth.user_id,
+            username: api_auth.username,
+        });
+    } else {
+        return Err(DomainError::Unauthorized.into());
+    }
 
     Ok(next.run(req).await)
 }

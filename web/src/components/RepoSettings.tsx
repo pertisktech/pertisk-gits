@@ -5,8 +5,10 @@ import { api } from '../api/client'
 import type { Repository } from '../api/types'
 import { PrimaryButton, Select } from './ui'
 import { RepoCollaborators } from './RepoCollaborators'
+import { RepoTeamAccess } from './RepoTeamAccess'
 import { BranchProtection } from './BranchProtection'
 import { DeployKeysPanel } from './DeployKeysPanel'
+import { GitOpsWebhooksPanel } from './GitOpsWebhooksPanel'
 import { SecretsPanel } from './SecretsPanel'
 
 interface RepoSettingsProps {
@@ -164,6 +166,8 @@ export function RepoSettings({
 
       <RepoCollaborators token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
 
+      <RepoTeamAccess token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
+
       <BranchProtection
         token={token}
         orgSlug={orgSlug}
@@ -172,6 +176,8 @@ export function RepoSettings({
       />
 
       <DeployKeysPanel token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
+
+      <GitOpsWebhooksPanel token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
 
       <SecretsPanel
         token={token}

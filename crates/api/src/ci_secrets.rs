@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::permissions::{ensure_can_admin_repo, ensure_can_manage_org};
+use crate::permissions::{ensure_can_admin_repo, ensure_can_manage_org_secrets};
 use crate::secrets_crypto::SecretsCrypto;
 use crate::{find_org_for_member, ApiError, AppState, AuthUser};
 
@@ -90,7 +90,7 @@ async fn list_org_secrets(
     Path(org_slug): Path<String>,
 ) -> Result<Json<Vec<CiSecretSummary>>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, (Uuid, String, CiSecretKind, DateTime<Utc>, DateTime<Utc>)>(
         r#"
@@ -125,7 +125,7 @@ async fn create_org_secret(
     Json(body): Json<UpsertSecretRequest>,
 ) -> Result<(StatusCode, Json<CiSecretSummary>), ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
     let name = normalize_secret_name(&body.name)?;
     let kind = body.secret_kind.unwrap_or(CiSecretKind::Variable);
     let encrypted = state
@@ -177,7 +177,7 @@ async fn update_org_secret(
     Json(body): Json<UpdateSecretRequest>,
 ) -> Result<Json<CiSecretSummary>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
 
     let existing = sqlx::query_as::<_, (CiSecretKind,)>(
         "SELECT secret_kind FROM organization_secrets WHERE id = $1 AND organization_id = $2",
@@ -230,7 +230,7 @@ async fn delete_org_secret(
     Path((org_slug, secret_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
 
     let result = sqlx::query("DELETE FROM organization_secrets WHERE id = $1 AND organization_id = $2")
         .bind(secret_id)

@@ -19,4 +19,13 @@ spec:
         target:
           type: Utilization
           averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- if .Values.autoscaling.queueDepth.enabled }}
+    - type: External
+      external:
+        metric:
+          name: {{ .Values.autoscaling.queueDepth.metricName | quote }}
+        target:
+          type: AverageValue
+          averageValue: {{ .Values.autoscaling.queueDepth.targetValue | quote }}
+    {{- end }}
 {{- end }}

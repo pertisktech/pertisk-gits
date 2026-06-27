@@ -376,6 +376,54 @@ pub fn runner_routes() -> Router<AppState> {
         .layer(DefaultBodyLimit::max(MAX_RUNNER_ARTIFACT_BYTES))
 }
 
+#[derive(Serialize)]
+struct RunnerAutoscaleMetrics {
+    queued_jobs: i64,
+    running_jobs: i64,
+}
+
+pub fn runner_autoscale_routes() -> Router<AppState> {
+    Router::new().route("/internal/runner-autoscale", get(runner_autoscale_metrics))
+}
+
+async fn runner_autoscale_metrics(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<RunnerAutoscaleMetrics>, ApiError> {
+    let expected = std::env::var("RUNNER_AUTOSCALE_SECRET").unwrap_or_default();
+    if expected.is_empty() {
+        return Err(DomainError::Forbidden.into());
+    }
+
+    let provided = headers
+        .get("X-Runner-Autoscale-Secret")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+
+    if provided != expected {
+        return Err(DomainError::Forbidden.into());
+    }
+
+    let queued_jobs = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM job_runs WHERE status = 'queued'",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let running_jobs = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM job_runs WHERE status = 'running'",
+    )
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(RunnerAutoscaleMetrics {
+        queued_jobs,
+        running_jobs,
+    }))
+}
+
 pub fn post_receive_hook(
     state: AppState,
 ) -> Arc<
@@ -401,6 +449,11 @@ pub fn post_receive_hook(
             }
             if let Err(err) = flush_pending_triggers(&state).await {
                 tracing::warn!("failed to process pipeline triggers: {err:#}");
+            }
+            if let Err(err) =
+                crate::gitops::dispatch_gitops_webhooks(&state.pool, repository_id, &updates).await
+            {
+                tracing::warn!("failed to dispatch gitops webhooks: {err:#}");
             }
         })
     })

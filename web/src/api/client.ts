@@ -11,8 +11,15 @@ import type {
   IssueDetail,
   Label,
   Milestone,
+  CustomRolePermissions,
+  OrganizationCustomRole,
   Organization,
   OrgMember,
+  RepositoryTeamAccess,
+  TeamDetail,
+  TeamMemberEntry,
+  TeamRepositoryAccess,
+  TeamSummary,
   PipelineConfigPreview,
   PipelineMigrateResponse,
   PipelineRun,
@@ -46,6 +53,8 @@ import type {
   WikiPageSummary,
   WikiRevisionDetail,
   WikiRevisionSummary,
+  ApiTokenSummary,
+  GitOpsWebhookSummary,
 } from './types'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
@@ -118,6 +127,67 @@ export const api = {
     }
   },
 
+  listApiTokens: (token: string) => request<ApiTokenSummary[]>('/me/tokens', {}, token),
+
+  createApiToken: (token: string, payload: { name: string; scopes?: string[] }) =>
+    request<{ token: ApiTokenSummary; plaintext: string }>(
+      '/me/tokens',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteApiToken: async (token: string, tokenId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/me/tokens/${tokenId}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listRepoGitOpsWebhooks: (token: string, orgSlug: string, repoSlug: string) =>
+    request<GitOpsWebhookSummary[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/gitops-webhooks`,
+      {},
+      token,
+    ),
+
+  createRepoGitOpsWebhook: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { name: string; url: string; provider?: string },
+  ) =>
+    request<GitOpsWebhookSummary>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/gitops-webhooks`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteRepoGitOpsWebhook: async (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    webhookId: string,
+  ) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/gitops-webhooks/${webhookId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
   listOrganizations: (token: string) =>
     request<Organization[]>('/organizations', {}, token),
 
@@ -127,7 +197,12 @@ export const api = {
   addOrganizationMember: (
     token: string,
     orgSlug: string,
-    payload: { username?: string; user_id?: string; role?: 'owner' | 'admin' | 'member' },
+    payload: {
+      username?: string
+      user_id?: string
+      role?: 'owner' | 'admin' | 'member'
+      custom_role_id?: string | null
+    },
   ) =>
     request<OrgMember>(`/organizations/${orgSlug}/members`, {
       method: 'POST',
@@ -138,7 +213,7 @@ export const api = {
     token: string,
     orgSlug: string,
     userId: string,
-    payload: { role: 'owner' | 'admin' | 'member' },
+    payload: { role: 'owner' | 'admin' | 'member'; custom_role_id?: string | null },
   ) =>
     request<OrgMember>(`/organizations/${orgSlug}/members/${userId}`, {
       method: 'PATCH',
@@ -158,6 +233,167 @@ export const api = {
       throw new Error(message)
     }
   },
+
+  listCustomRoles: (token: string, orgSlug: string) =>
+    request<OrganizationCustomRole[]>(`/organizations/${orgSlug}/custom-roles`, {}, token),
+
+  createCustomRole: (
+    token: string,
+    orgSlug: string,
+    payload: {
+      name: string
+      slug?: string
+      description?: string
+      permissions: CustomRolePermissions
+    },
+  ) =>
+    request<OrganizationCustomRole>(`/organizations/${orgSlug}/custom-roles`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  updateCustomRole: (
+    token: string,
+    orgSlug: string,
+    roleSlug: string,
+    payload: {
+      name?: string
+      description?: string
+      permissions?: CustomRolePermissions
+    },
+  ) =>
+    request<OrganizationCustomRole>(`/organizations/${orgSlug}/custom-roles/${roleSlug}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteCustomRole: async (token: string, orgSlug: string, roleSlug: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/custom-roles/${roleSlug}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listTeams: (token: string, orgSlug: string) =>
+    request<TeamSummary[]>(`/organizations/${orgSlug}/teams`, {}, token),
+
+  createTeam: (
+    token: string,
+    orgSlug: string,
+    payload: { name: string; slug?: string; description?: string },
+  ) =>
+    request<TeamDetail>(`/organizations/${orgSlug}/teams`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  getTeam: (token: string, orgSlug: string, teamSlug: string) =>
+    request<TeamDetail>(`/organizations/${orgSlug}/teams/${teamSlug}`, {}, token),
+
+  updateTeam: (
+    token: string,
+    orgSlug: string,
+    teamSlug: string,
+    payload: { name?: string; description?: string },
+  ) =>
+    request<TeamDetail>(`/organizations/${orgSlug}/teams/${teamSlug}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteTeam: async (token: string, orgSlug: string, teamSlug: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/teams/${teamSlug}`, {
+      method: 'DELETE',
+      headers,
+    })
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listTeamMembers: (token: string, orgSlug: string, teamSlug: string) =>
+    request<TeamMemberEntry[]>(`/organizations/${orgSlug}/teams/${teamSlug}/members`, {}, token),
+
+  addTeamMember: (
+    token: string,
+    orgSlug: string,
+    teamSlug: string,
+    payload: { username?: string; user_id?: string },
+  ) =>
+    request<TeamMemberEntry>(`/organizations/${orgSlug}/teams/${teamSlug}/members`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  removeTeamMember: async (token: string, orgSlug: string, teamSlug: string, userId: string) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/teams/${teamSlug}/members/${userId}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listTeamRepositories: (token: string, orgSlug: string, teamSlug: string) =>
+    request<TeamRepositoryAccess[]>(
+      `/organizations/${orgSlug}/teams/${teamSlug}/repositories`,
+      {},
+      token,
+    ),
+
+  setTeamRepositoryAccess: (
+    token: string,
+    orgSlug: string,
+    teamSlug: string,
+    payload: { repo_slug: string; role: 'admin' | 'write' | 'read' },
+  ) =>
+    request<TeamRepositoryAccess>(
+      `/organizations/${orgSlug}/teams/${teamSlug}/repositories`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  removeTeamRepositoryAccess: async (
+    token: string,
+    orgSlug: string,
+    teamSlug: string,
+    repoSlug: string,
+  ) => {
+    const headers = new Headers({ 'Content-Type': 'application/json' })
+    headers.set('Authorization', `Bearer ${token}`)
+    const response = await fetch(
+      `${API_BASE}/organizations/${orgSlug}/teams/${teamSlug}/repositories/${repoSlug}`,
+      { method: 'DELETE', headers },
+    )
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}))
+      const message = typeof body.error === 'string' ? body.error : 'Request failed'
+      throw new Error(message)
+    }
+  },
+
+  listRepositoryTeamAccess: (token: string, orgSlug: string, repoSlug: string) =>
+    request<RepositoryTeamAccess[]>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/team-access`,
+      {},
+      token,
+    ),
 
   listRepositoryCollaborators: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepoCollaborator[]>(

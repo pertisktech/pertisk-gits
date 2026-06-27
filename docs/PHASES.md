@@ -310,11 +310,14 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Enforcement on PR merge | Done |
 | Enforcement on Git HTTP push | Done |
 | Branch protection UI (repo settings) | Done |
-| Custom roles beyond owner/write/read | Planned |
-| Teams → repo access with role templates | Planned |
+| Custom roles beyond owner/write/read | Done (MVP) |
+| Custom roles UI | Done |
+| Teams → repo access with role templates | Done (MVP) |
+| Teams UI | Done |
 | Deploy keys (SSH, per-repo, read-only default) | Done (MVP) |
 | Deploy keys UI (repo settings) | Done |
-| Machine users, scoped API tokens | Planned |
+| Machine users, scoped API tokens | Done (MVP) |
+| PAT / machine user UI | Done (profile + group) |
 
 ### Kubernetes Integration
 
@@ -323,10 +326,10 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Helm chart for CI runners | Done (Phase 4.5) |
 | Helm chart for platform (`pertisk-gits`) | Done (MVP) |
 | K8s deployment guide | Done — [KUBERNETES.md](./KUBERNETES.md) |
-| HPA / queue-depth autoscale for runners | Planned |
-| Optional GitOps webhooks (Argo CD / Flux) | Planned |
+| HPA / queue-depth autoscale for runners | Done (MVP — metrics endpoint + Helm external metric) |
+| Optional GitOps webhooks (Argo CD / Flux) | Done (MVP) |
 
-**Tables (new):** `branch_protection_rules`, `repository_deploy_keys`
+**Tables (new):** `branch_protection_rules`, `repository_deploy_keys`, `organization_custom_roles`, `teams`, `team_members`, `team_repository_permissions`
 
 ---
 

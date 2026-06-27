@@ -11,6 +11,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::{find_org_for_member, ApiError, AppState, AuthUser};
+use pertisk_git::access;
 
 pub fn permissions_routes() -> Router<AppState> {
     Router::new()
@@ -63,10 +64,14 @@ async fn add_organization_member(
 
     let user = resolve_user_for_add(&state.pool, body.user_id, body.username).await?;
 
+    if let Some(custom_role_id) = body.custom_role_id {
+        ensure_custom_role_in_org(&state.pool, org.id, custom_role_id).await?;
+    }
+
     let inserted = sqlx::query_scalar::<_, bool>(
         r#"
-        INSERT INTO organization_members (organization_id, user_id, role)
-        VALUES ($1, $2, $3)
+        INSERT INTO organization_members (organization_id, user_id, role, custom_role_id)
+        VALUES ($1, $2, $3, $4)
         ON CONFLICT (organization_id, user_id) DO NOTHING
         RETURNING TRUE
         "#,
@@ -74,6 +79,7 @@ async fn add_organization_member(
     .bind(org.id)
     .bind(user.id)
     .bind(role)
+    .bind(body.custom_role_id)
     .fetch_optional(&state.pool)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
@@ -132,14 +138,19 @@ async fn update_organization_member(
         ensure_org_has_other_owner(&state.pool, org.id, target_user_id).await?;
     }
 
+    if let Some(custom_role_id) = body.custom_role_id {
+        ensure_custom_role_in_org(&state.pool, org.id, custom_role_id).await?;
+    }
+
     sqlx::query(
         r#"
         UPDATE organization_members
-        SET role = $1
-        WHERE organization_id = $2 AND user_id = $3
+        SET role = $1, custom_role_id = $2
+        WHERE organization_id = $3 AND user_id = $4
         "#,
     )
     .bind(body.role)
+    .bind(body.custom_role_id)
     .bind(org.id)
     .bind(target_user_id)
     .execute(&state.pool)
@@ -383,8 +394,75 @@ pub(crate) async fn ensure_can_manage_org(
 
     match role {
         OrgRole::Owner | OrgRole::Admin => Ok(role),
+        OrgRole::Member if org_member_has_permission(pool, org_id, user_id, |p| p.can_manage_members()).await? => {
+            Ok(role)
+        }
         OrgRole::Member => Err(DomainError::Forbidden.into()),
     }
+}
+
+pub(crate) async fn ensure_can_manage_org_settings(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    ensure_org_permission(pool, org_id, user_id, |p| p.can_manage_settings()).await
+}
+
+pub(crate) async fn ensure_can_view_audit(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    ensure_org_permission(pool, org_id, user_id, |p| p.can_view_audit()).await
+}
+
+pub(crate) async fn ensure_can_manage_teams(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    ensure_org_permission(pool, org_id, user_id, |p| p.can_manage_teams()).await
+}
+
+pub(crate) async fn ensure_can_manage_custom_roles(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    ensure_org_permission(pool, org_id, user_id, |p| p.can_manage_custom_roles()).await
+}
+
+pub(crate) async fn ensure_can_manage_org_secrets(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    ensure_org_permission(pool, org_id, user_id, |p| p.can_manage_org_secrets()).await
+}
+
+pub(crate) async fn ensure_org_permission(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+    check: impl FnOnce(&pertisk_domain::permissions::CustomRolePermissions) -> bool,
+) -> Result<(), ApiError> {
+    if org_member_has_permission(pool, org_id, user_id, check).await? {
+        Ok(())
+    } else {
+        Err(DomainError::Forbidden.into())
+    }
+}
+
+async fn org_member_has_permission(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+    check: impl FnOnce(&pertisk_domain::permissions::CustomRolePermissions) -> bool,
+) -> Result<bool, ApiError> {
+    access::org_member_has_permission(pool, org_id, user_id, check)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))
 }
 
 pub(crate) async fn ensure_can_admin_repo(
@@ -393,30 +471,14 @@ pub(crate) async fn ensure_can_admin_repo(
     repo: &Repository,
     auth: &AuthUser,
 ) -> Result<(), ApiError> {
-    if sqlx::query_scalar::<_, bool>(
-        r#"
-        SELECT EXISTS(
-            SELECT 1 FROM repository_permissions
-            WHERE repository_id = $1 AND user_id = $2 AND role = 'admin'
-        )
-        "#,
-    )
-    .bind(repo.id)
-    .bind(auth.user_id)
-    .fetch_one(pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
-    {
-        return Ok(());
-    }
+    let allowed = access::can_admin_repo(pool, org_id, repo.id, auth.user_id)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    let role = get_org_member_role(pool, org_id, auth.user_id)
-        .await?
-        .ok_or(DomainError::Forbidden)?;
-
-    match role {
-        OrgRole::Owner | OrgRole::Admin => Ok(()),
-        OrgRole::Member => Err(DomainError::Forbidden.into()),
+    if allowed {
+        Ok(())
+    } else {
+        Err(DomainError::Forbidden.into())
     }
 }
 
@@ -466,7 +528,33 @@ async fn ensure_org_has_other_owner(
     Ok(())
 }
 
-async fn find_repo_in_org(
+async fn ensure_custom_role_in_org(
+    pool: &PgPool,
+    org_id: Uuid,
+    custom_role_id: Uuid,
+) -> Result<(), ApiError> {
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM organization_custom_roles
+            WHERE id = $1 AND organization_id = $2
+        )
+        "#,
+    )
+    .bind(custom_role_id)
+    .bind(org_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if exists {
+        Ok(())
+    } else {
+        Err(DomainError::Validation("custom role not found in this group".into()).into())
+    }
+}
+
+pub(crate) async fn find_repo_in_org(
     pool: &PgPool,
     org_id: Uuid,
     repo_slug: &str,
@@ -489,7 +577,7 @@ async fn find_repo_in_org(
 async fn find_user_by_username(pool: &PgPool, username: &str) -> Result<User, ApiError> {
     sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
         FROM users
         WHERE username = $1
         "#,
@@ -501,7 +589,7 @@ async fn find_user_by_username(pool: &PgPool, username: &str) -> Result<User, Ap
     .ok_or(DomainError::NotFound.into())
 }
 
-async fn resolve_user_for_add(
+pub(crate) async fn resolve_user_for_add(
     pool: &PgPool,
     user_id: Option<Uuid>,
     username: Option<String>,
@@ -525,7 +613,7 @@ async fn resolve_user_for_add(
 async fn find_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<User, ApiError> {
     sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,
@@ -537,7 +625,7 @@ async fn find_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<User, ApiError>
     .ok_or(DomainError::NotFound.into())
 }
 
-trait UserExt {
+pub(crate) trait UserExt {
     fn into_public(self) -> UserPublic;
 }
 

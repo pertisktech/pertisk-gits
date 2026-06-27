@@ -13,6 +13,15 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 75
   targetMemoryUtilizationPercentage: 75
+  # Optional queue-depth scaling via custom/external metrics adapter.
+  # Requires RUNNER_AUTOSCALE_SECRET on the API and a metrics adapter that
+  # exposes pertisk_queued_jobs from GET /api/v1/internal/runner-autoscale.
+  queueDepth:
+    enabled: false
+    metricName: pertisk_queued_jobs
+    targetValue: 2
+    apiUrl: ""
+    secret: ""
 # Spread replicas across nodes when replicaCount > 1
 podAntiAffinity:
   enabled: true

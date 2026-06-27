@@ -23,6 +23,7 @@ export function GroupMembersPage() {
   const queryClient = useQueryClient()
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [newRole, setNewRole] = useState<OrgRole>('member')
+  const [newCustomRoleId, setNewCustomRoleId] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const { data: groups = [] } = useQuery({
@@ -45,24 +46,39 @@ export function GroupMembersPage() {
   const canManage = myMembership?.role === 'owner' || myMembership?.role === 'admin'
   const isOwner = myMembership?.role === 'owner'
 
+  const { data: customRoles = [] } = useQuery({
+    queryKey: ['custom-roles', slug],
+    queryFn: () => api.listCustomRoles(token!, slug),
+    enabled: Boolean(token && slug && canManage),
+  })
+
   const addMember = useMutation({
     mutationFn: () =>
       api.addOrganizationMember(token!, slug, {
         user_id: selectedUser!.id,
         role: newRole,
+        custom_role_id: newCustomRoleId || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-members', slug] })
       setSelectedUser(null)
       setNewRole('member')
+      setNewCustomRoleId('')
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const updateMember = useMutation({
-    mutationFn: ({ userId, role }: { userId: string; role: OrgRole }) =>
-      api.updateOrganizationMember(token!, slug, userId, { role }),
+    mutationFn: ({
+      userId,
+      role,
+      custom_role_id,
+    }: {
+      userId: string
+      role: OrgRole
+      custom_role_id?: string | null
+    }) => api.updateOrganizationMember(token!, slug, userId, { role, custom_role_id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['org-members', slug] })
       setError(null)
@@ -138,6 +154,21 @@ export function GroupMembersPage() {
                 <option value="admin">Admin</option>
                 <option value="member">Member</option>
               </Select>
+              {newRole === 'member' && customRoles.length > 0 && (
+                <Select
+                  className="w-44 !py-1.5"
+                  value={newCustomRoleId}
+                  onChange={(e) => setNewCustomRoleId(e.target.value)}
+                  disabled={addMember.isPending}
+                >
+                  <option value="">No custom role</option>
+                  {customRoles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
+                </Select>
+              )}
               <PrimaryButton type="submit" disabled={addMember.isPending || !selectedUser}>
                 {addMember.isPending ? (
                   <>
@@ -173,6 +204,7 @@ export function GroupMembersPage() {
               <tr>
                 <th>User</th>
                 <th>Role</th>
+                <th>Custom role</th>
                 {canManage && <th className="w-28" />}
               </tr>
             </thead>
@@ -200,6 +232,7 @@ export function GroupMembersPage() {
                             updateMember.mutate({
                               userId: member.user.id,
                               role: e.target.value as OrgRole,
+                              custom_role_id: member.custom_role?.id ?? null,
                             })
                           }
                         >
@@ -211,6 +244,33 @@ export function GroupMembersPage() {
                         </Select>
                       ) : (
                         <StatusBadge variant={roleVariant(member.role)}>{member.role}</StatusBadge>
+                      )}
+                    </td>
+                    <td>
+                      {canEditTarget && member.role === 'member' ? (
+                        <Select
+                          className="!py-1 text-sm"
+                          value={member.custom_role?.id ?? ''}
+                          disabled={updateMember.isPending}
+                          onChange={(e) =>
+                            updateMember.mutate({
+                              userId: member.user.id,
+                              role: member.role,
+                              custom_role_id: e.target.value || null,
+                            })
+                          }
+                        >
+                          <option value="">None</option>
+                          {customRoles.map((role) => (
+                            <option key={role.id} value={role.id}>
+                              {role.name}
+                            </option>
+                          ))}
+                        </Select>
+                      ) : member.custom_role ? (
+                        <span className="text-sm text-text">{member.custom_role.name}</span>
+                      ) : (
+                        <span className="text-sm text-text-secondary">—</span>
                       )}
                     </td>
                     {canManage && (
@@ -244,7 +304,10 @@ export function GroupMembersPage() {
           <strong className="text-text">Owner / Admin</strong> — can push to all repositories in the group.
         </p>
         <p>
-          <strong className="text-text">Member</strong> — can read private repositories; push only with a direct repository role.
+          <strong className="text-text">Member</strong> — can read private repositories; push only with a direct repository role, team grant, or custom role default access.
+        </p>
+        <p>
+          <strong className="text-text">Custom roles</strong> — optional fine-grained permissions assigned to members on the Custom roles page.
         </p>
       </div>
     </>

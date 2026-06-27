@@ -53,6 +53,7 @@ pub struct User {
     pub password_hash: Option<String>,
     pub display_name: Option<String>,
     pub is_super_admin: bool,
+    pub is_machine_user: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -81,6 +82,45 @@ pub struct OrganizationMember {
     pub organization_id: Uuid,
     pub user_id: Uuid,
     pub role: OrgRole,
+    pub custom_role_id: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct OrganizationCustomRole {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub permissions: sqlx::types::Json<crate::permissions::CustomRolePermissions>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Team {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub name: String,
+    pub slug: String,
+    pub description: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TeamMember {
+    pub team_id: Uuid,
+    pub user_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct TeamRepositoryPermission {
+    pub team_id: Uuid,
+    pub repository_id: Uuid,
+    pub role: RepoRole,
     pub created_at: DateTime<Utc>,
 }
 
@@ -129,10 +169,87 @@ pub struct ApiToken {
     pub name: String,
     #[serde(skip_serializing)]
     pub token_hash: String,
+    pub token_prefix: Option<String>,
     pub scopes: Vec<String>,
+    pub organization_id: Option<Uuid>,
+    pub repository_id: Option<Uuid>,
     pub last_used_at: Option<DateTime<Utc>>,
     pub expires_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct GitOpsWebhook {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub repository_id: Option<Uuid>,
+    pub name: String,
+    pub url: String,
+    pub provider: String,
+    #[serde(skip_serializing)]
+    pub secret: Option<String>,
+    pub events: Vec<String>,
+    pub enabled: bool,
+    pub created_by: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateApiTokenRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    pub organization_id: Option<Uuid>,
+    pub repository_id: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateMachineUserRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub username: String,
+    pub display_name: Option<String>,
+    #[validate(length(min = 1, max = 255))]
+    pub token_name: String,
+    #[serde(default)]
+    pub scopes: Vec<String>,
+    pub role: Option<OrgRole>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateGitOpsWebhookRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: String,
+    #[validate(url)]
+    pub url: String,
+    #[validate(length(min = 1, max = 32))]
+    pub provider: Option<String>,
+    pub secret: Option<String>,
+    #[serde(default = "default_gitops_events")]
+    pub events: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+fn default_gitops_events() -> Vec<String> {
+    vec!["push".into()]
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateGitOpsWebhookRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: Option<String>,
+    #[validate(url)]
+    pub url: Option<String>,
+    pub secret: Option<String>,
+    pub events: Option<Vec<String>>,
+    pub enabled: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -281,11 +398,60 @@ pub struct AddOrganizationMemberRequest {
     pub username: Option<String>,
     pub user_id: Option<Uuid>,
     pub role: Option<OrgRole>,
+    pub custom_role_id: Option<Uuid>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
 pub struct UpdateOrganizationMemberRequest {
     pub role: OrgRole,
+    pub custom_role_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateCustomRoleRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: String,
+    #[validate(length(min = 1, max = 255))]
+    pub slug: Option<String>,
+    pub description: Option<String>,
+    pub permissions: crate::permissions::CustomRolePermissions,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateCustomRoleRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub permissions: Option<crate::permissions::CustomRolePermissions>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateTeamRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: String,
+    #[validate(length(min = 1, max = 255))]
+    pub slug: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateTeamRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub name: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct AddTeamMemberRequest {
+    pub username: Option<String>,
+    pub user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct SetTeamRepositoryAccessRequest {
+    #[validate(length(min = 1, max = 255))]
+    pub repo_slug: String,
+    pub role: RepoRole,
 }
 
 #[derive(Debug, Deserialize, Validate)]

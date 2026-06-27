@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{find_org_for_member, ApiError, AppState, AuthUser};
+use crate::{find_org_for_member, permissions, ApiError, AppState, AuthUser};
 
 pub fn registry_read_routes() -> Router<AppState> {
     Router::new()
@@ -202,7 +202,7 @@ async fn update_container_image(
     Json(body): Json<UpdateContainerImageRequest>,
 ) -> Result<Json<ContainerImageDetail>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let repo = load_container_repo(&state.pool, org.id, &image_name)
         .await?
@@ -255,7 +255,7 @@ async fn delete_container_image(
     Path((org_slug, image_name)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let repo = load_container_repo(&state.pool, org.id, &image_name)
         .await?
@@ -280,7 +280,7 @@ async fn delete_container_tag(
     Path((org_slug, image_name, tag_name)): Path<(String, String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let repo = load_container_repo(&state.pool, org.id, &image_name)
         .await?
@@ -312,7 +312,7 @@ async fn run_registry_gc(
     Path(org_slug): Path<String>,
 ) -> Result<Json<GcResponse>, ApiError> {
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
-    ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
+    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let store = blob_store().map_err(|e| DomainError::Internal(e.to_string()))?;
     let report = pertisk_registry::gc::run_gc(&state.pool, &store)
@@ -372,28 +372,6 @@ async fn load_container_repo(
 fn blob_store() -> anyhow::Result<pertisk_registry::storage::BlobStore> {
     let config = pertisk_registry::config::RegistryConfig::from_env()?;
     pertisk_registry::storage::BlobStore::from_config(&config)
-}
-
-async fn ensure_can_manage_org(
-    pool: &PgPool,
-    org_id: Uuid,
-    user_id: Uuid,
-) -> Result<OrgRole, ApiError> {
-    let role = sqlx::query_scalar::<_, OrgRole>(
-        "SELECT role FROM organization_members WHERE organization_id = $1 AND user_id = $2",
-    )
-    .bind(org_id)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(sqlx_error)?
-    .ok_or(ApiError::from(DomainError::Forbidden))?;
-
-    if matches!(role, OrgRole::Owner | OrgRole::Admin) {
-        Ok(role)
-    } else {
-        Err(DomainError::Forbidden.into())
-    }
 }
 
 fn sqlx_error(err: sqlx::Error) -> ApiError {
