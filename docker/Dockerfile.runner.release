@@ -17,7 +17,8 @@ COPY docker/apt-bookworm-install.sh /usr/local/sbin/apt-bookworm-install
 RUN chmod +x /usr/local/sbin/apt-bookworm-install \
     && apt-bookworm-install \
     build-essential \
-    pkg-config
+    pkg-config \
+    file
 
 RUN set -eu; \
     if [ "${TARGETARCH}" != "${BUILDARCH}" ]; then \
@@ -45,17 +46,17 @@ WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-runner-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-runner-git-${TARGETPLATFORM} \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-runner-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-runner-git-${TARGETARCH} \
     cargo fetch --locked
 
 ARG CARGO_BUILD_JOBS=1
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 ENV PERTISK_VERSION=${VERSION}
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-runner-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-runner-git-${TARGETPLATFORM} \
-    --mount=type=cache,target=/app/target,sharing=locked,id=pertisk-runner-target-${TARGETPLATFORM} \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-runner-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-runner-git-${TARGETARCH} \
+    --mount=type=cache,target=/app/target,sharing=locked,id=pertisk-runner-target-${TARGETARCH} \
     set -eu; \
     case "${TARGETARCH}" in \
       amd64) RUST_TARGET=x86_64-unknown-linux-gnu ;; \
@@ -89,7 +90,15 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
       TARGET_DIR="/app/target/release"; \
     fi; \
     cargo build ${BUILD_FLAGS} -p pertisk-runner; \
-    cp "${TARGET_DIR}/pertisk-runner" /app/out/pertisk-runner
+    cp "${TARGET_DIR}/pertisk-runner" /app/out/pertisk-runner; \
+    case "${TARGETARCH}" in \
+      amd64) file /app/out/pertisk-runner | grep -Eq 'x86-64' ;; \
+      arm64) file /app/out/pertisk-runner | grep -Eq 'aarch64' ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac
+
+FROM scratch AS export
+COPY --from=builder /app/out/pertisk-runner /pertisk-runner
 
 # --- Runtime image (docker build --target runtime) ---
 FROM debian:bookworm-slim AS runtime

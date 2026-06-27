@@ -6,7 +6,7 @@ ARG BUILDPLATFORM=linux/amd64
 ARG TARGETARCH=amd64
 ARG BUILDARCH=amd64
 
-FROM --platform=$BUILDPLATFORM rust:1-bookworm
+FROM --platform=$BUILDPLATFORM rust:1-bookworm AS builder
 
 ARG TARGETARCH
 ARG BUILDARCH
@@ -18,7 +18,8 @@ RUN chmod +x /usr/local/sbin/apt-bookworm-install \
     && apt-bookworm-install \
     build-essential \
     pkg-config \
-    libpq-dev
+    libpq-dev \
+    file
 
 RUN set -eu; \
     if [ "${TARGETARCH}" != "${BUILDARCH}" ]; then \
@@ -47,17 +48,17 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY migrations ./migrations
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-gits-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETPLATFORM} \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-gits-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETARCH} \
     cargo fetch --locked
 
 ARG CARGO_BUILD_JOBS=1
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 ENV PERTISK_VERSION=${VERSION}
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-gits-registry-${TARGETPLATFORM} \
-    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETPLATFORM} \
-    --mount=type=cache,target=/app/target,sharing=locked,id=pertisk-gits-target-${TARGETPLATFORM} \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-gits-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETARCH} \
+    --mount=type=cache,target=/app/target,sharing=locked,id=pertisk-gits-target-${TARGETARCH} \
     set -eu; \
     case "${TARGETARCH}" in \
       amd64) RUST_TARGET=x86_64-unknown-linux-gnu ;; \
@@ -93,4 +94,13 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
     fi; \
     cargo build ${BUILD_FLAGS} -p pertisk-api -p pertisk-worker; \
     cp "${TARGET_DIR}/pertisk-api" /app/out/pertisk-gits; \
-    cp "${TARGET_DIR}/pertisk-worker" /app/out/pertisk-worker
+    cp "${TARGET_DIR}/pertisk-worker" /app/out/pertisk-worker; \
+    case "${TARGETARCH}" in \
+      amd64) file /app/out/pertisk-gits | grep -Eq 'x86-64' ;; \
+      arm64) file /app/out/pertisk-gits | grep -Eq 'aarch64' ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac
+
+FROM scratch AS export
+COPY --from=builder /app/out/pertisk-gits /pertisk-gits
+COPY --from=builder /app/out/pertisk-worker /pertisk-worker

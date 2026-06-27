@@ -75,53 +75,24 @@ build_native() {
 
 build_binary_docker() {
   echo "Building $PACKAGE_NAME for linux/$ARCH via Docker buildx..."
-  export DOCKER_BUILDKIT=1
   CARGO_JOBS="${PERTISK_CARGO_JOBS:-1}"
   [ "$ARCH" = "amd64" ] && CARGO_JOBS=4
 
-  if docker buildx inspect "$BUILDER_NAME" --bootstrap >/dev/null 2>&1; then
-    :
-  else
-    echo "Buildx builder '$BUILDER_NAME' is missing; creating..."
-    docker buildx rm "$BUILDER_NAME" >/dev/null 2>&1 || true
-    docker buildx create --name "$BUILDER_NAME" --driver docker-container --bootstrap
-  fi
+  local out_dir=".buildx-out-gits-${ARCH}"
+  buildx_export_linux_binaries \
+    "$BUILDER_NAME" \
+    docker/Dockerfile.release \
+    export \
+    "$ARCH" \
+    "$VERSION" \
+    "$CACHE_DIR" \
+    "$out_dir" \
+    --build-arg "CARGO_BUILD_JOBS=${CARGO_JOBS}"
 
-  mkdir -p "$CACHE_DIR"
-  local build_success=0
-  cache_from=()
-  if [ -f "${CACHE_DIR}/index.json" ]; then
-    cache_from=(--cache-from "type=local,src=${CACHE_DIR}")
-  fi
-  for attempt in 1 2 3; do
-    if docker buildx build --builder "$BUILDER_NAME" --platform "linux/$ARCH" \
-      -f docker/Dockerfile.release \
-      "${cache_from[@]}" \
-      --cache-to "type=local,dest=${CACHE_DIR},mode=max" \
-      --build-arg VERSION="$VERSION" \
-      --build-arg CARGO_BUILD_JOBS="$CARGO_JOBS" \
-      --progress=plain \
-      --load -t "pertisk-gits-build:$ARCH" .; then
-      build_success=1
-      break
-    fi
-    if [ "$attempt" -lt 3 ]; then
-      echo "docker buildx build failed (attempt $attempt/3); recreating builder..."
-      docker buildx rm "$BUILDER_NAME" >/dev/null 2>&1 || true
-      docker buildx create --name "$BUILDER_NAME" --driver docker-container --bootstrap
-    fi
-  done
-  if [ "$build_success" -ne 1 ]; then
-    echo "Error: docker buildx build failed after 3 attempts" >&2
-    exit 1
-  fi
-
-  docker rm -f "extract-gits-$ARCH" 2>/dev/null || true
-  docker create --name "extract-gits-$ARCH" "pertisk-gits-build:$ARCH"
-  docker cp "extract-gits-$ARCH:/app/out/pertisk-gits" "./${artifact}"
-  docker cp "extract-gits-$ARCH:/app/out/pertisk-worker" "./pertisk-worker-linux-${ARCH}"
+  cp "${out_dir}/pertisk-gits" "./${artifact}"
+  cp "${out_dir}/pertisk-worker" "./pertisk-worker-linux-${ARCH}"
   chmod +x "./${artifact}" "./pertisk-worker-linux-${ARCH}"
-  docker rm "extract-gits-$ARCH"
+  rm -rf "$out_dir"
 }
 
 version_stamp="${artifact}.version"
@@ -157,6 +128,12 @@ fi
 if ! is_valid_linux_binary "$artifact" "$ARCH"; then
   echo "Error: $artifact is not a valid Linux/$ARCH executable" >&2
   command -v file >/dev/null 2>&1 && file "$artifact" >&2 || true
+  exit 1
+fi
+worker_artifact="pertisk-worker-linux-${ARCH}"
+if [ -f "$worker_artifact" ] && ! is_valid_linux_binary "$worker_artifact" "$ARCH"; then
+  echo "Error: $worker_artifact is not a valid Linux/$ARCH executable" >&2
+  command -v file >/dev/null 2>&1 && file "$worker_artifact" >&2 || true
   exit 1
 fi
 cp "$artifact" "$RELEASE_DIR/"

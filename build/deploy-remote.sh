@@ -8,7 +8,7 @@
 # Env:
 #   DEPLOY_HOST     — required, e.g. root@192.168.1.10
 #   DEPLOY_BIN      — pertisk-gits (default)
-#   DEPLOY_ARCH     — amd64 (default) or arm64
+#   DEPLOY_ARCH      — auto (default), amd64, or arm64 (auto = detect via SSH)
 #   DEPLOY_PKG      — auto (default), deb, or rpm
 #   VERSION         — package version (default: git describe)
 #   DEPLOY_SSH_OPTS — extra ssh options, e.g. "-i ~/.ssh/key"
@@ -23,7 +23,7 @@ cd "$ROOT"
 
 DEPLOY_HOST="${DEPLOY_HOST:?set DEPLOY_HOST=user@host}"
 DEPLOY_BIN="${DEPLOY_BIN:-pertisk-gits}"
-DEPLOY_ARCH="${DEPLOY_ARCH:-amd64}"
+DEPLOY_ARCH="${DEPLOY_ARCH:-auto}"
 DEPLOY_PKG="${DEPLOY_PKG:-auto}"
 DEPLOY_RESTART="${DEPLOY_RESTART:-1}"
 DEPLOY_SSH_OPTS="${DEPLOY_SSH_OPTS:-}"
@@ -33,10 +33,16 @@ VERSION="${VERSION:-$(git describe --tags --always 2>/dev/null | sed 's/^v//' ||
 VERSION="${VERSION#v}"
 RELEASE_DIR="${RELEASE_DIR:-release}"
 
+# shellcheck source=deploy-common.sh
+source "$(dirname "$0")/deploy-common.sh"
+if [ "$DEPLOY_ARCH" = "auto" ]; then
+  resolve_deploy_arch
+fi
+
 case "$DEPLOY_ARCH" in
   amd64) deb_arch=amd64; rpm_arch=x86_64 ;;
   arm64) deb_arch=arm64; rpm_arch=aarch64 ;;
-  *) echo "DEPLOY_ARCH must be amd64 or arm64" >&2; exit 1 ;;
+  *) echo "DEPLOY_ARCH must be auto, amd64, or arm64 (got: $DEPLOY_ARCH)" >&2; exit 1 ;;
 esac
 
 ssh_cmd() {

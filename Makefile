@@ -4,8 +4,8 @@
 	package package-clean package-amd64 package-arm64 package-deb package-rpm \
 	package-runner package-runner-clean package-runner-amd64 package-runner-arm64 \
 	release release-amd release-arm \
-	deploy deploy-package deploy-remote deploy-deb deploy-rpm \
-	install-runner deploy-runner-rpm \
+	deploy deploy-package deploy-remote deploy-deb deploy-rpm deploy-rpm-arm64 \
+	install-runner deploy-runner-rpm deploy-runner-rpm-arm64 \
 	runner-image runner-image-push runner-image-multi runner-compose-up runner-compose-down \
 	helm-runner-lint helm-runner-template helm-runner-install \
 	helm-gits-lint helm-gits-template
@@ -25,7 +25,7 @@ RUN_AS_USER = $(if $(filter root,$(USER)),sudo -u $(DEV_USER) ,)
 
 # Remote deploy — use DEPLOY_HOST=user@host (like pertisk-proxy) or REMOTE_USER + REMOTE_HOST
 DEPLOY_HOST ?=
-DEPLOY_ARCH ?= amd64
+DEPLOY_ARCH ?= auto
 DEPLOY_BIN ?= pertisk-gits
 DEPLOY_PKG ?= auto
 DEPLOY_SSH_OPTS ?=
@@ -209,8 +209,11 @@ release-arm:
 
 # --- Deploy (build package + install on remote host) ---
 # Primary: make deploy DEPLOY_HOST=user@host VERSION=0.1.0
+# AlmaLinux ARM64: make deploy-rpm DEPLOY_HOST=almalinux@10.1.1.233 VERSION=0.2.26
+#   (DEPLOY_ARCH=auto detects aarch64 via SSH; override with DEPLOY_ARCH=amd64|arm64)
 # Or:      make deploy-deb DEPLOY_HOST=user@host
 #          make deploy-rpm DEPLOY_HOST=user@host
+#          make deploy-rpm-arm64 DEPLOY_HOST=almalinux@host VERSION=0.2.26
 
 deploy:
 	@$(MAKE) deploy-package DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" \
@@ -248,8 +251,16 @@ deploy-rpm:
 	DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" REMOTE_USER="$(REMOTE_USER)" \
 		VERSION="$(VERSION)" PACKAGE_NAME="$(PACKAGE_NAME)" \
 		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
-		PACKAGE_BUILD="$(PACKAGE_BUILD)" RPM_ARCH="$(if $(filter arm64,$(DEPLOY_ARCH)),aarch64,x86_64)" \
+		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEPLOY_ARCH="$(DEPLOY_ARCH)" \
+		DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)" \
 		./build/deploy-rpm.sh
+
+deploy-rpm-arm64:
+	@$(MAKE) deploy-rpm DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" \
+		REMOTE_USER="$(REMOTE_USER)" VERSION="$(VERSION)" \
+		PACKAGE_NAME="$(PACKAGE_NAME)" REMOTE_PATH="$(REMOTE_PATH)" \
+		PACKAGE_CLEAN="$(PACKAGE_CLEAN)" PACKAGE_BUILD="$(PACKAGE_BUILD)" \
+		DEPLOY_ARCH=arm64 DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)"
 
 # --- Runner packaging & deploy ---
 # make install-runner DEPLOY_HOST=user@host VERSION=0.1.0
@@ -280,8 +291,15 @@ deploy-runner-rpm:
 	DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" REMOTE_USER="$(REMOTE_USER)" \
 		VERSION="$(VERSION)" PACKAGE_NAME="$(RUNNER_PACKAGE_NAME)" \
 		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
-		PACKAGE_BUILD="$(PACKAGE_BUILD)" RPM_ARCH="$(if $(filter arm64,$(DEPLOY_ARCH)),aarch64,x86_64)" \
+		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEPLOY_ARCH="$(DEPLOY_ARCH)" \
+		DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)" \
 		./build/deploy-runner-rpm.sh
+
+deploy-runner-rpm-arm64:
+	@$(MAKE) deploy-runner-rpm DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" \
+		REMOTE_USER="$(REMOTE_USER)" VERSION="$(VERSION)" \
+		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
+		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEPLOY_ARCH=arm64 DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)"
 
 # --- Runner Docker image & Compose ---
 RUNNER_REGISTRY ?= harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy

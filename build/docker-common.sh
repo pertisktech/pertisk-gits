@@ -58,3 +58,63 @@ run_fpm_in_docker() {
   docker rm -f "$cid" >/dev/null
   trap - RETURN
 }
+
+# Cross-compile Linux binaries with buildx and export via type=local (reliable for arm64 on amd64 hosts).
+# Usage: buildx_export_linux_binaries <builder> <dockerfile> <export_target> <arch> <version> <cache_dir> <out_dir> [extra build-arg flags...]
+buildx_export_linux_binaries() {
+  local builder_name="$1"
+  local dockerfile="$2"
+  local export_target="$3"
+  local arch="$4"
+  local version="$5"
+  local cache_dir="$6"
+  local out_dir="$7"
+  shift 7
+
+  export DOCKER_BUILDKIT=1
+
+  if ! docker buildx inspect "$builder_name" --bootstrap >/dev/null 2>&1; then
+    echo "Buildx builder '$builder_name' is missing; creating..."
+    docker buildx rm "$builder_name" >/dev/null 2>&1 || true
+    docker buildx create --name "$builder_name" --driver docker-container --bootstrap
+  fi
+
+  mkdir -p "$cache_dir"
+  rm -rf "$out_dir"
+  mkdir -p "$out_dir"
+
+  local cache_from=()
+  if [ -f "${cache_dir}/index.json" ]; then
+    cache_from=(--cache-from "type=local,src=${cache_dir}")
+  fi
+
+  local build_success=0
+  local attempt
+  for attempt in 1 2 3; do
+    if docker buildx build --builder "$builder_name" --platform "linux/${arch}" \
+      -f "$dockerfile" \
+      --target "$export_target" \
+      "${cache_from[@]}" \
+      --cache-to "type=local,dest=${cache_dir},mode=max" \
+      --build-arg "TARGETARCH=${arch}" \
+      --build-arg "TARGETPLATFORM=linux/${arch}" \
+      --build-arg "VERSION=${version}" \
+      "$@" \
+      --progress=plain \
+      --output "type=local,dest=${out_dir}" \
+      .; then
+      build_success=1
+      break
+    fi
+    if [ "$attempt" -lt 3 ]; then
+      echo "docker buildx build failed (attempt ${attempt}/3); recreating builder..."
+      docker buildx rm "$builder_name" >/dev/null 2>&1 || true
+      docker buildx create --name "$builder_name" --driver docker-container --bootstrap
+    fi
+  done
+
+  if [ "$build_success" -ne 1 ]; then
+    echo "Error: docker buildx build failed after 3 attempts" >&2
+    return 1
+  fi
+}

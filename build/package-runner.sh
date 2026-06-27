@@ -68,53 +68,23 @@ build_native() {
 
 build_binary_docker() {
   echo "Building $PACKAGE_NAME for linux/$ARCH via Docker buildx..."
-  export DOCKER_BUILDKIT=1
   CARGO_JOBS="${PERTISK_CARGO_JOBS:-1}"
   [ "$ARCH" = "amd64" ] && CARGO_JOBS=4
 
-  if docker buildx inspect "$BUILDER_NAME" --bootstrap >/dev/null 2>&1; then
-    :
-  else
-    echo "Buildx builder '$BUILDER_NAME' is missing; creating..."
-    docker buildx rm "$BUILDER_NAME" >/dev/null 2>&1 || true
-    docker buildx create --name "$BUILDER_NAME" --driver docker-container --bootstrap
-  fi
+  local out_dir=".buildx-out-runner-${ARCH}"
+  buildx_export_linux_binaries \
+    "$BUILDER_NAME" \
+    docker/Dockerfile.runner.release \
+    export \
+    "$ARCH" \
+    "$VERSION" \
+    "$CACHE_DIR" \
+    "$out_dir" \
+    --build-arg "CARGO_BUILD_JOBS=${CARGO_JOBS}"
 
-  mkdir -p "$CACHE_DIR"
-  local build_success=0
-  cache_from=()
-  if [ -f "${CACHE_DIR}/index.json" ]; then
-    cache_from=(--cache-from "type=local,src=${CACHE_DIR}")
-  fi
-  for attempt in 1 2 3; do
-    if docker buildx build --builder "$BUILDER_NAME" --platform "linux/$ARCH" \
-      -f docker/Dockerfile.runner.release \
-      --target builder \
-      "${cache_from[@]}" \
-      --cache-to "type=local,dest=${CACHE_DIR},mode=max" \
-      --build-arg VERSION="$VERSION" \
-      --build-arg CARGO_BUILD_JOBS="$CARGO_JOBS" \
-      --progress=plain \
-      --load -t "pertisk-runner-build:$ARCH" .; then
-      build_success=1
-      break
-    fi
-    if [ "$attempt" -lt 3 ]; then
-      echo "docker buildx build failed (attempt $attempt/3); recreating builder..."
-      docker buildx rm "$BUILDER_NAME" >/dev/null 2>&1 || true
-      docker buildx create --name "$BUILDER_NAME" --driver docker-container --bootstrap
-    fi
-  done
-  if [ "$build_success" -ne 1 ]; then
-    echo "Error: docker buildx build failed after 3 attempts" >&2
-    exit 1
-  fi
-
-  docker rm -f "extract-runner-$ARCH" 2>/dev/null || true
-  docker create --name "extract-runner-$ARCH" "pertisk-runner-build:$ARCH"
-  docker cp "extract-runner-$ARCH:/app/out/${PACKAGE_NAME}" "./${artifact}"
+  cp "${out_dir}/pertisk-runner" "./${artifact}"
   chmod +x "./${artifact}"
-  docker rm "extract-runner-$ARCH"
+  rm -rf "$out_dir"
 }
 
 version_stamp="${artifact}.version"
