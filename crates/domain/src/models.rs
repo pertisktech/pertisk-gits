@@ -44,6 +44,15 @@ pub enum ImportJobStatus {
     Failed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "user_approval_status", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum UserApprovalStatus {
+    Pending,
+    Approved,
+    Rejected,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct User {
     pub id: Uuid,
@@ -54,6 +63,9 @@ pub struct User {
     pub display_name: Option<String>,
     pub is_super_admin: bool,
     pub is_machine_user: bool,
+    pub approval_status: UserApprovalStatus,
+    pub approved_at: Option<DateTime<Utc>>,
+    pub approved_by: Option<Uuid>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -326,6 +338,22 @@ pub struct AuthResponse {
     pub token: String,
     pub user: UserPublic,
     pub is_super_admin: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisterResponse {
+    pub user: UserPublic,
+    pub pending_approval: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_super_admin: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegistrationInfoResponse {
+    pub enabled: bool,
+    pub require_approval: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]

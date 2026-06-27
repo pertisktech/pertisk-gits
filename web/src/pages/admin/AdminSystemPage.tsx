@@ -126,6 +126,7 @@ export function AdminSystemPage() {
 
           <InfoPanel title="Counts">
             <InfoRow label="Users" value={data.counts.users} />
+            <InfoRow label="Pending approvals" value={data.counts.pending_users} />
             <InfoRow label="Groups" value={data.counts.organizations} />
             <InfoRow label="Repositories" value={data.counts.repositories} />
             <InfoRow label="Pipeline runs" value={data.counts.pipeline_runs} />

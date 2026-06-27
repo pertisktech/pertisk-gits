@@ -178,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/health", get(health))
         .route("/auth/register", post(register))
         .route("/auth/login", post(login))
+        .route("/auth/registration", get(registration_info))
         .merge(sso::sso_routes())
         .route("/me", get(me))
         .route("/users/search", get(search_users))
@@ -383,27 +384,47 @@ async fn health_live() -> (StatusCode, &'static str) {
     (StatusCode::OK, "ok")
 }
 
+async fn registration_info() -> Json<RegistrationInfoResponse> {
+    Json(RegistrationInfoResponse {
+        enabled: admin::registration_enabled(),
+        require_approval: admin::registration_requires_approval(),
+    })
+}
+
 async fn register(
     State(state): State<AppState>,
     Json(body): Json<RegisterRequest>,
-) -> Result<Json<AuthResponse>, ApiError> {
+) -> Result<Json<RegisterResponse>, ApiError> {
+    if !admin::registration_enabled() {
+        return Err(DomainError::Forbidden.into());
+    }
+
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
     let password_hash = hash_password(&body.password)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
+    let requires_approval = admin::registration_requires_approval();
+    let approval_status = if requires_approval {
+        UserApprovalStatus::Pending
+    } else {
+        UserApprovalStatus::Approved
+    };
+
     let user = sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (username, email, password_hash, display_name)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        INSERT INTO users (username, email, password_hash, display_name, approval_status, approved_at)
+        VALUES ($1, $2, $3, $4, $5, CASE WHEN $5 = 'approved' THEN NOW() ELSE NULL END)
+        RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+                  approval_status, approved_at, approved_by, created_at, updated_at
         "#,
     )
     .bind(&body.username)
     .bind(&body.email)
     .bind(&password_hash)
     .bind(&body.display_name)
+    .bind(approval_status)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| match e {
@@ -413,15 +434,25 @@ async fn register(
         other => ApiError::from(DomainError::Internal(other.to_string())),
     })?;
 
+    if requires_approval {
+        return Ok(Json(RegisterResponse {
+            user: user.into_public(),
+            pending_approval: true,
+            token: None,
+            is_super_admin: None,
+        }));
+    }
+
     let token = create_token(user.id, &user.username, &state.config.jwt_secret, 72)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     let is_super_admin = admin::is_super_admin(&state.pool, user.id).await?;
 
-    Ok(Json(AuthResponse {
-        token,
+    Ok(Json(RegisterResponse {
         user: user.into_public(),
-        is_super_admin,
+        pending_approval: false,
+        token: Some(token),
+        is_super_admin: Some(is_super_admin),
     }))
 }
 
@@ -434,7 +465,8 @@ async fn login(
 
     let user = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
         FROM users
         WHERE username = $1 OR email = $1
         "#,
@@ -454,6 +486,8 @@ async fn login(
     if !valid {
         return Err(DomainError::Unauthorized.into());
     }
+
+    admin::ensure_user_record_approved(&user)?;
 
     let token = create_token(user.id, &user.username, &state.config.jwt_secret, 72)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
@@ -1538,6 +1572,7 @@ fn is_auth_exempt_path(path: &str) -> bool {
         "/health" | "/health/live" | "/api/v1/health" | "/api/v1/health/live"
     ) || path.ends_with("/auth/register")
         || path.ends_with("/auth/login")
+        || path.ends_with("/auth/registration")
         || path.ends_with("/auth/providers")
         || path.contains("/auth/oidc/")
         || path.ends_with("/auth/oidc/callback")
@@ -1564,6 +1599,7 @@ async fn auth_middleware(
         .ok_or(DomainError::Unauthorized)?;
 
     if let Ok(claims) = verify_token(&state.config.jwt_secret, token) {
+        admin::ensure_user_approved(&state.pool, claims.sub).await?;
         req.extensions_mut().insert(AuthUser {
             user_id: claims.sub,
             username: claims.username,
@@ -1572,6 +1608,7 @@ async fn auth_middleware(
         .await
         .map_err(|_| DomainError::Unauthorized)?
     {
+        admin::ensure_user_approved(&state.pool, api_auth.user_id).await?;
         req.extensions_mut().insert(AuthUser {
             user_id: api_auth.user_id,
             username: api_auth.username,

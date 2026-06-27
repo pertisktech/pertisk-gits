@@ -4,6 +4,8 @@ import type {
   AdminSystemInfo,
   AdminUser,
   AuthResponse,
+  RegisterResponse,
+  RegistrationInfo,
   CommitDetail,
   CommitInfo,
   CommitStatus,
@@ -88,10 +90,12 @@ export const api = {
     password: string
     display_name?: string
   }) =>
-    request<AuthResponse>('/auth/register', {
+    request<RegisterResponse>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+
+  getRegistrationInfo: () => request<RegistrationInfo>('/auth/registration'),
 
   login: (payload: { login: string; password: string }) =>
     request<AuthResponse>('/auth/login', {
@@ -1435,7 +1439,12 @@ export const api = {
   getAdminConfiguration: (token: string) =>
     request<AdminConfiguration>('/admin/configuration', {}, token),
 
-  listAdminUsers: (token: string) => request<AdminUser[]>('/admin/users', {}, token),
+  listAdminUsers: (token: string, approvalStatus?: AdminUser['approval_status']) => {
+    const query = approvalStatus
+      ? `?approval_status=${encodeURIComponent(approvalStatus)}`
+      : ''
+    return request<AdminUser[]>(`/admin/users${query}`, {}, token)
+  },
 
   createAdminUser: (
     token: string,
@@ -1481,6 +1490,12 @@ export const api = {
       throw new Error(message)
     }
   },
+
+  approveAdminUser: (token: string, userId: string) =>
+    request<AdminUser>(`/admin/users/${userId}/approve`, { method: 'POST' }, token),
+
+  rejectAdminUser: (token: string, userId: string) =>
+    request<AdminUser>(`/admin/users/${userId}/reject`, { method: 'POST' }, token),
 
   listImportCredentials: (token: string, orgSlug: string) =>
     request<ImportCredential[]>(`/organizations/${orgSlug}/import/credentials`, {}, token),

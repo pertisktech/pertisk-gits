@@ -150,9 +150,10 @@ pub async fn jit_provision_user(
 
     let user = sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (username, email, password_hash, display_name)
-        VALUES ($1, $2, NULL, $3)
-        RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        INSERT INTO users (username, email, password_hash, display_name, approval_status, approved_at)
+        VALUES ($1, $2, NULL, $3, 'approved', NOW())
+        RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+                  approval_status, approved_at, approved_by, created_at, updated_at
         "#,
     )
     .bind(&username)
@@ -236,7 +237,8 @@ fn sanitize_username(raw: &str) -> String {
 pub async fn load_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<User, ApiError> {
     sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
         FROM users WHERE id = $1
         "#,
     )
@@ -251,6 +253,8 @@ pub async fn issue_auth_response(
     state: &AppState,
     user: User,
 ) -> Result<pertisk_domain::models::AuthResponse, ApiError> {
+    crate::admin::ensure_user_record_approved(&user)?;
+
     let token = pertisk_domain::auth::create_token(
         user.id,
         &user.username,

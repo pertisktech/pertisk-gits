@@ -228,6 +228,18 @@ export interface AuthResponse {
   is_super_admin: boolean
 }
 
+export interface RegisterResponse {
+  user: User
+  pending_approval: boolean
+  token?: string
+  is_super_admin?: boolean
+}
+
+export interface RegistrationInfo {
+  enabled: boolean
+  require_approval: boolean
+}
+
 export interface AdminUser {
   id: string
   username: string
@@ -235,6 +247,8 @@ export interface AdminUser {
   display_name: string | null
   is_super_admin: boolean
   has_password: boolean
+  approval_status: 'pending' | 'approved' | 'rejected'
+  approved_at: string | null
   created_at: string
   updated_at: string
 }
@@ -245,6 +259,7 @@ export interface AdminSystemInfo {
   started_at: string
   counts: {
     users: number
+    pending_users: number
     organizations: number
     repositories: number
     pipeline_runs: number
@@ -312,6 +327,7 @@ export interface AdminConfiguration {
   artifacts_root: string
   web_dist: string | null
   registration_enabled: boolean
+  require_registration_approval: boolean
   super_admin_env_override: boolean
 }
 

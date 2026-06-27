@@ -247,9 +247,10 @@ async fn create_machine_user(
 
     let user = sqlx::query_as::<_, User>(
         r#"
-        INSERT INTO users (username, email, password_hash, display_name, is_machine_user)
-        VALUES ($1, $2, NULL, $3, TRUE)
-        RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        INSERT INTO users (username, email, password_hash, display_name, is_machine_user, approval_status, approved_at)
+        VALUES ($1, $2, NULL, $3, TRUE, 'approved', NOW())
+        RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+                  approval_status, approved_at, approved_by, created_at, updated_at
         "#,
     )
     .bind(username)

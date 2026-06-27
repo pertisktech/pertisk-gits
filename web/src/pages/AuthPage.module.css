@@ -166,6 +166,14 @@
   text-align: center;
 }
 
+.success {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-primary);
+  text-align: center;
+  line-height: 1.5;
+}
+
 .footer {
   position: fixed;
   bottom: 0;

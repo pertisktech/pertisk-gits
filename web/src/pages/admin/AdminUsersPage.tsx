@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { api } from '../../api/client'
 import type { AdminUser } from '../../api/types'
@@ -19,6 +19,19 @@ const EMPTY_FORM = {
   is_super_admin: false,
 }
 
+type UserFilter = 'all' | 'pending' | 'approved' | 'rejected'
+
+function approvalBadge(status: AdminUser['approval_status']) {
+  switch (status) {
+    case 'pending':
+      return <StatusBadge variant="yellow">Pending</StatusBadge>
+    case 'rejected':
+      return <StatusBadge variant="red">Rejected</StatusBadge>
+    default:
+      return <StatusBadge variant="green">Approved</StatusBadge>
+  }
+}
+
 export function AdminUsersPage() {
   const { token, user: currentUser } = useAuth()
   const queryClient = useQueryClient()
@@ -26,10 +39,15 @@ export function AdminUsersPage() {
   const [showForm, setShowForm] = useState(false)
   const [editing, setEditing] = useState<AdminUser | null>(null)
   const [form, setForm] = useState(EMPTY_FORM)
+  const [filter, setFilter] = useState<UserFilter>('all')
 
   const { data: users = [], isLoading } = useQuery({
-    queryKey: ['admin-users'],
-    queryFn: () => api.listAdminUsers(token!),
+    queryKey: ['admin-users', filter],
+    queryFn: () =>
+      api.listAdminUsers(
+        token!,
+        filter === 'all' ? undefined : filter,
+      ),
     enabled: Boolean(token),
   })
 
@@ -78,6 +96,26 @@ export function AdminUsersPage() {
     onError: (err: Error) => setError(err.message),
   })
 
+  const approveUser = useMutation({
+    mutationFn: (userId: string) => api.approveAdminUser(token!, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-system'] })
+      setError(null)
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const rejectUser = useMutation({
+    mutationFn: (userId: string) => api.rejectAdminUser(token!, userId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-users'] })
+      queryClient.invalidateQueries({ queryKey: ['admin-system'] })
+      setError(null)
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
   function openCreate() {
     setEditing(null)
     setForm(EMPTY_FORM)
@@ -112,6 +150,12 @@ export function AdminUsersPage() {
   }
 
   const formOpen = showForm || editing
+  const filters: { id: UserFilter; label: string }[] = [
+    { id: 'all', label: 'All' },
+    { id: 'pending', label: 'Pending' },
+    { id: 'approved', label: 'Approved' },
+    { id: 'rejected', label: 'Rejected' },
+  ]
 
   return (
     <>
@@ -123,7 +167,7 @@ export function AdminUsersPage() {
       />
       <PageHeader
         title="Users"
-        subtitle="Create and manage platform accounts."
+        subtitle="Create accounts, approve self-registrations, and manage platform access."
         action={
           <PrimaryButton type="button" onClick={openCreate}>
             <Plus size={14} />
@@ -212,9 +256,27 @@ export function AdminUsersPage() {
       )}
 
       <div className="app-panel">
-        <div className="app-panel-header flex items-center justify-between">
-          <span>All users</span>
-          <span className="font-normal text-text-secondary">{users.length}</span>
+        <div className="app-panel-header flex flex-wrap items-center justify-between gap-3">
+          <span>Users</span>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-naturals-n4 overflow-hidden">
+              {filters.map((entry) => (
+                <button
+                  key={entry.id}
+                  type="button"
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                    filter === entry.id
+                      ? 'bg-primary text-white'
+                      : 'bg-surface text-text-secondary hover:bg-hover'
+                  }`}
+                  onClick={() => setFilter(entry.id)}
+                >
+                  {entry.label}
+                </button>
+              ))}
+            </div>
+            <span className="font-normal text-text-secondary">{users.length}</span>
+          </div>
         </div>
 
         {isLoading && (
@@ -230,6 +292,7 @@ export function AdminUsersPage() {
               <tr>
                 <th>User</th>
                 <th>Role</th>
+                <th>Status</th>
                 <th>Auth</th>
                 <th>Created</th>
                 <th />
@@ -252,6 +315,7 @@ export function AdminUsersPage() {
                       <StatusBadge variant="gray">User</StatusBadge>
                     )}
                   </td>
+                  <td>{approvalBadge(entry.approval_status)}</td>
                   <td className="text-sm text-text-secondary">
                     {entry.has_password ? 'Password' : 'SSO / external'}
                   </td>
@@ -260,6 +324,43 @@ export function AdminUsersPage() {
                   </td>
                   <td>
                     <div className="flex justify-end gap-1">
+                      {entry.approval_status === 'pending' && (
+                        <>
+                          <button
+                            type="button"
+                            className="p-2 rounded-md hover:bg-hover text-text-secondary hover:text-dashboard-success disabled:opacity-40"
+                            title="Approve user"
+                            disabled={approveUser.isPending}
+                            onClick={() => approveUser.mutate(entry.id)}
+                          >
+                            <Check size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            className="p-2 rounded-md hover:bg-hover text-text-secondary hover:text-dashboard-danger disabled:opacity-40"
+                            title="Reject registration"
+                            disabled={rejectUser.isPending}
+                            onClick={() => {
+                              if (window.confirm(`Reject registration for @${entry.username}?`)) {
+                                rejectUser.mutate(entry.id)
+                              }
+                            }}
+                          >
+                            <X size={14} />
+                          </button>
+                        </>
+                      )}
+                      {entry.approval_status === 'rejected' && (
+                        <button
+                          type="button"
+                          className="p-2 rounded-md hover:bg-hover text-text-secondary hover:text-dashboard-success disabled:opacity-40"
+                          title="Approve user"
+                          disabled={approveUser.isPending}
+                          onClick={() => approveUser.mutate(entry.id)}
+                        >
+                          <Check size={14} />
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="p-2 rounded-md hover:bg-hover text-text-secondary hover:text-text"

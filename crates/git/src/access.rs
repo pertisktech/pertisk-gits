@@ -64,9 +64,9 @@ pub async fn authenticate_basic(
     username: &str,
     password: &str,
 ) -> anyhow::Result<Option<AuthUser>> {
-    let user = sqlx::query_as::<_, (Uuid, String, Option<String>)>(
+    let user = sqlx::query_as::<_, (Uuid, String, Option<String>, String)>(
         r#"
-        SELECT id, username, password_hash
+        SELECT id, username, password_hash, approval_status::text
         FROM users
         WHERE username = $1 OR email = $1
         "#,
@@ -75,9 +75,13 @@ pub async fn authenticate_basic(
     .fetch_optional(pool)
     .await?;
 
-    let Some((id, username, password_hash)) = user else {
+    let Some((id, username, password_hash, approval_status)) = user else {
         return Ok(None);
     };
+
+    if approval_status != "approved" {
+        return Ok(None);
+    }
 
     let Some(hash) = password_hash else {
         return Ok(None);

@@ -2,14 +2,14 @@ use std::path::Path;
 use std::time::Instant;
 
 use axum::{
-    extract::{Path as AxumPath, State},
+    extract::{Path as AxumPath, Query, State},
     http::StatusCode,
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
 use pertisk_domain::{models::*, DomainError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
@@ -31,6 +31,8 @@ pub fn admin_routes() -> Router<AppState> {
                 .patch(update_admin_user)
                 .delete(delete_admin_user),
         )
+        .route("/admin/users/{user_id}/approve", post(approve_admin_user))
+        .route("/admin/users/{user_id}/reject", post(reject_admin_user))
 }
 
 pub async fn is_super_admin(pool: &PgPool, user_id: Uuid) -> Result<bool, ApiError> {
@@ -64,6 +66,63 @@ pub async fn ensure_super_admin(pool: &PgPool, user_id: Uuid) -> Result<(), ApiE
     }
 }
 
+pub fn registration_enabled() -> bool {
+    std::env::var("DISABLE_REGISTRATION")
+        .map(|value| value != "1" && !value.eq_ignore_ascii_case("true"))
+        .unwrap_or(true)
+}
+
+pub fn registration_requires_approval() -> bool {
+    std::env::var("REQUIRE_REGISTRATION_APPROVAL")
+        .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+pub async fn ensure_user_approved(pool: &PgPool, user_id: Uuid) -> Result<(), ApiError> {
+    if is_super_admin(pool, user_id).await? {
+        return Ok(());
+    }
+
+    let status = sqlx::query_scalar::<_, UserApprovalStatus>(
+        r#"SELECT approval_status FROM users WHERE id = $1"#,
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::Unauthorized)?;
+
+    match status {
+        UserApprovalStatus::Approved => Ok(()),
+        UserApprovalStatus::Pending => Err(DomainError::Validation(
+            "account pending admin approval".into(),
+        )
+        .into()),
+        UserApprovalStatus::Rejected => Err(DomainError::Validation(
+            "account registration was rejected".into(),
+        )
+        .into()),
+    }
+}
+
+pub fn ensure_user_record_approved(user: &User) -> Result<(), ApiError> {
+    if user.is_super_admin {
+        return Ok(());
+    }
+
+    match user.approval_status {
+        UserApprovalStatus::Approved => Ok(()),
+        UserApprovalStatus::Pending => Err(DomainError::Validation(
+            "account pending admin approval".into(),
+        )
+        .into()),
+        UserApprovalStatus::Rejected => Err(DomainError::Validation(
+            "account registration was rejected".into(),
+        )
+        .into()),
+    }
+}
+
 #[derive(Serialize)]
 struct AdminSystemInfoResponse {
     version: &'static str,
@@ -78,6 +137,7 @@ struct AdminSystemInfoResponse {
 #[derive(Serialize)]
 struct AdminSystemCounts {
     users: i64,
+    pending_users: i64,
     organizations: i64,
     repositories: i64,
     pipeline_runs: i64,
@@ -125,6 +185,7 @@ struct AdminConfigurationResponse {
     artifacts_root: String,
     web_dist: Option<String>,
     registration_enabled: bool,
+    require_registration_approval: bool,
     super_admin_env_override: bool,
 }
 
@@ -136,8 +197,15 @@ struct AdminUserResponse {
     display_name: Option<String>,
     is_super_admin: bool,
     has_password: bool,
+    approval_status: UserApprovalStatus,
+    approved_at: Option<DateTime<Utc>>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ListAdminUsersQuery {
+    approval_status: Option<UserApprovalStatus>,
 }
 
 fn artifacts_root() -> String {
@@ -158,10 +226,11 @@ async fn admin_system_info(
 ) -> Result<Json<AdminSystemInfoResponse>, ApiError> {
     ensure_super_admin(&state.pool, auth.user_id).await?;
 
-    let counts = sqlx::query_as::<_, (i64, i64, i64, i64, i64)>(
+    let counts = sqlx::query_as::<_, (i64, i64, i64, i64, i64, i64)>(
         r#"
         SELECT
             (SELECT COUNT(*)::BIGINT FROM users),
+            (SELECT COUNT(*)::BIGINT FROM users WHERE approval_status = 'pending'),
             (SELECT COUNT(*)::BIGINT FROM organizations),
             (SELECT COUNT(*)::BIGINT FROM repositories),
             (SELECT COUNT(*)::BIGINT FROM pipeline_runs),
@@ -223,10 +292,11 @@ async fn admin_system_info(
         started_at: state.started_at,
         counts: AdminSystemCounts {
             users: counts.0,
-            organizations: counts.1,
-            repositories: counts.2,
-            pipeline_runs: counts.3,
-            runners: counts.4,
+            pending_users: counts.1,
+            organizations: counts.2,
+            repositories: counts.3,
+            pipeline_runs: counts.4,
+            runners: counts.5,
         },
         host,
         process,
@@ -298,9 +368,8 @@ async fn admin_configuration(
 ) -> Result<Json<AdminConfigurationResponse>, ApiError> {
     ensure_super_admin(&state.pool, auth.user_id).await?;
 
-    let registration_enabled = std::env::var("DISABLE_REGISTRATION")
-        .map(|value| value != "1" && !value.eq_ignore_ascii_case("true"))
-        .unwrap_or(true);
+    let registration_enabled = registration_enabled();
+    let require_registration_approval = registration_requires_approval();
 
     Ok(Json(AdminConfigurationResponse {
         api_host: state.config.host.clone(),
@@ -316,6 +385,7 @@ async fn admin_configuration(
             .as_ref()
             .map(|path| path.display().to_string()),
         registration_enabled,
+        require_registration_approval,
         super_admin_env_override: std::env::var("SUPER_ADMIN_USER_IDS").is_ok(),
     }))
 }
@@ -323,26 +393,53 @@ async fn admin_configuration(
 async fn list_admin_users(
     State(state): State<AppState>,
     auth: AuthUser,
+    Query(query): Query<ListAdminUsersQuery>,
 ) -> Result<Json<Vec<AdminUserResponse>>, ApiError> {
     ensure_super_admin(&state.pool, auth.user_id).await?;
 
-    let users = sqlx::query_as::<_, AdminUserResponse>(
-        r#"
-        SELECT
-            id,
-            username,
-            email,
-            display_name,
-            is_super_admin,
-            (password_hash IS NOT NULL) AS has_password,
-            created_at,
-            updated_at
-        FROM users
-        ORDER BY username
-        "#,
-    )
-    .fetch_all(&state.pool)
-    .await
+    let users = if let Some(status) = query.approval_status {
+        sqlx::query_as::<_, AdminUserResponse>(
+            r#"
+            SELECT
+                id,
+                username,
+                email,
+                display_name,
+                is_super_admin,
+                (password_hash IS NOT NULL) AS has_password,
+                approval_status,
+                approved_at,
+                created_at,
+                updated_at
+            FROM users
+            WHERE approval_status = $1
+            ORDER BY created_at DESC
+            "#,
+        )
+        .bind(status)
+        .fetch_all(&state.pool)
+        .await
+    } else {
+        sqlx::query_as::<_, AdminUserResponse>(
+            r#"
+            SELECT
+                id,
+                username,
+                email,
+                display_name,
+                is_super_admin,
+                (password_hash IS NOT NULL) AS has_password,
+                approval_status,
+                approved_at,
+                created_at,
+                updated_at
+            FROM users
+            ORDER BY username
+            "#,
+        )
+        .fetch_all(&state.pool)
+        .await
+    }
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok(Json(users))
@@ -372,8 +469,8 @@ async fn create_admin_user(
 
     let user_id = sqlx::query_scalar::<_, Uuid>(
         r#"
-        INSERT INTO users (username, email, password_hash, display_name, is_super_admin)
-        VALUES ($1, $2, $3, $4, $5)
+        INSERT INTO users (username, email, password_hash, display_name, is_super_admin, approval_status, approved_at, approved_by)
+        VALUES ($1, $2, $3, $4, $5, 'approved', NOW(), $6)
         RETURNING id
         "#,
     )
@@ -382,6 +479,7 @@ async fn create_admin_user(
     .bind(&password_hash)
     .bind(&body.display_name)
     .bind(is_super_admin)
+    .bind(auth.user_id)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| match e {
@@ -416,7 +514,8 @@ async fn update_admin_user(
 
     let existing = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,
@@ -508,7 +607,8 @@ async fn delete_admin_user(
 
     let existing = sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,
@@ -558,6 +658,8 @@ async fn fetch_admin_user(pool: &PgPool, user_id: Uuid) -> Result<Json<AdminUser
             display_name,
             is_super_admin,
             (password_hash IS NOT NULL) AS has_password,
+            approval_status,
+            approved_at,
             created_at,
             updated_at
         FROM users
@@ -570,6 +672,102 @@ async fn fetch_admin_user(pool: &PgPool, user_id: Uuid) -> Result<Json<AdminUser
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::NotFound.into())
     .map(Json)
+}
+
+async fn approve_admin_user(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    AxumPath(user_id): AxumPath<Uuid>,
+) -> Result<Json<AdminUserResponse>, ApiError> {
+    ensure_super_admin(&state.pool, auth.user_id).await?;
+
+    let result = sqlx::query(
+        r#"
+        UPDATE users
+        SET approval_status = 'approved',
+            approved_at = NOW(),
+            approved_by = $1,
+            updated_at = NOW()
+        WHERE id = $2
+          AND approval_status IN ('pending', 'rejected')
+        "#,
+    )
+    .bind(auth.user_id)
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if result.rows_affected() == 0 {
+        let exists: bool = sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM users WHERE id = $1)")
+            .bind(user_id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        if !exists {
+            return Err(DomainError::NotFound.into());
+        }
+        return Err(DomainError::Validation(
+            "user is already approved".into(),
+        )
+        .into());
+    }
+
+    fetch_admin_user(&state.pool, user_id).await
+}
+
+async fn reject_admin_user(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    AxumPath(user_id): AxumPath<Uuid>,
+) -> Result<Json<AdminUserResponse>, ApiError> {
+    ensure_super_admin(&state.pool, auth.user_id).await?;
+
+    if user_id == auth.user_id {
+        return Err(DomainError::Validation("cannot reject your own account".into()).into());
+    }
+
+    let existing = sqlx::query_as::<_, User>(
+        r#"
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
+        FROM users
+        WHERE id = $1
+        "#,
+    )
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::NotFound)?;
+
+    if existing.is_super_admin || env_super_admin_ids_contains(user_id) {
+        return Err(DomainError::Validation("cannot reject a super admin".into()).into());
+    }
+
+    if existing.approval_status != UserApprovalStatus::Pending {
+        return Err(DomainError::Validation(
+            "only pending registrations can be rejected".into(),
+        )
+        .into());
+    }
+
+    sqlx::query(
+        r#"
+        UPDATE users
+        SET approval_status = 'rejected',
+            approved_at = NULL,
+            approved_by = NULL,
+            updated_at = NOW()
+        WHERE id = $1
+        "#,
+    )
+    .bind(user_id)
+    .execute(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    fetch_admin_user(&state.pool, user_id).await
 }
 
 fn env_super_admin_ids_contains(user_id: Uuid) -> bool {

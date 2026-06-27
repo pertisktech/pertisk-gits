@@ -577,7 +577,8 @@ pub(crate) async fn find_repo_in_org(
 async fn find_user_by_username(pool: &PgPool, username: &str) -> Result<User, ApiError> {
     sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
         FROM users
         WHERE username = $1
         "#,
@@ -613,7 +614,8 @@ pub(crate) async fn resolve_user_for_add(
 async fn find_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<User, ApiError> {
     sqlx::query_as::<_, User>(
         r#"
-        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user, created_at, updated_at
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
         FROM users
         WHERE id = $1
         "#,

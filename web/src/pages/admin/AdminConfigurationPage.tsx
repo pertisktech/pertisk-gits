@@ -63,6 +63,14 @@ export function AdminConfigurationPage() {
               value={data.registration_enabled ? 'Enabled' : 'Disabled'}
             />
             <InfoRow
+              label="Registration approval"
+              value={
+                data.require_registration_approval
+                  ? 'Required (super admin must approve new accounts)'
+                  : 'Not required'
+              }
+            />
+            <InfoRow
               label="Super admin env override"
               value={data.super_admin_env_override ? 'SUPER_ADMIN_USER_IDS set' : 'Not set'}
             />
