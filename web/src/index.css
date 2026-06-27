@@ -2030,6 +2030,38 @@ body,
   }
 }
 
+.app-code-view-shell {
+  display: flex;
+  align-items: stretch;
+  min-height: 12rem;
+  overflow: hidden;
+}
+
+.app-code-line-gutter {
+  flex-shrink: 0;
+  min-width: 2.75rem;
+  overflow: hidden;
+  padding-left: 0.75rem;
+  padding-right: 0.5rem;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-elevated);
+  border-right: 1px solid var(--color-naturals-n4);
+  user-select: none;
+}
+
+.app-code-line-num {
+  display: block;
+}
+
+.app-code-view-shell .app-code-view {
+  flex: 1;
+  min-width: 0;
+}
+
 .app-code-view {
   overflow: auto;
 }
