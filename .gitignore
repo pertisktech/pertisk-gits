@@ -20,3 +20,4 @@ pertisk-runner-linux-*
 pertisk-worker-linux-*
 pertisk-worker-linux-amd64
 release-test
+.buildx-out-runner-arm64
