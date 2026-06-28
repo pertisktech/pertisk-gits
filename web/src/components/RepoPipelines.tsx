@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, Loader2, Play, Workflow } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CiConvertResult } from '../api/types'
 import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
+import { filterJobsForViewRef, parseViewRef, type SummaryViewRef } from '../lib/pipelineSummary'
 import {
   isRunInProgress,
   pipelineUrl,
@@ -125,12 +126,21 @@ export function RepoPipelines({
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [viewBranch, setViewBranch] = useState(defaultBranch)
+  const [showAllPaths, setShowAllPaths] = useState(false)
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
     queryFn: () => api.getRepoBrowser(orgSlug, repoSlug, token),
     enabled: Boolean(orgSlug && repoSlug),
   })
+
+  const branches = useMemo(
+    () => browserData?.browser.branches?.length ? browserData.browser.branches : [defaultBranch],
+    [browserData?.browser.branches, defaultBranch],
+  )
+
+  const viewRef = useMemo(() => parseViewRef(viewBranch), [viewBranch])
 
   const repoEmpty = browserData?.browser.empty ?? false
 
@@ -170,12 +180,13 @@ export function RepoPipelines({
 
   const triggerMutation = useMutation({
     mutationFn: async () => {
-      const commits = await api.getRepoCommits(orgSlug, repoSlug, { ref: defaultBranch, limit: 1 }, token)
+      const ref = viewBranch
+      const commits = await api.getRepoCommits(orgSlug, repoSlug, { ref, limit: 1 }, token)
       const head = commits.commits[0]
-      if (!head) throw new Error('No commits on default branch')
+      if (!head) throw new Error(`No commits on branch ${ref}`)
       return api.triggerPipeline(token, orgSlug, repoSlug, {
         commit_sha: head.sha,
-        ref_name: `refs/heads/${defaultBranch}`,
+        ref_name: `refs/heads/${ref}`,
         event_type: 'manual',
       })
     },
@@ -286,18 +297,35 @@ jobs:
             )}
           </p>
         </div>
-        <PrimaryButton
-          type="button"
-          disabled={triggerMutation.isPending}
-          onClick={() => triggerMutation.mutate()}
-        >
-          {triggerMutation.isPending ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Play size={14} />
-          )}
-          Run workflow
-        </PrimaryButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <label htmlFor="pipeline-view-branch" className="sr-only">
+            Preview branch
+          </label>
+          <select
+            id="pipeline-view-branch"
+            value={viewBranch}
+            onChange={(event) => setViewBranch(event.target.value)}
+            className="app-branch-select min-w-[8rem]"
+          >
+            {branches.map((branch) => (
+              <option key={branch} value={branch}>
+                {branch}
+              </option>
+            ))}
+          </select>
+          <PrimaryButton
+            type="button"
+            disabled={triggerMutation.isPending}
+            onClick={() => triggerMutation.mutate()}
+          >
+            {triggerMutation.isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Play size={14} />
+            )}
+            Run workflow
+          </PrimaryButton>
+        </div>
       </div>
 
       {triggerMutation.isError && (
@@ -316,7 +344,10 @@ jobs:
         token={token}
         orgSlug={orgSlug}
         repoSlug={repoSlug}
-        defaultBranch={defaultBranch}
+        viewBranch={viewBranch}
+        viewRef={viewRef}
+        showAllPaths={showAllPaths}
+        onShowAllPathsChange={setShowAllPaths}
       />
 
       <PipelineRunsTable
@@ -335,32 +366,51 @@ function PipelineConfigGraph({
   token,
   orgSlug,
   repoSlug,
-  defaultBranch,
+  viewBranch,
+  viewRef,
+  showAllPaths,
+  onShowAllPathsChange,
 }: {
   token: string
   orgSlug: string
   repoSlug: string
-  defaultBranch: string
+  viewBranch: string
+  viewRef: SummaryViewRef
+  showAllPaths: boolean
+  onShowAllPathsChange: (value: boolean) => void
 }) {
   const [selectedJobName, setSelectedJobName] = useState<string | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, defaultBranch],
-    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, defaultBranch),
-    enabled: Boolean(token && orgSlug && repoSlug && defaultBranch),
+    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, viewBranch],
+    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, viewBranch),
+    enabled: Boolean(token && orgSlug && repoSlug && viewBranch),
     retry: false,
     staleTime: 5 * 60_000,
   })
 
-  const jobs: PipelineGraphJob[] =
-    data?.jobs.map((job) => ({
-      name: job.name,
-      runs_on: job.runs_on,
-      needs: job.needs,
-      step_count: job.step_count,
-    })) ?? []
+  const visibleJobs = useMemo(() => {
+    if (!data?.jobs) return []
+    if (showAllPaths) return data.jobs
+    return filterJobsForViewRef(data.jobs, viewRef)
+  }, [data?.jobs, showAllPaths, viewRef])
 
-  const selectedJob = data?.jobs.find((job) => job.name === selectedJobName) ?? null
+  const jobs: PipelineGraphJob[] = useMemo(
+    () =>
+      visibleJobs.map((job) => ({
+        name: job.name,
+        runs_on: job.runs_on,
+        needs: job.needs.filter((dep) => visibleJobs.some((entry) => entry.name === dep)),
+        step_count: job.step_count,
+      })),
+    [visibleJobs],
+  )
+
+  const selectedJob = visibleJobs.find((job) => job.name === selectedJobName) ?? null
+
+  useEffect(() => {
+    setSelectedJobName(null)
+  }, [viewBranch, showAllPaths])
 
   if (isError) {
     return (
@@ -375,7 +425,14 @@ function PipelineConfigGraph({
 
   return (
     <div className="rounded-lg border border-naturals-n4 overflow-hidden">
-      {data && <PipelineSummary config={data} />}
+      {data && (
+        <PipelineSummary
+          config={data}
+          viewRef={viewRef}
+          showAllPaths={showAllPaths}
+          onShowAllPathsChange={onShowAllPathsChange}
+        />
+      )}
       <div className="px-3 py-2 border-b border-naturals-n4 bg-naturals-n3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-text">Workflow graph</h3>

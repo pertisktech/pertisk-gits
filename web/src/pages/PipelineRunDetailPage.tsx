@@ -14,6 +14,12 @@ import {
   stepLogTitle,
 } from '../components/PipelineActions'
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
+import { PipelineSummary } from '../components/PipelineSummary'
+import {
+  filterRunJobsForViewRef,
+  parseViewRef,
+  refForConfigQuery,
+} from '../lib/pipelineSummary'
 import { ConfirmModal } from '../components/ConfirmModal'
 import {
   canRerunFailed,
@@ -52,6 +58,7 @@ export function PipelineRunDetailPage() {
   const userPinnedStep = useRef(false)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [showAllPaths, setShowAllPaths] = useState(false)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -77,13 +84,49 @@ export function PipelineRunDetailPage() {
     },
   })
 
+  const configRef = run ? refForConfigQuery(run.ref_name) : ''
+  const viewRef = useMemo(
+    () => (run ? parseViewRef(run.ref_name) : {}),
+    [run?.ref_name],
+  )
+
+  const { data: pipelineConfig } = useQuery({
+    queryKey: ['pipeline-config-preview', orgSlug, projectSlug, configRef],
+    queryFn: () => api.getPipelineConfig(token!, orgSlug, projectSlug, configRef),
+    enabled: Boolean(token && orgSlug && projectSlug && configRef),
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+
+  const visibleJobs = useMemo(() => {
+    if (!run) return []
+    if (showAllPaths || !pipelineConfig) return run.jobs
+    return filterRunJobsForViewRef(run.jobs, pipelineConfig.jobs, viewRef)
+  }, [run, pipelineConfig, viewRef, showAllPaths])
+
+  const graphJobs = useMemo(() => {
+    const mapped = jobsFromRun(visibleJobs, run?.status)
+    const names = new Set(mapped.map((job) => job.name))
+    return mapped.map((job) => ({
+      ...job,
+      needs: job.needs.filter((dep) => names.has(dep)),
+    }))
+  }, [visibleJobs, run?.status])
+
   const activeJob = useMemo(() => {
-    if (!run) return null
+    if (!run || visibleJobs.length === 0) return null
     if (activeJobId) {
-      return run.jobs.find((job) => job.id === activeJobId) ?? run.jobs[0] ?? null
+      return visibleJobs.find((job) => job.id === activeJobId) ?? visibleJobs[0] ?? null
     }
-    return run.jobs[0] ?? null
-  }, [run, activeJobId])
+    return visibleJobs[0] ?? null
+  }, [run, visibleJobs, activeJobId])
+
+  useEffect(() => {
+    if (!activeJobId || !run) return
+    if (!visibleJobs.some((job) => job.id === activeJobId)) {
+      setActiveJobId(null)
+    }
+  }, [activeJobId, visibleJobs, run])
 
   const activeSteps = useMemo(
     () => (activeJob && run ? jobStepViews(activeJob, run.status) : []),
@@ -322,12 +365,20 @@ export function PipelineRunDetailPage() {
       <ActionsRunSummary run={run} />
 
       <div className="gha-graph-panel">
+        {pipelineConfig && (
+          <PipelineSummary
+            config={pipelineConfig}
+            viewRef={viewRef}
+            showAllPaths={showAllPaths}
+            onShowAllPathsChange={setShowAllPaths}
+          />
+        )}
         <PipelineGraph
           className="pipeline-graph-panel--inline"
-          jobs={jobsFromRun(run.jobs, run.status)}
+          jobs={graphJobs}
           selectedJob={activeJob?.id ?? null}
           onJobSelect={(jobKey) => {
-            const match = run.jobs.find((job) => job.id === jobKey || job.job_name === jobKey)
+            const match = visibleJobs.find((job) => job.id === jobKey || job.job_name === jobKey)
             if (match) selectJob(match.id)
           }}
         />
@@ -335,7 +386,7 @@ export function PipelineRunDetailPage() {
 
       <div className="gha-run-layout">
         <ActionsJobSidebar
-          jobs={run.jobs}
+          jobs={visibleJobs}
           runStatus={run.status}
           activeJobId={activeJob?.id ?? null}
           onSelectJob={selectJob}

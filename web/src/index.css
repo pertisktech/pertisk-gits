@@ -2893,8 +2893,46 @@ select.app-field:disabled,
   background: var(--color-naturals-n2);
 }
 
+.pipeline-summary-view-ref {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  padding: 0.12rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n2);
+}
+
 .pipeline-summary-body {
   padding: 0 1.1rem 1rem;
+}
+
+.pipeline-summary-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.65rem 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.pipeline-summary-toolbar .pipeline-summary-subtitle {
+  margin: 0;
+  flex: 1 1 14rem;
+}
+
+.pipeline-summary-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.pipeline-summary-filter input {
+  accent-color: var(--color-primary);
 }
 
 .pipeline-summary-subtitle {

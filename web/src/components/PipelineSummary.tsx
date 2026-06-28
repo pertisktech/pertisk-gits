@@ -4,6 +4,8 @@ import type { PipelineConfigPreview } from '../api/types'
 import {
   inferPipelinePaths,
   pipelineSummaryNeedsJobFilter,
+  type SummaryViewRef,
+  viewRefLabel,
 } from '../lib/pipelineSummary'
 import { cn } from '../utils/cn'
 
@@ -26,8 +28,14 @@ function JobFlow({ jobs }: { jobs: string[] }) {
   )
 }
 
-function PathRow({ path }: { path: ReturnType<typeof inferPipelinePaths>[number] }) {
-  const [open, setOpen] = useState(false)
+function PathRow({
+  path,
+  defaultOpen,
+}: {
+  path: ReturnType<typeof inferPipelinePaths>[number]
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen ?? false)
 
   return (
     <div className={cn('pipeline-summary-path', open && 'pipeline-summary-path--open')}>
@@ -72,10 +80,23 @@ function PathRow({ path }: { path: ReturnType<typeof inferPipelinePaths>[number]
   )
 }
 
-export function PipelineSummary({ config }: { config: PipelineConfigPreview }) {
+export function PipelineSummary({
+  config,
+  viewRef,
+  showAllPaths = false,
+  onShowAllPathsChange,
+}: {
+  config: PipelineConfigPreview
+  viewRef?: SummaryViewRef
+  showAllPaths?: boolean
+  onShowAllPathsChange?: (value: boolean) => void
+}) {
   const [open, setOpen] = useState(false)
-  const paths = inferPipelinePaths(config)
+  const paths = inferPipelinePaths(config, { viewRef, showAllPaths })
+  const allPathCount = inferPipelinePaths(config, { showAllPaths: true }).length
   const needsFilter = pipelineSummaryNeedsJobFilter(config)
+  const viewLabel = viewRefLabel(viewRef)
+  const canFilter = Boolean(viewLabel) && allPathCount > 1
 
   if (paths.length === 0) return null
 
@@ -91,6 +112,9 @@ export function PipelineSummary({ config }: { config: PipelineConfigPreview }) {
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
         <span className="pipeline-summary-title">Pipeline summary</span>
+        {viewLabel && !showAllPaths && (
+          <span className="pipeline-summary-view-ref font-mono">{viewLabel}</span>
+        )}
         <span className="pipeline-summary-badge">
           {paths.length} path{paths.length === 1 ? '' : 's'}
         </span>
@@ -98,15 +122,39 @@ export function PipelineSummary({ config }: { config: PipelineConfigPreview }) {
 
       {open && (
         <div className="pipeline-summary-body">
-          <p className="pipeline-summary-subtitle">
-            Every branch runs the shared build chain (unit-test, build-docker, …). Deploy jobs run
-            when their <code className="font-mono text-xs">if:</code> matches the branch, tag, and
-            trigger.
-          </p>
+          <div className="pipeline-summary-toolbar">
+            <p className="pipeline-summary-subtitle">
+              {showAllPaths || !viewLabel ? (
+                <>
+                  Shared build chain runs on every branch. Deploy jobs run when their{' '}
+                  <code className="font-mono text-xs">if:</code> matches branch, tag, and trigger.
+                </>
+              ) : (
+                <>
+                  Showing workflow for <strong className="font-mono text-text">{viewLabel}</strong>
+                  . Other deploy paths (e.g. main dev, QA, UAT) are hidden.
+                </>
+              )}
+            </p>
+            {canFilter && onShowAllPathsChange && (
+              <label className="pipeline-summary-filter">
+                <input
+                  type="checkbox"
+                  checked={showAllPaths}
+                  onChange={(event) => onShowAllPathsChange(event.target.checked)}
+                />
+                Show all branches
+              </label>
+            )}
+          </div>
 
           <div className="pipeline-summary-paths">
             {paths.map((path) => (
-              <PathRow key={path.id} path={path} />
+              <PathRow
+                key={path.id}
+                path={path}
+                defaultOpen={paths.length === 1}
+              />
             ))}
           </div>
 

@@ -1,5 +1,6 @@
 import type {
   JobIfCondition,
+  JobRun,
   PipelineConfigPreview,
   PipelineJobPreview,
 } from '../api/types'
@@ -12,6 +13,59 @@ export interface PipelinePathSummary {
   jobs: string[]
   buildJobs: string[]
   deployJobs: string[]
+}
+
+export interface SummaryViewRef {
+  branch?: string
+  tag?: string
+}
+
+export interface PipelineSummaryOptions {
+  viewRef?: SummaryViewRef
+  showAllPaths?: boolean
+}
+
+export function parseViewRef(ref: string): SummaryViewRef {
+  if (ref.startsWith('refs/tags/')) {
+    return { tag: ref.slice('refs/tags/'.length) }
+  }
+  if (ref.startsWith('refs/heads/')) {
+    return { branch: ref.slice('refs/heads/'.length) }
+  }
+  return { branch: ref }
+}
+
+/** Branch or tag name for pipeline config API (?ref=). */
+export function refForConfigQuery(refName: string): string {
+  if (refName.startsWith('refs/tags/')) {
+    return refName.slice('refs/tags/'.length)
+  }
+  if (refName.startsWith('refs/heads/')) {
+    return refName.slice('refs/heads/'.length)
+  }
+  return refName
+}
+
+export function viewRefLabel(viewRef?: SummaryViewRef): string | null {
+  if (!viewRef) return null
+  if (viewRef.tag) return `tag ${viewRef.tag}`
+  if (viewRef.branch) return `branch ${viewRef.branch}`
+  return null
+}
+
+function pathMatchesView(
+  def: (typeof PATH_DEFS)[number],
+  viewRef: SummaryViewRef,
+): boolean {
+  if (viewRef.tag) {
+    if (!def.tag) return false
+    return matchesPatterns(['release/*'], viewRef.tag)
+  }
+  if (viewRef.branch) {
+    if (def.tag) return false
+    return def.branch === viewRef.branch
+  }
+  return true
 }
 
 const PATH_DEFS: Array<{
@@ -164,15 +218,78 @@ function splitBuildDeploy(
   return { buildJobs, deployJobs }
 }
 
-export function inferPipelinePaths(config: PipelineConfigPreview): PipelinePathSummary[] {
+export function inferPipelinePaths(
+  config: PipelineConfigPreview,
+  options?: PipelineSummaryOptions,
+): PipelinePathSummary[] {
   const { jobs, on: triggers } = config
   if (jobs.length === 0) return []
 
+  const showAll = options?.showAllPaths ?? false
+  const viewRef = options?.viewRef
+
   const hasIf = jobs.some((job) => job.if)
-  if (!hasIf) {
-    return inferPipelinePathsFromSuffixes(config)
+  const allPaths = hasIf
+    ? inferPipelinePathsWithIf(jobs, triggers)
+    : inferPipelinePathsFromSuffixes(config)
+
+  if (showAll || !viewRef || (!viewRef.branch && !viewRef.tag)) {
+    return allPaths
   }
 
+  const filtered = allPaths.filter((path) => {
+    const def = PATH_DEFS.find((entry) => entry.id === path.id)
+    if (!def) return path.id === 'all'
+    return pathMatchesView(def, viewRef)
+  })
+
+  if (filtered.length > 0) return filtered
+
+  if (viewRef.branch) {
+    const buildOnly = sharedBuildJobs(jobs)
+    if (buildOnly.length > 0) {
+      return [
+        {
+          id: 'build',
+          title: viewRef.branch,
+          triggerLabel: 'Push: build chain only (no deploy for this branch)',
+          automatic: Boolean(triggers.push?.branches?.length),
+          jobs: buildOnly,
+          buildJobs: buildOnly,
+          deployJobs: [],
+        },
+      ]
+    }
+  }
+
+  return filtered
+}
+
+export function filterJobsForViewRef(
+  jobs: PipelineJobPreview[],
+  viewRef?: SummaryViewRef,
+): PipelineJobPreview[] {
+  if (!viewRef || (!viewRef.branch && !viewRef.tag)) return jobs
+  const names = new Set(jobsForPathScope(jobs, viewRef.branch, viewRef.tag))
+  return jobs.filter((job) => names.has(job.name))
+}
+
+export function filterRunJobsForViewRef(
+  runJobs: JobRun[],
+  configJobs: PipelineJobPreview[],
+  viewRef?: SummaryViewRef,
+): JobRun[] {
+  if (!viewRef || (!viewRef.branch && !viewRef.tag)) return runJobs
+  const names = new Set(
+    filterJobsForViewRef(configJobs, viewRef).map((job) => job.name),
+  )
+  return runJobs.filter((job) => names.has(job.job_name))
+}
+
+function inferPipelinePathsWithIf(
+  jobs: PipelineJobPreview[],
+  triggers: PipelineConfigPreview['on'],
+): PipelinePathSummary[] {
   const paths: PipelinePathSummary[] = []
   for (const def of PATH_DEFS) {
     const pathJobs = jobsForPathScope(jobs, def.branch, def.tag)
