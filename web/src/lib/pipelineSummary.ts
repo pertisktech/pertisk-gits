@@ -25,6 +25,15 @@ export interface PipelineSummaryOptions {
   showAllPaths?: boolean
 }
 
+/** Full git ref for pipeline triggers (refs/heads/* or refs/tags/*). */
+export function pipelineRefName(kind: 'branch' | 'tag', name: string): string {
+  return kind === 'tag' ? `refs/tags/${name}` : `refs/heads/${name}`
+}
+
+export function viewRefFromKind(kind: 'branch' | 'tag', name: string): SummaryViewRef {
+  return kind === 'tag' ? { tag: name } : { branch: name }
+}
+
 export function parseViewRef(ref: string): SummaryViewRef {
   if (ref.startsWith('refs/tags/')) {
     return { tag: ref.slice('refs/tags/'.length) }
@@ -33,6 +42,11 @@ export function parseViewRef(ref: string): SummaryViewRef {
     return { branch: ref.slice('refs/heads/'.length) }
   }
   return { branch: ref }
+}
+
+/** ref_kind for pipeline config API from a full git ref. */
+export function refKindFromRefName(refName: string): 'branch' | 'tag' {
+  return refName.startsWith('refs/tags/') ? 'tag' : 'branch'
 }
 
 /** Branch or tag name for pipeline config API (?ref=). */
@@ -270,20 +284,66 @@ export function filterJobsForViewRef(
   viewRef?: SummaryViewRef,
 ): PipelineJobPreview[] {
   if (!viewRef || (!viewRef.branch && !viewRef.tag)) return jobs
-  const names = new Set(jobsForPathScope(jobs, viewRef.branch, viewRef.tag))
-  return jobs.filter((job) => names.has(job.name))
+
+  const hasIf = jobs.some((job) => job.if)
+  if (hasIf) {
+    const names = new Set(jobsForPathScope(jobs, viewRef.branch, viewRef.tag))
+    return jobs.filter((job) => names.has(job.name))
+  }
+
+  return jobs.filter((job) => jobNameMatchesView(job.name, viewRef))
 }
 
 export function filterRunJobsForViewRef(
   runJobs: JobRun[],
   configJobs: PipelineJobPreview[],
   viewRef?: SummaryViewRef,
+  eventType?: string,
 ): JobRun[] {
   if (!viewRef || (!viewRef.branch && !viewRef.tag)) return runJobs
   const names = new Set(
-    filterJobsForViewRef(configJobs, viewRef).map((job) => job.name),
+    jobsForViewScope(configJobs, viewRef, eventType).map((job) => job.name),
   )
   return runJobs.filter((job) => names.has(job.job_name))
+}
+
+export function filterRunJobsForPathScope(
+  runJobs: JobRun[],
+  configJobs: PipelineJobPreview[],
+  viewRef?: SummaryViewRef,
+): JobRun[] {
+  if (!viewRef || (!viewRef.branch && !viewRef.tag)) return runJobs
+  const names = new Set(jobsForPathScope(configJobs, viewRef.branch, viewRef.tag))
+  return runJobs.filter((job) => names.has(job.job_name))
+}
+
+/** Run detail: show jobs for this run's ref/path (including skipped), hide other env paths. */
+export function filterVisibleRunJobs(
+  runJobs: JobRun[],
+  options: {
+    viewRef?: SummaryViewRef
+    showAllPaths?: boolean
+    configJobs?: PipelineJobPreview[]
+    eventType?: string
+  },
+): JobRun[] {
+  const { viewRef, showAllPaths, configJobs, eventType } = options
+  if (runJobs.length === 0) return runJobs
+  if (showAllPaths) return runJobs
+  if (!viewRef?.branch && !viewRef?.tag) return runJobs
+
+  if (configJobs?.length) {
+    const byEvent = filterRunJobsForViewRef(runJobs, configJobs, viewRef, eventType)
+    if (byEvent.length > 0) return byEvent
+
+    const byPath = filterRunJobsForPathScope(runJobs, configJobs, viewRef)
+    if (byPath.length > 0) return byPath
+  }
+
+  const byName = runJobs.filter((job) => jobNameMatchesView(job.job_name, viewRef))
+  if (byName.length > 0) return byName
+
+  return runJobs
 }
 
 function inferPipelinePathsWithIf(
@@ -340,6 +400,53 @@ function jobEnvironment(name: string): string | null {
     if (name.endsWith(`-${env}`)) return env
   }
   return null
+}
+
+function deployEnvForViewRef(viewRef?: SummaryViewRef): string | null {
+  if (!viewRef) return null
+  if (viewRef.tag) {
+    return matchesPatterns(['release/*'], viewRef.tag) ? 'prd' : null
+  }
+  if (viewRef.branch === 'main') return 'dev'
+  if (viewRef.branch === 'qa') return 'qa'
+  if (viewRef.branch === 'uat') return 'uat'
+  return null
+}
+
+function jobNameMatchesView(jobName: string, viewRef?: SummaryViewRef): boolean {
+  if (!viewRef || (!viewRef.branch && !viewRef.tag)) return true
+  const env = jobEnvironment(jobName)
+  if (env === null) return true
+  const targetEnv = deployEnvForViewRef(viewRef)
+  if (!targetEnv) return false
+  return env === targetEnv || (targetEnv === 'prd' && env === 'prod')
+}
+
+/** Config jobs visible for a branch/tag; uses event when evaluating if:. */
+export function jobsForViewScope(
+  jobs: PipelineJobPreview[],
+  viewRef: SummaryViewRef,
+  eventType?: string,
+): PipelineJobPreview[] {
+  if (!viewRef.branch && !viewRef.tag) return jobs
+
+  const hasIf = jobs.some((job) => job.if)
+  if (hasIf) {
+    const ctx: PathContext = {
+      branch: viewRef.branch,
+      tag: viewRef.tag,
+      event_type: eventType ?? 'push',
+    }
+    const names = new Set(
+      topoSortAll(jobs).filter((name) => {
+        const job = jobs.find((entry) => entry.name === name)
+        return job && evaluateJobIf(job.if, ctx)
+      }),
+    )
+    return jobs.filter((job) => names.has(job.name))
+  }
+
+  return jobs.filter((job) => jobNameMatchesView(job.name, viewRef))
 }
 
 function inferPipelinePathsFromSuffixes(config: PipelineConfigPreview): PipelinePathSummary[] {

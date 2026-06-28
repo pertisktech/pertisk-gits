@@ -21,10 +21,12 @@ export function failureSummary(jobs: JobRun[]): string | null {
 export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
   const { jobs, status } = run
   if (status === 'cancelled') return 'cancelled'
+  if (status === 'skipped') return 'skipped'
   if (jobs.length === 0) return status
 
   const hasRunning = jobs.some((j) => j.status === 'running')
   const hasFailed = jobs.some((j) => j.status === 'failure')
+  const allSkipped = jobs.every((j) => j.status === 'skipped')
   const allTerminal = jobs.every(
     (j) =>
       j.status === 'success' ||
@@ -36,6 +38,7 @@ export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
   if (allTerminal) {
     if (hasFailed) return 'failure'
     if (jobs.some((j) => j.status === 'cancelled')) return 'cancelled'
+    if (allSkipped) return 'skipped'
     return 'success'
   }
 
@@ -60,7 +63,7 @@ export function displayJobStatus(
 }
 
 export function isRunInProgress(run: PipelineRun): boolean {
-  if (run.status === 'cancelled') return false
+  if (run.status === 'cancelled' || run.status === 'skipped') return false
 
   const hasActiveJob = run.jobs.some(
     (job) => job.status === 'queued' || job.status === 'running',
@@ -74,6 +77,7 @@ export function isRunInProgress(run: PipelineRun): boolean {
 export function runStatusVariant(status: PipelineRun['status']) {
   if (status === 'success') return 'green' as const
   if (status === 'failure' || status === 'cancelled') return 'red' as const
+  if (status === 'skipped') return 'gray' as const
   if (status === 'running') return 'yellow' as const
   return 'gray' as const
 }

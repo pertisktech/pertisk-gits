@@ -143,6 +143,13 @@ async fn process_trigger_now(
         anyhow::bail!("event does not match pipeline triggers");
     }
 
+    let run_ctx = RunContext::from_trigger(event_type, ref_name);
+    let scheduled = Scheduler::schedule_for_run(&config, &run_ctx)?;
+    let has_runnable = scheduled.iter().any(|job| !job.skipped);
+    if !has_runnable && event_type == "push" {
+        anyhow::bail!("no runnable jobs for push event");
+    }
+
     let run_id = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO pipeline_runs (repository_id, commit_sha, ref_name, event_type, status, config_path, started_at)
@@ -158,8 +165,7 @@ async fn process_trigger_now(
     .fetch_one(&state.pool)
     .await?;
 
-    let run_ctx = RunContext::from_trigger(event_type, ref_name);
-    for job in Scheduler::schedule_for_run(&config, &run_ctx)? {
+    for job in scheduled {
         let steps_json = serde_json::to_value(&job.job.steps)?;
         let artifacts_json = serde_json::to_value(&job.job.artifacts)?;
         let status = if job.skipped { "skipped" } else { "queued" };
@@ -216,10 +222,21 @@ async fn process_trigger_now(
         .await?;
     }
 
-    sqlx::query("UPDATE pipeline_runs SET status = 'running' WHERE id = $1")
-        .bind(run_id)
-        .execute(&state.pool)
-        .await?;
+    sqlx::query(
+        r#"
+        UPDATE pipeline_runs
+        SET status = CASE
+            WHEN $2 THEN 'running'::pipeline_run_status
+            ELSE 'skipped'::pipeline_run_status
+        END,
+        finished_at = CASE WHEN $2 THEN NULL ELSE NOW() END
+        WHERE id = $1
+        "#,
+    )
+    .bind(run_id)
+    .bind(has_runnable)
+    .execute(&state.pool)
+    .await?;
 
     Ok(run_id)
 }

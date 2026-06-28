@@ -652,7 +652,7 @@ export interface PipelineRun {
   commit_sha: string
   ref_name: string
   event_type: 'push' | 'pull_request' | 'manual'
-  status: 'pending' | 'queued' | 'running' | 'success' | 'failure' | 'cancelled'
+  status: 'pending' | 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped'
   created_at: string
   started_at: string | null
   finished_at: string | null

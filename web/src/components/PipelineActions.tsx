@@ -33,9 +33,11 @@ export function ActionsRunSummary({ run }: { run: PipelineRun }) {
         ? 'Failure'
         : status === 'cancelled'
           ? 'Cancelled'
-          : status === 'running'
-            ? 'In progress'
-            : 'Queued'
+          : status === 'skipped'
+            ? 'Skipped'
+            : status === 'running'
+              ? 'In progress'
+              : 'Queued'
 
   return (
     <div className="gha-summary">

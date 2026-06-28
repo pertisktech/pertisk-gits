@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CiConvertResult } from '../api/types'
 import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
-import { filterJobsForViewRef, parseViewRef, type SummaryViewRef } from '../lib/pipelineSummary'
+import { filterJobsForViewRef, pipelineRefName, viewRefFromKind, type SummaryViewRef } from '../lib/pipelineSummary'
 import {
   isRunInProgress,
   pipelineUrl,
@@ -126,7 +126,8 @@ export function RepoPipelines({
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [viewBranch, setViewBranch] = useState(defaultBranch)
+  const [viewRefKind, setViewRefKind] = useState<'branch' | 'tag'>('branch')
+  const [viewRefOverride, setViewRefOverride] = useState<string | null>(null)
   const [showAllPaths, setShowAllPaths] = useState(false)
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
@@ -135,12 +136,27 @@ export function RepoPipelines({
     enabled: Boolean(orgSlug && repoSlug),
   })
 
-  const branches = useMemo(
-    () => browserData?.browser.branches?.length ? browserData.browser.branches : [defaultBranch],
-    [browserData?.browser.branches, defaultBranch],
+  const browser = browserData?.browser
+  const refList = useMemo(
+    () =>
+      viewRefKind === 'tag'
+        ? browser?.tags ?? []
+        : browser?.branches?.length
+          ? browser.branches
+          : [defaultBranch],
+    [viewRefKind, browser?.tags, browser?.branches, defaultBranch],
   )
+  const activeRefName = useMemo(() => {
+    if (viewRefOverride && refList.includes(viewRefOverride)) return viewRefOverride
+    const preferred = viewRefKind === 'branch' ? (browser?.default_ref ?? defaultBranch) : refList[0]
+    if (preferred && refList.includes(preferred)) return preferred
+    return refList[0] ?? defaultBranch
+  }, [viewRefOverride, refList, viewRefKind, browser?.default_ref, defaultBranch])
 
-  const viewRef = useMemo(() => parseViewRef(viewBranch), [viewBranch])
+  const viewRef = useMemo(
+    () => viewRefFromKind(viewRefKind, activeRefName),
+    [viewRefKind, activeRefName],
+  )
 
   const repoEmpty = browserData?.browser.empty ?? false
 
@@ -180,13 +196,23 @@ export function RepoPipelines({
 
   const triggerMutation = useMutation({
     mutationFn: async () => {
-      const ref = viewBranch
-      const commits = await api.getRepoCommits(orgSlug, repoSlug, { ref, limit: 1 }, token)
+      const commits = await api.getRepoCommits(
+        orgSlug,
+        repoSlug,
+        { ref: activeRefName, limit: 1, ref_kind: viewRefKind },
+        token,
+      )
       const head = commits.commits[0]
-      if (!head) throw new Error(`No commits on branch ${ref}`)
+      if (!head) {
+        throw new Error(
+          viewRefKind === 'tag'
+            ? `No commits for tag ${activeRefName}`
+            : `No commits on branch ${activeRefName}`,
+        )
+      }
       return api.triggerPipeline(token, orgSlug, repoSlug, {
         commit_sha: head.sha,
-        ref_name: `refs/heads/${ref}`,
+        ref_name: pipelineRefName(viewRefKind, activeRefName),
         event_type: 'manual',
       })
     },
@@ -298,24 +324,42 @@ jobs:
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label htmlFor="pipeline-view-branch" className="sr-only">
-            Preview branch
-          </label>
           <select
-            id="pipeline-view-branch"
-            value={viewBranch}
-            onChange={(event) => setViewBranch(event.target.value)}
-            className="app-branch-select min-w-[8rem]"
+            id="pipeline-ref-kind"
+            value={viewRefKind}
+            onChange={(event) => {
+              setViewRefKind(event.target.value as 'branch' | 'tag')
+              setViewRefOverride(null)
+            }}
+            className="app-branch-select"
+            aria-label="Reference type"
           >
-            {branches.map((branch) => (
-              <option key={branch} value={branch}>
-                {branch}
+            <option value="branch">Branch</option>
+            <option value="tag">Tag</option>
+          </select>
+          <select
+            id="pipeline-view-ref"
+            value={activeRefName}
+            onChange={(event) => setViewRefOverride(event.target.value)}
+            className="app-branch-select min-w-[8rem]"
+            disabled={refList.length === 0}
+            aria-label={viewRefKind === 'tag' ? 'Tag' : 'Branch'}
+          >
+            {refList.length === 0 ? (
+              <option value={activeRefName}>
+                {viewRefKind === 'tag' ? 'No tags' : activeRefName}
               </option>
-            ))}
+            ) : (
+              refList.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))
+            )}
           </select>
           <PrimaryButton
             type="button"
-            disabled={triggerMutation.isPending}
+            disabled={triggerMutation.isPending || refList.length === 0}
             onClick={() => triggerMutation.mutate()}
           >
             {triggerMutation.isPending ? (
@@ -344,7 +388,8 @@ jobs:
         token={token}
         orgSlug={orgSlug}
         repoSlug={repoSlug}
-        viewBranch={viewBranch}
+        configRef={activeRefName}
+        configRefKind={viewRefKind}
         viewRef={viewRef}
         showAllPaths={showAllPaths}
         onShowAllPathsChange={setShowAllPaths}
@@ -366,7 +411,8 @@ function PipelineConfigGraph({
   token,
   orgSlug,
   repoSlug,
-  viewBranch,
+  configRef,
+  configRefKind,
   viewRef,
   showAllPaths,
   onShowAllPathsChange,
@@ -374,7 +420,8 @@ function PipelineConfigGraph({
   token: string
   orgSlug: string
   repoSlug: string
-  viewBranch: string
+  configRef: string
+  configRefKind: 'branch' | 'tag'
   viewRef: SummaryViewRef
   showAllPaths: boolean
   onShowAllPathsChange: (value: boolean) => void
@@ -382,9 +429,9 @@ function PipelineConfigGraph({
   const [selectedJobName, setSelectedJobName] = useState<string | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, viewBranch],
-    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, viewBranch),
-    enabled: Boolean(token && orgSlug && repoSlug && viewBranch),
+    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, configRefKind, configRef],
+    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, configRef, configRefKind),
+    enabled: Boolean(token && orgSlug && repoSlug && configRef),
     retry: false,
     staleTime: 5 * 60_000,
   })
@@ -410,7 +457,7 @@ function PipelineConfigGraph({
 
   useEffect(() => {
     setSelectedJobName(null)
-  }, [viewBranch, showAllPaths])
+  }, [configRef, configRefKind, showAllPaths])
 
   if (isError) {
     return (

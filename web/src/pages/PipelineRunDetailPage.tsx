@@ -16,9 +16,10 @@ import {
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
 import { PipelineSummary } from '../components/PipelineSummary'
 import {
-  filterRunJobsForViewRef,
+  filterVisibleRunJobs,
   parseViewRef,
   refForConfigQuery,
+  refKindFromRefName,
 } from '../lib/pipelineSummary'
 import { ConfirmModal } from '../components/ConfirmModal'
 import {
@@ -85,14 +86,16 @@ export function PipelineRunDetailPage() {
   })
 
   const configRef = run ? refForConfigQuery(run.ref_name) : ''
+  const configRefKind = run ? refKindFromRefName(run.ref_name) : 'branch'
   const viewRef = useMemo(
     () => (run ? parseViewRef(run.ref_name) : {}),
     [run?.ref_name],
   )
 
   const { data: pipelineConfig } = useQuery({
-    queryKey: ['pipeline-config-preview', orgSlug, projectSlug, configRef],
-    queryFn: () => api.getPipelineConfig(token!, orgSlug, projectSlug, configRef),
+    queryKey: ['pipeline-config-preview', orgSlug, projectSlug, configRefKind, configRef],
+    queryFn: () =>
+      api.getPipelineConfig(token!, orgSlug, projectSlug, configRef, configRefKind),
     enabled: Boolean(token && orgSlug && projectSlug && configRef),
     retry: false,
     staleTime: 5 * 60_000,
@@ -100,9 +103,13 @@ export function PipelineRunDetailPage() {
 
   const visibleJobs = useMemo(() => {
     if (!run) return []
-    if (showAllPaths || !pipelineConfig) return run.jobs
-    return filterRunJobsForViewRef(run.jobs, pipelineConfig.jobs, viewRef)
-  }, [run, pipelineConfig, viewRef, showAllPaths])
+    return filterVisibleRunJobs(run.jobs, {
+      viewRef,
+      showAllPaths,
+      configJobs: pipelineConfig?.jobs,
+      eventType: run.event_type,
+    })
+  }, [run, pipelineConfig?.jobs, viewRef, showAllPaths])
 
   const graphJobs = useMemo(() => {
     const mapped = jobsFromRun(visibleJobs, run?.status)

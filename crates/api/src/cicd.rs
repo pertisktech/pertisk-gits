@@ -13,6 +13,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
+use pertisk_git::explorer::RefKind;
 use pertisk_cicd::{
     convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, PipelineEvent, RunContext, ScheduledJob,
     Scheduler, TriggerMatcher, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
@@ -508,6 +509,20 @@ struct JobStepResponse {
 #[derive(Deserialize)]
 struct PipelineConfigQuery {
     r#ref: Option<String>,
+    #[serde(default = "default_pipeline_ref_kind")]
+    ref_kind: String,
+}
+
+fn default_pipeline_ref_kind() -> String {
+    "branch".to_string()
+}
+
+fn parse_pipeline_ref_kind(kind: &str) -> Result<RefKind, ApiError> {
+    match kind {
+        "branch" => Ok(RefKind::Branch),
+        "tag" => Ok(RefKind::Tag),
+        _ => Err(DomainError::Validation("ref_kind must be branch or tag".into()).into()),
+    }
 }
 
 #[derive(Serialize)]
@@ -668,7 +683,8 @@ async fn get_pipeline_migrate(
         .r#ref
         .filter(|r| !r.trim().is_empty())
         .unwrap_or_else(|| repo.default_branch.clone());
-    let commit_sha = resolve_git_ref(&repo_path, &ref_name).await?;
+    let ref_kind = parse_pipeline_ref_kind(&query.ref_kind)?;
+    let commit_sha = resolve_git_ref(&repo_path, &ref_name, ref_kind).await?;
 
     let has_pertisk_config = read_pipeline_config(&repo_path, &commit_sha)
         .await
@@ -715,12 +731,9 @@ async fn get_pipeline_config_preview(
         .r#ref
         .filter(|r| !r.trim().is_empty())
         .unwrap_or_else(|| repo.default_branch.clone());
-    let commit_sha = resolve_git_ref(&repo_path, &ref_name).await?;
-    let normalized_ref = if ref_name.starts_with("refs/") {
-        ref_name
-    } else {
-        format!("refs/heads/{ref_name}")
-    };
+    let ref_kind = parse_pipeline_ref_kind(&query.ref_kind)?;
+    let commit_sha = resolve_git_ref(&repo_path, &ref_name, ref_kind).await?;
+    let normalized_ref = normalize_git_ref(&ref_name, ref_kind);
 
     let Some((config_yaml, config_path)) = read_pipeline_config(&repo_path, &commit_sha).await else {
         return Err(DomainError::NotFound.into());
@@ -2180,6 +2193,16 @@ async fn process_trigger_now(
         return Err(sqlx::Error::RowNotFound);
     }
 
+    let run_ctx = RunContext::from_trigger(event_type, ref_name);
+    let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
+        sqlx::Error::Protocol(format!("schedule failed: {e}").into())
+    })?;
+
+    let has_runnable = jobs.iter().any(|job| !job.skipped);
+    if !has_runnable && event_type == "push" {
+        return Err(sqlx::Error::RowNotFound);
+    }
+
     let run_id = sqlx::query_scalar::<_, Uuid>(
         r#"
         INSERT INTO pipeline_runs (repository_id, commit_sha, ref_name, event_type, status, config_path, started_at)
@@ -2194,11 +2217,6 @@ async fn process_trigger_now(
     .bind(config_path)
     .fetch_one(&state.pool)
     .await?;
-
-    let run_ctx = RunContext::from_trigger(event_type, ref_name);
-    let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
-        sqlx::Error::Protocol(format!("schedule failed: {e}").into())
-    })?;
 
     materialize_jobs_for_run(
         &state.pool,
@@ -2464,20 +2482,35 @@ async fn materialize_jobs_for_run(
         .await?;
     }
 
-    sqlx::query("UPDATE pipeline_runs SET status = 'running' WHERE id = $1")
-        .bind(run_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        r#"
+        UPDATE pipeline_runs
+        SET status = CASE
+            WHEN $2 THEN 'running'::pipeline_run_status
+            ELSE 'skipped'::pipeline_run_status
+        END,
+        finished_at = CASE WHEN $2 THEN NULL ELSE NOW() END
+        WHERE id = $1
+        "#,
+    )
+    .bind(run_id)
+    .bind(has_runnable_jobs(jobs))
+    .execute(pool)
+    .await?;
 
     Ok(())
 }
 
-async fn resolve_git_ref(repo_path: &FsPath, ref_name: &str) -> Result<String, ApiError> {
-    let normalized = if ref_name.starts_with("refs/") {
-        ref_name.to_string()
-    } else {
-        format!("refs/heads/{ref_name}")
-    };
+fn has_runnable_jobs(jobs: &[ScheduledJob]) -> bool {
+    jobs.iter().any(|job| !job.skipped)
+}
+
+async fn resolve_git_ref(
+    repo_path: &FsPath,
+    ref_name: &str,
+    kind: RefKind,
+) -> Result<String, ApiError> {
+    let normalized = normalize_git_ref(ref_name, kind);
 
     let output = Command::new("git")
         .current_dir(repo_path)
@@ -2491,6 +2524,17 @@ async fn resolve_git_ref(repo_path: &FsPath, ref_name: &str) -> Result<String, A
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn normalize_git_ref(ref_name: &str, kind: RefKind) -> String {
+    if ref_name.starts_with("refs/heads/") || ref_name.starts_with("refs/tags/") {
+        ref_name.to_string()
+    } else {
+        match kind {
+            RefKind::Branch => format!("refs/heads/{ref_name}"),
+            RefKind::Tag => format!("refs/tags/{ref_name}"),
+        }
+    }
 }
 
 async fn read_pipeline_config(repo_path: &FsPath, commit_sha: &str) -> Option<(String, String)> {
@@ -2768,6 +2812,32 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
         return Ok(());
     }
 
+    let all_skipped = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT COUNT(*) > 0
+           AND COUNT(*) = COUNT(*) FILTER (WHERE status = 'skipped')
+        FROM job_runs
+        WHERE pipeline_run_id = $1
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
+    if all_skipped {
+        sqlx::query(
+            r#"
+            UPDATE pipeline_runs
+            SET status = 'skipped'::pipeline_run_status, finished_at = NOW()
+            WHERE id = $1 AND status IN ('pending', 'queued', 'running')
+            "#,
+        )
+        .bind(pipeline_run_id)
+        .execute(pool)
+        .await?;
+        return Ok(());
+    }
+
     sqlx::query(
         r#"
         UPDATE pipeline_runs
@@ -2840,10 +2910,24 @@ async fn force_finalize_stuck_pipeline(
     .fetch_one(pool)
     .await?;
 
+    let all_skipped = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT COUNT(*) > 0
+           AND COUNT(*) = COUNT(*) FILTER (WHERE status = 'skipped')
+        FROM job_runs
+        WHERE pipeline_run_id = $1
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .fetch_one(pool)
+    .await?;
+
     let new_status = if has_failed {
         "failure"
     } else if all_cancelled {
         "cancelled"
+    } else if all_skipped {
+        "skipped"
     } else {
         "success"
     };

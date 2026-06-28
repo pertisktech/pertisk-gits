@@ -1042,14 +1042,18 @@ export const api = {
     orgSlug: string,
     repoSlug: string,
     ref?: string,
-  ) =>
-    request<PipelineConfigPreview>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/config${
-        ref ? `?ref=${encodeURIComponent(ref)}` : ''
-      }`,
+    refKind?: 'branch' | 'tag',
+  ) => {
+    const search = new URLSearchParams()
+    if (ref) search.set('ref', ref)
+    if (refKind) search.set('ref_kind', refKind)
+    const qs = search.toString()
+    return request<PipelineConfigPreview>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/config${qs ? `?${qs}` : ''}`,
       {},
       token,
-    ),
+    )
+  },
 
   getPipelineMigrate: (
     token: string,
