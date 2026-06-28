@@ -2,6 +2,8 @@
 
 Group and repository secrets for pipelines. Values are encrypted at rest (AES-256-GCM) and never returned by the API after creation.
 
+**Deploy workflows:** how environments tie to Run pipeline and manual jobs — [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md)
+
 ## Configuration
 
 Set `SECRETS_ENCRYPTION_KEY` to a 32-byte key (base64 or hex). If unset, the API derives a key from `JWT_SECRET` (development only — set a dedicated key in production).
@@ -60,7 +62,9 @@ jobs:
   deploy-qa:
     runs-on: kubernetes
     environment: qa
-    if: environment == qa
+    if:
+      environment: qa
+      event: manual
     steps:
       - name: push image
         run: |

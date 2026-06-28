@@ -1,12 +1,13 @@
 # Branch / deploy workflow (GitLab-style manual runs)
 #
-#   main push              → automatic CI (build) + deploy dev
+#   main push              → automatic CI (build) + deploy dev; deploy-qa-manual / deploy-uat-manual wait for play
 #   feature/* + manual     → build/test on feature branch (no auto CI on push)
-#   tag + manual + qa      → deploy QA
-#   any ref + manual + uat → deploy UAT
+#   Run pipeline + qa/uat  → env deploy chains (automatic)
 #
-# UI (like GitLab "Run pipeline"): Pipelines → Branch/Tag → Environment → Run pipeline
+# UI: Pipelines → Run pipeline → branch/tag + environment
+# Docs: docs/CICD_WORKFLOWS.md
 # API: POST .../pipelines/trigger  { ref_name, commit_sha, event_type: manual, environment }
+#       POST .../pipelines/{run_id}/jobs/{job_id}/play  (manual jobs on push runs)
 #
 # Secrets (Group or Repo → Secrets):
 #   dev  HARBOR_URL = harbor-dev.tools.thaidevops.co

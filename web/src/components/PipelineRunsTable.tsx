@@ -1,12 +1,12 @@
 import { Link } from 'react-router-dom'
 import type { PipelineRun } from '../api/types'
 import { formatRelativeTime, parseIsoTimestamp } from '../lib/relativeTime'
-import { filterRunJobsForList } from '../lib/pipelineSummary'
+import { filterRunJobsForList, filterRunJobsForManualDeploy } from '../lib/pipelineSummary'
 import {
   canRerunFailed,
   countRerunnableFailedJobs,
   displayJobStatus,
-  displayRunStatus,
+  displayRunStatusIcon,
   failureSummary,
   formatRunDuration,
   isRunInProgress,
@@ -73,8 +73,11 @@ function PipelineRunRow({
   onRerun?: (scope: RerunScope) => void
   rerunLoading?: boolean
 }) {
-  const status = displayRunStatus(run)
-  const visibleJobs = filterRunJobsForList(run)
+  const status = displayRunStatusIcon(run)
+  const visibleJobs =
+    run.event_type === 'manual' && run.target_environment
+      ? filterRunJobsForManualDeploy(run)
+      : filterRunJobsForList(run)
   const summary = failureSummary(visibleJobs)
   const startedAt = run.started_at ?? run.created_at
   const relative = formatRelativeTime(parseIsoTimestamp(startedAt))

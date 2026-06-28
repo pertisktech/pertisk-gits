@@ -358,6 +358,25 @@ mod tests {
     }
 
     #[test]
+    fn staged_manual_main_play_jobs_not_in_run_pipeline() {
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext::from_trigger_with_environment(
+            "manual",
+            "refs/heads/main",
+            Some("dev".into()),
+        );
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa-manual").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+    }
+
+    #[test]
     fn staged_push_to_qa_shows_manual_qa_deploy() {
         use crate::parse_pipeline_yaml;
 

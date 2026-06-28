@@ -338,6 +338,26 @@ export function filterRunJobsForList(run: PipelineRun): JobRun[] {
   return run.jobs.filter((job) => job.status !== 'skipped')
 }
 
+/** Manual QA/UAT deploy jobs from a Run pipeline (event=manual + target_environment). */
+export function filterRunJobsForManualDeploy(run: PipelineRun): JobRun[] {
+  const jobs = filterRunJobsForList(run)
+  if (run.event_type !== 'manual' || !run.target_environment) return jobs
+
+  const env = run.target_environment
+  return jobs.filter((job) => {
+    const jobEnv = jobEnvironmentFromName(job.job_name)
+    if (!jobEnv) return false
+    return jobEnv === env
+  })
+}
+
+function jobEnvironmentFromName(name: string): string | null {
+  for (const env of ['dev', 'qa', 'uat', 'prd', 'prod']) {
+    if (name.endsWith(`-${env}`)) return env === 'prod' ? 'prd' : env
+  }
+  return null
+}
+
 export function filterRunJobsForViewRef(
   runJobs: JobRun[],
   configJobs: PipelineJobPreview[],

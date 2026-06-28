@@ -14,13 +14,10 @@ import {
   stepLogSubtitle,
   stepLogTitle,
 } from '../components/PipelineActions'
-import { PipelineGraph } from '../components/PipelineGraph'
-import { buildDetailGraphJobs } from '../lib/pipelineGraphLayout'
-import { PipelineSummary } from '../components/PipelineSummary'
+import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
 import {
-  filterVisibleRunJobs,
-  refForConfigQuery,
-  refKindFromRefName,
+  filterRunJobsForList,
+  filterRunJobsForManualDeploy,
 } from '../lib/pipelineSummary'
 import { ConfirmModal } from '../components/ConfirmModal'
 import {
@@ -29,6 +26,7 @@ import {
   countRerunnableFailedJobs,
   displayJobStatus,
   displayRunStatus,
+  displayRunStatusIcon,
   isRunInProgress,
   refLabel,
   shortSha,
@@ -86,35 +84,18 @@ export function PipelineRunDetailPage() {
     },
   })
 
-  const configRef = run ? refForConfigQuery(run.ref_name) : ''
-  const configRefKind = run ? refKindFromRefName(run.ref_name) : 'branch'
-
-  const { data: pipelineConfig } = useQuery({
-    queryKey: ['pipeline-config-preview', orgSlug, projectSlug, configRefKind, configRef],
-    queryFn: () =>
-      api.getPipelineConfig(token!, orgSlug, projectSlug, configRef, configRefKind),
-    enabled: Boolean(token && orgSlug && projectSlug && configRef),
-    retry: false,
-    staleTime: 5 * 60_000,
-  })
-
   const visibleJobs = useMemo(() => {
     if (!run) return []
-    return filterVisibleRunJobs(run.jobs, {
-      showAllPaths: true,
-      configJobs: pipelineConfig?.jobs,
-      eventType: run.event_type,
-    })
-  }, [run, pipelineConfig?.jobs])
+    if (run.event_type === 'manual' && run.target_environment) {
+      return filterRunJobsForManualDeploy(run)
+    }
+    return filterRunJobsForList(run)
+  }, [run])
 
   const graphJobs = useMemo(() => {
     if (!run) return []
-    return buildDetailGraphJobs(pipelineConfig?.jobs, run.jobs, {
-      showAllPaths: true,
-      eventType: run.event_type,
-      runStatus: run.status,
-    })
-  }, [run, pipelineConfig?.jobs])
+    return jobsFromRun(visibleJobs, run.status)
+  }, [run, visibleJobs])
 
   const activeJob = useMemo(() => {
     if (!run || visibleJobs.length === 0) return null
@@ -269,6 +250,7 @@ export function PipelineRunDetailPage() {
 
   const branch = refLabel(run.ref_name)
   const runStatus = displayRunStatus(run)
+  const runStatusIcon = displayRunStatusIcon(run)
   const canPlayJob = (job: JobRun) => canPlayManualJob(job, run)
 
   const resolveJobKey = (jobKey: string) =>
@@ -295,7 +277,7 @@ export function PipelineRunDetailPage() {
             All workflows
           </Link>
           <div className="gha-run-title-row">
-            <ActionsStatusIcon status={runStatus} size="lg" />
+            <ActionsStatusIcon status={runStatusIcon} size="lg" />
             <h1 className="gha-run-title">
               <span className="font-mono">.pertisk-ci.yaml</span>
             </h1>
@@ -391,7 +373,6 @@ export function PipelineRunDetailPage() {
       <ActionsRunSummary run={run} />
 
       <div className="gha-graph-panel">
-        {pipelineConfig && <PipelineSummary config={pipelineConfig} />}
         <PipelineGraph
           className="pipeline-graph-panel--inline"
           jobs={graphJobs}
@@ -416,7 +397,7 @@ export function PipelineRunDetailPage() {
       <div className="gha-run-layout">
         <ActionsJobSidebar
           jobs={visibleJobs}
-          runStatus={run.status}
+          runStatus={runStatus}
           activeJobId={activeJob?.id ?? null}
           onSelectJob={selectJob}
           onPlayJob={(jobId) => playJobMutation.mutate(jobId)}
@@ -429,7 +410,7 @@ export function PipelineRunDetailPage() {
             <>
               <ActionsJobHeader
                 job={activeJob}
-                jobStatus={displayJobStatus(activeJob, run.status)}
+                jobStatus={displayJobStatus(activeJob, runStatus)}
                 canPlay={canPlayJob(activeJob)}
                 playPending={playingJobId === activeJob.id}
                 onPlay={() => playJobMutation.mutate(activeJob.id)}
@@ -437,8 +418,8 @@ export function PipelineRunDetailPage() {
 
               <ActionsStepList
                 steps={activeSteps}
-                jobStatus={displayJobStatus(activeJob, run.status)}
-                runStatus={run.status}
+                jobStatus={displayJobStatus(activeJob, runStatus)}
+                runStatus={runStatus}
                 activeStepKey={activeStepKey}
                 onSelectStep={selectStep}
               />

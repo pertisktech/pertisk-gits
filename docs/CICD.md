@@ -1,6 +1,8 @@
 # Pertisk Gits CI/CD (Phase 4)
 
-CI pipelines triggered on **push** and **pull_request**, executed by **Rust runners** with per-step performance metrics.
+CI pipelines triggered on **push**, **pull_request**, and **manual** (Run pipeline), executed by **Rust runners** with per-step performance metrics.
+
+**Workflow guide (GitLab + GitHub Actions style):** [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md) · **Secrets by environment:** [CICD_SECRETS.md](./CICD_SECRETS.md)
 
 ## Architecture
 
@@ -169,6 +171,10 @@ jobs:
     needs: []          # optional DAG deps
     required: true     # default; set false for optional jobs (excluded from merge gate)
     timeout_minutes: 30  # optional; kills the job after N minutes (runner + API reclaim)
+    if:                  # optional — structured or string (see CICD_WORKFLOWS.md)
+      branch: main
+      event: push
+    environment: dev   # optional — dev | qa | uat | prd (secrets + deploy targeting)
     steps:
       - name: Build
         run: cargo build --release
@@ -177,13 +183,43 @@ jobs:
           RUSTFLAGS: "-D warnings"
 ```
 
+### Manual jobs and Run pipeline
+
+Jobs with `if: event: manual` behave like GitLab `when: manual`:
+
+- On **push** / **PR** → job status **manual** (play button in UI).
+- On **Run pipeline** with matching `environment` → job queues automatically.
+
+Staged example: `crates/cicd/examples/pertisk-ci-staged.yaml`. Full behavior table: [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md).
+
+### Run pipeline (manual trigger)
+
+**UI:** Project → Pipelines → **Run pipeline** → branch or tag + optional environment.
+
+**API:**
+
+```bash
+curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/trigger" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commit_sha": "<sha>",
+    "ref_name": "refs/heads/main",
+    "event_type": "manual",
+    "environment": "qa"
+  }'
+```
+
+`environment` sets `pipeline_runs.target_environment` so env-scoped jobs and secrets resolve correctly.
+
 ## API endpoints
 
 | Method | Path | Auth |
 |--------|------|------|
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines` | User JWT |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}` | User JWT |
-| POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/trigger` | User JWT (write) |
+| POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/trigger` | User JWT (write); body may include `environment` |
+| POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/jobs/{job_id}/play` | User JWT (write); start a **manual** job |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/config` | User JWT |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/cancel` | User JWT (write) |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/cancel-step` | User JWT (write) |
@@ -248,6 +284,19 @@ When any job in a pipeline run fails, remaining `queued` / `running` jobs are ma
 While a run is **running**, the pipeline detail page shows **Cancel pipeline** and **Cancel step** (for the active step). The API sets the run or job to `cancelled`; the runner polls `GET /runner/jobs/{id}/control` and kills the current shell step (exit 130). Runners return to **online** when no jobs are `running`.
 
 Requires migration `20250629100000_pipeline_cancel.sql` (applied automatically when `pertisk-gits` starts).
+
+### Manual job play
+
+When a job is **manual** (waiting for operator approval), play it from the pipeline detail page or:
+
+```bash
+curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/$RUN_ID/jobs/$JOB_ID/play" \
+  -H "Authorization: Bearer $JWT"
+```
+
+The job moves `manual` → `queued` → `running`. A pipeline run stays **in progress** while any job is `manual`, `queued`, or `running` (not marked success until manual jobs are played or skipped).
+
+Requires migration `20250720100000_job_run_manual.sql`.
 
 ### Re-run
 

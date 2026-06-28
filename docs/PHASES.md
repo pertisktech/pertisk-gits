@@ -137,6 +137,8 @@ Perf testing: `./scripts/cicd-perf-test.sh` — see [docs/CICD.md](./CICD.md)
 
 **Secrets (done):** group + repository secrets, `${{ secrets.NAME }}` in pipelines, log masking — see [CICD_SECRETS.md](./CICD_SECRETS.md)
 
+**GitLab / GitHub Actions workflows (done):** manual jobs, Run pipeline, environments — see [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md)
+
 ---
 
 ## Phase 4.5 — Runner deployment & operations (Done)
@@ -210,22 +212,30 @@ Full guide: [docs/RUNNERS.md](./RUNNERS.md)
 
 ---
 
-## Phase 4.6 — Deploy environments (Done)
+## Phase 4.6 — Deploy environments & GitLab-style workflows (Done)
 
-**Goal:** GitLab-style deploy environments with automatic + manual runs, branch selection, and env-scoped secrets.
+**Goal:** GitLab CI + GitHub Actions–style pipelines: environments, manual jobs (play button), Run pipeline, env-scoped secrets.
 
 | Component | Approach | Status |
 |-----------|----------|--------|
 | Environments | `dev`, `qa`, `uat`, `prd` — inferred from branch/tag or set on manual trigger | Done |
 | Job `environment:` + `if: environment == qa` | Per-job deploy targeting in `.pertisk-ci.yaml` | Done |
-| Manual run | Pipelines toolbar — branch/tag + environment + **Run pipeline** | Done |
-| Manual deploy | Pipeline summary — **Deploy {env}** per path | Done |
+| **Run pipeline** dialog | Branch/tag + environment (GitLab “Run pipeline”) | Done |
+| **Manual jobs** | `if: event: manual` → job status `manual`, **play** in UI/API | Done |
+| In-pipeline manual deploy | `branch: main` + `event: manual` on push runs (e.g. `deploy-qa-manual`) | Done |
+| Pipeline list status | Play icon when manual jobs waiting; not green until truly done | Done |
+| Pipeline detail | Jobs for this run only; graph + play on manual jobs | Done |
 | Secrets by env | Group/repo secrets scoped to `all` / `dev` / `qa` / `uat` / `prd` | Done |
-| Runner injection | Jobs receive only secrets matching `effective_environment` | Done |
+| Runner injection | Jobs receive secrets matching `effective_environment` | Done |
+| GitLab/GitHub migrate | `.gitlab-ci.yml` / `.github/workflows` → suggested `.pertisk-ci.yaml` | Done (MVP) |
 
 **Example:** `crates/cicd/examples/pertisk-ci-staged.yaml`
 
-**Tables (extended):** `pipeline_runs.target_environment`, `job_runs.effective_environment`, `organization_secrets.environment`, `repository_secrets.environment`
+**Docs:** [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md) · [CICD_SECRETS.md](./CICD_SECRETS.md)
+
+**Tables (extended):** `pipeline_runs.target_environment`, `job_runs.effective_environment`, `job_runs.status` includes `manual`, `organization_secrets.environment`, `repository_secrets.environment`
+
+**API:** `POST .../pipelines/trigger` (`environment`), `POST .../pipelines/{run_id}/jobs/{job_id}/play`
 
 ---
 
@@ -381,7 +391,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Code Search | 3 |
 | HTTP/3 (Quiche) | 3 |
 | CI/CD | 4 |
-| Deploy environments (dev/qa/uat/prd) | 4.6 |
+| Deploy environments & GitLab/GitHub workflows | 4.6 |
 | Runner deployment (systemd / Docker / K8s) | 4.5 |
 | Built-in Container Registry | 5 |
 | SSO/LDAP Integration | 6 |
@@ -438,5 +448,8 @@ pertisk-gits/
 │       ├── pertisk-gits/     # Platform chart (Phase 7)
 │       └── pertisk-runner/   # CI runner chart
 └── docs/
-    └── PHASES.md         # This file
+    ├── PHASES.md         # This file
+    ├── CICD.md           # CI/CD architecture & API
+    ├── CICD_WORKFLOWS.md # GitLab + GitHub Actions style workflows
+    └── CICD_SECRETS.md   # Secrets by environment
 ```

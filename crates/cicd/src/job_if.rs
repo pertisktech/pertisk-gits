@@ -207,13 +207,53 @@ impl JobIfMatcher {
         if !Self::matches_without_event(condition, ctx) {
             return JobScheduleMode::Skipped;
         }
+
+        if Self::requires_manual_event(condition) {
+            let env_only = condition.is_some_and(|c| {
+                c.environment.is_some() && c.branch.is_none() && c.tag.is_none()
+            });
+
+            if env_only {
+                if ctx.event_type == "manual" && Self::matches(condition, ctx) {
+                    return JobScheduleMode::Queued;
+                }
+                if ctx.event_type != "manual" {
+                    return JobScheduleMode::Manual;
+                }
+                return JobScheduleMode::Skipped;
+            }
+
+            // branch/tag + event:manual — play button in automatic pipelines only
+            if ctx.event_type != "manual" {
+                return JobScheduleMode::Manual;
+            }
+            if Self::is_in_pipeline_manual_play(condition, ctx) {
+                return JobScheduleMode::Skipped;
+            }
+            return JobScheduleMode::Queued;
+        }
+
         if Self::matches(condition, ctx) {
             return JobScheduleMode::Queued;
         }
-        if Self::requires_manual_event(condition) && ctx.event_type != "manual" {
-            return JobScheduleMode::Manual;
-        }
         JobScheduleMode::Skipped
+    }
+
+    /// Jobs like `deploy-qa-manual` (branch main + event: manual): always wait for play.
+    fn is_in_pipeline_manual_play(condition: Option<&JobIfCondition>, ctx: &RunContext) -> bool {
+        let Some(condition) = condition else {
+            return false;
+        };
+        if let Some(branch) = &condition.branch {
+            let Some(branch_name) = ctx.branch.as_deref() else {
+                return false;
+            };
+            return branch
+                .patterns()
+                .iter()
+                .any(|pattern| glob_match(pattern, branch_name) && *pattern == "main");
+        }
+        false
     }
 
     pub fn matches_without_event(condition: Option<&JobIfCondition>, ctx: &RunContext) -> bool {

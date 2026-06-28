@@ -17,35 +17,45 @@ export function failureSummary(jobs: JobRun[]): string | null {
   return line?.trim().slice(0, 160) ?? `Job "${failed[0].job_name}" failed`
 }
 
+/** Jobs that belong to this run (exclude path-skipped). */
+export function activeRunJobs(run: PipelineRun): JobRun[] {
+  return run.jobs.filter((job) => job.status !== 'skipped')
+}
+
+export function hasPendingManualJobs(run: PipelineRun): boolean {
+  return activeRunJobs(run).some((job) => job.status === 'manual')
+}
+
+export function hasActiveJobs(run: PipelineRun): boolean {
+  return activeRunJobs(run).some(
+    (job) => job.status === 'queued' || job.status === 'running',
+  )
+}
+
+/** Icon/status string for pipeline list + summary (includes manual waiting). */
+export function displayRunStatusIcon(run: PipelineRun): string {
+  if (hasActiveJobs(run)) return displayRunStatus(run)
+  if (hasPendingManualJobs(run)) return 'manual'
+  return displayRunStatus(run)
+}
+
 /** UI status — pipeline_run.status can stay "running" while failed jobs exist and others are queued. */
 export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
   const { jobs, status } = run
   if (status === 'cancelled') return 'cancelled'
   if (status === 'skipped') return 'skipped'
-  if (jobs.length === 0) return status
 
-  const hasRunning = jobs.some((j) => j.status === 'running')
-  const hasFailed = jobs.some((j) => j.status === 'failure')
-  const allSkipped = jobs.every((j) => j.status === 'skipped')
-  const allTerminal = jobs.every(
-    (j) =>
-      j.status === 'success' ||
-      j.status === 'failure' ||
-      j.status === 'cancelled' ||
-      j.status === 'skipped' ||
-      j.status === 'manual',
-  )
-
-  if (allTerminal) {
-    if (hasFailed) return 'failure'
-    if (jobs.some((j) => j.status === 'cancelled')) return 'cancelled'
-    if (allSkipped) return 'skipped'
-    return 'success'
+  const actionable = activeRunJobs(run)
+  if (actionable.length === 0) {
+    return jobs.length > 0 ? 'skipped' : status
   }
 
-  if (hasFailed && !hasRunning) {
-    return 'failure'
-  }
+  if (hasActiveJobs(run)) return 'running'
+
+  if (actionable.some((job) => job.status === 'failure')) return 'failure'
+  if (actionable.some((job) => job.status === 'cancelled')) return 'cancelled'
+  if (hasPendingManualJobs(run)) return 'running'
+  if (actionable.every((job) => job.status === 'success')) return 'success'
 
   return status
 }
@@ -65,11 +75,7 @@ export function displayJobStatus(
 
 export function isRunInProgress(run: PipelineRun): boolean {
   if (run.status === 'cancelled' || run.status === 'skipped') return false
-
-  const hasActiveJob = run.jobs.some(
-    (job) => job.status === 'queued' || job.status === 'running',
-  )
-  if (!hasActiveJob) return false
+  if (hasActiveJobs(run)) return true
 
   const displayStatus = displayRunStatus(run)
   return displayStatus === 'running' || displayStatus === 'queued' || displayStatus === 'pending'
