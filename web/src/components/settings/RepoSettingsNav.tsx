@@ -1,14 +1,15 @@
+import type { LucideIcon } from 'lucide-react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   Settings,
   Shield,
   Users,
   Workflow,
 } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
-import { NavLink } from 'react-router-dom'
 import {
   REPO_SETTINGS_SECTIONS,
   type RepoSettingsSection,
+  parseRepoSettingsSection,
   repoSettingsSectionHref,
 } from '../../lib/repoSettingsRoute'
 import { cn } from '../../utils/cn'
@@ -22,29 +23,36 @@ const SECTION_ICONS: Record<RepoSettingsSection, LucideIcon> = {
 
 interface RepoSettingsNavProps {
   basePath: string
-  activeSection: RepoSettingsSection
 }
 
-export function RepoSettingsNav({ basePath, activeSection }: RepoSettingsNavProps) {
+export function RepoSettingsNav({ basePath }: RepoSettingsNavProps) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const activeSection = parseRepoSettingsSection(
+    new URLSearchParams(location.search).get('section'),
+  )
+
   return (
-    <nav className="repo-settings-nav" aria-label="Repository settings">
-      <span className="repo-settings-nav-label">Settings</span>
-      {REPO_SETTINGS_SECTIONS.map(({ id, label }) => {
-        const Icon = SECTION_ICONS[id]
-        return (
-          <NavLink
-            key={id}
-            to={repoSettingsSectionHref(basePath, id)}
-            className={({ isActive }) =>
-              cn('repo-settings-nav-link', (isActive || activeSection === id) && 'active')
-            }
-            end={false}
-          >
-            <Icon size={15} aria-hidden />
-            {label}
-          </NavLink>
-        )
-      })}
+    <nav className="app-segment-bar repo-settings-tabs" aria-label="Repository settings">
+      <div className="app-segment" role="tablist">
+        {REPO_SETTINGS_SECTIONS.map(({ id, label }) => {
+          const Icon = SECTION_ICONS[id]
+          const isActive = activeSection === id
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={isActive}
+              className={cn('app-segment-tab', isActive && 'active')}
+              onClick={() => navigate(repoSettingsSectionHref(basePath, id))}
+            >
+              <Icon size={15} aria-hidden />
+              {label}
+            </button>
+          )
+        })}
+      </div>
     </nav>
   )
 }

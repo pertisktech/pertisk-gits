@@ -93,13 +93,17 @@ export function RepoSettings({
 
   return (
     <div className="repo-settings">
-      <RepoSettingsNav basePath={basePath} activeSection={section} />
+      <header className="repo-settings-page-header">
+        <h1 className="repo-settings-page-title">Repository settings</h1>
+        <p className="repo-settings-page-desc">
+          Manage configuration, access, security, and automation for this repository.
+        </p>
+      </header>
+
+      <RepoSettingsNav basePath={basePath} />
 
       <div className="repo-settings-content">
-        <header className="repo-settings-header">
-          <h1 className="repo-settings-header-title">{meta.title}</h1>
-          <p className="repo-settings-header-desc">{meta.description}</p>
-        </header>
+        <p className="repo-settings-section-intro">{meta.description}</p>
 
         {section === 'general' && (
           <SettingsPanel
