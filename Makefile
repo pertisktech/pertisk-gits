@@ -11,6 +11,7 @@
 	helm-gits-lint helm-gits-template
 
 CARGO ?= cargo
+CARGO_BUILD_JOBS ?= 4
 COMPOSE ?= docker compose -f deploy/docker-compose.yml
 
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed 's/^v//' || echo "0.1.0")
@@ -333,11 +334,17 @@ runner-image-arm64:
 _runner-image-push-one:
 	@test -n "$(PLATFORM)" && test -n "$(SUFFIX)" && test -n "$(VERSION)" && test -n "$(TAG)"
 	@ARCH=$$(echo "$(PLATFORM)" | cut -d/ -f2); \
+	HOST_RAW=$$(uname -m); \
+	case "$$HOST_RAW" in \
+	  x86_64) HOST_ARCH=amd64 ;; \
+	  aarch64|arm64) HOST_ARCH=arm64 ;; \
+	  *) HOST_ARCH=amd64 ;; \
+	esac; \
 	export DOCKER_BUILDKIT=1; \
 	if ! docker buildx inspect "$(RUNNER_BUILDER)" --bootstrap >/dev/null 2>&1; then \
 	  docker buildx create --name "$(RUNNER_BUILDER)" --driver docker-container --bootstrap; \
 	fi; \
-	echo "Building $(RUNNER_IMAGE):$(TAG) platform=$(PLATFORM) TARGETARCH=$$ARCH"; \
+	echo "Building $(RUNNER_IMAGE):$(TAG) platform=$(PLATFORM) host=$$HOST_ARCH target=$$ARCH jobs=$(CARGO_BUILD_JOBS)"; \
 	docker buildx build --builder "$(RUNNER_BUILDER)" \
 	  --platform "$(PLATFORM)" \
 	  -f docker/Dockerfile.runner.release \
@@ -345,6 +352,9 @@ _runner-image-push-one:
 	  --build-arg VERSION="$(VERSION)" \
 	  --build-arg TARGETPLATFORM="$(PLATFORM)" \
 	  --build-arg TARGETARCH="$$ARCH" \
+	  --build-arg BUILDPLATFORM="linux/$$HOST_ARCH" \
+	  --build-arg BUILDARCH="$$HOST_ARCH" \
+	  --build-arg CARGO_BUILD_JOBS="$(CARGO_BUILD_JOBS)" \
 	  -t "$(RUNNER_IMAGE):$(TAG)" \
 	  $(if $(NO_CACHE),--no-cache,) \
 	  --provenance=false \

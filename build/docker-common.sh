@@ -2,6 +2,31 @@
 # Shared Docker helpers for package scripts (Linux CI runners, macOS dev).
 set -euo pipefail
 
+# Parallel rustc invocations inside Docker builder (cross-compiles run on host CPU).
+docker_cargo_jobs() {
+  echo "${PERTISK_CARGO_JOBS:-${CARGO_BUILD_JOBS:-4}}"
+}
+
+# Host platform for buildx (BUILDPLATFORM). Ensures arm64 targets cross-compile on amd64 Macs.
+docker_host_linux_arch() {
+  case "$(uname -m)" in
+    x86_64) echo amd64 ;;
+    aarch64|arm64) echo arm64 ;;
+    *) echo amd64 ;;
+  esac
+}
+
+docker_build_platform_args() {
+  local target_arch="$1"
+  local host_arch
+  host_arch="$(docker_host_linux_arch)"
+  printf '%s\n' \
+    "--build-arg" "BUILDARCH=${host_arch}" \
+    "--build-arg" "BUILDPLATFORM=linux/${host_arch}" \
+    "--build-arg" "TARGETARCH=${target_arch}" \
+    "--build-arg" "TARGETPLATFORM=linux/${target_arch}"
+}
+
 # Bind-mount repo root into packaging containers. :Z relabels for SELinux (RHEL/Alma).
 docker_work_volume() {
   local src="${1:?}"
@@ -88,17 +113,24 @@ buildx_export_linux_binaries() {
     cache_from=(--cache-from "type=local,src=${cache_dir}")
   fi
 
+  local cargo_jobs
+  cargo_jobs="$(docker_cargo_jobs)"
+  local host_arch
+  host_arch="$(docker_host_linux_arch)"
+  echo "Docker buildx: host=linux/${host_arch} target=linux/${arch} cargo_jobs=${cargo_jobs}"
+
   local build_success=0
   local attempt
   for attempt in 1 2 3; do
+    # shellcheck disable=SC2046
     if docker buildx build --builder "$builder_name" --platform "linux/${arch}" \
       -f "$dockerfile" \
       --target "$export_target" \
       "${cache_from[@]}" \
       --cache-to "type=local,dest=${cache_dir},mode=max" \
-      --build-arg "TARGETARCH=${arch}" \
-      --build-arg "TARGETPLATFORM=linux/${arch}" \
+      $(docker_build_platform_args "$arch") \
       --build-arg "VERSION=${version}" \
+      --build-arg "CARGO_BUILD_JOBS=${cargo_jobs}" \
       "$@" \
       --progress=plain \
       --output "type=local,dest=${out_dir}" \

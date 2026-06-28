@@ -75,9 +75,6 @@ build_native() {
 
 build_binary_docker() {
   echo "Building $PACKAGE_NAME for linux/$ARCH via Docker buildx..."
-  CARGO_JOBS="${PERTISK_CARGO_JOBS:-1}"
-  [ "$ARCH" = "amd64" ] && CARGO_JOBS=4
-
   local out_dir=".buildx-out-gits-${ARCH}"
   buildx_export_linux_binaries \
     "$BUILDER_NAME" \
@@ -86,8 +83,7 @@ build_binary_docker() {
     "$ARCH" \
     "$VERSION" \
     "$CACHE_DIR" \
-    "$out_dir" \
-    --build-arg "CARGO_BUILD_JOBS=${CARGO_JOBS}"
+    "$out_dir"
 
   cp "${out_dir}/pertisk-gits" "./${artifact}"
   cp "${out_dir}/pertisk-worker" "./pertisk-worker-linux-${ARCH}"

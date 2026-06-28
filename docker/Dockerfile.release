@@ -28,7 +28,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETARCH} \
     cargo fetch --locked
 
-ARG CARGO_BUILD_JOBS=1
+ARG CARGO_BUILD_JOBS=4
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 ENV PERTISK_VERSION=${VERSION}
 # Do not set RUSTFLAGS=-C target-feature=+crt-static on Alpine/musl — it breaks proc-macro
