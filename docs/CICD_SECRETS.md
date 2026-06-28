@@ -13,7 +13,43 @@ Set `SECRETS_ENCRYPTION_KEY` to a 32-byte key (base64 or hex). If unset, the API
 | Group | `organization_secrets` | Org owner/admin | All pipelines in the group |
 | Repository | `repository_secrets` | Repo admin or org owner/admin | Pipelines in that repository only |
 
-Repository secrets override group secrets with the same name.
+Repository secrets override group secrets with the **same name and environment**.
+
+## Secrets by environment
+
+Each secret has an **environment**: `dev`, `qa`, `uat`, `prd`, or `all`.
+
+Use the **same variable name** in each environment with a **different value**:
+
+| Environment | Name | Value (example) |
+|-------------|------|-----------------|
+| dev | `HARBOR_URL` | `harbor-dev.tools.thaidevops.co` |
+| qa | `HARBOR_URL` | `harbor-qa.tools.thaidevops.co` |
+| uat | `HARBOR_URL` | `harbor-uat.tools.thaidevops.co` |
+| prd | `HARBOR_URL` | `harbor.tools.thaidevops.co` |
+| all | `CI_TOKEN` | shared across every environment |
+
+### UI
+
+1. Open **Group → Secrets** (shared) or **Project → Settings → Repository secrets**.
+2. Click **Add secret**.
+3. Set **Name** = `HARBOR_URL`, **Environment** = `dev`, **Value** = your dev Harbor URL.
+4. Repeat for `qa`, `uat`, `prd` with the same name and different values.
+
+The secrets list is grouped by environment (dev / qa / uat / prd / all).
+
+### Which secrets a job receives
+
+A job gets secrets where:
+
+- environment is **`all`**, or
+- environment matches the job’s **effective environment** (`dev` / `qa` / `uat` / `prd`)
+
+Effective environment comes from (in order):
+
+1. `environment:` on the job in `.pertisk-ci.yaml`
+2. `target_environment` on the pipeline run (manual trigger or inferred from branch/tag)
+3. Job name suffix (e.g. `deploy-qa` → `qa`)
 
 ## Pipeline usage
 
@@ -21,11 +57,15 @@ Reference secrets in step `run` scripts and `env` values:
 
 ```yaml
 jobs:
-  deploy:
+  deploy-qa:
+    runs-on: kubernetes
+    environment: qa
+    if: environment == qa
     steps:
-      - run: curl -H "Authorization: Bearer ${{ secrets.API_TOKEN }}" https://api.example.com
-        env:
-          DEPLOY_KEY_PATH: ${{ secrets.DEPLOY_KEY }}
+      - name: push image
+        run: |
+          echo "Logging in to ${{ secrets.HARBOR_URL }}"
+          docker login "${{ secrets.HARBOR_URL }}" -u "$USER" -p "$PASS"
 ```
 
 - **variable** — resolves to the secret string.
@@ -33,9 +73,9 @@ jobs:
 
 ## Runner behavior
 
-After a job is claimed, the runner fetches decrypted secrets from `GET /api/v1/runner/jobs/{id}/secrets`, materializes file secrets, resolves `${{ secrets.* }}` in each step, and masks known secret values in streamed logs.
+After a job is claimed, the runner fetches decrypted secrets from `GET /api/v1/runner/jobs/{id}/secrets` (filtered by job environment), materializes file secrets, resolves `${{ secrets.* }}` in each step, and masks known secret values in streamed logs.
 
-## UI
+## UI locations
 
 - **Group → Secrets** — group-level secrets
 - **Project → Settings** — repository secrets section

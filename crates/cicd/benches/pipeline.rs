@@ -64,6 +64,7 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
             Job {
                 runs_on: "linux".into(),
                 image: None,
+                environment: None,
                 dind: false,
                 needs,
                 r#if: None,

@@ -4,7 +4,8 @@ use std::time::Duration;
 
 use clap::Parser;
 use pertisk_cicd::{
-    matches_pipeline_trigger, parse_pipeline_yaml, RunContext, Scheduler, CONFIG_PATHS,
+    matches_pipeline_trigger, parse_pipeline_yaml, effective_job_environment, RunContext,
+    Scheduler, CONFIG_PATHS,
 };
 use sqlx::PgPool;
 use tokio::process::Command;
@@ -102,6 +103,7 @@ async fn process_pending_triggers(state: &WorkerState) -> anyhow::Result<u32> {
                 &trigger.commit_sha,
                 &trigger.ref_name,
                 &trigger.event_type,
+                None,
             )
             .await
             {
@@ -122,6 +124,7 @@ async fn process_trigger_now(
     commit_sha: &str,
     ref_name: &str,
     event_type: &str,
+    target_environment: Option<&str>,
 ) -> anyhow::Result<Uuid> {
     let repo_path = state.repos_root.join(org_slug).join(format!("{repo_slug}.git"));
     let Some((config_yaml, config_path)) = read_pipeline_config(&repo_path, commit_sha).await else {
@@ -134,14 +137,22 @@ async fn process_trigger_now(
         anyhow::bail!("event does not match pipeline triggers");
     }
 
-    let run_ctx = RunContext::from_trigger(event_type, ref_name);
+    let resolved_env = target_environment
+        .map(|env| env.to_string())
+        .or_else(|| RunContext::from_trigger(event_type, ref_name).environment);
+
+    let run_ctx = RunContext::from_trigger_with_environment(
+        event_type,
+        ref_name,
+        resolved_env.clone(),
+    );
     let scheduled = Scheduler::schedule_for_run(&config, &run_ctx)?;
-    let has_runnable = scheduled.iter().any(|job| !job.skipped);
+    let has_runnable = scheduled.iter().any(|job| !job.skipped());
 
     let run_id = sqlx::query_scalar::<_, Uuid>(
         r#"
-        INSERT INTO pipeline_runs (repository_id, commit_sha, ref_name, event_type, status, config_path, started_at)
-        VALUES ($1, $2, $3, $4::pipeline_event_type, 'queued', $5, NOW())
+        INSERT INTO pipeline_runs (repository_id, commit_sha, ref_name, event_type, target_environment, status, config_path, started_at)
+        VALUES ($1, $2, $3, $4::pipeline_event_type, $5, 'queued', $6, NOW())
         RETURNING id
         "#,
     )
@@ -149,6 +160,7 @@ async fn process_trigger_now(
     .bind(commit_sha)
     .bind(ref_name)
     .bind(event_type)
+    .bind(resolved_env.as_deref())
     .bind(config_path)
     .fetch_one(&state.pool)
     .await?;
@@ -156,16 +168,17 @@ async fn process_trigger_now(
     for job in scheduled {
         let steps_json = serde_json::to_value(&job.job.steps)?;
         let artifacts_json = serde_json::to_value(&job.job.artifacts)?;
-        let status = if job.skipped { "skipped" } else { "queued" };
-        let initial_log = if job.skipped {
-            "=== skipped (if condition not met)\n"
-        } else {
-            ""
-        };
+        let status = job.db_status();
+        let initial_log = job.initial_log();
+        let effective_environment = effective_job_environment(
+            job.job.environment.as_deref(),
+            run_ctx.environment.as_deref(),
+            &job.name,
+        );
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, status, log_text, finished_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::job_run_status, $9, CASE WHEN $10 THEN NOW() ELSE NULL END)
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, status, log_text, finished_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::job_run_status, $10, CASE WHEN $11 THEN NOW() ELSE NULL END)
             "#,
         )
         .bind(run_id)
@@ -175,17 +188,14 @@ async fn process_trigger_now(
         .bind(artifacts_json)
         .bind(&job.job.needs)
         .bind(job.job.timeout_minutes.map(|m| m as i32))
+        .bind(effective_environment.as_deref())
         .bind(status)
         .bind(initial_log)
-        .bind(job.skipped)
+        .bind(job.finishes_immediately())
         .execute(&state.pool)
         .await?;
 
-        let (commit_state, commit_description) = if job.skipped {
-            ("success", "Skipped")
-        } else {
-            ("pending", "Queued")
-        };
+        let (commit_state, commit_description) = job.commit_status();
         sqlx::query(
             r#"
             INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id, required)

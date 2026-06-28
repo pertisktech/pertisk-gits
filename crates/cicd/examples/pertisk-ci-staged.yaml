@@ -1,21 +1,50 @@
-# Build on main push only; QA/UAT/prod deploy on push to those refs (no rebuild).
+# Branch / deploy workflow (GitLab-style manual runs)
 #
-#   main push     → build + dev deploy
-#   qa push       → deploy-qa chain
-#   uat push      → deploy-uat chain
-#   release/* tag → deploy-prd chain
+#   main push              → automatic CI (build) + deploy dev
+#   feature/* + manual     → build/test on feature branch (no auto CI on push)
+#   tag + manual + qa      → deploy QA
+#   any ref + manual + uat → deploy UAT
+#
+# UI (like GitLab "Run pipeline"): Pipelines → Branch/Tag → Environment → Run pipeline
+# API: POST .../pipelines/trigger  { ref_name, commit_sha, event_type: manual, environment }
+#
+# Secrets (Group or Repo → Secrets):
+#   dev  HARBOR_URL = harbor-dev.tools.thaidevops.co
+#   qa   HARBOR_URL = harbor-qa.tools.thaidevops.co
+#   uat  HARBOR_URL = harbor-uat.tools.thaidevops.co
 
 on:
   push:
-    branches: [main, qa, uat]
-    tags: [release/*]
+    branches: [main]
   pull_request:
     branches: [main]
 
 jobs:
+  # --- Feature branch: manual build only (GitLab: only: feature/*, when: manual) ---
+  build-feature:
+    runs-on: kubernetes
+    if:
+      branch: feature/*
+      event: manual
+    steps:
+      - name: build feature branch
+        run: echo "building feature branch..."
+
+  test-feature:
+    runs-on: kubernetes
+    needs: [build-feature]
+    if:
+      branch: feature/*
+      event: manual
+    steps:
+      - name: test feature branch
+        run: echo "testing feature branch..."
+
   unit-test:
     runs-on: kubernetes
-    if: branch == main
+    if:
+      branch: main
+      event: push
     steps:
       - name: unit test
         run: echo "unit test ok"
@@ -23,7 +52,9 @@ jobs:
   code-coverage:
     runs-on: kubernetes
     needs: [unit-test]
-    if: branch == main
+    if:
+      branch: main
+      event: push
     steps:
       - name: code coverage
         run: echo "code coverage ok"
@@ -31,7 +62,9 @@ jobs:
   build-docker:
     runs-on: kubernetes
     needs: [unit-test]
-    if: branch == main
+    if:
+      branch: main
+      event: push
     steps:
       - name: build docker
         run: echo "build docker ok"
@@ -39,103 +72,134 @@ jobs:
   release-docker:
     runs-on: kubernetes
     needs: [build-docker, code-coverage]
-    if: branch == main
+    if:
+      branch: main
+      event: push
     steps:
       - name: release docker
         run: echo "release docker ok"
 
   deploy-dev:
     runs-on: kubernetes
+    environment: dev
     needs: [release-docker]
-    if: branch == main
+    if:
+      branch: main
+      environment: dev
+      event: push
     steps:
       - name: deploy dev
-        run: echo "deploy dev ok"
+        run: echo "deploy dev → ${{ secrets.HARBOR_URL }}"
 
   health-check-dev:
     runs-on: kubernetes
+    environment: dev
     needs: [deploy-dev]
-    if: branch == main
+    if:
+      branch: main
+      environment: dev
+      event: push
     steps:
       - name: health check
-        run: echo "health check ok"
+        run: echo "health check dev ok"
 
   e2e-test-dev:
     runs-on: kubernetes
+    environment: dev
     needs: [health-check-dev]
-    if: branch == main
+    if:
+      branch: main
+      environment: dev
+      event: push
     steps:
       - name: end-to-end test
-        run: echo "end-to-end test ok"
+        run: echo "e2e dev ok"
 
   deploy-qa:
     runs-on: kubernetes
+    environment: qa
     needs: []
-    if: branch == qa
+    if:
+      environment: qa
+      event: manual
     steps:
       - name: deploy qa
-        run: echo "deploy qa ok"
+        run: echo "deploy qa → ${{ secrets.HARBOR_URL }}"
 
   health-check-qa:
     runs-on: kubernetes
+    environment: qa
     needs: [deploy-qa]
-    if: branch == qa
+    if:
+      environment: qa
+      event: manual
     steps:
       - name: health check
-        run: echo "health check ok"
+        run: echo "health check qa ok"
 
   e2e-test-qa:
     runs-on: kubernetes
+    environment: qa
     needs: [health-check-qa]
-    if: branch == qa
+    if:
+      environment: qa
+      event: manual
     steps:
       - name: end-to-end test
-        run: echo "end-to-end test ok"
+        run: echo "e2e qa ok"
 
   deploy-uat:
     runs-on: kubernetes
+    environment: uat
     needs: []
-    if: branch == uat
+    if:
+      environment: uat
+      event: manual
     steps:
       - name: deploy uat
-        run: echo "deploy uat ok"
+        run: echo "deploy uat → ${{ secrets.HARBOR_URL }}"
 
   health-check-uat:
     runs-on: kubernetes
+    environment: uat
     needs: [deploy-uat]
-    if: branch == uat
+    if:
+      environment: uat
+      event: manual
     steps:
       - name: health check
-        run: echo "health check ok"
+        run: echo "health check uat ok"
 
   e2e-test-uat:
     runs-on: kubernetes
+    environment: uat
     needs: [health-check-uat]
-    if: branch == uat
+    if:
+      environment: uat
+      event: manual
     steps:
       - name: end-to-end test
-        run: echo "end-to-end test ok"
+        run: echo "e2e uat ok"
 
-  deploy-prd:
+  # GitLab-style: visible on main push pipelines — click play to deploy (when: manual)
+  deploy-qa-manual:
     runs-on: kubernetes
-    needs: []
-    if: tag == release/*
+    environment: qa
+    needs: [e2e-test-dev]
+    if:
+      branch: main
+      event: manual
     steps:
-      - name: deploy prd
-        run: echo "deploy prd ok"
+      - name: deploy qa (manual play)
+        run: echo "deploy qa → ${{ secrets.HARBOR_URL }}"
 
-  health-check-prd:
+  deploy-uat-manual:
     runs-on: kubernetes
-    needs: [deploy-prd]
-    if: tag == release/*
+    environment: uat
+    needs: [e2e-test-dev]
+    if:
+      branch: main
+      event: manual
     steps:
-      - name: health check
-        run: echo "health check ok"
-
-  e2e-test-prd:
-    runs-on: kubernetes
-    needs: [health-check-prd]
-    if: tag == release/*
-    steps:
-      - name: end-to-end test
-        run: echo "end-to-end test ok"
+      - name: deploy uat (manual play)
+        run: echo "deploy uat → ${{ secrets.HARBOR_URL }}"

@@ -210,6 +210,25 @@ Full guide: [docs/RUNNERS.md](./RUNNERS.md)
 
 ---
 
+## Phase 4.6 — Deploy environments (Done)
+
+**Goal:** GitLab-style deploy environments with automatic + manual runs, branch selection, and env-scoped secrets.
+
+| Component | Approach | Status |
+|-----------|----------|--------|
+| Environments | `dev`, `qa`, `uat`, `prd` — inferred from branch/tag or set on manual trigger | Done |
+| Job `environment:` + `if: environment == qa` | Per-job deploy targeting in `.pertisk-ci.yaml` | Done |
+| Manual run | Pipelines toolbar — branch/tag + environment + **Run pipeline** | Done |
+| Manual deploy | Pipeline summary — **Deploy {env}** per path | Done |
+| Secrets by env | Group/repo secrets scoped to `all` / `dev` / `qa` / `uat` / `prd` | Done |
+| Runner injection | Jobs receive only secrets matching `effective_environment` | Done |
+
+**Example:** `crates/cicd/examples/pertisk-ci-staged.yaml`
+
+**Tables (extended):** `pipeline_runs.target_environment`, `job_runs.effective_environment`, `organization_secrets.environment`, `repository_secrets.environment`
+
+---
+
 ## Phase 5 — Container Registry (In progress)
 
 **Goal:** OCI registry per org (`registry.host/org/image:tag`).
@@ -362,6 +381,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Code Search | 3 |
 | HTTP/3 (Quiche) | 3 |
 | CI/CD | 4 |
+| Deploy environments (dev/qa/uat/prd) | 4.6 |
 | Runner deployment (systemd / Docker / K8s) | 4.5 |
 | Built-in Container Registry | 5 |
 | SSO/LDAP Integration | 6 |

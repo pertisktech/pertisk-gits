@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 
 use crate::config::{Job, PipelineConfig, PullRequestTrigger, PushTrigger, Step, Triggers};
+use crate::job_if::{IfStringList, IfTagCondition, JobIfCondition};
 
 pub const GITLAB_CI_PATHS: &[&str] = &[".gitlab-ci.yml", ".gitlab-ci.yaml"];
 pub const GITHUB_WORKFLOWS_DIR: &str = ".github/workflows";
@@ -174,7 +175,7 @@ fn convert_gitlab_ci(raw: &str) -> Result<(PipelineConfig, Vec<String>), Convert
 fn gitlab_job_to_pertisk(
     _name: &str,
     job: &Mapping,
-    warnings: &mut Vec<String>,
+    mut warnings: &mut Vec<String>,
 ) -> Result<Job, ConvertError> {
     let mut steps = Vec::new();
 
@@ -190,13 +191,19 @@ fn gitlab_job_to_pertisk(
         steps.extend(script_to_steps(after, Some("after_script")));
     }
 
-    if job.contains_key("rules") || job.contains_key("only") || job.contains_key("except") {
-        warnings.push("GitLab `only`/`except`/`rules` are not converted — set `on:` triggers manually.".into());
+    if job.contains_key("rules") {
+        warnings.push("GitLab `rules` are not converted — rewrite as Pertisk `if:`.".into());
+    }
+
+    if job.contains_key("except") {
+        warnings.push("GitLab `except` is not converted — use Pertisk `if:` with branch/tag patterns.".into());
     }
 
     if job.contains_key("parallel") || job.contains_key("trigger") {
         warnings.push("GitLab `parallel`/`trigger` jobs are not converted.".into());
     }
+
+    let job_if = gitlab_if_from_job(job, &mut warnings);
 
     let runs_on = job
         .get("tags")
@@ -232,14 +239,76 @@ fn gitlab_job_to_pertisk(
     Ok(Job {
         runs_on,
         image,
+        environment: None,
         dind: false,
         needs,
-        r#if: None,
+        r#if: job_if,
         required,
         steps,
         timeout_minutes,
         artifacts,
     })
+}
+
+fn gitlab_if_from_job(job: &Mapping, warnings: &mut Vec<String>) -> Option<JobIfCondition> {
+    let mut condition = JobIfCondition::default();
+
+    if let Some(when) = job.get("when").and_then(|v| v.as_str()) {
+        match when {
+            "manual" => condition.event = Some(IfStringList::One("manual".into())),
+            "on_success" | "always" | "on_failure" | "delayed" => {}
+            other => warnings.push(format!("GitLab when: {other} — not mapped (treated as default run)")),
+        }
+    }
+
+    if let Some(only) = job.get("only") {
+        apply_gitlab_only(only, &mut condition, warnings);
+    }
+
+    if condition == JobIfCondition::default() {
+        None
+    } else {
+        Some(condition)
+    }
+}
+
+fn apply_gitlab_only(value: &Value, condition: &mut JobIfCondition, warnings: &mut Vec<String>) {
+    match value {
+        Value::Sequence(items) => {
+            let mut branches = Vec::new();
+            let mut tags = false;
+            for item in items {
+                match item {
+                    Value::String(entry) => match entry.as_str() {
+                        "branches" => {}
+                        "tags" => tags = true,
+                        branch => branches.push(branch.to_string()),
+                    },
+                    _ => warnings.push("unsupported GitLab `only` list entry — skipped".into()),
+                }
+            }
+            if !branches.is_empty() {
+                condition.branch = Some(if branches.len() == 1 {
+                    IfStringList::One(branches.into_iter().next().unwrap())
+                } else {
+                    IfStringList::Many(branches)
+                });
+            }
+            if tags {
+                condition.tag = Some(IfTagCondition::Any(true));
+            }
+        }
+        Value::Mapping(map) => {
+            if let Some(refs) = map.get("refs") {
+                apply_gitlab_only(refs, condition, warnings);
+            }
+            if map.contains_key("variables") || map.contains_key("kubernetes") {
+                warnings.push("GitLab `only.variables` / `only.kubernetes` not converted.".into());
+            }
+        }
+        Value::String(entry) => apply_gitlab_only(&Value::String(entry.clone()), condition, warnings),
+        _ => warnings.push("GitLab `only` format not recognized.".into()),
+    }
 }
 
 fn apply_gitlab_stage_needs(
@@ -343,6 +412,7 @@ fn convert_github_actions(raw: &str) -> Result<(PipelineConfig, Vec<String>), Co
             Job {
                 runs_on,
                 image: None,
+                environment: None,
                 dind: false,
                 needs,
                 r#if: None,
@@ -630,6 +700,20 @@ mod tests {
                 .count(),
             2
         );
+    }
+
+    #[test]
+    fn converts_gitlab_only_when_manual() {
+        let raw = r#"
+build_feature:
+  script: npm run build
+  only:
+    - feature/*
+  when: manual
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("branch: feature/*"));
+        assert!(result.converted_yaml.contains("event: manual"));
     }
 
     #[test]

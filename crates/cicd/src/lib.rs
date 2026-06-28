@@ -1,5 +1,6 @@
 pub mod config;
 pub mod convert;
+pub mod environment;
 pub mod secrets;
 pub mod executor;
 pub mod job_if;
@@ -15,8 +16,11 @@ pub use convert::{
     convert_legacy_ci, detect_legacy_ci, CiConvertResult, LegacyCiDetection, LegacyCiKind,
     GITHUB_WORKFLOWS_DIR, GITLAB_CI_PATHS,
 };
+pub use environment::{
+    effective_job_environment, infer_environment_from_ref, normalize_environment, CI_ENVIRONMENTS,
+};
 pub use executor::{bench_noop_steps, JobExecutor, ShellExecutor, StepOutput};
-pub use job_if::{JobIfMatcher, RunContext};
+pub use job_if::{JobIfMatcher, JobScheduleMode, RunContext};
 pub use metrics::{JobMetrics, StepTiming};
 pub use schedule::{ScheduledJob, Scheduler};
 pub use script::render_job_script;

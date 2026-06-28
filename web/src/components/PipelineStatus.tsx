@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { CheckCircle2, Circle, Loader2, MinusCircle, X, XCircle } from 'lucide-react'
+import { CheckCircle2, Circle, CirclePlay, Loader2, MinusCircle, X, XCircle } from 'lucide-react'
 import type { JobRun, PipelineRun } from '../api/types'
 import {
   isCancelledStatus,
@@ -56,6 +56,15 @@ export function ActionsStatusIcon({
       <MinusCircle
         size={px}
         className={cn('gha-status-icon gha-status-icon--pending', className)}
+        aria-hidden
+      />
+    )
+  }
+  if (status === 'manual') {
+    return (
+      <CirclePlay
+        size={px}
+        className={cn('gha-status-icon gha-status-icon--manual', className)}
         aria-hidden
       />
     )

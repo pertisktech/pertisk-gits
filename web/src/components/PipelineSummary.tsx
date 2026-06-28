@@ -1,13 +1,9 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Play } from 'lucide-react'
 import { useState } from 'react'
 import type { PipelineConfigPreview } from '../api/types'
-import {
-  inferPipelinePaths,
-  pipelineSummaryNeedsJobFilter,
-  type SummaryViewRef,
-  viewRefLabel,
-} from '../lib/pipelineSummary'
+import { inferPipelinePaths, pipelineSummaryNeedsJobFilter } from '../lib/pipelineSummary'
 import { cn } from '../utils/cn'
+import { PrimaryButton } from './ui'
 
 function JobFlow({ jobs }: { jobs: string[] }) {
   if (jobs.length === 0) return null
@@ -31,9 +27,13 @@ function JobFlow({ jobs }: { jobs: string[] }) {
 function PathRow({
   path,
   defaultOpen,
+  onDeploy,
+  deployPending,
 }: {
   path: ReturnType<typeof inferPipelinePaths>[number]
   defaultOpen?: boolean
+  onDeploy?: (environment: string) => void
+  deployPending?: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false)
 
@@ -60,6 +60,20 @@ function PathRow({
         <span className="pipeline-summary-path-count">
           {path.jobs.length} job{path.jobs.length === 1 ? '' : 's'}
         </span>
+        {path.environment && onDeploy && path.deployJobs.length > 0 && !path.automatic && (
+          <PrimaryButton
+            type="button"
+            className="ml-auto shrink-0"
+            disabled={deployPending}
+            onClick={(event) => {
+              event.stopPropagation()
+              onDeploy(path.environment!)
+            }}
+          >
+            <Play size={14} />
+            Deploy {path.environment}
+          </PrimaryButton>
+        )}
       </button>
 
       {open && (
@@ -82,21 +96,16 @@ function PathRow({
 
 export function PipelineSummary({
   config,
-  viewRef,
-  showAllPaths = true,
-  onShowAllPathsChange,
+  onDeploy,
+  deployPending,
 }: {
   config: PipelineConfigPreview
-  viewRef?: SummaryViewRef
-  showAllPaths?: boolean
-  onShowAllPathsChange?: (value: boolean) => void
+  onDeploy?: (environment: string) => void
+  deployPending?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const paths = inferPipelinePaths(config, { viewRef, showAllPaths })
-  const allPathCount = inferPipelinePaths(config, { showAllPaths: true }).length
+  const paths = inferPipelinePaths(config, { showAllPaths: true })
   const needsFilter = pipelineSummaryNeedsJobFilter(config)
-  const viewLabel = viewRefLabel(viewRef)
-  const canFilter = Boolean(viewLabel) && allPathCount > 1
 
   if (paths.length === 0) return null
 
@@ -112,9 +121,6 @@ export function PipelineSummary({
           {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
         </span>
         <span className="pipeline-summary-title">Pipeline summary</span>
-        {viewLabel && !showAllPaths && (
-          <span className="pipeline-summary-view-ref font-mono">{viewLabel}</span>
-        )}
         <span className="pipeline-summary-badge">
           {paths.length} path{paths.length === 1 ? '' : 's'}
         </span>
@@ -122,31 +128,9 @@ export function PipelineSummary({
 
       {open && (
         <div className="pipeline-summary-body">
-          <div className="pipeline-summary-toolbar">
-            <p className="pipeline-summary-subtitle">
-              {showAllPaths || !viewLabel ? (
-                <>
-                  Shared build chain runs on every branch. Deploy jobs run when their{' '}
-                  <code className="font-mono text-xs">if:</code> matches branch, tag, and trigger.
-                </>
-              ) : (
-                <>
-                  Showing workflow for <strong className="font-mono text-text">{viewLabel}</strong>
-                  . Other deploy paths (e.g. main dev, QA, UAT) are hidden.
-                </>
-              )}
-            </p>
-            {canFilter && onShowAllPathsChange && (
-              <label className="pipeline-summary-filter">
-                <input
-                  type="checkbox"
-                  checked={showAllPaths}
-                  onChange={(event) => onShowAllPathsChange(event.target.checked)}
-                />
-                Show all branches
-              </label>
-            )}
-          </div>
+          <p className="pipeline-summary-subtitle">
+            All deploy paths. Use <strong>Run pipeline</strong> to pick branch/tag and environment.
+          </p>
 
           <div className="pipeline-summary-paths">
             {paths.map((path) => (
@@ -154,6 +138,8 @@ export function PipelineSummary({
                 key={path.id}
                 path={path}
                 defaultOpen={paths.length === 1}
+                onDeploy={onDeploy}
+                deployPending={deployPending}
               />
             ))}
           </div>

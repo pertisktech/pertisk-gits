@@ -32,7 +32,8 @@ export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
       j.status === 'success' ||
       j.status === 'failure' ||
       j.status === 'cancelled' ||
-      j.status === 'skipped',
+      j.status === 'skipped' ||
+      j.status === 'manual',
   )
 
   if (allTerminal) {
@@ -85,6 +86,7 @@ export function runStatusVariant(status: PipelineRun['status']) {
 export function jobStatusVariant(status: JobRun['status'] | 'pending') {
   if (status === 'success') return 'green' as const
   if (status === 'skipped') return 'gray' as const
+  if (status === 'manual') return 'yellow' as const
   if (status === 'failure' || status === 'cancelled') return 'red' as const
   if (status === 'running') return 'yellow' as const
   return 'gray' as const
@@ -96,7 +98,18 @@ export function statusDotClass(status: string): string {
   if (status === 'failure') return 'ci-status-dot-failure'
   if (status === 'cancelled') return 'ci-status-dot-cancelled'
   if (status === 'running') return 'ci-status-dot-running'
+  if (status === 'manual') return 'ci-status-dot-manual'
   return 'ci-status-dot-pending'
+}
+
+export function canPlayManualJob(job: JobRun, run: PipelineRun): boolean {
+  if (job.status !== 'manual') return false
+  const needs = job.needs ?? []
+  if (needs.length === 0) return true
+  return needs.every((name) => {
+    const dep = run.jobs.find((entry) => entry.job_name === name)
+    return dep != null && (dep.status === 'success' || dep.status === 'skipped')
+  })
 }
 
 export function isCancelledStatus(status: string) {

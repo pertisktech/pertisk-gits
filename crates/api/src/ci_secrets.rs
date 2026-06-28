@@ -50,11 +50,60 @@ pub enum CiSecretKind {
     File,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type, PartialEq, Eq)]
+#[sqlx(type_name = "ci_secret_environment", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+pub enum CiSecretEnvironment {
+    All,
+    Dev,
+    Qa,
+    Uat,
+    Prd,
+}
+
+impl CiSecretEnvironment {
+    pub fn matches_job(&self, job_environment: Option<&str>) -> bool {
+        if matches!(self, Self::All) {
+            return true;
+        }
+        let Some(job_env) = job_environment else {
+            return false;
+        };
+        self.as_str() == job_env
+    }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::All => "all",
+            Self::Dev => "dev",
+            Self::Qa => "qa",
+            Self::Uat => "uat",
+            Self::Prd => "prd",
+        }
+    }
+}
+
+impl std::str::FromStr for CiSecretEnvironment {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "all" => Ok(Self::All),
+            "dev" => Ok(Self::Dev),
+            "qa" => Ok(Self::Qa),
+            "uat" => Ok(Self::Uat),
+            "prd" | "prod" | "production" => Ok(Self::Prd),
+            other => Err(format!("invalid environment `{other}`")),
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct CiSecretSummary {
     id: Uuid,
     name: String,
     secret_kind: CiSecretKind,
+    environment: CiSecretEnvironment,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -63,12 +112,14 @@ struct CiSecretSummary {
 struct UpsertSecretRequest {
     name: String,
     secret_kind: Option<CiSecretKind>,
+    environment: Option<CiSecretEnvironment>,
     value: String,
 }
 
 #[derive(Deserialize)]
 struct UpdateSecretRequest {
     secret_kind: Option<CiSecretKind>,
+    environment: Option<CiSecretEnvironment>,
     value: Option<String>,
 }
 
@@ -92,12 +143,12 @@ async fn list_org_secrets(
     let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
     ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
 
-    let rows = sqlx::query_as::<_, (Uuid, String, CiSecretKind, DateTime<Utc>, DateTime<Utc>)>(
+    let rows = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiSecretEnvironment, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        SELECT id, name, secret_kind, created_at, updated_at
+        SELECT id, name, secret_kind, environment, created_at, updated_at
         FROM organization_secrets
         WHERE organization_id = $1
-        ORDER BY name ASC
+        ORDER BY environment ASC, name ASC
         "#,
     )
     .bind(org.id)
@@ -107,10 +158,11 @@ async fn list_org_secrets(
 
     Ok(Json(
         rows.into_iter()
-            .map(|(id, name, secret_kind, created_at, updated_at)| CiSecretSummary {
+            .map(|(id, name, secret_kind, environment, created_at, updated_at)| CiSecretSummary {
                 id,
                 name,
                 secret_kind,
+                environment,
                 created_at,
                 updated_at,
             })
@@ -128,30 +180,33 @@ async fn create_org_secret(
     ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
     let name = normalize_secret_name(&body.name)?;
     let kind = body.secret_kind.unwrap_or(CiSecretKind::Variable);
+    let environment = body.environment.unwrap_or(CiSecretEnvironment::All);
     let encrypted = state
         .secrets_crypto
         .encrypt(&body.value)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, DateTime<Utc>, DateTime<Utc>)>(
+    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiSecretEnvironment, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        INSERT INTO organization_secrets (organization_id, name, secret_kind, encrypted_value, created_by)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, name, secret_kind, created_at, updated_at
+        INSERT INTO organization_secrets (organization_id, name, secret_kind, environment, encrypted_value, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, name, secret_kind, environment, created_at, updated_at
         "#,
     )
     .bind(org.id)
     .bind(&name)
     .bind(kind)
+    .bind(environment)
     .bind(&encrypted)
     .bind(auth.user_id)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| {
         if let sqlx::Error::Database(db) = &e {
-            if db.constraint() == Some("organization_secrets_organization_id_name_key") {
+            if db.constraint() == Some("organization_secrets_org_name_env_key") {
                 return ApiError::from(DomainError::Validation(format!(
-                    "secret {name} already exists at group level"
+                    "secret {name} already exists for environment {env}",
+                    env = environment.as_str()
                 )));
             }
         }
@@ -164,8 +219,9 @@ async fn create_org_secret(
             id: row.0,
             name: row.1,
             secret_kind: row.2,
-            created_at: row.3,
-            updated_at: row.4,
+            environment: row.3,
+            created_at: row.4,
+            updated_at: row.5,
         }),
     ))
 }
@@ -209,16 +265,29 @@ async fn update_org_secret(
         .execute(&state.pool)
         .await
         .map_err(sqlx_error)?;
-    } else if body.secret_kind.is_some() {
-        sqlx::query(
-            "UPDATE organization_secrets SET secret_kind = $3, updated_at = NOW() WHERE id = $1 AND organization_id = $2",
-        )
-        .bind(secret_id)
-        .bind(org.id)
-        .bind(kind)
-        .execute(&state.pool)
-        .await
-        .map_err(sqlx_error)?;
+    } else if body.secret_kind.is_some() || body.environment.is_some() {
+        if body.secret_kind.is_some() {
+            sqlx::query(
+                "UPDATE organization_secrets SET secret_kind = $3, updated_at = NOW() WHERE id = $1 AND organization_id = $2",
+            )
+            .bind(secret_id)
+            .bind(org.id)
+            .bind(kind)
+            .execute(&state.pool)
+            .await
+            .map_err(sqlx_error)?;
+        }
+        if let Some(environment) = body.environment {
+            sqlx::query(
+                "UPDATE organization_secrets SET environment = $3, updated_at = NOW() WHERE id = $1 AND organization_id = $2",
+            )
+            .bind(secret_id)
+            .bind(org.id)
+            .bind(environment)
+            .execute(&state.pool)
+            .await
+            .map_err(sqlx_error)?;
+        }
     }
 
     fetch_org_secret_summary(&state.pool, org.id, secret_id).await
@@ -254,12 +323,12 @@ async fn list_repo_secrets(
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
-    let rows = sqlx::query_as::<_, (Uuid, String, CiSecretKind, DateTime<Utc>, DateTime<Utc>)>(
+    let rows = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiSecretEnvironment, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        SELECT id, name, secret_kind, created_at, updated_at
+        SELECT id, name, secret_kind, environment, created_at, updated_at
         FROM repository_secrets
         WHERE repository_id = $1
-        ORDER BY name ASC
+        ORDER BY environment ASC, name ASC
         "#,
     )
     .bind(repo.id)
@@ -269,10 +338,11 @@ async fn list_repo_secrets(
 
     Ok(Json(
         rows.into_iter()
-            .map(|(id, name, secret_kind, created_at, updated_at)| CiSecretSummary {
+            .map(|(id, name, secret_kind, environment, created_at, updated_at)| CiSecretSummary {
                 id,
                 name,
                 secret_kind,
+                environment,
                 created_at,
                 updated_at,
             })
@@ -291,30 +361,33 @@ async fn create_repo_secret(
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
     let name = normalize_secret_name(&body.name)?;
     let kind = body.secret_kind.unwrap_or(CiSecretKind::Variable);
+    let environment = body.environment.unwrap_or(CiSecretEnvironment::All);
     let encrypted = state
         .secrets_crypto
         .encrypt(&body.value)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, DateTime<Utc>, DateTime<Utc>)>(
+    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiSecretEnvironment, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        INSERT INTO repository_secrets (repository_id, name, secret_kind, encrypted_value, created_by)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, name, secret_kind, created_at, updated_at
+        INSERT INTO repository_secrets (repository_id, name, secret_kind, environment, encrypted_value, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, name, secret_kind, environment, created_at, updated_at
         "#,
     )
     .bind(repo.id)
     .bind(&name)
     .bind(kind)
+    .bind(environment)
     .bind(&encrypted)
     .bind(auth.user_id)
     .fetch_one(&state.pool)
     .await
     .map_err(|e| {
         if let sqlx::Error::Database(db) = &e {
-            if db.constraint() == Some("repository_secrets_repository_id_name_key") {
+            if db.constraint() == Some("repository_secrets_repo_name_env_key") {
                 return ApiError::from(DomainError::Validation(format!(
-                    "secret {name} already exists for this repository"
+                    "secret {name} already exists for environment {env}",
+                    env = environment.as_str()
                 )));
             }
         }
@@ -327,8 +400,9 @@ async fn create_repo_secret(
             id: row.0,
             name: row.1,
             secret_kind: row.2,
-            created_at: row.3,
-            updated_at: row.4,
+            environment: row.3,
+            created_at: row.4,
+            updated_at: row.5,
         }),
     ))
 }
@@ -373,16 +447,29 @@ async fn update_repo_secret(
         .execute(&state.pool)
         .await
         .map_err(sqlx_error)?;
-    } else if body.secret_kind.is_some() {
-        sqlx::query(
-            "UPDATE repository_secrets SET secret_kind = $3, updated_at = NOW() WHERE id = $1 AND repository_id = $2",
-        )
-        .bind(secret_id)
-        .bind(repo.id)
-        .bind(kind)
-        .execute(&state.pool)
-        .await
-        .map_err(sqlx_error)?;
+    } else if body.secret_kind.is_some() || body.environment.is_some() {
+        if body.secret_kind.is_some() {
+            sqlx::query(
+                "UPDATE repository_secrets SET secret_kind = $3, updated_at = NOW() WHERE id = $1 AND repository_id = $2",
+            )
+            .bind(secret_id)
+            .bind(repo.id)
+            .bind(kind)
+            .execute(&state.pool)
+            .await
+            .map_err(sqlx_error)?;
+        }
+        if let Some(environment) = body.environment {
+            sqlx::query(
+                "UPDATE repository_secrets SET environment = $3, updated_at = NOW() WHERE id = $1 AND repository_id = $2",
+            )
+            .bind(secret_id)
+            .bind(repo.id)
+            .bind(environment)
+            .execute(&state.pool)
+            .await
+            .map_err(sqlx_error)?;
+        }
     }
 
     fetch_repo_secret_summary(&state.pool, repo.id, secret_id).await
@@ -416,9 +503,9 @@ pub async fn load_job_secrets_for_runner(
     job_id: Uuid,
     runner_id: Uuid,
 ) -> Result<RunnerJobSecretsResponse, (StatusCode, String)> {
-    let context = sqlx::query_as::<_, (Uuid, Uuid)>(
+    let context = sqlx::query_as::<_, (Uuid, Uuid, Option<String>)>(
         r#"
-        SELECT r.organization_id, p.repository_id
+        SELECT r.organization_id, p.repository_id, j.effective_environment
         FROM job_runs j
         INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
         INNER JOIN repositories r ON r.id = p.repository_id
@@ -432,11 +519,11 @@ pub async fn load_job_secrets_for_runner(
     .map_err(|e| internal(e.to_string()))?
     .ok_or((StatusCode::NOT_FOUND, "job not found".into()))?;
 
-    let (org_id, repo_id) = context;
+    let (org_id, repo_id, job_environment) = context;
 
-    let org_rows = sqlx::query_as::<_, (String, CiSecretKind, Vec<u8>)>(
+    let org_rows = sqlx::query_as::<_, (String, CiSecretKind, CiSecretEnvironment, Vec<u8>)>(
         r#"
-        SELECT name, secret_kind, encrypted_value
+        SELECT name, secret_kind, environment, encrypted_value
         FROM organization_secrets
         WHERE organization_id = $1
         "#,
@@ -446,9 +533,9 @@ pub async fn load_job_secrets_for_runner(
     .await
     .map_err(|e| internal(e.to_string()))?;
 
-    let repo_rows = sqlx::query_as::<_, (String, CiSecretKind, Vec<u8>)>(
+    let repo_rows = sqlx::query_as::<_, (String, CiSecretKind, CiSecretEnvironment, Vec<u8>)>(
         r#"
-        SELECT name, secret_kind, encrypted_value
+        SELECT name, secret_kind, environment, encrypted_value
         FROM repository_secrets
         WHERE repository_id = $1
         "#,
@@ -459,13 +546,19 @@ pub async fn load_job_secrets_for_runner(
     .map_err(|e| internal(e.to_string()))?;
 
     let mut merged: HashMap<String, (CiSecretKind, String)> = HashMap::new();
-    for (name, kind, blob) in org_rows {
+    for (name, kind, environment, blob) in org_rows {
+        if !environment.matches_job(job_environment.as_deref()) {
+            continue;
+        }
         let value = crypto
             .decrypt(&blob)
             .map_err(|e| internal(e.to_string()))?;
         merged.insert(name, (kind, value));
     }
-    for (name, kind, blob) in repo_rows {
+    for (name, kind, environment, blob) in repo_rows {
+        if !environment.matches_job(job_environment.as_deref()) {
+            continue;
+        }
         let value = crypto
             .decrypt(&blob)
             .map_err(|e| internal(e.to_string()))?;
@@ -489,9 +582,9 @@ async fn fetch_org_secret_summary(
     org_id: Uuid,
     secret_id: Uuid,
 ) -> Result<Json<CiSecretSummary>, ApiError> {
-    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, DateTime<Utc>, DateTime<Utc>)>(
+    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiSecretEnvironment, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        SELECT id, name, secret_kind, created_at, updated_at
+        SELECT id, name, secret_kind, environment, created_at, updated_at
         FROM organization_secrets
         WHERE id = $1 AND organization_id = $2
         "#,
@@ -507,8 +600,9 @@ async fn fetch_org_secret_summary(
         id: row.0,
         name: row.1,
         secret_kind: row.2,
-        created_at: row.3,
-        updated_at: row.4,
+        environment: row.3,
+        created_at: row.4,
+        updated_at: row.5,
     }))
 }
 
@@ -517,9 +611,9 @@ async fn fetch_repo_secret_summary(
     repo_id: Uuid,
     secret_id: Uuid,
 ) -> Result<Json<CiSecretSummary>, ApiError> {
-    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, DateTime<Utc>, DateTime<Utc>)>(
+    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiSecretEnvironment, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        SELECT id, name, secret_kind, created_at, updated_at
+        SELECT id, name, secret_kind, environment, created_at, updated_at
         FROM repository_secrets
         WHERE id = $1 AND repository_id = $2
         "#,
@@ -535,8 +629,9 @@ async fn fetch_repo_secret_summary(
         id: row.0,
         name: row.1,
         secret_kind: row.2,
-        created_at: row.3,
-        updated_at: row.4,
+        environment: row.3,
+        created_at: row.4,
+        updated_at: row.5,
     }))
 }
 

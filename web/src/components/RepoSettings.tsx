@@ -249,7 +249,7 @@ export function RepoSettings({
           <>
             <SettingsPanel
               title="Repository secrets"
-              description="Available only to pipelines in this repository. Override group secrets with the same name."
+              description="Per-environment secrets for this repo (e.g. HARBOR_URL in dev vs qa). Overrides group secrets with the same name and environment."
             >
               <SecretsPanel
                 embedded

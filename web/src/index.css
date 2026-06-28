@@ -3481,6 +3481,10 @@ select.app-field:disabled,
   color: var(--color-naturals-n8);
 }
 
+.gha-status-icon--manual {
+  color: var(--color-primary);
+}
+
 .gha-run-header {
   display: flex;
   flex-wrap: wrap;
@@ -3664,6 +3668,40 @@ select.app-field:disabled,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.gha-job-item-play {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 9999px;
+  color: var(--color-primary);
+  flex-shrink: 0;
+}
+
+.gha-job-item-play:hover {
+  background: color-mix(in srgb, var(--color-primary) 12%, transparent);
+}
+
+.gha-job-header-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-primary-p3);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.gha-job-header-play:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .gha-run-main {
@@ -4135,6 +4173,40 @@ select.app-field:disabled,
 
 .pipeline-graph-node--skipped {
   opacity: 0.55;
+}
+
+.pipeline-graph-node-wrap {
+  position: relative;
+}
+
+.pipeline-graph-node--manual {
+  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-naturals-n4));
+  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-naturals-n3));
+}
+
+.pipeline-graph-node-play {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-primary-p3);
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow: 0 1px 3px color-mix(in srgb, #000 15%, transparent);
+  cursor: pointer;
+}
+
+.pipeline-graph-node-play:hover {
+  background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+}
+
+.ci-status-dot-manual {
+  background: var(--color-primary);
 }
 
 .react-flow__node {

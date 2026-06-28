@@ -15,7 +15,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use pertisk_git::explorer::RefKind;
 use pertisk_cicd::{
-    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, matches_pipeline_trigger,
+    convert_legacy_ci, detect_legacy_ci, effective_job_environment, normalize_environment,
+    parse_pipeline_yaml, matches_pipeline_trigger,
     RunContext, ScheduledJob, Scheduler, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
@@ -352,6 +353,10 @@ pub fn cicd_write_routes() -> Router<AppState> {
             "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/cancel-step",
             post(cancel_job_step),
         )
+        .route(
+            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/play",
+            post(play_manual_job),
+        )
         .route("/runners/register", post(register_runner))
         .route("/runners/{runner_id}", delete(delete_runner))
         .route("/runners/{runner_id}/rotate-token", post(rotate_runner_token))
@@ -466,6 +471,7 @@ struct PipelineRunResponse {
     commit_sha: String,
     ref_name: String,
     event_type: String,
+    target_environment: Option<String>,
     status: String,
     created_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
@@ -546,6 +552,7 @@ struct PipelineJobPreview {
     name: String,
     runs_on: String,
     image: Option<String>,
+    environment: Option<String>,
     needs: Vec<String>,
     step_count: usize,
     steps: Vec<JobStepResponse>,
@@ -567,6 +574,8 @@ struct TriggerPipelineRequest {
     commit_sha: String,
     ref_name: String,
     event_type: Option<String>,
+    /// Target deploy environment: dev, qa, uat, prd (optional — inferred from branch/tag when omitted).
+    environment: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -750,6 +759,7 @@ async fn get_pipeline_config_preview(
             name,
             runs_on: job.runs_on,
             image: job.image,
+            environment: job.environment,
             needs: job.needs.clone(),
             step_count: job.steps.len(),
             steps: job
@@ -792,7 +802,7 @@ async fn list_pipeline_runs(
 
     let runs = sqlx::query_as::<_, PipelineRunRow>(
         r#"
-        SELECT id, commit_sha, ref_name, event_type::text, status::text, created_at, started_at, finished_at
+        SELECT id, commit_sha, ref_name, event_type::text, target_environment, status::text, created_at, started_at, finished_at
         FROM pipeline_runs
         WHERE repository_id = $1
         ORDER BY created_at DESC
@@ -904,6 +914,9 @@ async fn trigger_pipeline(
     ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
 
     let event_type = body.event_type.as_deref().unwrap_or("manual");
+    let target_environment = resolve_trigger_environment(body.environment.as_deref(), event_type, &body.ref_name)
+        .map_err(|msg| DomainError::Validation(msg))?;
+
     let run_id = process_trigger_now(
         &state,
         repo.id,
@@ -912,6 +925,7 @@ async fn trigger_pipeline(
         &body.commit_sha,
         &body.ref_name,
         event_type,
+        target_environment.as_deref(),
     )
     .await
     .map_err(|e| match e {
@@ -982,7 +996,11 @@ async fn rerun_pipeline(
         DomainError::Validation(format!("invalid pipeline config: {e}"))
     })?;
 
-    let run_ctx = RunContext::from_trigger(&run.event_type, &run.ref_name);
+    let run_ctx = RunContext::from_trigger_with_environment(
+        &run.event_type,
+        &run.ref_name,
+        run.target_environment.clone(),
+    );
     let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         DomainError::Validation(format!("schedule failed: {e}"))
     })?;
@@ -1015,6 +1033,7 @@ async fn rerun_pipeline(
         &config_path,
         &jobs,
         mode,
+        run.target_environment.as_deref(),
     )
     .await
     .map_err(sqlx_error)?;
@@ -1083,6 +1102,41 @@ async fn cancel_job_step(
                 .into(),
             }
         })?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+    let jobs = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
+    Ok(Json(run.into_response(jobs)))
+}
+
+async fn play_manual_job(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_slug, repo_slug, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
+) -> Result<Json<PipelineRunResponse>, ApiError> {
+    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+
+    play_manual_job_run(&state.pool, repo.id, run_id, job_id)
+        .await
+        .map_err(|e| -> ApiError {
+            match e {
+                PlayManualError::NotFound => DomainError::NotFound.into(),
+                PlayManualError::NotManual => {
+                    DomainError::Validation("job is not waiting for manual trigger".into()).into()
+                }
+                PlayManualError::Blocked => DomainError::Validation(
+                    "upstream jobs must finish before running this manual job".into(),
+                )
+                .into(),
+            }
+        })?;
+
+    sync_pipeline_run_state(&state.pool, run_id)
+        .await
+        .map_err(sqlx_error)?;
 
     let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
         .await
@@ -2093,6 +2147,7 @@ pub async fn flush_pending_triggers(state: &AppState) -> anyhow::Result<u32> {
                     &trigger.commit_sha,
                     &trigger.ref_name,
                     &trigger.event_type,
+                    None,
                 )
                 .await
                 {
@@ -2167,6 +2222,7 @@ async fn process_trigger_now(
     commit_sha: &str,
     ref_name: &str,
     event_type: &str,
+    target_environment: Option<&str>,
 ) -> Result<Uuid, sqlx::Error> {
     let repo_path = pertisk_git::config::repo_disk_path(&state.config.repos_root, org_slug, repo_slug);
     let Some((config_yaml, config_path)) = read_pipeline_config(&repo_path, commit_sha).await else {
@@ -2181,15 +2237,26 @@ async fn process_trigger_now(
         return Err(sqlx::Error::RowNotFound);
     }
 
-    let run_ctx = RunContext::from_trigger(event_type, ref_name);
+    let resolved_env = resolve_trigger_environment(
+        target_environment,
+        event_type,
+        ref_name,
+    )
+    .map_err(|msg| sqlx::Error::Protocol(msg.into()))?;
+
+    let run_ctx = RunContext::from_trigger_with_environment(
+        event_type,
+        ref_name,
+        resolved_env.clone(),
+    );
     let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         sqlx::Error::Protocol(format!("schedule failed: {e}").into())
     })?;
 
     let run_id = sqlx::query_scalar::<_, Uuid>(
         r#"
-        INSERT INTO pipeline_runs (repository_id, commit_sha, ref_name, event_type, status, config_path, started_at)
-        VALUES ($1, $2, $3, $4::pipeline_event_type, 'queued', $5, NOW())
+        INSERT INTO pipeline_runs (repository_id, commit_sha, ref_name, event_type, target_environment, status, config_path, started_at)
+        VALUES ($1, $2, $3, $4::pipeline_event_type, $5, 'queued', $6, NOW())
         RETURNING id
         "#,
     )
@@ -2197,6 +2264,7 @@ async fn process_trigger_now(
     .bind(commit_sha)
     .bind(ref_name)
     .bind(event_type)
+    .bind(resolved_env.as_deref())
     .bind(config_path)
     .fetch_one(&state.pool)
     .await?;
@@ -2209,10 +2277,25 @@ async fn process_trigger_now(
         run_id,
         &jobs,
         MaterializeMode::Fresh,
+        run_ctx.environment.as_deref(),
     )
     .await?;
 
     Ok(run_id)
+}
+
+fn resolve_trigger_environment(
+    explicit: Option<&str>,
+    event_type: &str,
+    ref_name: &str,
+) -> Result<Option<String>, String> {
+    if let Some(raw) = explicit {
+        let normalized = normalize_environment(raw).ok_or_else(|| {
+            format!("invalid environment `{raw}` — use dev, qa, uat, or prd")
+        })?;
+        return Ok(Some(normalized));
+    }
+    Ok(RunContext::from_trigger(event_type, ref_name).environment)
 }
 
 async fn reset_pipeline_run(
@@ -2224,6 +2307,7 @@ async fn reset_pipeline_run(
     config_path: &str,
     jobs: &[ScheduledJob],
     mode: MaterializeMode,
+    run_environment: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
@@ -2238,7 +2322,17 @@ async fn reset_pipeline_run(
     .execute(pool)
     .await?;
 
-    materialize_jobs_for_run(pool, store, repository_id, commit_sha, run_id, jobs, mode).await
+    materialize_jobs_for_run(
+        pool,
+        store,
+        repository_id,
+        commit_sha,
+        run_id,
+        jobs,
+        mode,
+        run_environment,
+    )
+    .await
 }
 
 async fn fetch_job_status_map(
@@ -2263,7 +2357,7 @@ fn job_should_reset(mode: MaterializeMode, existing_status: Option<&str>) -> boo
         MaterializeMode::Fresh | MaterializeMode::RerunAll => true,
         MaterializeMode::RerunFailed => match existing_status {
             None => true,
-            Some("success") | Some("skipped") => false,
+            Some("success") | Some("skipped") | Some("manual") => false,
             Some(_) => true,
         },
     }
@@ -2339,6 +2433,7 @@ async fn materialize_jobs_for_run(
     run_id: Uuid,
     jobs: &[ScheduledJob],
     mode: MaterializeMode,
+    run_environment: Option<&str>,
 ) -> Result<(), sqlx::Error> {
     let job_names: Vec<String> = jobs.iter().map(|job| job.name.clone()).collect();
     let existing_statuses = fetch_job_status_map(pool, run_id).await?;
@@ -2354,16 +2449,17 @@ async fn materialize_jobs_for_run(
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
         let artifacts_json =
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
-        let status = if job.skipped { "skipped" } else { "queued" };
-        let initial_log = if job.skipped {
-            "=== skipped (if condition not met)\n"
-        } else {
-            ""
-        };
+        let status = job.db_status();
+        let initial_log = job.initial_log();
+        let effective_environment = effective_job_environment(
+            job.job.environment.as_deref(),
+            run_environment,
+            &job.name,
+        );
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, status, log_text, finished_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::job_run_status, $11, CASE WHEN $12 THEN NOW() ELSE NULL END)
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, status, log_text, finished_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::job_run_status, $12, CASE WHEN $13 THEN NOW() ELSE NULL END)
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
@@ -2373,6 +2469,7 @@ async fn materialize_jobs_for_run(
                 artifacts_json = EXCLUDED.artifacts_json,
                 needs = EXCLUDED.needs,
                 timeout_minutes = EXCLUDED.timeout_minutes,
+                effective_environment = EXCLUDED.effective_environment,
                 status = EXCLUDED.status,
                 runner_id = NULL,
                 metrics_json = NULL,
@@ -2393,17 +2490,14 @@ async fn materialize_jobs_for_run(
         .bind(artifacts_json)
         .bind(&job.job.needs)
         .bind(job.job.timeout_minutes.map(|m| m as i32))
+        .bind(effective_environment.as_deref())
         .bind(status)
         .bind(initial_log)
-        .bind(job.skipped)
+        .bind(job.finishes_immediately())
         .execute(pool)
         .await?;
 
-        let (commit_state, commit_description) = if job.skipped {
-            ("success", "Skipped")
-        } else {
-            ("pending", "Queued")
-        };
+        let (commit_state, commit_description) = job.commit_status();
         sqlx::query(
             r#"
             INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id, required)
@@ -2485,7 +2579,7 @@ async fn materialize_jobs_for_run(
 }
 
 fn has_runnable_jobs(jobs: &[ScheduledJob]) -> bool {
-    jobs.iter().any(|job| !job.skipped)
+    jobs.iter().any(|job| !job.skipped())
 }
 
 async fn resolve_git_ref(
@@ -2990,6 +3084,7 @@ struct PipelineRunRow {
     commit_sha: String,
     ref_name: String,
     event_type: String,
+    target_environment: Option<String>,
     status: String,
     created_at: DateTime<Utc>,
     started_at: Option<DateTime<Utc>>,
@@ -3003,6 +3098,7 @@ impl PipelineRunRow {
             commit_sha: self.commit_sha,
             ref_name: self.ref_name,
             event_type: self.event_type,
+            target_environment: self.target_environment,
             status: self.status,
             created_at: self.created_at,
             started_at: self.started_at,
@@ -3130,7 +3226,7 @@ async fn fetch_pipeline_run(
 ) -> Result<Option<PipelineRunRow>, sqlx::Error> {
     sqlx::query_as::<_, PipelineRunRow>(
         r#"
-        SELECT id, commit_sha, ref_name, event_type::text, status::text, created_at, started_at, finished_at
+        SELECT id, commit_sha, ref_name, event_type::text, target_environment, status::text, created_at, started_at, finished_at
         FROM pipeline_runs
         WHERE id = $1 AND repository_id = $2
         "#,
@@ -3393,6 +3489,13 @@ enum CancelError {
     NotCancellable,
 }
 
+#[derive(Debug)]
+enum PlayManualError {
+    NotFound,
+    NotManual,
+    Blocked,
+}
+
 #[derive(Serialize)]
 struct RunnerJobControlResponse {
     pipeline_cancelled: bool,
@@ -3590,6 +3693,106 @@ async fn cancel_job_step_run(
     let _ = update_commit_status_for_job(pool, job_id, "cancelled", &job_name).await;
     let _ = finalize_pipeline_run_if_done(pool, run_id).await;
     let _ = release_idle_runners(pool).await;
+
+    Ok(())
+}
+
+async fn play_manual_job_run(
+    pool: &PgPool,
+    repo_id: Uuid,
+    run_id: Uuid,
+    job_id: Uuid,
+) -> Result<(), PlayManualError> {
+    let row = sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT j.status::text, j.job_name
+        FROM job_runs j
+        INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+        WHERE j.id = $1 AND j.pipeline_run_id = $2 AND p.repository_id = $3
+        "#,
+    )
+    .bind(job_id)
+    .bind(run_id)
+    .bind(repo_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| PlayManualError::NotFound)?
+    .ok_or(PlayManualError::NotFound)?;
+
+    if row.0 != "manual" {
+        return Err(PlayManualError::NotManual);
+    }
+
+    let blocked = sqlx::query_scalar::<_, i64>(
+        r#"
+        SELECT COUNT(*)
+        FROM job_runs dep
+        INNER JOIN job_runs j ON j.id = $1
+        WHERE dep.pipeline_run_id = j.pipeline_run_id
+          AND dep.job_name = ANY(j.needs)
+          AND dep.status NOT IN ('success', 'skipped')
+        "#,
+    )
+    .bind(job_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|_| PlayManualError::NotFound)?;
+
+    if blocked > 0 {
+        return Err(PlayManualError::Blocked);
+    }
+
+    let played = sqlx::query_as::<_, (String,)>(
+        r#"
+        UPDATE job_runs
+        SET status = 'queued'::job_run_status,
+            log_text = '',
+            queued_at = NOW(),
+            started_at = NULL,
+            finished_at = NULL,
+            runner_id = NULL,
+            metrics_json = NULL
+        WHERE id = $1 AND status = 'manual'::job_run_status
+        RETURNING job_name
+        "#,
+    )
+    .bind(job_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| PlayManualError::NotFound)?
+    .ok_or(PlayManualError::NotManual)?;
+
+    sqlx::query(
+        r#"
+        UPDATE pipeline_runs
+        SET status = 'running'::pipeline_run_status,
+            finished_at = NULL
+        WHERE id = $1 AND status IN ('success', 'failure', 'cancelled', 'skipped')
+        "#,
+    )
+    .bind(run_id)
+    .execute(pool)
+    .await
+    .map_err(|_| PlayManualError::NotFound)?;
+
+    let job_name = played.0;
+    sqlx::query(
+        r#"
+        UPDATE commit_statuses cs
+        SET state = 'pending'::commit_status_state,
+            description = 'Queued',
+            updated_at = NOW()
+        FROM pipeline_runs p
+        WHERE cs.pipeline_run_id = p.id
+          AND p.id = $1
+          AND cs.context = $2
+        "#,
+    )
+    .bind(run_id)
+    .bind(format!("ci/{job_name}"))
+    .execute(pool)
+    .await
+    .map_err(|_| PlayManualError::NotFound)?;
 
     Ok(())
 }

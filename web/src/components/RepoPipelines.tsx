@@ -5,14 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CiConvertResult } from '../api/types'
 import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
-import {
-  filterJobsForViewRef,
-  pipelineRefName,
-  previewEventForRef,
-  refTriggersOnPush,
-  viewRefFromKind,
-  type SummaryViewRef,
-} from '../lib/pipelineSummary'
+import { pipelineRefName, type CiEnvironment } from '../lib/pipelineSummary'
 import {
   isRunInProgress,
   pipelineUrl,
@@ -23,6 +16,7 @@ import {
 import { PipelineGraph } from './PipelineGraph'
 import { PipelineRunsTable } from './PipelineRunsTable'
 import { PipelineSummary } from './PipelineSummary'
+import { RunPipelineDialog, type RunPipelineParams } from './RunPipelineDialog'
 import { EmptyState, PrimaryButton, SecondaryButton } from './ui'
 
 function PipelineMigratePanel({
@@ -120,100 +114,6 @@ export {
   shortSha,
 } from '../lib/pipelineStatus'
 
-function PipelineRefToolbar({
-  viewRefKind,
-  activeRefName,
-  refList,
-  branchCount,
-  tagCount,
-  disabled,
-  showAllPaths,
-  onShowAllPathsChange,
-  showRunWorkflow,
-  runWorkflowPending,
-  onRefKindChange,
-  onRefChange,
-  onRunWorkflow,
-}: {
-  viewRefKind: 'branch' | 'tag'
-  activeRefName: string
-  refList: string[]
-  branchCount: number
-  tagCount: number
-  disabled?: boolean
-  showAllPaths?: boolean
-  onShowAllPathsChange?: (value: boolean) => void
-  showRunWorkflow?: boolean
-  runWorkflowPending?: boolean
-  onRefKindChange: (kind: 'branch' | 'tag') => void
-  onRefChange: (name: string) => void
-  onRunWorkflow?: () => void
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {onShowAllPathsChange && (
-        <label className="pipeline-summary-filter mr-1">
-          <input
-            type="checkbox"
-            checked={showAllPaths ?? true}
-            disabled={disabled}
-            onChange={(event) => onShowAllPathsChange(event.target.checked)}
-          />
-          Show all
-        </label>
-      )}
-      <select
-        id="pipeline-ref-kind"
-        value={viewRefKind}
-        onChange={(event) => onRefKindChange(event.target.value as 'branch' | 'tag')}
-        className="app-branch-select"
-        aria-label="Reference type"
-        disabled={disabled}
-      >
-        <option value="branch">Branch</option>
-        <option value="tag">Tag</option>
-      </select>
-      <select
-        id="pipeline-view-ref"
-        value={activeRefName}
-        onChange={(event) => onRefChange(event.target.value)}
-        className="app-branch-select min-w-[8rem]"
-        disabled={disabled || refList.length === 0}
-        aria-label={viewRefKind === 'tag' ? 'Tag' : 'Branch'}
-      >
-        {refList.length === 0 ? (
-          <option value={activeRefName}>
-            {viewRefKind === 'tag' ? 'No tags' : activeRefName}
-          </option>
-        ) : (
-          refList.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))
-        )}
-      </select>
-      <span className="text-sm text-text-secondary whitespace-nowrap">
-        {branchCount} Branch.{`  ${tagCount} Tags`}
-      </span>
-      {showRunWorkflow && onRunWorkflow && (
-        <PrimaryButton
-          type="button"
-          disabled={disabled || runWorkflowPending || refList.length === 0}
-          onClick={onRunWorkflow}
-        >
-          {runWorkflowPending ? (
-            <Loader2 size={14} className="animate-spin" />
-          ) : (
-            <Play size={14} />
-          )}
-          Run workflow
-        </PrimaryButton>
-      )}
-    </div>
-  )
-}
-
 export function RepoPipelines({
   token,
   orgSlug,
@@ -227,9 +127,12 @@ export function RepoPipelines({
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
-  const [viewRefKind, setViewRefKind] = useState<'branch' | 'tag'>('branch')
-  const [viewRefOverride, setViewRefOverride] = useState<string | null>(null)
-  const [showAllPaths, setShowAllPaths] = useState(true)
+  const [runDialogOpen, setRunDialogOpen] = useState(false)
+  const [runDialogPreset, setRunDialogPreset] = useState<{
+    environment?: CiEnvironment
+    refKind?: 'branch' | 'tag'
+    refName?: string
+  }>({})
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
@@ -238,53 +141,32 @@ export function RepoPipelines({
   })
 
   const browser = browserData?.browser
-  const refList = useMemo(
-    () =>
-      viewRefKind === 'tag'
-        ? browser?.tags ?? []
-        : browser?.branches?.length
-          ? browser.branches
-          : [defaultBranch],
-    [viewRefKind, browser?.tags, browser?.branches, defaultBranch],
-  )
-  const activeRefName = useMemo(() => {
-    if (viewRefOverride && refList.includes(viewRefOverride)) return viewRefOverride
-    const preferred = viewRefKind === 'branch' ? (browser?.default_ref ?? defaultBranch) : refList[0]
-    if (preferred && refList.includes(preferred)) return preferred
-    return refList[0] ?? defaultBranch
-  }, [viewRefOverride, refList, viewRefKind, browser?.default_ref, defaultBranch])
-
-  const viewRef = useMemo(
-    () => viewRefFromKind(viewRefKind, activeRefName),
-    [viewRefKind, activeRefName],
-  )
-
+  const configRef = browser?.default_ref ?? defaultBranch
+  const branches = browser?.branches ?? []
+  const tags = browser?.tags ?? []
   const repoEmpty = browserData?.browser.empty ?? false
 
-  const branchCount = browser?.branches?.length ?? 0
-  const tagCount = browser?.tags?.length ?? 0
-
   const { data: hasPipelineConfig = false, isLoading: configLoading } = useQuery({
-    queryKey: ['pipeline-config', orgSlug, repoSlug, viewRefKind, activeRefName],
+    queryKey: ['pipeline-config', orgSlug, repoSlug, configRef],
     queryFn: async () => {
       const tree = await api.getRepoTree(
         orgSlug,
         repoSlug,
-        { ref: activeRefName, ref_kind: viewRefKind },
+        { ref: configRef, ref_kind: 'branch' },
         token,
       )
       return tree.entries.some(
         (entry) => PIPELINE_CONFIG_FILES.has(entry.name) && entry.kind === 'blob',
       )
     },
-    enabled: Boolean(token && orgSlug && repoSlug && activeRefName && browserData && !repoEmpty),
+    enabled: Boolean(token && orgSlug && repoSlug && configRef && browserData && !repoEmpty),
   })
 
   const { data: migrateData, isLoading: migrateLoading } = useQuery({
-    queryKey: ['pipeline-migrate', orgSlug, repoSlug, viewRefKind, activeRefName],
-    queryFn: () => api.getPipelineMigrate(token, orgSlug, repoSlug, activeRefName),
+    queryKey: ['pipeline-migrate', orgSlug, repoSlug, configRef],
+    queryFn: () => api.getPipelineMigrate(token, orgSlug, repoSlug, configRef),
     enabled: Boolean(
-      token && orgSlug && repoSlug && activeRefName && browserData && !repoEmpty && !hasPipelineConfig,
+      token && orgSlug && repoSlug && configRef && browserData && !repoEmpty && !hasPipelineConfig,
     ),
   })
 
@@ -303,42 +185,33 @@ export function RepoPipelines({
     },
   })
 
-  const { data: pipelineConfig } = useQuery({
-    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, viewRefKind, activeRefName],
-    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, activeRefName, viewRefKind),
-    enabled: Boolean(token && orgSlug && repoSlug && activeRefName && hasPipelineConfig),
-    retry: false,
-    staleTime: 5 * 60_000,
-  })
-
-  const autoTriggerRef = useMemo(
-    () => refTriggersOnPush(pipelineConfig, viewRef, viewRefKind),
-    [pipelineConfig, viewRef, viewRefKind],
-  )
+  const triggerPipelineRun = async ({ refKind, refName, environment }: RunPipelineParams) => {
+    const commits = await api.getRepoCommits(
+      orgSlug,
+      repoSlug,
+      { ref: refName, limit: 1, ref_kind: refKind },
+      token,
+    )
+    const head = commits.commits[0]
+    if (!head) {
+      throw new Error(
+        refKind === 'tag'
+          ? `No commits for tag ${refName}`
+          : `No commits on branch ${refName}`,
+      )
+    }
+    return api.triggerPipeline(token, orgSlug, repoSlug, {
+      commit_sha: head.sha,
+      ref_name: pipelineRefName(refKind, refName),
+      event_type: 'manual',
+      environment,
+    })
+  }
 
   const triggerMutation = useMutation({
-    mutationFn: async () => {
-      const commits = await api.getRepoCommits(
-        orgSlug,
-        repoSlug,
-        { ref: activeRefName, limit: 1, ref_kind: viewRefKind },
-        token,
-      )
-      const head = commits.commits[0]
-      if (!head) {
-        throw new Error(
-          viewRefKind === 'tag'
-            ? `No commits for tag ${activeRefName}`
-            : `No commits on branch ${activeRefName}`,
-        )
-      }
-      return api.triggerPipeline(token, orgSlug, repoSlug, {
-        commit_sha: head.sha,
-        ref_name: pipelineRefName(viewRefKind, activeRefName),
-        event_type: 'manual',
-      })
-    },
+    mutationFn: triggerPipelineRun,
     onSuccess: (newRun) => {
+      setRunDialogOpen(false)
       queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, repoSlug] })
       navigate(pipelineUrl(orgSlug, repoSlug, newRun.id))
     },
@@ -361,6 +234,11 @@ export function RepoPipelines({
     },
   })
 
+  function openRunDialog(preset: typeof runDialogPreset = {}) {
+    setRunDialogPreset(preset)
+    setRunDialogOpen(true)
+  }
+
   const toolbarDisabled = browserLoading
   const contentLoading =
     browserLoading || configLoading || (migrateLoading && !hasPipelineConfig) || isLoading
@@ -371,9 +249,9 @@ export function RepoPipelines({
     body = (
       <div className="app-panel-body">
         <EmptyState
-        icon={<Workflow size={40} />}
-        title="Push code to enable CI/CD"
-        description="Pipelines run after you push commits to this repository. Use the Code tab clone instructions to push your first commit."
+          icon={<Workflow size={40} />}
+          title="Push code to enable CI/CD"
+          description="Pipelines run after you push commits to this repository. Use the Code tab clone instructions to push your first commit."
         />
       </div>
     )
@@ -389,7 +267,7 @@ export function RepoPipelines({
       <div className="p-4">
         <p className="text-sm text-text-secondary">
           No <code className="text-xs font-mono">.pertisk-ci.yaml</code> on{' '}
-          <span className="font-mono">{refLabel(pipelineRefName(viewRefKind, activeRefName))}</span>.
+          <span className="font-mono">{refLabel(pipelineRefName('branch', configRef))}</span>.
           Add a CI config file to the repository root to get started.
         </p>
         {migrationSuggestions.length > 0 ? (
@@ -428,12 +306,6 @@ jobs:
   } else {
     body = (
       <div className="space-y-4 p-4">
-        {autoTriggerRef && (
-          <p className="text-sm text-text-secondary">
-            Pushes to this {viewRefKind} start the pipeline automatically.
-          </p>
-        )}
-
         {triggerMutation.isError && (
           <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
             {(triggerMutation.error as Error).message}
@@ -450,11 +322,8 @@ jobs:
           token={token}
           orgSlug={orgSlug}
           repoSlug={repoSlug}
-          configRef={activeRefName}
-          configRefKind={viewRefKind}
-          viewRef={viewRef}
-          showAllPaths={showAllPaths}
-          onShowAllPathsChange={setShowAllPaths}
+          configRef={configRef}
+          onDeploy={(environment) => openRunDialog({ environment: environment as CiEnvironment })}
         />
 
         <PipelineRunsTable
@@ -473,24 +342,20 @@ jobs:
     <div className="space-y-4 min-w-0">
       <div className="app-panel">
         <div className="app-toolbar flex-wrap justify-end gap-2">
-          <PipelineRefToolbar
-            viewRefKind={viewRefKind}
-            activeRefName={activeRefName}
-            refList={refList}
-            branchCount={branchCount}
-            tagCount={tagCount}
-            disabled={toolbarDisabled}
-            showAllPaths={showAllPaths}
-            onShowAllPathsChange={setShowAllPaths}
-            showRunWorkflow={!contentLoading && hasPipelineConfig && !autoTriggerRef}
-            runWorkflowPending={triggerMutation.isPending}
-            onRefKindChange={(kind) => {
-              setViewRefKind(kind)
-              setViewRefOverride(null)
-            }}
-            onRefChange={setViewRefOverride}
-            onRunWorkflow={() => triggerMutation.mutate()}
-          />
+          {!contentLoading && hasPipelineConfig && (
+            <PrimaryButton
+              type="button"
+              disabled={toolbarDisabled || triggerMutation.isPending}
+              onClick={() => openRunDialog()}
+            >
+              {triggerMutation.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Play size={14} />
+              )}
+              Run pipeline
+            </PrimaryButton>
+          )}
         </div>
 
         <div className="app-panel-body flush space-y-0">
@@ -498,19 +363,6 @@ jobs:
             <h2 className="text-base font-semibold text-text">Workflow runs</h2>
             <p className="text-sm text-text-secondary mt-0.5">
               CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
-              {showAllPaths ? (
-                <span className="text-muted"> · all paths</span>
-              ) : viewRef.branch ? (
-                <span className="text-muted">
-                  {' '}
-                  · viewing <span className="font-mono">{viewRef.branch}</span>
-                </span>
-              ) : viewRef.tag ? (
-                <span className="text-muted">
-                  {' '}
-                  · viewing tag <span className="font-mono">{viewRef.tag}</span>
-                </span>
-              ) : null}
               {!contentLoading && runs.length > 0 && (
                 <span className="text-muted"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
               )}
@@ -519,6 +371,22 @@ jobs:
           {body}
         </div>
       </div>
+
+      <RunPipelineDialog
+        open={runDialogOpen}
+        branches={branches}
+        tags={tags}
+        defaultBranch={configRef}
+        pending={triggerMutation.isPending}
+        initialEnvironment={runDialogPreset.environment ?? 'dev'}
+        initialRefKind={runDialogPreset.refKind ?? 'branch'}
+        initialRefName={runDialogPreset.refName}
+        lockEnvironment={runDialogPreset.environment != null}
+        onClose={() => {
+          if (!triggerMutation.isPending) setRunDialogOpen(false)
+        }}
+        onRun={(params) => triggerMutation.mutate(params)}
+      />
     </div>
   )
 }
@@ -528,57 +396,40 @@ function PipelineConfigGraph({
   orgSlug,
   repoSlug,
   configRef,
-  configRefKind,
-  viewRef,
-  showAllPaths,
-  onShowAllPathsChange,
+  onDeploy,
 }: {
   token: string
   orgSlug: string
   repoSlug: string
   configRef: string
-  configRefKind: 'branch' | 'tag'
-  viewRef: SummaryViewRef
-  showAllPaths: boolean
-  onShowAllPathsChange: (value: boolean) => void
+  onDeploy?: (environment: string) => void
 }) {
   const [selectedJobName, setSelectedJobName] = useState<string | null>(null)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, configRefKind, configRef],
-    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, configRef, configRefKind),
+    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, 'branch', configRef],
+    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, configRef, 'branch'),
     enabled: Boolean(token && orgSlug && repoSlug && configRef),
     retry: false,
     staleTime: 5 * 60_000,
   })
 
-  const previewEvent = useMemo(
-    () => previewEventForRef(viewRef, configRefKind),
-    [viewRef, configRefKind],
-  )
-
-  const visibleJobs = useMemo(() => {
-    if (!data?.jobs) return []
-    if (showAllPaths) return data.jobs
-    return filterJobsForViewRef(data.jobs, viewRef, previewEvent)
-  }, [data?.jobs, showAllPaths, viewRef, previewEvent])
-
   const jobs: PipelineGraphJob[] = useMemo(
     () =>
-      visibleJobs.map((job) => ({
+      (data?.jobs ?? []).map((job) => ({
         name: job.name,
         runs_on: job.runs_on,
-        needs: job.needs.filter((dep) => visibleJobs.some((entry) => entry.name === dep)),
+        needs: job.needs,
         step_count: job.step_count,
       })),
-    [visibleJobs],
+    [data?.jobs],
   )
 
-  const selectedJob = visibleJobs.find((job) => job.name === selectedJobName) ?? null
+  const selectedJob = data?.jobs.find((job) => job.name === selectedJobName) ?? null
 
   useEffect(() => {
     setSelectedJobName(null)
-  }, [configRef, configRefKind, showAllPaths])
+  }, [configRef])
 
   if (isError) {
     return (
@@ -593,14 +444,7 @@ function PipelineConfigGraph({
 
   return (
     <div className="rounded-lg border border-naturals-n4 overflow-hidden">
-      {data && (
-        <PipelineSummary
-          config={data}
-          viewRef={viewRef}
-          showAllPaths={showAllPaths}
-          onShowAllPathsChange={onShowAllPathsChange}
-        />
-      )}
+      {data && <PipelineSummary config={data} onDeploy={onDeploy} />}
       <div className="px-3 py-2 border-b border-naturals-n4 bg-naturals-n3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-text">Workflow graph</h3>

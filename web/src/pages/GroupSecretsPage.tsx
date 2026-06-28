@@ -15,8 +15,9 @@ export function GroupSecretsPage() {
         <div className="min-w-0">
           <h1 className="text-lg font-semibold text-text">Secrets</h1>
           <p className="text-sm text-text-secondary">
-            Group-level secrets are available to every pipeline in this group. Repository secrets
-            override group secrets with the same name.
+            Configure secrets per environment (dev / qa / uat / prd). Use the same name — e.g.{' '}
+            <code className="font-mono text-xs">HARBOR_URL</code> — with a different value in each
+            environment. Repository secrets override group secrets with the same name and environment.
           </p>
         </div>
       </div>

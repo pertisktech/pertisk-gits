@@ -2,15 +2,26 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::pattern::{glob_match, matches_any_pattern};
 
+use crate::environment::infer_environment_from_ref;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RunContext {
     pub event_type: String,
     pub branch: Option<String>,
     pub tag: Option<String>,
+    pub environment: Option<String>,
 }
 
 impl RunContext {
     pub fn from_trigger(event_type: &str, ref_name: &str) -> Self {
+        Self::from_trigger_with_environment(event_type, ref_name, None)
+    }
+
+    pub fn from_trigger_with_environment(
+        event_type: &str,
+        ref_name: &str,
+        target_environment: Option<String>,
+    ) -> Self {
         let tag = ref_name.strip_prefix("refs/tags/").map(str::to_string);
         let branch = if tag.is_none() {
             Some(
@@ -22,10 +33,14 @@ impl RunContext {
         } else {
             None
         };
+        let environment = target_environment.or_else(|| {
+            infer_environment_from_ref(branch.as_deref(), tag.as_deref())
+        });
         Self {
             event_type: event_type.to_string(),
             branch,
             tag,
+            environment,
         }
     }
 }
@@ -38,6 +53,8 @@ pub struct JobIfCondition {
     pub tag: Option<IfTagCondition>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub event: Option<IfStringList>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub environment: Option<IfStringList>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,7 +65,7 @@ pub enum IfStringList {
 }
 
 impl IfStringList {
-    fn patterns(&self) -> Vec<&str> {
+    pub(crate) fn patterns(&self) -> Vec<&str> {
         match self {
             Self::One(value) => vec![value.as_str()],
             Self::Many(values) => values.iter().map(String::as_str).collect(),
@@ -107,6 +124,7 @@ fn parse_if_expression(expr: &str) -> Result<JobIfCondition, String> {
     let mut branch = Vec::new();
     let mut tag = Vec::new();
     let mut event = Vec::new();
+    let mut environment = Vec::new();
 
     for part in trimmed.split("||").map(str::trim).filter(|part| !part.is_empty()) {
         if part == "tag" {
@@ -120,6 +138,7 @@ fn parse_if_expression(expr: &str) -> Result<JobIfCondition, String> {
                 "branch" => branch.push(value),
                 "tag" => tag.push(value),
                 "event" => event.push(value),
+                "environment" => environment.push(value),
                 other => return Err(format!("unsupported if field `{other}`")),
             }
             continue;
@@ -132,6 +151,7 @@ fn parse_if_expression(expr: &str) -> Result<JobIfCondition, String> {
         branch: non_empty_list(branch),
         tag: non_empty_tag_list(tag),
         event: non_empty_list(event),
+        environment: non_empty_list(environment),
     })
 }
 
@@ -171,7 +191,55 @@ fn non_empty_tag_list(values: Vec<String>) -> Option<IfTagCondition> {
 
 pub struct JobIfMatcher;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JobScheduleMode {
+    /// Not part of this pipeline run.
+    Skipped,
+    /// In the pipeline graph; waiting for the user to click play (GitLab `when: manual`).
+    Manual,
+    /// Queued to run automatically.
+    Queued,
+}
+
 impl JobIfMatcher {
+    /// How this job should appear in a pipeline run (GitLab-style manual jobs stay visible).
+    pub fn schedule_mode(condition: Option<&JobIfCondition>, ctx: &RunContext) -> JobScheduleMode {
+        if !Self::matches_without_event(condition, ctx) {
+            return JobScheduleMode::Skipped;
+        }
+        if Self::matches(condition, ctx) {
+            return JobScheduleMode::Queued;
+        }
+        if Self::requires_manual_event(condition) && ctx.event_type != "manual" {
+            return JobScheduleMode::Manual;
+        }
+        JobScheduleMode::Skipped
+    }
+
+    pub fn matches_without_event(condition: Option<&JobIfCondition>, ctx: &RunContext) -> bool {
+        match condition {
+            None => true,
+            Some(condition) => {
+                let without_event = JobIfCondition {
+                    event: None,
+                    ..condition.clone()
+                };
+                Self::matches_condition(&without_event, ctx)
+            }
+        }
+    }
+
+    fn requires_manual_event(condition: Option<&JobIfCondition>) -> bool {
+        condition
+            .and_then(|c| c.event.as_ref())
+            .is_some_and(|event| {
+                event
+                    .patterns()
+                    .iter()
+                    .any(|pattern| *pattern == "manual")
+            })
+    }
+
     pub fn matches(condition: Option<&JobIfCondition>, ctx: &RunContext) -> bool {
         match condition {
             None => true,
@@ -224,6 +292,22 @@ impl JobIfMatcher {
             }
         }
 
+        if let Some(environment) = &condition.environment {
+            let Some(env_name) = ctx.environment.as_deref() else {
+                return false;
+            };
+            let patterns: Vec<String> = match environment {
+                IfStringList::One(value) => vec![value.clone()],
+                IfStringList::Many(values) => values.clone(),
+            };
+            if !patterns
+                .iter()
+                .any(|pattern| glob_match(pattern, env_name))
+            {
+                return false;
+            }
+        }
+
         true
     }
 }
@@ -232,11 +316,17 @@ impl JobIfMatcher {
 mod tests {
     use super::*;
 
-    fn ctx(event_type: &str, branch: Option<&str>, tag: Option<&str>) -> RunContext {
+    fn ctx(
+        event_type: &str,
+        branch: Option<&str>,
+        tag: Option<&str>,
+        environment: Option<&str>,
+    ) -> RunContext {
         RunContext {
             event_type: event_type.to_string(),
             branch: branch.map(str::to_string),
             tag: tag.map(str::to_string),
+            environment: environment.map(str::to_string),
         }
     }
 
@@ -245,11 +335,11 @@ mod tests {
         let condition = parse_if_expression("branch == main").unwrap();
         assert!(JobIfMatcher::matches(
             Some(&condition),
-            &ctx("push", Some("main"), None)
+            &ctx("push", Some("main"), None, None)
         ));
         assert!(!JobIfMatcher::matches(
             Some(&condition),
-            &ctx("push", Some("qa"), None)
+            &ctx("push", Some("qa"), None, None)
         ));
     }
 
@@ -258,15 +348,15 @@ mod tests {
         let condition = parse_if_expression("branch == qa || branch == uat").unwrap();
         assert!(JobIfMatcher::matches(
             Some(&condition),
-            &ctx("manual", Some("qa"), None)
+            &ctx("manual", Some("qa"), None, None)
         ));
         assert!(JobIfMatcher::matches(
             Some(&condition),
-            &ctx("manual", Some("uat"), None)
+            &ctx("manual", Some("uat"), None, None)
         ));
         assert!(!JobIfMatcher::matches(
             Some(&condition),
-            &ctx("manual", Some("main"), None)
+            &ctx("manual", Some("main"), None, None)
         ));
     }
 
@@ -275,11 +365,11 @@ mod tests {
         let condition: JobIfCondition = serde_yaml::from_str("tag: release/*").unwrap();
         assert!(JobIfMatcher::matches(
             Some(&condition),
-            &ctx("push", None, Some("release/1.0.0"))
+            &ctx("push", None, Some("release/1.0.0"), None)
         ));
         assert!(!JobIfMatcher::matches(
             Some(&condition),
-            &ctx("push", Some("main"), None)
+            &ctx("push", Some("main"), None, None)
         ));
     }
 
@@ -288,11 +378,36 @@ mod tests {
         let condition: JobIfCondition = serde_yaml::from_str("event: manual").unwrap();
         assert!(JobIfMatcher::matches(
             Some(&condition),
-            &ctx("manual", Some("qa"), None)
+            &ctx("manual", Some("qa"), None, None)
         ));
         assert!(!JobIfMatcher::matches(
             Some(&condition),
-            &ctx("push", Some("qa"), None)
+            &ctx("push", Some("main"), None, None)
+        ));
+        assert_eq!(
+            JobIfMatcher::schedule_mode(Some(&condition), &ctx("push", Some("main"), None, None)),
+            JobScheduleMode::Manual
+        );
+        assert_eq!(
+            JobIfMatcher::schedule_mode(Some(&condition), &ctx("manual", Some("main"), None, None)),
+            JobScheduleMode::Queued
+        );
+        assert!(!JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("push", Some("qa"), None, None)
+        ));
+    }
+
+    #[test]
+    fn environment_condition() {
+        let condition = parse_if_expression("environment == qa").unwrap();
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("manual", Some("main"), None, Some("qa"))
+        ));
+        assert!(!JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("manual", Some("main"), None, Some("dev"))
         ));
     }
 }

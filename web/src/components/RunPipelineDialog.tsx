@@ -1,0 +1,224 @@
+import { Loader2, Play, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { CI_ENVIRONMENTS, inferEnvironmentFromRef, viewRefFromKind, type CiEnvironment } from '../lib/pipelineSummary'
+import { PrimaryButton, SecondaryButton } from './ui'
+
+export interface RunPipelineParams {
+  refKind: 'branch' | 'tag'
+  refName: string
+  environment: CiEnvironment
+}
+
+export function RunPipelineDialog({
+  open,
+  branches,
+  tags,
+  defaultBranch,
+  pending,
+  initialEnvironment = 'dev',
+  initialRefKind = 'branch',
+  initialRefName,
+  lockEnvironment = false,
+  onClose,
+  onRun,
+}: {
+  open: boolean
+  branches: string[]
+  tags: string[]
+  defaultBranch: string
+  pending?: boolean
+  initialEnvironment?: CiEnvironment
+  initialRefKind?: 'branch' | 'tag'
+  initialRefName?: string
+  lockEnvironment?: boolean
+  onClose: () => void
+  onRun: (params: RunPipelineParams) => void
+}) {
+  const [refKind, setRefKind] = useState<'branch' | 'tag'>(initialRefKind)
+  const [refName, setRefName] = useState(initialRefName ?? defaultBranch)
+  const [environment, setEnvironment] = useState<CiEnvironment>(initialEnvironment)
+
+  const refList = refKind === 'tag' ? tags : branches.length > 0 ? branches : [defaultBranch]
+
+  useEffect(() => {
+    if (!open) return
+    setRefKind(initialRefKind)
+    setEnvironment(initialEnvironment)
+    const list = initialRefKind === 'tag' ? tags : branches.length > 0 ? branches : [defaultBranch]
+    const preferred =
+      initialRefName && list.includes(initialRefName)
+        ? initialRefName
+        : initialRefKind === 'branch'
+          ? list.includes(defaultBranch)
+            ? defaultBranch
+            : list[0]
+          : list[0]
+    setRefName(preferred ?? defaultBranch)
+  }, [open, initialRefKind, initialRefName, initialEnvironment, branches, tags, defaultBranch])
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !pending) onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [open, pending, onClose])
+
+  useEffect(() => {
+    if (lockEnvironment) return
+    const viewRef = viewRefFromKind(refKind, refName)
+    const inferred = inferEnvironmentFromRef(viewRef)
+    if (inferred && CI_ENVIRONMENTS.includes(inferred as CiEnvironment)) {
+      setEnvironment(inferred as CiEnvironment)
+    }
+  }, [refKind, refName, lockEnvironment])
+
+  useEffect(() => {
+    if (!refList.includes(refName)) {
+      setRefName(refList[0] ?? defaultBranch)
+    }
+  }, [refKind, refList, refName, defaultBranch])
+
+  const branchCount = branches.length
+  const tagCount = tags.length
+  const canRun = refList.length > 0 && Boolean(refName)
+
+  const summary = useMemo(() => {
+    const refLabel = refKind === 'tag' ? `tag ${refName}` : `branch ${refName}`
+    return `Manual run on ${refLabel} → ${environment}`
+  }, [refKind, refName, environment])
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      role="presentation"
+      onClick={() => {
+        if (!pending) onClose()
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="run-pipeline-title"
+        className="w-full max-w-md rounded-lg border border-naturals-n4 bg-surface shadow-xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-naturals-n4 px-5 py-4">
+          <div>
+            <h2 id="run-pipeline-title" className="text-base font-semibold text-text">
+              Run pipeline
+            </h2>
+            <p className="mt-1 text-sm text-text-secondary">
+              Select branch or tag and deploy environment (GitLab-style manual run).
+            </p>
+          </div>
+          <button
+            type="button"
+            className="rounded-md p-1 text-text-secondary hover:bg-hover hover:text-text"
+            aria-label="Close"
+            disabled={pending}
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text" htmlFor="run-pipeline-ref-kind">
+                Ref type
+              </label>
+              <select
+                id="run-pipeline-ref-kind"
+                className="app-field"
+                value={refKind}
+                disabled={pending}
+                onChange={(event) => setRefKind(event.target.value as 'branch' | 'tag')}
+              >
+                <option value="branch">Branch</option>
+                <option value="tag">Tag</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-sm font-medium text-text" htmlFor="run-pipeline-ref">
+                {refKind === 'tag' ? 'Tag' : 'Branch'}
+              </label>
+              <select
+                id="run-pipeline-ref"
+                className="app-field font-mono text-sm"
+                value={refName}
+                disabled={pending || refList.length === 0}
+                onChange={(event) => setRefName(event.target.value)}
+              >
+                {refList.length === 0 ? (
+                  <option value={refName}>{refKind === 'tag' ? 'No tags' : refName}</option>
+                ) : (
+                  refList.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm font-medium text-text" htmlFor="run-pipeline-environment">
+              Environment
+            </label>
+            <select
+              id="run-pipeline-environment"
+              className="app-field"
+              value={environment}
+              disabled={pending}
+              onChange={(event) => setEnvironment(event.target.value as CiEnvironment)}
+            >
+              {CI_ENVIRONMENTS.map((env) => (
+                <option key={env} value={env}>
+                  {env}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <p className="text-xs text-text-secondary">
+            {branchCount} branch{branchCount === 1 ? '' : 'es'} · {tagCount} tag
+            {tagCount === 1 ? '' : 's'}
+          </p>
+          <p className="text-xs font-mono text-text-secondary rounded-md border border-naturals-n4 bg-naturals-n2 px-3 py-2">
+            {summary}
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-naturals-n4 px-5 py-4">
+          <SecondaryButton type="button" disabled={pending} onClick={onClose}>
+            Cancel
+          </SecondaryButton>
+          <PrimaryButton
+            type="button"
+            disabled={pending || !canRun}
+            onClick={() =>
+              onRun({
+                refKind,
+                refName,
+                environment,
+              })
+            }
+          >
+            {pending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Play size={14} />
+            )}
+            Run pipeline
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  )
+}

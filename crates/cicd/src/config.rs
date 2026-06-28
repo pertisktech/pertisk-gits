@@ -44,6 +44,9 @@ pub struct Job {
     /// Container image for Kubernetes executor (GitLab-style `image:`).
     #[serde(default)]
     pub image: Option<String>,
+    /// Deploy environment for this job (dev, qa, uat, prd) — used for secrets and `if: environment`.
+    #[serde(default)]
+    pub environment: Option<String>,
     /// Spawn a privileged Docker-in-Docker sidecar for job pods (Kubernetes executor).
     #[serde(default)]
     pub dind: bool,

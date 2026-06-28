@@ -1,13 +1,47 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::config::{Job, PipelineConfig};
-use crate::job_if::{JobIfMatcher, RunContext};
+use crate::job_if::{JobIfMatcher, JobScheduleMode, RunContext};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScheduledJob {
     pub name: String,
     pub job: Job,
-    pub skipped: bool,
+    pub mode: JobScheduleMode,
+}
+
+impl ScheduledJob {
+    pub fn skipped(&self) -> bool {
+        self.mode == JobScheduleMode::Skipped
+    }
+
+    pub fn db_status(&self) -> &'static str {
+        match self.mode {
+            JobScheduleMode::Skipped => "skipped",
+            JobScheduleMode::Manual => "manual",
+            JobScheduleMode::Queued => "queued",
+        }
+    }
+
+    pub fn initial_log(&self) -> &'static str {
+        match self.mode {
+            JobScheduleMode::Skipped => "=== skipped (if condition not met)\n",
+            JobScheduleMode::Manual => "=== waiting for manual trigger (click play to run)\n",
+            JobScheduleMode::Queued => "",
+        }
+    }
+
+    pub fn finishes_immediately(&self) -> bool {
+        self.mode == JobScheduleMode::Skipped
+    }
+
+    pub fn commit_status(&self) -> (&'static str, &'static str) {
+        match self.mode {
+            JobScheduleMode::Skipped => ("success", "Skipped"),
+            JobScheduleMode::Manual => ("pending", "Manual"),
+            JobScheduleMode::Queued => ("pending", "Queued"),
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -21,32 +55,37 @@ pub enum ScheduleError {
 pub struct Scheduler;
 
 impl Scheduler {
-    /// Topological order of all jobs, marking those skipped by `if:` or unmet needs.
+    /// Topological order of all jobs, marking skipped / manual / queued by `if:` and needs.
     pub fn schedule_for_run(
         config: &PipelineConfig,
         ctx: &RunContext,
     ) -> Result<Vec<ScheduledJob>, ScheduleError> {
         let ordered = Self::schedule(config)?;
-        let mut active: HashSet<String> = ordered
+        let mut modes: HashMap<String, JobScheduleMode> = ordered
             .iter()
-            .filter(|job| JobIfMatcher::matches(job.job.r#if.as_ref(), ctx))
-            .map(|job| job.name.clone())
+            .map(|job| {
+                (
+                    job.name.clone(),
+                    JobIfMatcher::schedule_mode(job.job.r#if.as_ref(), ctx),
+                )
+            })
             .collect();
 
         loop {
-            let before = active.len();
+            let mut changed = false;
             for job in &ordered {
-                if !active.contains(&job.name) {
+                if modes.get(&job.name) == Some(&JobScheduleMode::Skipped) {
                     continue;
                 }
                 for need in &job.job.needs {
-                    if config.jobs.contains_key(need) && !active.contains(need) {
-                        active.remove(&job.name);
+                    if modes.get(need) == Some(&JobScheduleMode::Skipped) {
+                        modes.insert(job.name.clone(), JobScheduleMode::Skipped);
+                        changed = true;
                         break;
                     }
                 }
             }
-            if active.len() == before {
+            if !changed {
                 break;
             }
         }
@@ -54,7 +93,10 @@ impl Scheduler {
         Ok(ordered
             .into_iter()
             .map(|job| ScheduledJob {
-                skipped: !active.contains(&job.name),
+                mode: modes
+                    .get(&job.name)
+                    .copied()
+                    .unwrap_or(JobScheduleMode::Skipped),
                 name: job.name,
                 job: job.job,
             })
@@ -93,7 +135,7 @@ impl Scheduler {
             ordered.push(ScheduledJob {
                 name: name.to_string(),
                 job,
-                skipped: false,
+                mode: JobScheduleMode::Queued,
             });
 
             if let Some(children) = dependents.get(name) {
@@ -129,6 +171,7 @@ mod tests {
 
     use super::*;
     use crate::config::{Job, Step, Triggers};
+    use crate::job_if::{JobIfCondition, IfStringList, RunContext};
 
     #[test]
     fn orders_by_needs() {
@@ -140,6 +183,7 @@ mod tests {
                     Job {
                         runs_on: "linux".into(),
                         image: None,
+                        environment: None,
                         dind: false,
                         needs: vec!["test".into()],
                         r#if: None,
@@ -161,6 +205,7 @@ mod tests {
                     Job {
                         runs_on: "linux".into(),
                         image: None,
+                        environment: None,
                         dind: false,
                         needs: vec![],
                         r#if: None,
@@ -186,46 +231,155 @@ mod tests {
     }
 
     #[test]
-    fn staged_qa_push_runs_deploy_chain() {
-        use crate::job_if::RunContext;
+    fn staged_manual_feature_branch_build() {
         use crate::parse_pipeline_yaml;
 
         let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
         let config = parse_pipeline_yaml(yaml).unwrap();
-        let ctx = RunContext {
-            event_type: "push".into(),
-            branch: Some("qa".into()),
-            tag: None,
-        };
+        let ctx = RunContext::from_trigger("manual", "refs/heads/feature/my-work");
         let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
 
-        assert!(jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
-        assert!(jobs.iter().find(|job| job.name == "deploy-dev").unwrap().skipped);
-        assert!(jobs.iter().find(|job| job.name == "deploy-uat").unwrap().skipped);
-        assert!(!jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "build-feature").unwrap().mode,
+            JobScheduleMode::Queued
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "test-feature").unwrap().mode,
+            JobScheduleMode::Queued
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "unit-test").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
     }
 
     #[test]
-    fn staged_release_tag_push_runs_prd_deploy() {
-        use crate::job_if::RunContext;
+    fn staged_main_push_runs_build_and_dev() {
         use crate::parse_pipeline_yaml;
 
         let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
         let config = parse_pipeline_yaml(yaml).unwrap();
-        let ctx = RunContext {
-            event_type: "push".into(),
-            branch: None,
-            tag: Some("release/1.0.0".into()),
-        };
+        let ctx = RunContext::from_trigger("push", "refs/heads/main");
         let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
 
-        assert!(jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
-        assert!(!jobs.iter().find(|job| job.name == "deploy-prd").unwrap().skipped);
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "unit-test").unwrap().mode,
+            JobScheduleMode::Queued
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-dev").unwrap().mode,
+            JobScheduleMode::Queued
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-uat").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+    }
+
+    #[test]
+    fn staged_main_push_shows_manual_play_jobs() {
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext::from_trigger("push", "refs/heads/main");
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa-manual").unwrap().mode,
+            JobScheduleMode::Manual
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-uat-manual").unwrap().mode,
+            JobScheduleMode::Manual
+        );
+    }
+
+    #[test]
+    fn staged_manual_qa_from_tag() {
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext::from_trigger_with_environment(
+            "manual",
+            "refs/tags/v1.0.0",
+            Some("qa".into()),
+        );
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "unit-test").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Queued
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-uat").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+    }
+
+    #[test]
+    fn staged_manual_uat() {
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext::from_trigger_with_environment(
+            "manual",
+            "refs/heads/main",
+            Some("uat".into()),
+        );
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "unit-test").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-uat").unwrap().mode,
+            JobScheduleMode::Queued
+        );
+    }
+
+    #[test]
+    fn staged_push_to_qa_shows_manual_qa_deploy() {
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext::from_trigger("push", "refs/heads/qa");
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "unit-test").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Manual
+        );
+        assert!(jobs.iter().all(|job| job.mode != JobScheduleMode::Queued));
     }
 
     #[test]
     fn skips_jobs_when_if_not_met() {
-        use crate::job_if::{JobIfCondition, IfStringList, RunContext};
+        use crate::job_if::RunContext;
 
         let config = PipelineConfig {
             on: Triggers::default(),
@@ -235,6 +389,7 @@ mod tests {
                     Job {
                         runs_on: "linux".into(),
                         image: None,
+                        environment: None,
                         dind: false,
                         needs: vec![],
                         r#if: None,
@@ -256,12 +411,14 @@ mod tests {
                     Job {
                         runs_on: "linux".into(),
                         image: None,
+                        environment: None,
                         dind: false,
                         needs: vec!["build".into()],
                         r#if: Some(JobIfCondition {
                             branch: Some(IfStringList::One("qa".into())),
                             tag: None,
                             event: None,
+                            environment: None,
                         }),
                         required: true,
                         steps: vec![Step {
@@ -279,13 +436,15 @@ mod tests {
             ]),
         };
 
-        let ctx = RunContext {
-            event_type: "push".into(),
-            branch: Some("main".into()),
-            tag: None,
-        };
+        let ctx = RunContext::from_trigger("push", "refs/heads/main");
         let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
-        assert!(!jobs.iter().find(|job| job.name == "build").unwrap().skipped);
-        assert!(jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "build").unwrap().mode,
+            JobScheduleMode::Queued
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
     }
 }

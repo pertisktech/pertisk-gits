@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Play } from 'lucide-react'
 import type { ReactNode } from 'react'
 import type { JobRun, PipelineRun } from '../api/types'
 import { formatDateTime } from '../lib/collaboration'
@@ -82,11 +82,17 @@ export function ActionsJobSidebar({
   runStatus,
   activeJobId,
   onSelectJob,
+  onPlayJob,
+  canPlayJob,
+  playPendingJobId,
 }: {
   jobs: JobRun[]
   runStatus: PipelineRun['status']
   activeJobId: string | null
   onSelectJob: (jobId: string) => void
+  onPlayJob?: (jobId: string) => void
+  canPlayJob?: (job: JobRun) => boolean
+  playPendingJobId?: string | null
 }) {
   return (
     <nav className="gha-job-sidebar" aria-label="Jobs">
@@ -95,6 +101,7 @@ export function ActionsJobSidebar({
         {jobs.map((job) => {
           const status = displayJobStatus(job, runStatus)
           const active = activeJobId === job.id
+          const canPlay = canPlayJob?.(job) ?? false
           return (
             <li key={job.id}>
               <button
@@ -105,6 +112,32 @@ export function ActionsJobSidebar({
                 <ActionsStatusIcon status={status} size="md" />
                 <span className="gha-job-item-name">{job.job_name}</span>
                 <span className="gha-job-item-runner">{job.runs_on}</span>
+                {canPlay && onPlayJob && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    className="gha-job-item-play"
+                    title="Run manual job"
+                    aria-label={`Run ${job.job_name}`}
+                    onClick={(event) => {
+                      event.stopPropagation()
+                      onPlayJob(job.id)
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        onPlayJob(job.id)
+                      }
+                    }}
+                  >
+                    {playPendingJobId === job.id ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Play size={14} />
+                    )}
+                  </span>
+                )}
               </button>
             </li>
           )
@@ -160,15 +193,32 @@ export function ActionsStepList({
 export function ActionsJobHeader({
   job,
   jobStatus,
+  onPlay,
+  playPending,
+  canPlay,
 }: {
   job: JobRun
   jobStatus: JobRun['status']
+  onPlay?: () => void
+  playPending?: boolean
+  canPlay?: boolean
 }) {
   return (
     <div className="gha-job-header">
       <div className="gha-job-header-main">
         <ActionsStatusIcon status={jobStatus} size="md" />
         <h2 className="gha-job-header-title">{job.job_name}</h2>
+        {canPlay && onPlay && (
+          <button
+            type="button"
+            className="gha-job-header-play"
+            disabled={playPending}
+            onClick={onPlay}
+          >
+            {playPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+            Run job
+          </button>
+        )}
       </div>
       <span className="gha-job-header-runner">{job.runs_on}</span>
     </div>

@@ -516,7 +516,7 @@ export interface JobArtifact {
 export interface JobRun {
   id: string
   job_name: string
-  status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped'
+  status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped' | 'manual'
   runs_on: string
   image?: string | null
   needs: string[]
@@ -533,12 +533,14 @@ export interface JobIfCondition {
   branch?: string | string[]
   tag?: boolean | string | string[]
   event?: string | string[]
+  environment?: string | string[]
 }
 
 export interface PipelineJobPreview {
   name: string
   runs_on: string
   image?: string | null
+  environment?: string | null
   needs: string[]
   step_count: number
   steps: Array<{ name: string; run: string }>
@@ -652,6 +654,7 @@ export interface PipelineRun {
   commit_sha: string
   ref_name: string
   event_type: 'push' | 'pull_request' | 'manual'
+  target_environment: string | null
   status: 'pending' | 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped'
   created_at: string
   started_at: string | null
@@ -835,10 +838,13 @@ export interface AuditListResponse {
 
 export type CiSecretKind = 'variable' | 'file'
 
+export type CiSecretEnvironment = 'all' | 'dev' | 'qa' | 'uat' | 'prd'
+
 export interface CiSecret {
   id: string
   name: string
   secret_kind: CiSecretKind
+  environment: CiSecretEnvironment
   created_at: string
   updated_at: string
 }

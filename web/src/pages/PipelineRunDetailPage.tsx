@@ -1,3 +1,4 @@
+import type { JobRun } from '../api/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Download, Loader2, Square, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -18,13 +19,13 @@ import { buildDetailGraphJobs } from '../lib/pipelineGraphLayout'
 import { PipelineSummary } from '../components/PipelineSummary'
 import {
   filterVisibleRunJobs,
-  parseViewRef,
   refForConfigQuery,
   refKindFromRefName,
 } from '../lib/pipelineSummary'
 import { ConfirmModal } from '../components/ConfirmModal'
 import {
   canRerunFailed,
+  canPlayManualJob,
   countRerunnableFailedJobs,
   displayJobStatus,
   displayRunStatus,
@@ -60,7 +61,6 @@ export function PipelineRunDetailPage() {
   const userPinnedStep = useRef(false)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [showAllPaths, setShowAllPaths] = useState(true)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -88,10 +88,6 @@ export function PipelineRunDetailPage() {
 
   const configRef = run ? refForConfigQuery(run.ref_name) : ''
   const configRefKind = run ? refKindFromRefName(run.ref_name) : 'branch'
-  const viewRef = useMemo(
-    () => (run ? parseViewRef(run.ref_name) : {}),
-    [run?.ref_name],
-  )
 
   const { data: pipelineConfig } = useQuery({
     queryKey: ['pipeline-config-preview', orgSlug, projectSlug, configRefKind, configRef],
@@ -105,22 +101,20 @@ export function PipelineRunDetailPage() {
   const visibleJobs = useMemo(() => {
     if (!run) return []
     return filterVisibleRunJobs(run.jobs, {
-      viewRef,
-      showAllPaths,
+      showAllPaths: true,
       configJobs: pipelineConfig?.jobs,
       eventType: run.event_type,
     })
-  }, [run, pipelineConfig?.jobs, viewRef, showAllPaths])
+  }, [run, pipelineConfig?.jobs])
 
   const graphJobs = useMemo(() => {
     if (!run) return []
     return buildDetailGraphJobs(pipelineConfig?.jobs, run.jobs, {
-      showAllPaths,
-      viewRef,
+      showAllPaths: true,
       eventType: run.event_type,
       runStatus: run.status,
     })
-  }, [run, pipelineConfig?.jobs, viewRef, showAllPaths])
+  }, [run, pipelineConfig?.jobs])
 
   const activeJob = useMemo(() => {
     if (!run || visibleJobs.length === 0) return null
@@ -225,6 +219,23 @@ export function PipelineRunDetailPage() {
     },
   })
 
+  const [playingJobId, setPlayingJobId] = useState<string | null>(null)
+
+  const playJobMutation = useMutation({
+    mutationFn: (jobId: string) =>
+      api.playManualJob(token!, orgSlug, projectSlug, runId, jobId),
+    onMutate: (jobId) => {
+      setPlayingJobId(jobId)
+    },
+    onSettled: () => {
+      setPlayingJobId(null)
+    },
+    onSuccess: (updatedRun) => {
+      queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
+      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+    },
+  })
+
   const deleteMutation = useMutation({
     mutationFn: () => api.deletePipeline(token!, orgSlug, projectSlug, runId),
     onSuccess: () => {
@@ -258,6 +269,10 @@ export function PipelineRunDetailPage() {
 
   const branch = refLabel(run.ref_name)
   const runStatus = displayRunStatus(run)
+  const canPlayJob = (job: JobRun) => canPlayManualJob(job, run)
+
+  const resolveJobKey = (jobKey: string) =>
+    visibleJobs.find((job) => job.id === jobKey || job.job_name === jobKey)
 
   const repoPath = `/groups/${orgSlug}/projects/${projectSlug}`
   const pipelinesPath = projectTabPath(repoPath, 'pipelines')
@@ -299,14 +314,6 @@ export function PipelineRunDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <label className="pipeline-summary-filter">
-            <input
-              type="checkbox"
-              checked={showAllPaths}
-              onChange={(event) => setShowAllPaths(event.target.checked)}
-            />
-            Show all
-          </label>
           {isRunInProgress(run) && (
             <SecondaryButton
               type="button"
@@ -368,12 +375,14 @@ export function PipelineRunDetailPage() {
       {(rerunMutation.isError ||
         cancelPipelineMutation.isError ||
         cancelStepMutation.isError ||
+        playJobMutation.isError ||
         deleteMutation.isError) && (
         <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
           {(
             (rerunMutation.error ??
               cancelPipelineMutation.error ??
               cancelStepMutation.error ??
+              playJobMutation.error ??
               deleteMutation.error) as Error
           ).message}
         </div>
@@ -382,23 +391,24 @@ export function PipelineRunDetailPage() {
       <ActionsRunSummary run={run} />
 
       <div className="gha-graph-panel">
-        {pipelineConfig && (
-          <PipelineSummary
-            config={pipelineConfig}
-            viewRef={viewRef}
-            showAllPaths={showAllPaths}
-            onShowAllPathsChange={setShowAllPaths}
-          />
-        )}
+        {pipelineConfig && <PipelineSummary config={pipelineConfig} />}
         <PipelineGraph
           className="pipeline-graph-panel--inline"
           jobs={graphJobs}
           selectedJob={activeJob?.id ?? null}
           onJobSelect={(jobKey) => {
-            const match = visibleJobs.find(
-              (job) => job.id === jobKey || job.job_name === jobKey,
-            )
+            const match = resolveJobKey(jobKey)
             if (match) selectJob(match.id)
+          }}
+          onPlayJob={(jobKey) => {
+            const match = resolveJobKey(jobKey)
+            if (match) playJobMutation.mutate(match.id)
+          }}
+          canPlayJob={(graphJob) => {
+            const match = run.jobs.find(
+              (job) => job.id === graphJob.job_id || job.job_name === graphJob.name,
+            )
+            return match ? canPlayJob(match) : false
           }}
         />
       </div>
@@ -409,12 +419,21 @@ export function PipelineRunDetailPage() {
           runStatus={run.status}
           activeJobId={activeJob?.id ?? null}
           onSelectJob={selectJob}
+          onPlayJob={(jobId) => playJobMutation.mutate(jobId)}
+          canPlayJob={canPlayJob}
+          playPendingJobId={playingJobId}
         />
 
         <div className="gha-run-main">
           {activeJob ? (
             <>
-              <ActionsJobHeader job={activeJob} jobStatus={displayJobStatus(activeJob, run.status)} />
+              <ActionsJobHeader
+                job={activeJob}
+                jobStatus={displayJobStatus(activeJob, run.status)}
+                canPlay={canPlayJob(activeJob)}
+                playPending={playingJobId === activeJob.id}
+                onPlay={() => playJobMutation.mutate(activeJob.id)}
+              />
 
               <ActionsStepList
                 steps={activeSteps}
@@ -451,13 +470,17 @@ export function PipelineRunDetailPage() {
                 }
                 logText={logText}
                 emptyMessage={
-                  activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
-                    ? activeStepKey
-                      ? 'Waiting for log output…'
-                      : 'Select a step to view logs'
-                    : activeJobDisplayStatus === 'cancelled'
-                      ? 'Job was cancelled'
-                      : 'No log output'
+                  activeJobDisplayStatus === 'manual'
+                    ? canPlayJob(activeJob)
+                      ? 'Manual job — click Run job to start'
+                      : 'Manual job — waiting for upstream jobs to finish'
+                    : activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
+                      ? activeStepKey
+                        ? 'Waiting for log output…'
+                        : 'Select a step to view logs'
+                      : activeJobDisplayStatus === 'cancelled'
+                        ? 'Job was cancelled'
+                        : 'No log output'
                 }
                 footer={
                   <>

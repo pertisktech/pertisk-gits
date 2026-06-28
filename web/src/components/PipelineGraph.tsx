@@ -9,7 +9,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Cpu, Loader2 } from 'lucide-react'
+import { Cpu, Loader2, Play } from 'lucide-react'
 import type { JobRun, PipelineRun } from '../api/types'
 import {
   graphHeight,
@@ -21,32 +21,55 @@ import { ActionsStatusIcon } from './PipelineStatus'
 
 function PipelineJobNode({ data }: NodeProps) {
   const nodeData = data as PipelineGraphNodeData
-  const { job, selected } = nodeData
+  const { job, selected, canPlay, onPlay } = nodeData
   const status = job.status ?? 'pending'
+  const isManual = status === 'manual'
 
   return (
-    <button
-      type="button"
-      className={`pipeline-graph-node nodrag nopan${selected ? ' pipeline-graph-node--selected' : ''}${status === 'skipped' ? ' pipeline-graph-node--skipped' : ''}`}
-      onClick={(event) => {
-        event.stopPropagation()
-        nodeData.onSelect?.(job.job_id ?? job.name)
-      }}
+    <div
+      className={`pipeline-graph-node-wrap${selected ? ' pipeline-graph-node-wrap--selected' : ''}${status === 'skipped' ? ' pipeline-graph-node-wrap--skipped' : ''}${isManual ? ' pipeline-graph-node-wrap--manual' : ''}`}
     >
-      <Handle type="target" position={Position.Left} className="pipeline-graph-handle" />
-      <div className="pipeline-graph-node-header">
-        <ActionsStatusIcon status={status} size="sm" />
-        <Cpu size={12} className="pipeline-graph-node-icon" />
-        <span className="pipeline-graph-node-name">{job.name}</span>
-      </div>
-      <div className="pipeline-graph-node-meta">
-        <span className="pipeline-graph-node-label">{job.runs_on}</span>
-        {job.step_count !== undefined && (
-          <span className="pipeline-graph-node-steps">{job.step_count} steps</span>
-        )}
-      </div>
-      <Handle type="source" position={Position.Right} className="pipeline-graph-handle" />
-    </button>
+      <button
+        type="button"
+        className={`pipeline-graph-node nodrag nopan${selected ? ' pipeline-graph-node--selected' : ''}${status === 'skipped' ? ' pipeline-graph-node--skipped' : ''}${isManual ? ' pipeline-graph-node--manual' : ''}`}
+        onClick={(event) => {
+          event.stopPropagation()
+          nodeData.onSelect?.(job.job_id ?? job.name)
+        }}
+      >
+        <Handle type="target" position={Position.Left} className="pipeline-graph-handle" />
+        <div className="pipeline-graph-node-header">
+          <ActionsStatusIcon status={status} size="sm" />
+          <Cpu size={12} className="pipeline-graph-node-icon" />
+          <span className="pipeline-graph-node-name">{job.name}</span>
+        </div>
+        <div className="pipeline-graph-node-meta">
+          <span className="pipeline-graph-node-label">{job.runs_on}</span>
+          {isManual ? (
+            <span className="pipeline-graph-node-steps">manual</span>
+          ) : (
+            job.step_count !== undefined && (
+              <span className="pipeline-graph-node-steps">{job.step_count} steps</span>
+            )
+          )}
+        </div>
+        <Handle type="source" position={Position.Right} className="pipeline-graph-handle" />
+      </button>
+      {isManual && canPlay && onPlay && (
+        <button
+          type="button"
+          className="pipeline-graph-node-play"
+          title="Run manual job"
+          aria-label={`Run ${job.name}`}
+          onClick={(event) => {
+            event.stopPropagation()
+            onPlay(job.job_id ?? job.name)
+          }}
+        >
+          <Play size={14} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -72,6 +95,8 @@ export function PipelineGraph({
   jobs,
   selectedJob,
   onJobSelect,
+  onPlayJob,
+  canPlayJob,
   loading,
   emptyMessage = 'No jobs defined',
   className,
@@ -79,6 +104,8 @@ export function PipelineGraph({
   jobs: PipelineGraphJob[]
   selectedJob?: string | null
   onJobSelect?: (jobKey: string) => void
+  onPlayJob?: (jobKey: string) => void
+  canPlayJob?: (job: PipelineGraphJob) => boolean
   loading?: boolean
   emptyMessage?: string
   className?: string
@@ -101,9 +128,11 @@ export function PipelineGraph({
             selectedJob === node.data.job.job_id ||
             node.data.selected,
           onSelect: onJobSelect,
+          onPlay: onPlayJob,
+          canPlay: canPlayJob?.(node.data.job) ?? false,
         },
       })),
-    [layout.nodes, onJobSelect, selectedJob],
+    [layout.nodes, onJobSelect, onPlayJob, canPlayJob, selectedJob],
   )
 
   const structureKey = useMemo(

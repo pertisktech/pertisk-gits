@@ -104,6 +104,14 @@ function PipelineRunRow({
               ·
             </span>
             <span className="font-mono">{refLabel(run.ref_name)}</span>
+            {run.target_environment && (
+              <>
+                <span className="gha-summary-dot" aria-hidden>
+                  ·
+                </span>
+                <span className="font-mono text-text-secondary">{run.target_environment}</span>
+              </>
+            )}
             {summary && (
               <span className="gha-run-row-error" title={summary}>
                 — {summary}

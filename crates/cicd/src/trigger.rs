@@ -117,6 +117,7 @@ mod tests {
                 Job {
                     runs_on: "linux".into(),
                     image: None,
+                    environment: None,
                     dind: false,
                     needs: vec![],
                     r#if: None,

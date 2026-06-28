@@ -9,12 +9,16 @@ import type {
 export interface PipelinePathSummary {
   id: string
   title: string
+  environment?: string
   triggerLabel: string
   automatic: boolean
   jobs: string[]
   buildJobs: string[]
   deployJobs: string[]
 }
+
+export const CI_ENVIRONMENTS = ['dev', 'qa', 'uat', 'prd'] as const
+export type CiEnvironment = (typeof CI_ENVIRONMENTS)[number]
 
 export interface SummaryViewRef {
   branch?: string
@@ -86,6 +90,7 @@ function pathMatchesView(
 const PATH_DEFS: Array<{
   id: string
   title: string
+  environment: string
   branch?: string
   tag?: string
   automatic: boolean
@@ -93,31 +98,25 @@ const PATH_DEFS: Array<{
 }> = [
   {
     id: 'main',
-    title: 'main',
+    title: 'main → dev',
+    environment: 'dev',
     branch: 'main',
     automatic: true,
-    triggerLabel: 'Automatic on push — CI + dev deploy',
+    triggerLabel: 'Automatic on push to main — build + deploy dev',
   },
   {
     id: 'qa',
-    title: 'qa',
-    branch: 'qa',
-    automatic: true,
-    triggerLabel: 'Automatic on push — QA deploy',
+    title: 'manual → qa',
+    environment: 'qa',
+    automatic: false,
+    triggerLabel: 'Manual — pick branch or tag, Deploy qa',
   },
   {
     id: 'uat',
-    title: 'uat',
-    branch: 'uat',
-    automatic: true,
-    triggerLabel: 'Automatic on push — UAT deploy',
-  },
-  {
-    id: 'release',
-    title: 'release tag',
-    tag: 'release/1.0.0',
-    automatic: true,
-    triggerLabel: 'Automatic on push — prod deploy',
+    title: 'manual → uat',
+    environment: 'uat',
+    automatic: false,
+    triggerLabel: 'Manual — pick branch or tag, Deploy uat',
   },
 ]
 
@@ -287,6 +286,15 @@ export function previewEventForRef(
   return 'push'
 }
 
+export function previewContextForRef(viewRef: SummaryViewRef): PathContext {
+  return {
+    event_type: 'push',
+    branch: viewRef.branch,
+    tag: viewRef.tag,
+    environment: inferEnvironmentFromRef(viewRef),
+  }
+}
+
 /** Whether push to this ref starts a pipeline automatically (from on.push in config). */
 export function refTriggersOnPush(
   config: PipelineConfigPreview | undefined,
@@ -389,15 +397,25 @@ function inferPipelinePathsWithIf(
 ): PipelinePathSummary[] {
   const paths: PipelinePathSummary[] = []
   for (const def of PATH_DEFS) {
-    const pathJobs = jobsForPathScope(jobs, def.branch, def.tag)
+    const ctx: PathContext = {
+      event_type: def.automatic ? 'push' : 'manual',
+      branch: def.branch,
+      tag: def.tag,
+      environment: def.environment,
+    }
+    const pathJobs = topoSortAll(jobs).filter((name) => {
+      const job = jobs.find((entry) => entry.name === name)
+      return job && evaluateJobIf(job.if, ctx)
+    })
     if (pathJobs.length === 0) continue
 
     const { buildJobs, deployJobs } = splitBuildDeploy(jobs, pathJobs)
     paths.push({
       id: def.id,
       title: def.title,
+      environment: def.environment,
       triggerLabel: def.triggerLabel,
-      automatic: pathTriggersOnPush(def, triggers),
+      automatic: def.automatic && pathTriggersOnPush(def, triggers),
       jobs: pathJobs,
       buildJobs,
       deployJobs,
@@ -468,6 +486,7 @@ export function jobsForViewScope(
       branch: viewRef.branch,
       tag: viewRef.tag,
       event_type: eventType ?? 'push',
+      environment: inferEnvironmentFromRef(viewRef),
     }
     const names = new Set(
       topoSortAll(jobs).filter((name) => {
@@ -506,9 +525,10 @@ function inferPipelinePathsFromSuffixes(config: PipelineConfigPreview): Pipeline
     paths.push({
       id: def.id,
       title: def.title,
+      environment: def.env,
       triggerLabel: def.automatic
         ? `Automatic on push to ${def.branch}`
-        : `Manual run (${def.branch})`,
+        : `Manual deploy (${def.env})`,
       automatic:
         def.automatic &&
         Boolean(triggers.push?.branches?.some((branch) => globMatch(branch, def.branch))),
@@ -526,6 +546,7 @@ export interface PathContext {
   event_type: string
   branch?: string
   tag?: string
+  environment?: string
 }
 
 export function evaluateJobIf(condition: JobIfCondition | undefined, ctx: PathContext): boolean {
@@ -550,5 +571,22 @@ export function evaluateJobIf(condition: JobIfCondition | undefined, ctx: PathCo
     if (!patterns || !matchesPatterns(patterns, ctx.event_type)) return false
   }
 
+  if (condition.environment !== undefined) {
+    if (!ctx.environment) return false
+    const patterns = listValue(condition.environment)
+    if (!patterns || !matchesPatterns(patterns, ctx.environment)) return false
+  }
+
   return true
+}
+
+/** Infer deploy environment from branch/tag (matches backend). */
+export function inferEnvironmentFromRef(viewRef: SummaryViewRef): string | undefined {
+  if (viewRef.tag) {
+    return matchesPatterns(['release/*'], viewRef.tag) ? 'prd' : undefined
+  }
+  if (viewRef.branch === 'main') return 'dev'
+  if (viewRef.branch === 'qa') return 'qa'
+  if (viewRef.branch === 'uat') return 'uat'
+  return undefined
 }

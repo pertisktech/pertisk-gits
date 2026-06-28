@@ -1073,7 +1073,12 @@ export const api = {
     token: string,
     orgSlug: string,
     repoSlug: string,
-    payload: { commit_sha: string; ref_name: string; event_type?: string },
+    payload: {
+      commit_sha: string
+      ref_name: string
+      event_type?: string
+      environment?: string
+    },
   ) =>
     request<PipelineRun>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/trigger`,
@@ -1118,6 +1123,19 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(stepName ? { step_name: stepName } : {}),
       },
+      token,
+    ),
+
+  playManualJob: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    runId: string,
+    jobId: string,
+  ) =>
+    request<PipelineRun>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/jobs/${jobId}/play`,
+      { method: 'POST' },
       token,
     ),
 
@@ -1349,7 +1367,12 @@ export const api = {
   createOrgSecret: (
     token: string,
     orgSlug: string,
-    payload: { name: string; secret_kind: import('./types').CiSecretKind; value: string },
+    payload: {
+      name: string
+      secret_kind: import('./types').CiSecretKind
+      environment?: import('./types').CiSecretEnvironment
+      value: string
+    },
   ) =>
     request<import('./types').CiSecret>(`/organizations/${orgSlug}/secrets`, {
       method: 'POST',
@@ -1360,7 +1383,11 @@ export const api = {
     token: string,
     orgSlug: string,
     secretId: string,
-    payload: { secret_kind?: import('./types').CiSecretKind; value?: string },
+    payload: {
+      secret_kind?: import('./types').CiSecretKind
+      environment?: import('./types').CiSecretEnvironment
+      value?: string
+    },
   ) =>
     request<import('./types').CiSecret>(`/organizations/${orgSlug}/secrets/${secretId}`, {
       method: 'PATCH',
@@ -1392,7 +1419,12 @@ export const api = {
     token: string,
     orgSlug: string,
     repoSlug: string,
-    payload: { name: string; secret_kind: import('./types').CiSecretKind; value: string },
+    payload: {
+      name: string
+      secret_kind: import('./types').CiSecretKind
+      environment?: import('./types').CiSecretEnvironment
+      value: string
+    },
   ) =>
     request<import('./types').CiSecret>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/secrets`,
@@ -1408,7 +1440,11 @@ export const api = {
     orgSlug: string,
     repoSlug: string,
     secretId: string,
-    payload: { secret_kind?: import('./types').CiSecretKind; value?: string },
+    payload: {
+      secret_kind?: import('./types').CiSecretKind
+      environment?: import('./types').CiSecretEnvironment
+      value?: string
+    },
   ) =>
     request<import('./types').CiSecret>(
       `/organizations/${orgSlug}/repositories/${repoSlug}/secrets/${secretId}`,
