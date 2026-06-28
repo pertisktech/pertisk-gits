@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { PipelineRun } from '../api/types'
 import { formatRelativeTime, parseIsoTimestamp } from '../lib/relativeTime'
+import { filterRunJobsForList } from '../lib/pipelineSummary'
 import {
   canRerunFailed,
   countRerunnableFailedJobs,
@@ -73,7 +74,8 @@ function PipelineRunRow({
   rerunLoading?: boolean
 }) {
   const status = displayRunStatus(run)
-  const summary = failureSummary(run.jobs)
+  const visibleJobs = filterRunJobsForList(run)
+  const summary = failureSummary(visibleJobs)
   const startedAt = run.started_at ?? run.created_at
   const relative = formatRelativeTime(parseIsoTimestamp(startedAt))
 
@@ -109,7 +111,7 @@ function PipelineRunRow({
             )}
           </div>
           <div className="gha-run-row-jobs">
-            {run.jobs.map((job) => (
+            {visibleJobs.map((job) => (
               <span key={job.id} className="gha-run-row-job" title={job.job_name}>
                 <ActionsStatusIcon status={displayJobStatus(job, run.status)} size="sm" />
                 <span>{job.job_name}</span>

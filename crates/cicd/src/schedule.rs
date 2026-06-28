@@ -186,6 +186,45 @@ mod tests {
     }
 
     #[test]
+    fn staged_qa_manual_skips_other_env_jobs() {
+        use crate::job_if::RunContext;
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext {
+            event_type: "manual".into(),
+            branch: Some("qa".into()),
+            tag: None,
+        };
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert!(jobs.iter().find(|job| job.name == "deploy-dev").unwrap().skipped);
+        assert!(jobs.iter().find(|job| job.name == "deploy-uat").unwrap().skipped);
+        assert!(!jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
+        assert!(!jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
+    }
+
+    #[test]
+    fn staged_qa_push_skips_manual_deploy() {
+        use crate::job_if::RunContext;
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext {
+            event_type: "push".into(),
+            branch: Some("qa".into()),
+            tag: None,
+        };
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert!(jobs.iter().find(|job| job.name == "deploy-dev").unwrap().skipped);
+        assert!(jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
+        assert!(!jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
+    }
+
+    #[test]
     fn skips_jobs_when_if_not_met() {
         use crate::job_if::{JobIfCondition, IfStringList, RunContext};
 

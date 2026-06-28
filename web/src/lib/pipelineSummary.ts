@@ -3,6 +3,7 @@ import type {
   JobRun,
   PipelineConfigPreview,
   PipelineJobPreview,
+  PipelineRun,
 } from '../api/types'
 
 export interface PipelinePathSummary {
@@ -279,19 +280,38 @@ export function inferPipelinePaths(
   return filtered
 }
 
+export function previewEventForRef(
+  viewRef: SummaryViewRef,
+  refKind: 'branch' | 'tag',
+): string {
+  if (refKind === 'tag') return 'manual'
+  if (viewRef.branch === 'main') return 'push'
+  if (viewRef.branch === 'qa' || viewRef.branch === 'uat') return 'manual'
+  return 'push'
+}
+
 export function filterJobsForViewRef(
   jobs: PipelineJobPreview[],
   viewRef?: SummaryViewRef,
+  eventType?: string,
 ): PipelineJobPreview[] {
   if (!viewRef || (!viewRef.branch && !viewRef.tag)) return jobs
 
   const hasIf = jobs.some((job) => job.if)
   if (hasIf) {
-    const names = new Set(jobsForPathScope(jobs, viewRef.branch, viewRef.tag))
-    return jobs.filter((job) => names.has(job.name))
+    return jobsForViewScope(jobs, viewRef, eventType ?? 'push')
   }
 
   return jobs.filter((job) => jobNameMatchesView(job.name, viewRef))
+}
+
+export function filterRunJobsForList(run: PipelineRun): JobRun[] {
+  if (run.jobs.length === 0) return run.jobs
+  const viewRef = parseViewRef(run.ref_name)
+  return run.jobs.filter((job) => {
+    if (job.status === 'skipped') return false
+    return jobNameMatchesView(job.job_name, viewRef)
+  })
 }
 
 export function filterRunJobsForViewRef(
@@ -307,17 +327,7 @@ export function filterRunJobsForViewRef(
   return runJobs.filter((job) => names.has(job.job_name))
 }
 
-export function filterRunJobsForPathScope(
-  runJobs: JobRun[],
-  configJobs: PipelineJobPreview[],
-  viewRef?: SummaryViewRef,
-): JobRun[] {
-  if (!viewRef || (!viewRef.branch && !viewRef.tag)) return runJobs
-  const names = new Set(jobsForPathScope(configJobs, viewRef.branch, viewRef.tag))
-  return runJobs.filter((job) => names.has(job.job_name))
-}
-
-/** Run detail: show jobs for this run's ref/path (including skipped), hide other env paths. */
+/** Run detail: show jobs matching this run's ref + event (including skipped in scope). */
 export function filterVisibleRunJobs(
   runJobs: JobRun[],
   options: {
@@ -333,17 +343,15 @@ export function filterVisibleRunJobs(
   if (!viewRef?.branch && !viewRef?.tag) return runJobs
 
   if (configJobs?.length) {
-    const byEvent = filterRunJobsForViewRef(runJobs, configJobs, viewRef, eventType)
-    if (byEvent.length > 0) return byEvent
-
-    const byPath = filterRunJobsForPathScope(runJobs, configJobs, viewRef)
-    if (byPath.length > 0) return byPath
+    return filterRunJobsForViewRef(
+      runJobs,
+      configJobs,
+      viewRef,
+      eventType ?? 'push',
+    )
   }
 
-  const byName = runJobs.filter((job) => jobNameMatchesView(job.job_name, viewRef))
-  if (byName.length > 0) return byName
-
-  return runJobs
+  return runJobs.filter((job) => jobNameMatchesView(job.job_name, viewRef))
 }
 
 function inferPipelinePathsWithIf(

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use pertisk_cicd::{
-    parse_pipeline_yaml, PipelineEvent, RunContext, Scheduler, TriggerMatcher, CONFIG_PATHS,
+    parse_pipeline_yaml, pipeline_event_from_ref, RunContext, Scheduler, TriggerMatcher, CONFIG_PATHS,
 };
 use sqlx::PgPool;
 use tokio::process::Command;
@@ -129,15 +129,7 @@ async fn process_trigger_now(
     };
 
     let config = parse_pipeline_yaml(&config_yaml)?;
-    let event = match event_type {
-        "pull_request" => PipelineEvent::PullRequest {
-            target_branch: ref_name.strip_prefix("refs/heads/").unwrap_or(ref_name).into(),
-        },
-        _ => PipelineEvent::Push {
-            branch: ref_name.strip_prefix("refs/heads/").unwrap_or(ref_name).into(),
-            tag: ref_name.strip_prefix("refs/tags/").map(str::to_string),
-        },
-    };
+    let event = pipeline_event_from_ref(event_type, ref_name);
 
     if !TriggerMatcher::matches(&config, &event) {
         anyhow::bail!("event does not match pipeline triggers");
@@ -146,9 +138,6 @@ async fn process_trigger_now(
     let run_ctx = RunContext::from_trigger(event_type, ref_name);
     let scheduled = Scheduler::schedule_for_run(&config, &run_ctx)?;
     let has_runnable = scheduled.iter().any(|job| !job.skipped);
-    if !has_runnable && event_type == "push" {
-        anyhow::bail!("no runnable jobs for push event");
-    }
 
     let run_id = sqlx::query_scalar::<_, Uuid>(
         r#"

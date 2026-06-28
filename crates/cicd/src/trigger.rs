@@ -33,7 +33,10 @@ impl TriggerMatcher {
 
     fn matches_push(trigger: &PushTrigger, branch: &str, tag: Option<&str>) -> bool {
         if let Some(tag_name) = tag {
-            return Self::matches_patterns(trigger.tags.as_deref(), tag_name);
+            if Self::matches_patterns(trigger.tags.as_deref(), tag_name) {
+                return true;
+            }
+            return Self::matches_patterns(trigger.branches.as_deref(), tag_name);
         }
         Self::matches_patterns(trigger.branches.as_deref(), branch)
     }
@@ -44,6 +47,31 @@ impl TriggerMatcher {
 
     fn matches_patterns(patterns: Option<&[String]>, value: &str) -> bool {
         crate::pattern::matches_any_pattern(patterns, value)
+    }
+}
+
+/// Build a push/pull_request event from a git ref and event type.
+pub fn pipeline_event_from_ref(event_type: &str, ref_name: &str) -> PipelineEvent {
+    match event_type {
+        "pull_request" => PipelineEvent::PullRequest {
+            target_branch: ref_name.strip_prefix("refs/heads/").unwrap_or(ref_name).into(),
+        },
+        _ => {
+            if let Some(tag) = ref_name.strip_prefix("refs/tags/") {
+                PipelineEvent::Push {
+                    branch: String::new(),
+                    tag: Some(tag.to_string()),
+                }
+            } else {
+                PipelineEvent::Push {
+                    branch: ref_name
+                        .strip_prefix("refs/heads/")
+                        .unwrap_or(ref_name)
+                        .to_string(),
+                    tag: None,
+                }
+            }
+        }
     }
 }
 
@@ -113,5 +141,72 @@ mod tests {
                 tag: None,
             }
         ));
+    }
+
+    #[test]
+    fn push_qa_uat_branches() {
+        let cfg = sample_config_with_branches(&["main", "qa", "uat"]);
+        assert!(TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::Push {
+                branch: "qa".into(),
+                tag: None,
+            }
+        ));
+        assert!(TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::Push {
+                branch: "uat".into(),
+                tag: None,
+            }
+        ));
+    }
+
+    #[test]
+    fn push_tag_matches_tags_or_branch_glob() {
+        let cfg = PipelineConfig {
+            on: Triggers {
+                push: Some(PushTrigger {
+                    branches: Some(vec!["release/*".into()]),
+                    tags: Some(vec!["v*".into()]),
+                }),
+                pull_request: None,
+            },
+            jobs: HashMap::new(),
+        };
+        assert!(TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::Push {
+                branch: String::new(),
+                tag: Some("v1.2".into()),
+            }
+        ));
+        assert!(TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::Push {
+                branch: String::new(),
+                tag: Some("release/1.0".into()),
+            }
+        ));
+        assert!(!TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::Push {
+                branch: String::new(),
+                tag: Some("other".into()),
+            }
+        ));
+    }
+
+    fn sample_config_with_branches(branches: &[&str]) -> PipelineConfig {
+        PipelineConfig {
+            on: Triggers {
+                push: Some(PushTrigger {
+                    branches: Some(branches.iter().map(|b| (*b).to_string()).collect()),
+                    tags: None,
+                }),
+                pull_request: None,
+            },
+            jobs: HashMap::new(),
+        }
     }
 }

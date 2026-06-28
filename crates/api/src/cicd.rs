@@ -15,8 +15,9 @@ use axum::{
 use chrono::{DateTime, Utc};
 use pertisk_git::explorer::RefKind;
 use pertisk_cicd::{
-    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, PipelineEvent, RunContext, ScheduledJob,
-    Scheduler, TriggerMatcher, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
+    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, pipeline_event_from_ref,
+    PipelineEvent, RunContext, ScheduledJob, Scheduler, TriggerMatcher, GITHUB_WORKFLOWS_DIR,
+    CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -2177,17 +2178,7 @@ async fn process_trigger_now(
         sqlx::Error::Protocol(format!("invalid pipeline config: {e}").into())
     })?;
 
-    let event = match event_type {
-        "pull_request" => PipelineEvent::PullRequest {
-            target_branch: ref_name.strip_prefix("refs/heads/").unwrap_or(ref_name).into(),
-        },
-        _ => PipelineEvent::Push {
-            branch: ref_name.strip_prefix("refs/heads/").unwrap_or(ref_name).into(),
-            tag: ref_name
-                .strip_prefix("refs/tags/")
-                .map(|tag| tag.to_string()),
-        },
-    };
+    let event = pipeline_event_from_ref(event_type, ref_name);
 
     if !TriggerMatcher::matches(&config, &event) {
         return Err(sqlx::Error::RowNotFound);
@@ -2197,11 +2188,6 @@ async fn process_trigger_now(
     let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         sqlx::Error::Protocol(format!("schedule failed: {e}").into())
     })?;
-
-    let has_runnable = jobs.iter().any(|job| !job.skipped);
-    if !has_runnable && event_type == "push" {
-        return Err(sqlx::Error::RowNotFound);
-    }
 
     let run_id = sqlx::query_scalar::<_, Uuid>(
         r#"

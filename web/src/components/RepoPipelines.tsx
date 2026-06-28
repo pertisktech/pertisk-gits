@@ -5,7 +5,13 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CiConvertResult } from '../api/types'
 import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
-import { filterJobsForViewRef, pipelineRefName, viewRefFromKind, type SummaryViewRef } from '../lib/pipelineSummary'
+import {
+  filterJobsForViewRef,
+  pipelineRefName,
+  previewEventForRef,
+  viewRefFromKind,
+  type SummaryViewRef,
+} from '../lib/pipelineSummary'
 import {
   isRunInProgress,
   pipelineUrl,
@@ -436,11 +442,16 @@ function PipelineConfigGraph({
     staleTime: 5 * 60_000,
   })
 
+  const previewEvent = useMemo(
+    () => previewEventForRef(viewRef, configRefKind),
+    [viewRef, configRefKind],
+  )
+
   const visibleJobs = useMemo(() => {
     if (!data?.jobs) return []
     if (showAllPaths) return data.jobs
-    return filterJobsForViewRef(data.jobs, viewRef)
-  }, [data?.jobs, showAllPaths, viewRef])
+    return filterJobsForViewRef(data.jobs, viewRef, previewEvent)
+  }, [data?.jobs, showAllPaths, viewRef, previewEvent])
 
   const jobs: PipelineGraphJob[] = useMemo(
     () =>
