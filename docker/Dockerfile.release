@@ -1,4 +1,4 @@
-# Cross-compile pertisk-gits for Linux (amd64 or arm64 via buildx).
+# Cross-compile pertisk-gits for Linux (amd64 or arm64 via buildx, musl/Alpine).
 # Usage: docker buildx build --platform linux/amd64 -f docker/Dockerfile.release .
 
 ARG TARGETPLATFORM=linux/amd64
@@ -6,41 +6,17 @@ ARG BUILDPLATFORM=linux/amd64
 ARG TARGETARCH=amd64
 ARG BUILDARCH=amd64
 
-FROM --platform=$BUILDPLATFORM rust:1-bookworm AS builder
+FROM --platform=$BUILDPLATFORM rust:1-alpine AS builder
 
 ARG TARGETARCH
 ARG BUILDARCH
-ARG TARGETPLATFORM
 ARG VERSION=0.1.0
 
-COPY docker/apt-bookworm-install.sh /usr/local/sbin/apt-bookworm-install
-RUN chmod +x /usr/local/sbin/apt-bookworm-install \
-    && apt-bookworm-install \
-    build-essential \
-    pkg-config \
-    libpq-dev \
-    file
+RUN apk add --no-cache musl-dev build-base pkgconfig file
 
-RUN set -eu; \
-    if [ "${TARGETARCH}" != "${BUILDARCH}" ]; then \
-      case "${TARGETARCH}" in \
-        amd64) \
-          apt-bookworm-install \
-            gcc-x86-64-linux-gnu \
-            libc6-dev-amd64-cross \
-            linux-libc-dev-amd64-cross ;; \
-        arm64) \
-          apt-bookworm-install \
-            gcc-aarch64-linux-gnu \
-            libc6-dev-arm64-cross \
-            linux-libc-dev-arm64-cross ;; \
-        *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
-      esac; \
-      case "${TARGETARCH}" in \
-        amd64) rustup target add x86_64-unknown-linux-gnu ;; \
-        arm64) rustup target add aarch64-unknown-linux-gnu ;; \
-      esac; \
-    fi
+COPY docker/alpine-rust-cross.sh /usr/local/sbin/alpine-rust-cross
+RUN chmod +x /usr/local/sbin/alpine-rust-cross \
+    && alpine-rust-cross "$TARGETARCH" "$BUILDARCH"
 
 WORKDIR /app
 
@@ -55,35 +31,29 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
 ARG CARGO_BUILD_JOBS=1
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 ENV PERTISK_VERSION=${VERSION}
+# Do not set RUSTFLAGS=-C target-feature=+crt-static on Alpine/musl — it breaks proc-macro
+# builds (asn1-rs-derive). Native musl release binaries are static-pie by default.
 
 RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-gits-registry-${TARGETARCH} \
     --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETARCH} \
     --mount=type=cache,target=/app/target,sharing=locked,id=pertisk-gits-target-${TARGETARCH} \
     set -eu; \
     case "${TARGETARCH}" in \
-      amd64) RUST_TARGET=x86_64-unknown-linux-gnu ;; \
-      arm64) RUST_TARGET=aarch64-unknown-linux-gnu ;; \
+      amd64) RUST_TARGET=x86_64-unknown-linux-musl; TGZ=x86_64-linux-musl-cross ;; \
+      arm64) RUST_TARGET=aarch64-unknown-linux-musl; TGZ=aarch64-linux-musl-cross ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
     esac; \
     mkdir -p /app/out; \
     if [ "${TARGETARCH}" != "${BUILDARCH}" ]; then \
-      export PKG_CONFIG_ALLOW_CROSS=1; \
+      export PATH="/opt/${TGZ}/bin:${PATH}"; \
       case "${TARGETARCH}" in \
         amd64) \
-          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc; \
-          export CC_x86_64_unknown_linux_gnu=x86_64-linux-gnu-gcc; \
-          export CXX_x86_64_unknown_linux_gnu=x86_64-linux-gnu-g++; \
-          export AR_x86_64_unknown_linux_gnu=x86_64-linux-gnu-ar; \
-          export CFLAGS_x86_64_unknown_linux_gnu="-I/usr/x86_64-linux-gnu/include"; \
-          export CXXFLAGS_x86_64_unknown_linux_gnu="-I/usr/x86_64-linux-gnu/include"; \
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc; \
+          export CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc; \
           ;; \
         arm64) \
-          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc; \
-          export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc; \
-          export CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++; \
-          export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar; \
-          export CFLAGS_aarch64_unknown_linux_gnu="-I/usr/aarch64-linux-gnu/include"; \
-          export CXXFLAGS_aarch64_unknown_linux_gnu="-I/usr/aarch64-linux-gnu/include"; \
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc; \
+          export CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc; \
           ;; \
       esac; \
       BUILD_FLAGS="--release --locked --target ${RUST_TARGET}"; \

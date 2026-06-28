@@ -1,18 +1,19 @@
 # Linux environment for building .deb and .rpm with fpm.
-FROM debian:bookworm-slim
+FROM alpine:3.21
 
-COPY docker/apt-bookworm-install.sh /usr/local/sbin/apt-bookworm-install
-RUN chmod +x /usr/local/sbin/apt-bookworm-install \
-    && apt-bookworm-install \
+RUN apk add --no-cache \
       bash \
       ca-certificates \
       curl \
       ruby \
       ruby-dev \
-      build-essential \
+      ruby-bundler \
+      build-base \
       rpm \
       cpio \
       zip \
+      tar \
+      gzip \
     && gem install --no-document fpm
 
 COPY build/deb-rpm.sh build/deb-rpm-runner.sh /usr/local/bin/

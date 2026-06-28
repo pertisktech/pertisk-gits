@@ -1,5 +1,5 @@
 # Build embedded web UI (Vite). Used when npm is not on the host (CI runners).
-FROM node:20-bookworm-slim
+FROM node:20-alpine
 
 WORKDIR /web
 

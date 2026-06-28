@@ -4,38 +4,67 @@
 # Requires TARGETARCH / TARGETPLATFORM (passed by Makefile or buildx).
 
 ARG TARGETPLATFORM=linux/amd64
+ARG BUILDPLATFORM=linux/amd64
 ARG TARGETARCH=amd64
+ARG BUILDARCH=amd64
 ARG VERSION=0.1.0
 
-FROM --platform=$TARGETPLATFORM rust:1-bookworm AS builder
+FROM --platform=$BUILDPLATFORM rust:1-alpine AS builder
 
 ARG TARGETARCH
-ARG TARGETPLATFORM
+ARG BUILDARCH
 ARG VERSION=0.1.0
 
-COPY docker/apt-bookworm-install.sh /usr/local/sbin/apt-bookworm-install
-RUN chmod +x /usr/local/sbin/apt-bookworm-install \
-    && apt-bookworm-install \
-    build-essential \
-    pkg-config \
-    file
+RUN apk add --no-cache musl-dev build-base pkgconfig file
+
+COPY docker/alpine-rust-cross.sh /usr/local/sbin/alpine-rust-cross
+RUN chmod +x /usr/local/sbin/alpine-rust-cross \
+    && alpine-rust-cross "$TARGETARCH" "$BUILDARCH"
 
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-RUN cargo fetch --locked
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-runner-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-runner-git-${TARGETARCH} \
+    cargo fetch --locked
 
 ARG CARGO_BUILD_JOBS=1
 ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
 ENV PERTISK_VERSION=${VERSION}
 
-RUN set -eu; \
-    echo "Building pertisk-runner for TARGETARCH=${TARGETARCH} TARGETPLATFORM=${TARGETPLATFORM}"; \
-    cargo build --release --locked -p pertisk-runner; \
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-runner-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-runner-git-${TARGETARCH} \
+    --mount=type=cache,target=/app/target,sharing=locked,id=pertisk-runner-target-${TARGETARCH} \
+    set -eu; \
+    echo "Building pertisk-runner for TARGETARCH=${TARGETARCH} BUILDARCH=${BUILDARCH}"; \
+    case "${TARGETARCH}" in \
+      amd64) RUST_TARGET=x86_64-unknown-linux-musl; TGZ=x86_64-linux-musl-cross ;; \
+      arm64) RUST_TARGET=aarch64-unknown-linux-musl; TGZ=aarch64-linux-musl-cross ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac; \
+    if [ "${TARGETARCH}" != "${BUILDARCH}" ]; then \
+      export PATH="/opt/${TGZ}/bin:${PATH}"; \
+      case "${TARGETARCH}" in \
+        amd64) \
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc; \
+          export CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc; \
+          ;; \
+        arm64) \
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc; \
+          export CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc; \
+          ;; \
+      esac; \
+      BUILD_FLAGS="--release --locked --target ${RUST_TARGET}"; \
+      TARGET_DIR="/app/target/${RUST_TARGET}/release"; \
+    else \
+      BUILD_FLAGS="--release --locked"; \
+      TARGET_DIR="/app/target/release"; \
+    fi; \
+    cargo build ${BUILD_FLAGS} -p pertisk-runner; \
     mkdir -p /app/out; \
-    cp /app/target/release/pertisk-runner /app/out/pertisk-runner; \
+    cp "${TARGET_DIR}/pertisk-runner" /app/out/pertisk-runner; \
     file /app/out/pertisk-runner; \
     case "${TARGETARCH}" in \
       amd64) file /app/out/pertisk-runner | grep -Eq 'x86-64' ;; \
@@ -46,22 +75,26 @@ RUN set -eu; \
 FROM scratch AS export
 COPY --from=builder /app/out/pertisk-runner /pertisk-runner
 
-FROM --platform=$TARGETPLATFORM debian:bookworm-slim AS runtime
+FROM --platform=$TARGETPLATFORM alpine:3.21 AS runtime
 
 ARG TARGETARCH
 ARG VERSION=0.1.0
 LABEL org.opencontainers.image.title="pertisk-runner" \
       org.opencontainers.image.version="${VERSION}"
 
-COPY docker/apt-bookworm-install.sh /usr/local/sbin/apt-bookworm-install
-RUN chmod +x /usr/local/sbin/apt-bookworm-install \
-    && apt-bookworm-install \
-    ca-certificates \
-    git \
-    curl \
-    docker.io \
-    file \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+      ca-certificates \
+      git \
+      curl \
+      docker-cli \
+      file \
+      shadow \
+    && addgroup -S docker \
+    && addgroup -S pertisk-runner \
+    && adduser -S -G pertisk-runner -h /var/lib/pertisk-runner -s /sbin/nologin pertisk-runner \
+    && addgroup pertisk-runner docker \
+    && mkdir -p /var/lib/pertisk-runner \
+    && chown pertisk-runner:pertisk-runner /var/lib/pertisk-runner
 
 COPY --from=builder /app/out/pertisk-runner /usr/local/bin/pertisk-runner
 
@@ -72,13 +105,7 @@ RUN set -eu; \
       amd64) file /usr/local/bin/pertisk-runner | grep -Eq 'x86-64' ;; \
       arm64) file /usr/local/bin/pertisk-runner | grep -Eq 'aarch64' ;; \
       *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
-    esac; \
-    groupadd --system pertisk-runner \
-    && useradd --system --gid pertisk-runner --home-dir /var/lib/pertisk-runner \
-       --shell /usr/sbin/nologin --comment "Pertisk Gits CI runner" pertisk-runner \
-    && usermod -aG docker pertisk-runner \
-    && mkdir -p /var/lib/pertisk-runner \
-    && chown pertisk-runner:pertisk-runner /var/lib/pertisk-runner
+    esac
 
 WORKDIR /var/lib/pertisk-runner
 

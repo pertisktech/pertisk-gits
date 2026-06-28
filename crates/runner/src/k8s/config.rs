@@ -33,7 +33,7 @@ impl K8sExecutorConfig {
             helper_image: std::env::var("PERTISK_K8S_HELPER_IMAGE")
                 .unwrap_or_else(|_| "curlimages/curl:8.12.1".into()),
             build_image: std::env::var("PERTISK_K8S_BUILD_IMAGE")
-                .unwrap_or_else(|_| "debian:bookworm-slim".into()),
+                .unwrap_or_else(|_| "alpine:3.21".into()),
             dind_image: std::env::var("PERTISK_K8S_DIND_IMAGE")
                 .unwrap_or_else(|_| "docker:27.5.1-dind".into()),
             release_name: std::env::var("PERTISK_K8S_RELEASE")
