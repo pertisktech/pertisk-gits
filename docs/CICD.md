@@ -172,9 +172,9 @@ jobs:
     required: true     # default; set false for optional jobs (excluded from merge gate)
     timeout_minutes: 30  # optional; kills the job after N minutes (runner + API reclaim)
     if:                  # optional — structured or string (see CICD_WORKFLOWS.md)
-      branch: main
+      branch: main       # branch pushes only; use tag: for tag pushes
       event: push
-    environment: dev   # optional — dev | qa | uat | prd (secrets + deploy targeting)
+    environment: dev   # optional — dev | qa | uat | prd (secrets); separate from if: environment:
     steps:
       - name: Build
         run: cargo build --release
@@ -190,7 +190,7 @@ Jobs with `if: event: manual` behave like GitLab `when: manual`:
 - On **push** / **PR** → job status **manual** (play button in UI).
 - On **Run pipeline** with matching `environment` → job queues automatically.
 
-Staged example: `crates/cicd/examples/pertisk-ci-staged.yaml`. Full behavior table: [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md).
+Staged example: `crates/cicd/examples/pertisk-ci-staged.yaml`. Tag releases and `if:` rules: [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md#tag-push-release-on-any-tag).
 
 ### Run pipeline (manual trigger)
 

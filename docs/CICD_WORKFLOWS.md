@@ -31,9 +31,23 @@ Pertisk Gits supports **GitHub Actions–like** YAML (`on`, `jobs`, `needs`, wor
 | **dev** | Push to `main` (automatic) | `HARBOR_URL` → dev registry |
 | **qa** | Run pipeline + env **qa**, or manual play on push | `HARBOR_URL` → qa registry |
 | **uat** | Run pipeline + env **uat** | `HARBOR_URL` → uat registry |
-| **prd** | Tag `release/*` + manual | prod registry |
+| **prd** | Tag `release/*` (inferred) or Run pipeline + **prd** | prod registry |
 
 Set secrets per environment in **Group → Secrets** or **Project → Settings → Secrets**. See [CICD_SECRETS.md](./CICD_SECRETS.md).
+
+### Inferred environment (for `if: environment:`)
+
+When a run has no explicit **Run pipeline** environment, Pertisk infers `environment` from the ref:
+
+| Ref | Inferred environment |
+|-----|----------------------|
+| `refs/heads/main` | `dev` |
+| `refs/heads/qa` | `qa` |
+| `refs/heads/uat` | `uat` |
+| `refs/tags/release/*` | `prd` |
+| Other branches / tags (e.g. `v1.0.0`) | *(none)* |
+
+Use **`environment:` on the job** to load secrets for that env. Use **`if: environment:`** only when the ref (or Run pipeline target) actually infers or sets that env — see [Job `environment:` vs `if: environment:`](#job-environment-vs-if-environment) below.
 
 ---
 
@@ -120,6 +134,49 @@ Jobs with `if: environment: qa` + `event: manual` run automatically (no extra pl
 
 Use **Run pipeline** on the feature branch. Jobs do **not** run on push unless `on.push.branches` includes `feature/*`.
 
+### Tag push (release on any tag)
+
+To run a deploy job when **any tag** is pushed:
+
+1. Add **`on.push.tags`** so tag pushes start a pipeline.
+2. Use **`if: tag:`** on the job — **`if: branch:` never matches tag pushes**.
+3. Put **`environment: dev`** (or qa/uat/prd) on the **job** for secrets; do **not** add `environment: dev` to `if:` unless the tag ref infers that env (see table above).
+
+```yaml
+on:
+  push:
+    branches: [main]
+    tags: ['*']              # any tag push triggers a pipeline
+
+jobs:
+  unit-test:
+    if:
+      branch: main
+      event: push
+    steps:
+      - run: npm test
+
+  release-dev:
+    runs-on: docker
+    environment: dev         # dev secrets (HARBOR_URL, etc.)
+    if:
+      tag: '*'               # also: tag: true  or  if: tag
+      event: push
+    steps:
+      - run: echo "release to dev on tag $REF"
+```
+
+Push a tag:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+For **release tags only** (`release/1.0.0`), use `tag: release/*` in `if:` and optionally `on.push.tags: [release/*]`.
+
+**Common mistake:** `if: branch: release/*` on a tag push — the pipeline may start (if the tag name matches a branch pattern), but the job is still skipped because branch conditions do not apply to tags.
+
 ---
 
 ## Job conditions (`if:`)
@@ -128,16 +185,50 @@ Structured form (recommended):
 
 ```yaml
 if:
-  branch: main          # glob: feature/*, release/*
+  branch: main          # glob: feature/*, release/* — branch pushes only
+  tag: release/*        # glob: v*, * — tag pushes only (use tag: '*' for any tag)
   event: push           # push | pull_request | manual
-  environment: qa       # dev | qa | uat | prd
+  environment: qa       # dev | qa | uat | prd (inferred ref or Run pipeline target)
 ```
 
 String form (OR only):
 
 ```yaml
 if: "branch == main || branch == qa"
+if: tag                 # shorthand: any tag push
 ```
+
+### Job `environment:` vs `if: environment:`
+
+| Field | Purpose |
+|-------|---------|
+| **`environment:` on the job** | Which secrets / deploy target the job uses (`HARBOR_URL` for dev, qa, …). Always set this when the job deploys to an env. |
+| **`if: environment:`** | Filter: job runs only when the **run context** has that environment (inferred from ref or set by **Run pipeline**). |
+
+Examples:
+
+- **Push to `main`**, deploy dev — both work together because `main` infers `dev`:
+  ```yaml
+  environment: dev
+  if:
+    branch: main
+    environment: dev
+    event: push
+  ```
+- **Tag push `v1.0.0`**, deploy using **dev secrets** — use job `environment: dev` only; omit `environment: dev` from `if:` (tag `v1.0.0` does not infer `dev`):
+  ```yaml
+  environment: dev
+  if:
+    tag: '*'
+    event: push
+  ```
+- **Run pipeline** on a tag with `environment: qa` — jobs with `if: environment: qa` + `event: manual` queue automatically.
+
+### Branch vs tag conditions
+
+- On a **tag push**, `if: branch: …` is always false (even if the tag name looks like a branch, e.g. `release/1.0.0`).
+- On a **branch push**, `if: tag: …` is always false.
+- `on.push.tags` and `on.push.branches` control whether the **pipeline** starts; job `if:` controls which **jobs** are included.
 
 ### How `event: manual` behaves
 
@@ -173,7 +264,8 @@ Environment-only manual jobs (no `branch:` in `if`):
 
 ### Pipeline detail
 
-- Graph shows **only jobs in this run** (skipped paths hidden).
+- Graph shows **non-skipped jobs** in this run (path-skipped jobs are hidden).
+- If **every** job is skipped, the run shows **Skipped**, **No jobs defined**, and an empty job list — fix job `if:` conditions (see [Troubleshooting](#troubleshooting)).
 - **Manual** jobs: play button on graph, sidebar, and job header when dependencies are satisfied.
 - **Run pipeline** is on the repo Pipelines tab (not inline branch/env filters).
 
@@ -225,6 +317,9 @@ Extended columns (Phase 4.6):
 
 | Symptom | Check |
 |---------|--------|
+| Pipeline triggered but **No jobs** / status **Skipped** | Every job’s `if:` failed. On tag push: use `if: tag:` not `if: branch:`; remove `if: environment: dev` unless ref infers `dev` (see [inferred environment](#inferred-environment-for-if-environment)). |
+| Tag push does not start a pipeline | Add `on.push.tags: ['*']` or a matching pattern. |
+| `release-dev` skipped on tag `v1.0.0` | Drop `environment: dev` from `if:`; keep `environment: dev` on the job for secrets. |
 | Pipeline list green but manual jobs not run | Expected — click **play** on manual jobs. Status should show play icon, not green-only success. |
 | Run pipeline QA does nothing | `environment: qa` in trigger body; secrets set for **qa**; jobs use `if: environment: qa`. |
 | 500 on pipeline detail | Redeploy API; ensure migration `manual` enum value exists (restart `pertisk-api`). |
