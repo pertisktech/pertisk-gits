@@ -127,6 +127,8 @@ function PipelineRefToolbar({
   branchCount,
   tagCount,
   disabled,
+  showAllPaths,
+  onShowAllPathsChange,
   showRunWorkflow,
   runWorkflowPending,
   onRefKindChange,
@@ -139,6 +141,8 @@ function PipelineRefToolbar({
   branchCount: number
   tagCount: number
   disabled?: boolean
+  showAllPaths?: boolean
+  onShowAllPathsChange?: (value: boolean) => void
   showRunWorkflow?: boolean
   runWorkflowPending?: boolean
   onRefKindChange: (kind: 'branch' | 'tag') => void
@@ -146,7 +150,18 @@ function PipelineRefToolbar({
   onRunWorkflow?: () => void
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 shrink-0">
+    <div className="flex flex-wrap items-center gap-2">
+      {onShowAllPathsChange && (
+        <label className="pipeline-summary-filter mr-1">
+          <input
+            type="checkbox"
+            checked={showAllPaths ?? true}
+            disabled={disabled}
+            onChange={(event) => onShowAllPathsChange(event.target.checked)}
+          />
+          Show all
+        </label>
+      )}
       <select
         id="pipeline-ref-kind"
         value={viewRefKind}
@@ -178,7 +193,7 @@ function PipelineRefToolbar({
           ))
         )}
       </select>
-      <span className="text-sm text-text-secondary whitespace-nowrap hidden sm:inline">
+      <span className="text-sm text-text-secondary whitespace-nowrap">
         {branchCount} Branch.{`  ${tagCount} Tags`}
       </span>
       {showRunWorkflow && onRunWorkflow && (
@@ -214,7 +229,7 @@ export function RepoPipelines({
   const navigate = useNavigate()
   const [viewRefKind, setViewRefKind] = useState<'branch' | 'tag'>('branch')
   const [viewRefOverride, setViewRefOverride] = useState<string | null>(null)
-  const [showAllPaths, setShowAllPaths] = useState(false)
+  const [showAllPaths, setShowAllPaths] = useState(true)
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
@@ -354,11 +369,13 @@ export function RepoPipelines({
 
   if (repoEmpty) {
     body = (
-      <EmptyState
+      <div className="app-panel-body">
+        <EmptyState
         icon={<Workflow size={40} />}
         title="Push code to enable CI/CD"
         description="Pipelines run after you push commits to this repository. Use the Code tab clone instructions to push your first commit."
-      />
+        />
+      </div>
     )
   } else if (contentLoading) {
     body = (
@@ -369,7 +386,7 @@ export function RepoPipelines({
     )
   } else if (!hasPipelineConfig) {
     body = (
-      <div className="space-y-4 p-4">
+      <div className="p-4">
         <p className="text-sm text-text-secondary">
           No <code className="text-xs font-mono">.pertisk-ci.yaml</code> on{' '}
           <span className="font-mono">{refLabel(pipelineRefName(viewRefKind, activeRefName))}</span>.
@@ -444,7 +461,6 @@ jobs:
           runs={runs}
           orgSlug={orgSlug}
           repoSlug={repoSlug}
-          viewRef={viewRef}
           onOpenRun={(runId) => navigate(pipelineUrl(orgSlug, repoSlug, runId))}
           onRerun={(runId, scope) => rerunMutation.mutate({ runId, scope })}
           rerunningRunId={rerunningRunId}
@@ -454,35 +470,55 @@ jobs:
   }
 
   return (
-    <div className="rounded-lg border border-naturals-n4 overflow-hidden">
-      <div className="app-toolbar flex-wrap justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-base font-semibold text-text">Workflow runs</h2>
-          <p className="text-sm text-text-secondary mt-0.5">
-            CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
-            {!contentLoading && runs.length > 0 && (
-              <span className="text-muted"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
-            )}
-          </p>
+    <div className="space-y-4 min-w-0">
+      <div className="app-panel">
+        <div className="app-toolbar flex-wrap justify-end gap-2">
+          <PipelineRefToolbar
+            viewRefKind={viewRefKind}
+            activeRefName={activeRefName}
+            refList={refList}
+            branchCount={branchCount}
+            tagCount={tagCount}
+            disabled={toolbarDisabled}
+            showAllPaths={showAllPaths}
+            onShowAllPathsChange={setShowAllPaths}
+            showRunWorkflow={!contentLoading && hasPipelineConfig && !autoTriggerRef}
+            runWorkflowPending={triggerMutation.isPending}
+            onRefKindChange={(kind) => {
+              setViewRefKind(kind)
+              setViewRefOverride(null)
+            }}
+            onRefChange={setViewRefOverride}
+            onRunWorkflow={() => triggerMutation.mutate()}
+          />
         </div>
-        <PipelineRefToolbar
-          viewRefKind={viewRefKind}
-          activeRefName={activeRefName}
-          refList={refList}
-          branchCount={branchCount}
-          tagCount={tagCount}
-          disabled={toolbarDisabled}
-          showRunWorkflow={!contentLoading && hasPipelineConfig && !autoTriggerRef}
-          runWorkflowPending={triggerMutation.isPending}
-          onRefKindChange={(kind) => {
-            setViewRefKind(kind)
-            setViewRefOverride(null)
-          }}
-          onRefChange={setViewRefOverride}
-          onRunWorkflow={() => triggerMutation.mutate()}
-        />
+
+        <div className="app-panel-body flush space-y-0">
+          <div className="px-4 pt-4 pb-2 border-b border-naturals-n4">
+            <h2 className="text-base font-semibold text-text">Workflow runs</h2>
+            <p className="text-sm text-text-secondary mt-0.5">
+              CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
+              {showAllPaths ? (
+                <span className="text-muted"> · all paths</span>
+              ) : viewRef.branch ? (
+                <span className="text-muted">
+                  {' '}
+                  · viewing <span className="font-mono">{viewRef.branch}</span>
+                </span>
+              ) : viewRef.tag ? (
+                <span className="text-muted">
+                  {' '}
+                  · viewing tag <span className="font-mono">{viewRef.tag}</span>
+                </span>
+              ) : null}
+              {!contentLoading && runs.length > 0 && (
+                <span className="text-muted"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
+              )}
+            </p>
+          </div>
+          {body}
+        </div>
       </div>
-      {body}
     </div>
   )
 }

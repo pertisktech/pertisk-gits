@@ -83,7 +83,7 @@ function PathRow({
 export function PipelineSummary({
   config,
   viewRef,
-  showAllPaths = false,
+  showAllPaths = true,
   onShowAllPathsChange,
 }: {
   config: PipelineConfigPreview

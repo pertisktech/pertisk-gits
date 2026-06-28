@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react'
-import type { JobRun } from '../api/types'
+import type { JobRun, PipelineJobPreview, PipelineRun } from '../api/types'
+import { filterJobsForViewRef, type SummaryViewRef } from './pipelineSummary'
 
 export interface PipelineGraphJob {
   name: string
@@ -194,4 +195,64 @@ export function graphHeight(jobs: PipelineGraphJob[]): number {
   })
   const maxColSize = Math.max(...colSizes.values(), 1)
   return Math.min(420, Math.max(200, maxColSize * ROW_GAP + 72))
+}
+
+/** Detail page graph: full config topology with run status merged where jobs executed. */
+export function buildDetailGraphJobs(
+  configJobs: PipelineJobPreview[] | undefined,
+  runJobs: JobRun[],
+  options: {
+    showAllPaths: boolean
+    viewRef?: SummaryViewRef
+    eventType?: string
+    runStatus?: PipelineRun['status']
+  },
+): PipelineGraphJob[] {
+  if (!configJobs?.length) {
+    return runJobs.map((job) => ({
+      name: job.job_name,
+      runs_on: job.runs_on,
+      needs: job.needs ?? [],
+      status:
+        options.runStatus === 'cancelled' &&
+        (job.status === 'running' || job.status === 'queued')
+          ? 'cancelled'
+          : job.status,
+      job_id: job.id,
+      step_count: job.steps?.length ?? job.metrics_json?.steps.length,
+    }))
+  }
+
+  const previewJobs = options.showAllPaths
+    ? configJobs
+    : filterJobsForViewRef(configJobs, options.viewRef, options.eventType ?? 'push')
+
+  const names = new Set(previewJobs.map((job) => job.name))
+  const runByName = new Map(runJobs.map((job) => [job.job_name, job]))
+
+  return previewJobs.map((job) => {
+    const runJob = runByName.get(job.name)
+    if (runJob) {
+      const status =
+        options.runStatus === 'cancelled' &&
+        (runJob.status === 'running' || runJob.status === 'queued')
+          ? 'cancelled'
+          : runJob.status
+      return {
+        name: job.name,
+        runs_on: job.runs_on,
+        needs: job.needs.filter((dep) => names.has(dep)),
+        status,
+        job_id: runJob.id,
+        step_count: job.step_count ?? runJob.steps?.length ?? runJob.metrics_json?.steps.length,
+      }
+    }
+    return {
+      name: job.name,
+      runs_on: job.runs_on,
+      needs: job.needs.filter((dep) => names.has(dep)),
+      status: 'skipped',
+      step_count: job.step_count,
+    }
+  })
 }

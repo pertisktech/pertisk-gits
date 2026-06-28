@@ -13,7 +13,8 @@ import {
   stepLogSubtitle,
   stepLogTitle,
 } from '../components/PipelineActions'
-import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
+import { PipelineGraph } from '../components/PipelineGraph'
+import { buildDetailGraphJobs } from '../lib/pipelineGraphLayout'
 import { PipelineSummary } from '../components/PipelineSummary'
 import {
   filterVisibleRunJobs,
@@ -59,7 +60,7 @@ export function PipelineRunDetailPage() {
   const userPinnedStep = useRef(false)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [showAllPaths, setShowAllPaths] = useState(false)
+  const [showAllPaths, setShowAllPaths] = useState(true)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -112,13 +113,14 @@ export function PipelineRunDetailPage() {
   }, [run, pipelineConfig?.jobs, viewRef, showAllPaths])
 
   const graphJobs = useMemo(() => {
-    const mapped = jobsFromRun(visibleJobs, run?.status)
-    const names = new Set(mapped.map((job) => job.name))
-    return mapped.map((job) => ({
-      ...job,
-      needs: job.needs.filter((dep) => names.has(dep)),
-    }))
-  }, [visibleJobs, run?.status])
+    if (!run) return []
+    return buildDetailGraphJobs(pipelineConfig?.jobs, run.jobs, {
+      showAllPaths,
+      viewRef,
+      eventType: run.event_type,
+      runStatus: run.status,
+    })
+  }, [run, pipelineConfig?.jobs, viewRef, showAllPaths])
 
   const activeJob = useMemo(() => {
     if (!run || visibleJobs.length === 0) return null
@@ -297,6 +299,14 @@ export function PipelineRunDetailPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <label className="pipeline-summary-filter">
+            <input
+              type="checkbox"
+              checked={showAllPaths}
+              onChange={(event) => setShowAllPaths(event.target.checked)}
+            />
+            Show all
+          </label>
           {isRunInProgress(run) && (
             <SecondaryButton
               type="button"
@@ -385,7 +395,9 @@ export function PipelineRunDetailPage() {
           jobs={graphJobs}
           selectedJob={activeJob?.id ?? null}
           onJobSelect={(jobKey) => {
-            const match = visibleJobs.find((job) => job.id === jobKey || job.job_name === jobKey)
+            const match = visibleJobs.find(
+              (job) => job.id === jobKey || job.job_name === jobKey,
+            )
             if (match) selectJob(match.id)
           }}
         />
