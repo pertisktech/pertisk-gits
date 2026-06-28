@@ -1,0 +1,151 @@
+# Multi-environment staged pipeline (example)
+# main: CI + dev deploy (automatic on push)
+# qa / uat / release tag: manual deploy paths
+
+on:
+  push:
+    branches: [main, qa, uat, release/*]
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit-test:
+    runs-on: kubernetes
+    steps:
+      - name: unit test
+        run: echo "unit test ok"
+
+  code-coverage:
+    runs-on: kubernetes
+    needs: [unit-test]
+    steps:
+      - name: code coverage
+        run: echo "code coverage ok"
+
+  build-docker:
+    runs-on: kubernetes
+    needs: [unit-test]
+    steps:
+      - name: build docker
+        run: echo "build docker ok"
+
+  release-docker:
+    runs-on: kubernetes
+    needs: [build-docker, code-coverage]
+    steps:
+      - name: release docker
+        run: echo "release docker ok"
+
+  deploy-dev:
+    runs-on: kubernetes
+    needs: [release-docker]
+    if: branch == main
+    steps:
+      - name: deploy dev
+        run: echo "deploy dev ok"
+
+  health-check-dev:
+    runs-on: kubernetes
+    needs: [deploy-dev]
+    if: branch == main
+    steps:
+      - name: health check
+        run: echo "health check ok"
+
+  e2e-test-dev:
+    runs-on: kubernetes
+    needs: [health-check-dev]
+    if: branch == main
+    steps:
+      - name: end-to-end test
+        run: echo "end-to-end test ok"
+
+  deploy-qa:
+    runs-on: kubernetes
+    needs: [release-docker]
+    if:
+      branch: qa
+      event: manual
+    steps:
+      - name: deploy qa
+        run: echo "deploy qa ok"
+
+  health-check-qa:
+    runs-on: kubernetes
+    needs: [deploy-qa]
+    if:
+      branch: qa
+      event: manual
+    steps:
+      - name: health check
+        run: echo "health check ok"
+
+  e2e-test-qa:
+    runs-on: kubernetes
+    needs: [health-check-qa]
+    if:
+      branch: qa
+      event: manual
+    steps:
+      - name: end-to-end test
+        run: echo "end-to-end test ok"
+
+  deploy-uat:
+    runs-on: kubernetes
+    needs: [release-docker]
+    if:
+      branch: uat
+      event: manual
+    steps:
+      - name: deploy uat
+        run: echo "deploy uat ok"
+
+  health-check-uat:
+    runs-on: kubernetes
+    needs: [deploy-uat]
+    if:
+      branch: uat
+      event: manual
+    steps:
+      - name: health check
+        run: echo "health check ok"
+
+  e2e-test-uat:
+    runs-on: kubernetes
+    needs: [health-check-uat]
+    if:
+      branch: uat
+      event: manual
+    steps:
+      - name: end-to-end test
+        run: echo "end-to-end test ok"
+
+  deploy-prd:
+    runs-on: kubernetes
+    needs: [release-docker]
+    if:
+      tag: release/*
+      event: manual
+    steps:
+      - name: deploy prd
+        run: echo "deploy prd ok"
+
+  health-check-prd:
+    runs-on: kubernetes
+    needs: [deploy-prd]
+    if:
+      tag: release/*
+      event: manual
+    steps:
+      - name: health check
+        run: echo "health check ok"
+
+  e2e-test-prd:
+    runs-on: kubernetes
+    needs: [health-check-prd]
+    if:
+      tag: release/*
+      event: manual
+    steps:
+      - name: end-to-end test
+        run: echo "end-to-end test ok"

@@ -14,7 +14,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use pertisk_cicd::{
-    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, PipelineEvent, ScheduledJob,
+    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, PipelineEvent, RunContext, ScheduledJob,
     Scheduler, TriggerMatcher, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
@@ -515,6 +515,7 @@ struct PipelineConfigPreviewResponse {
     config_path: String,
     commit_sha: String,
     r#ref: String,
+    on: pertisk_cicd::Triggers,
     jobs: Vec<PipelineJobPreview>,
 }
 
@@ -533,6 +534,7 @@ struct PipelineJobPreview {
     needs: Vec<String>,
     step_count: usize,
     steps: Vec<JobStepResponse>,
+    r#if: Option<pertisk_cicd::JobIfCondition>,
 }
 
 #[derive(Serialize)]
@@ -754,6 +756,7 @@ async fn get_pipeline_config_preview(
                     },
                 })
                 .collect(),
+            r#if: job.r#if.clone(),
         })
         .collect();
     jobs.sort_by(|a, b| a.name.cmp(&b.name));
@@ -762,6 +765,7 @@ async fn get_pipeline_config_preview(
         config_path,
         commit_sha,
         r#ref: normalized_ref,
+        on: config.on,
         jobs,
     }))
 }
@@ -965,7 +969,8 @@ async fn rerun_pipeline(
         DomainError::Validation(format!("invalid pipeline config: {e}"))
     })?;
 
-    let jobs = Scheduler::schedule(&config).map_err(|e| {
+    let run_ctx = RunContext::from_trigger(&run.event_type, &run.ref_name);
+    let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         DomainError::Validation(format!("schedule failed: {e}"))
     })?;
 
@@ -2190,7 +2195,8 @@ async fn process_trigger_now(
     .fetch_one(&state.pool)
     .await?;
 
-    let jobs = Scheduler::schedule(&config).map_err(|e| {
+    let run_ctx = RunContext::from_trigger(event_type, ref_name);
+    let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         sqlx::Error::Protocol(format!("schedule failed: {e}").into())
     })?;
 
@@ -2256,7 +2262,7 @@ fn job_should_reset(mode: MaterializeMode, existing_status: Option<&str>) -> boo
         MaterializeMode::Fresh | MaterializeMode::RerunAll => true,
         MaterializeMode::RerunFailed => match existing_status {
             None => true,
-            Some("success") => false,
+            Some("success") | Some("skipped") => false,
             Some(_) => true,
         },
     }
@@ -2347,10 +2353,16 @@ async fn materialize_jobs_for_run(
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
         let artifacts_json =
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
+        let status = if job.skipped { "skipped" } else { "queued" };
+        let initial_log = if job.skipped {
+            "=== skipped (if condition not met)\n"
+        } else {
+            ""
+        };
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, status, log_text, finished_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::job_run_status, $11, CASE WHEN $12 THEN NOW() ELSE NULL END)
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
@@ -2360,13 +2372,13 @@ async fn materialize_jobs_for_run(
                 artifacts_json = EXCLUDED.artifacts_json,
                 needs = EXCLUDED.needs,
                 timeout_minutes = EXCLUDED.timeout_minutes,
-                status = 'queued',
+                status = EXCLUDED.status,
                 runner_id = NULL,
                 metrics_json = NULL,
-                log_text = '',
+                log_text = EXCLUDED.log_text,
                 queued_at = NOW(),
                 started_at = NULL,
-                finished_at = NULL,
+                finished_at = EXCLUDED.finished_at,
                 cancel_requested_at = NULL,
                 cancel_step_name = NULL
             "#,
@@ -2380,17 +2392,25 @@ async fn materialize_jobs_for_run(
         .bind(artifacts_json)
         .bind(&job.job.needs)
         .bind(job.job.timeout_minutes.map(|m| m as i32))
+        .bind(status)
+        .bind(initial_log)
+        .bind(job.skipped)
         .execute(pool)
         .await?;
 
+        let (commit_state, commit_description) = if job.skipped {
+            ("success", "Skipped")
+        } else {
+            ("pending", "Queued")
+        };
         sqlx::query(
             r#"
             INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id, required)
-            VALUES ($1, $2, $3, 'pending', 'Queued', $4, $5)
+            VALUES ($1, $2, $3, $4::commit_status_state, $5, $6, $7)
             ON CONFLICT (repository_id, commit_sha, context)
             DO UPDATE SET
-                state = 'pending',
-                description = 'Queued',
+                state = EXCLUDED.state,
+                description = EXCLUDED.description,
                 updated_at = NOW(),
                 pipeline_run_id = EXCLUDED.pipeline_run_id,
                 required = EXCLUDED.required
@@ -2399,6 +2419,8 @@ async fn materialize_jobs_for_run(
         .bind(repository_id)
         .bind(commit_sha)
         .bind(format!("ci/{}", job.name))
+        .bind(commit_state)
+        .bind(commit_description)
         .bind(run_id)
         .bind(job.job.required)
         .execute(pool)
@@ -2584,7 +2606,7 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
             FROM job_runs dep
             WHERE dep.pipeline_run_id = j.pipeline_run_id
               AND dep.job_name = ANY(j.needs)
-              AND dep.status <> 'success'
+              AND dep.status NOT IN ('success', 'skipped')
           )
         ORDER BY j.queued_at ASC
         FOR UPDATE OF j SKIP LOCKED

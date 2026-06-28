@@ -14,6 +14,7 @@ import {
 } from '../lib/pipelineStatus'
 import { PipelineGraph } from './PipelineGraph'
 import { PipelineRunsTable } from './PipelineRunsTable'
+import { PipelineSummary } from './PipelineSummary'
 import { EmptyState, PrimaryButton, SecondaryButton } from './ui'
 
 function PipelineMigratePanel({
@@ -374,6 +375,7 @@ function PipelineConfigGraph({
 
   return (
     <div className="rounded-lg border border-naturals-n4 overflow-hidden">
+      {data && <PipelineSummary config={data} />}
       <div className="px-3 py-2 border-b border-naturals-n4 bg-naturals-n3 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-text">Workflow graph</h3>

@@ -43,25 +43,8 @@ impl TriggerMatcher {
     }
 
     fn matches_patterns(patterns: Option<&[String]>, value: &str) -> bool {
-        match patterns {
-            None => true,
-            Some(list) if list.is_empty() => true,
-            Some(list) => list.iter().any(|pattern| glob_match(pattern, value)),
-        }
+        crate::pattern::matches_any_pattern(patterns, value)
     }
-}
-
-fn glob_match(pattern: &str, value: &str) -> bool {
-    if pattern == "*" {
-        return true;
-    }
-    if let Some(suffix) = pattern.strip_prefix('*') {
-        return value.ends_with(suffix);
-    }
-    if let Some(prefix) = pattern.strip_suffix('*') {
-        return value.starts_with(prefix);
-    }
-    pattern == value
 }
 
 #[cfg(test)]
@@ -89,6 +72,7 @@ mod tests {
                     image: None,
                     dind: false,
                     needs: vec![],
+                    r#if: None,
                     required: true,
                     steps: vec![Step {
                         name: None,

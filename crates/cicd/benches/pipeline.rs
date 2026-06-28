@@ -66,6 +66,7 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
                 image: None,
                 dind: false,
                 needs,
+                r#if: None,
                 required: true,
                 steps: vec![Step {
                     name: Some("noop".into()),

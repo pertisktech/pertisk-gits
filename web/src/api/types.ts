@@ -516,7 +516,7 @@ export interface JobArtifact {
 export interface JobRun {
   id: string
   job_name: string
-  status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled'
+  status: 'queued' | 'running' | 'success' | 'failure' | 'cancelled' | 'skipped'
   runs_on: string
   image?: string | null
   needs: string[]
@@ -529,6 +529,12 @@ export interface JobRun {
   finished_at: string | null
 }
 
+export interface JobIfCondition {
+  branch?: string | string[]
+  tag?: boolean | string | string[]
+  event?: string | string[]
+}
+
 export interface PipelineJobPreview {
   name: string
   runs_on: string
@@ -536,12 +542,19 @@ export interface PipelineJobPreview {
   needs: string[]
   step_count: number
   steps: Array<{ name: string; run: string }>
+  if?: JobIfCondition
+}
+
+export interface PipelineTriggersPreview {
+  push?: { branches?: string[]; tags?: string[] } | null
+  pull_request?: { branches?: string[] } | null
 }
 
 export interface PipelineConfigPreview {
   config_path: string
   commit_sha: string
   ref: string
+  on: PipelineTriggersPreview
   jobs: PipelineJobPreview[]
 }
 

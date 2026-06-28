@@ -2846,6 +2846,194 @@ select.app-field:disabled,
   word-break: break-word;
 }
 
+/* Pipeline summary (branch / environment paths) */
+.pipeline-summary {
+  border-bottom: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n1);
+}
+
+.pipeline-summary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.75rem 1.1rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.pipeline-summary-toggle:hover {
+  background: color-mix(in srgb, var(--color-naturals-n2) 70%, transparent);
+}
+
+.pipeline-summary-chevron {
+  display: flex;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.pipeline-summary-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.pipeline-summary-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  padding: 0.12rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n2);
+}
+
+.pipeline-summary-body {
+  padding: 0 1.1rem 1rem;
+}
+
+.pipeline-summary-subtitle {
+  margin: 0 0 0.85rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  line-height: 1.45;
+}
+
+.pipeline-summary-paths {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.pipeline-summary-path {
+  border: 1px solid var(--color-naturals-n4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  overflow: hidden;
+}
+
+.pipeline-summary-path-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.pipeline-summary-path-toggle:hover {
+  background: color-mix(in srgb, var(--color-naturals-n2) 80%, transparent);
+}
+
+.pipeline-summary-path--open .pipeline-summary-path-toggle {
+  border-bottom: 1px solid var(--color-naturals-n4);
+}
+
+.pipeline-summary-path-chevron {
+  display: flex;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+
+.pipeline-summary-path-branch {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text);
+  font-family: var(--font-mono);
+}
+
+.pipeline-summary-path-trigger {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  padding: 0.12rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n2);
+}
+
+.pipeline-summary-path-trigger--auto {
+  color: var(--color-green-g1);
+  border-color: color-mix(in srgb, var(--color-green-g1) 35%, var(--color-naturals-n4));
+  background: color-mix(in srgb, var(--color-green-g1) 10%, transparent);
+}
+
+.pipeline-summary-path-count {
+  margin-left: auto;
+  font-size: 0.6875rem;
+  color: var(--color-text-secondary);
+  font-family: var(--font-mono);
+}
+
+.pipeline-summary-path-body {
+  padding: 0.65rem 0.85rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.pipeline-summary-path-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.pipeline-summary-path-section-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.pipeline-summary-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem 0.35rem;
+  line-height: 1.6;
+}
+
+.pipeline-summary-flow-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.pipeline-summary-flow-arrow {
+  color: var(--color-naturals-n8);
+  font-size: 0.75rem;
+  user-select: none;
+}
+
+.pipeline-summary-job {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-naturals-n12);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-naturals-n2);
+  border: 1px solid color-mix(in srgb, var(--color-naturals-n4) 80%, transparent);
+}
+
+.pipeline-summary-note {
+  margin: 0.85rem 0 0;
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+}
+
 .pipeline-runs-empty {
   padding: 2rem 1rem;
   text-align: center;

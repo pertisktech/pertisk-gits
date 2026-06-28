@@ -26,7 +26,11 @@ export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
   const hasRunning = jobs.some((j) => j.status === 'running')
   const hasFailed = jobs.some((j) => j.status === 'failure')
   const allTerminal = jobs.every(
-    (j) => j.status === 'success' || j.status === 'failure' || j.status === 'cancelled',
+    (j) =>
+      j.status === 'success' ||
+      j.status === 'failure' ||
+      j.status === 'cancelled' ||
+      j.status === 'skipped',
   )
 
   if (allTerminal) {
@@ -76,6 +80,7 @@ export function runStatusVariant(status: PipelineRun['status']) {
 
 export function jobStatusVariant(status: JobRun['status'] | 'pending') {
   if (status === 'success') return 'green' as const
+  if (status === 'skipped') return 'gray' as const
   if (status === 'failure' || status === 'cancelled') return 'red' as const
   if (status === 'running') return 'yellow' as const
   return 'gray' as const

@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::config::{Job, PipelineConfig};
+use crate::job_if::{JobIfMatcher, RunContext};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScheduledJob {
     pub name: String,
     pub job: Job,
+    pub skipped: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -19,6 +21,46 @@ pub enum ScheduleError {
 pub struct Scheduler;
 
 impl Scheduler {
+    /// Topological order of all jobs, marking those skipped by `if:` or unmet needs.
+    pub fn schedule_for_run(
+        config: &PipelineConfig,
+        ctx: &RunContext,
+    ) -> Result<Vec<ScheduledJob>, ScheduleError> {
+        let ordered = Self::schedule(config)?;
+        let mut active: HashSet<String> = ordered
+            .iter()
+            .filter(|job| JobIfMatcher::matches(job.job.r#if.as_ref(), ctx))
+            .map(|job| job.name.clone())
+            .collect();
+
+        loop {
+            let before = active.len();
+            for job in &ordered {
+                if !active.contains(&job.name) {
+                    continue;
+                }
+                for need in &job.job.needs {
+                    if config.jobs.contains_key(need) && !active.contains(need) {
+                        active.remove(&job.name);
+                        break;
+                    }
+                }
+            }
+            if active.len() == before {
+                break;
+            }
+        }
+
+        Ok(ordered
+            .into_iter()
+            .map(|job| ScheduledJob {
+                skipped: !active.contains(&job.name),
+                name: job.name,
+                job: job.job,
+            })
+            .collect())
+    }
+
     /// Topological order of jobs respecting `needs` edges.
     pub fn schedule(config: &PipelineConfig) -> Result<Vec<ScheduledJob>, ScheduleError> {
         let mut indegree: HashMap<&str, usize> = config.jobs.keys().map(|k| (k.as_str(), 0)).collect();
@@ -51,6 +93,7 @@ impl Scheduler {
             ordered.push(ScheduledJob {
                 name: name.to_string(),
                 job,
+                skipped: false,
             });
 
             if let Some(children) = dependents.get(name) {
@@ -99,6 +142,7 @@ mod tests {
                         image: None,
                         dind: false,
                         needs: vec!["test".into()],
+                        r#if: None,
                         required: true,
                         steps: vec![Step {
                             name: None,
@@ -119,6 +163,7 @@ mod tests {
                         image: None,
                         dind: false,
                         needs: vec![],
+                        r#if: None,
                         required: true,
                         steps: vec![Step {
                             name: None,
@@ -138,5 +183,71 @@ mod tests {
         let jobs = Scheduler::schedule(&config).unwrap();
         assert_eq!(jobs[0].name, "test");
         assert_eq!(jobs[1].name, "bench");
+    }
+
+    #[test]
+    fn skips_jobs_when_if_not_met() {
+        use crate::job_if::{JobIfCondition, IfStringList, RunContext};
+
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: HashMap::from([
+                (
+                    "build".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: None,
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+                (
+                    "deploy-qa".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        dind: false,
+                        needs: vec!["build".into()],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("qa".into())),
+                            tag: None,
+                            event: None,
+                        }),
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+            ]),
+        };
+
+        let ctx = RunContext {
+            event_type: "push".into(),
+            branch: Some("main".into()),
+            tag: None,
+        };
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+        assert!(!jobs.iter().find(|job| job.name == "build").unwrap().skipped);
+        assert!(jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
     }
 }

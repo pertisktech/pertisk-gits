@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use pertisk_cicd::{
-    parse_pipeline_yaml, PipelineEvent, Scheduler, TriggerMatcher, CONFIG_PATHS,
+    parse_pipeline_yaml, PipelineEvent, RunContext, Scheduler, TriggerMatcher, CONFIG_PATHS,
 };
 use sqlx::PgPool;
 use tokio::process::Command;
@@ -158,13 +158,20 @@ async fn process_trigger_now(
     .fetch_one(&state.pool)
     .await?;
 
-    for job in Scheduler::schedule(&config)? {
+    let run_ctx = RunContext::from_trigger(event_type, ref_name);
+    for job in Scheduler::schedule_for_run(&config, &run_ctx)? {
         let steps_json = serde_json::to_value(&job.job.steps)?;
         let artifacts_json = serde_json::to_value(&job.job.artifacts)?;
+        let status = if job.skipped { "skipped" } else { "queued" };
+        let initial_log = if job.skipped {
+            "=== skipped (if condition not met)\n"
+        } else {
+            ""
+        };
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued')
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, status, log_text, finished_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8::job_run_status, $9, CASE WHEN $10 THEN NOW() ELSE NULL END)
             "#,
         )
         .bind(run_id)
@@ -174,17 +181,25 @@ async fn process_trigger_now(
         .bind(artifacts_json)
         .bind(&job.job.needs)
         .bind(job.job.timeout_minutes.map(|m| m as i32))
+        .bind(status)
+        .bind(initial_log)
+        .bind(job.skipped)
         .execute(&state.pool)
         .await?;
 
+        let (commit_state, commit_description) = if job.skipped {
+            ("success", "Skipped")
+        } else {
+            ("pending", "Queued")
+        };
         sqlx::query(
             r#"
             INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id, required)
-            VALUES ($1, $2, $3, 'pending', 'Queued', $4, $5)
+            VALUES ($1, $2, $3, $4::commit_status_state, $5, $6, $7)
             ON CONFLICT (repository_id, commit_sha, context)
             DO UPDATE SET
-                state = 'pending',
-                description = 'Queued',
+                state = EXCLUDED.state,
+                description = EXCLUDED.description,
                 updated_at = NOW(),
                 pipeline_run_id = EXCLUDED.pipeline_run_id,
                 required = EXCLUDED.required
@@ -193,6 +208,8 @@ async fn process_trigger_now(
         .bind(repository_id)
         .bind(commit_sha)
         .bind(format!("ci/{}", job.name))
+        .bind(commit_state)
+        .bind(commit_description)
         .bind(run_id)
         .bind(job.job.required)
         .execute(&state.pool)

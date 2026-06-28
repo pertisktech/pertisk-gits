@@ -4,6 +4,8 @@ use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_yaml::Value;
 
+use crate::job_if::{deserialize_job_if, JobIfCondition};
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct PipelineConfig {
     #[serde(default, deserialize_with = "deserialize_triggers")]
@@ -47,6 +49,8 @@ pub struct Job {
     pub dind: bool,
     #[serde(default)]
     pub needs: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_job_if")]
+    pub r#if: Option<JobIfCondition>,
     #[serde(default = "default_true")]
     pub required: bool,
     pub steps: Vec<Step>,
@@ -409,5 +413,38 @@ jobs:
         assert!(cfg.on.pull_request.is_some());
         assert_eq!(cfg.jobs["test"].runs_on, "linux,docker");
         assert_eq!(cfg.jobs["test"].steps[0].uses.as_deref(), Some("actions/checkout@v4"));
+    }
+
+    #[test]
+    fn parses_job_if_shorthand_and_mapping() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  deploy-dev:
+    runs-on: linux
+    if: branch == main
+    steps:
+      - run: echo dev
+  deploy-qa:
+    runs-on: linux
+    if:
+      branch: qa
+      event: manual
+    steps:
+      - run: echo qa
+  deploy-prd:
+    runs-on: linux
+    if:
+      tag: release/*
+      event: manual
+    steps:
+      - run: echo prd
+"#,
+        )
+        .unwrap();
+        assert!(cfg.jobs["deploy-dev"].r#if.is_some());
+        assert!(cfg.jobs["deploy-qa"].r#if.is_some());
+        assert!(cfg.jobs["deploy-prd"].r#if.is_some());
     }
 }

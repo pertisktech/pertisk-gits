@@ -51,6 +51,15 @@ export function ActionsStatusIcon({
       />
     )
   }
+  if (status === 'skipped') {
+    return (
+      <MinusCircle
+        size={px}
+        className={cn('gha-status-icon gha-status-icon--pending', className)}
+        aria-hidden
+      />
+    )
+  }
   if (status === 'running') {
     return (
       <Loader2
