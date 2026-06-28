@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, GitPullRequest, Loader2, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { Check, GitPullRequest, Loader2, Pencil, X } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { PullRequest, PullRequestReviewDetail } from '../api/types'
@@ -9,8 +9,9 @@ import { PullRequestDiff } from '../components/PullRequestDiff'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
-import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { Breadcrumbs, PrimaryButton, SecondaryButton } from '../components/ui'
 import { projectTabPath } from '../lib/projectRoute'
+import { branchMatchesPattern } from '../lib/branchProtection'
 import { cn } from '../utils/cn'
 
 function prStateVariant(state: PullRequest['state']) {
@@ -48,6 +49,10 @@ export function PullRequestDetailPage() {
   const [reviewError, setReviewError] = useState<string | null>(null)
   const [mergeError, setMergeError] = useState<string | null>(null)
   const [mergeStrategy, setMergeStrategy] = useState<'merge' | 'squash' | 'rebase'>('merge')
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [editBody, setEditBody] = useState('')
+  const [updateError, setUpdateError] = useState<string | null>(null)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -91,6 +96,12 @@ export function PullRequestDetailPage() {
     enabled: Boolean(orgSlug && projectSlug && number),
   })
 
+  const { data: protectionRules = [] } = useQuery({
+    queryKey: ['branch-protection', orgSlug, projectSlug],
+    queryFn: () => api.listBranchProtectionRules(token!, orgSlug, projectSlug),
+    enabled: Boolean(token && orgSlug && projectSlug),
+  })
+
   const myLatestReview = useMemo(() => {
     if (!user) return null
     return reviews.find((item) => item.reviewer.id === user.id) ?? null
@@ -121,6 +132,18 @@ export function PullRequestDetailPage() {
     onError: (err: Error) => setMergeError(err.message),
   })
 
+  const updateMutation = useMutation({
+    mutationFn: (payload: { title?: string; body?: string; state?: 'open' | 'closed' }) =>
+      api.updatePullRequest(token!, orgSlug, projectSlug, number, payload),
+    onSuccess: () => {
+      setUpdateError(null)
+      setIsEditing(false)
+      queryClient.invalidateQueries({ queryKey: ['pull-request', orgSlug, projectSlug, number] })
+      queryClient.invalidateQueries({ queryKey: ['repo-pulls', orgSlug, projectSlug] })
+    },
+    onError: (err: Error) => setUpdateError(err.message),
+  })
+
   const reviewMutation = useMutation({
     mutationFn: (state: 'approved' | 'changes_requested') =>
       api.createPullRequestReview(token!, orgSlug, projectSlug, number, { state }),
@@ -146,6 +169,32 @@ export function PullRequestDetailPage() {
     },
   })
 
+  const targetBranch = data?.pull_request.target_branch ?? ''
+  const prState = data?.pull_request.state
+  const mergeable = data?.compare?.mergeable ?? false
+  const approvedCount = data?.review_summary.approved_count ?? 0
+  const hasChangesRequested = (data?.review_summary.changes_requested_count ?? 0) > 0
+
+  const protectionRule = useMemo(
+    () =>
+      protectionRules.find((rule) => branchMatchesPattern(targetBranch, rule.branch_pattern)) ?? null,
+    [protectionRules, targetBranch],
+  )
+
+  const requiredApprovals = protectionRule?.required_approvals ?? 0
+  const approvalsBlocking =
+    Boolean(protectionRule) && requiredApprovals > 0 && approvedCount < requiredApprovals
+  const changesBlocking = Boolean(protectionRule) && hasChangesRequested
+  const canMerge =
+    prState === 'open' && mergeable && !ciBlocking && !approvalsBlocking && !changesBlocking
+
+  useEffect(() => {
+    if (!isEditing && data) {
+      setEditTitle(data.pull_request.title)
+      setEditBody(data.pull_request.body ?? '')
+    }
+  }, [data?.pull_request.title, data?.pull_request.body, isEditing, data])
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-text-secondary text-sm py-8">
@@ -163,10 +212,8 @@ export function PullRequestDetailPage() {
     )
   }
 
-  const { pull_request: pr, author, compare, review_summary: reviewSummary } = data
+  const { pull_request: pr, author, compare } = data
   const repoName = repoData?.repository.name ?? projectSlug
-  const approvedCount = reviewSummary.approved_count
-  const hasChangesRequested = reviewSummary.changes_requested_count > 0
 
   return (
     <>
@@ -182,59 +229,160 @@ export function PullRequestDetailPage() {
       <div className="app-panel mb-4">
         <div className="app-panel-body space-y-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-start gap-3 min-w-0">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
               <GitPullRequest size={20} className="text-primary shrink-0 mt-1" />
-              <div>
-                <h1 className="text-lg font-semibold text-text">
-                  {pr.title}{' '}
-                  <span className="text-muted font-normal">#{pr.number}</span>
-                </h1>
-                <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <StatusBadge variant={prStateVariant(pr.state)}>{prStateLabel(pr.state)}</StatusBadge>
-                  {approvedCount > 0 && (
-                    <StatusBadge variant="green">
-                      Approved{approvedCount > 1 ? ` (${approvedCount})` : ''}
-                    </StatusBadge>
-                  )}
-                  {hasChangesRequested && (
-                    <StatusBadge variant="red">Changes requested</StatusBadge>
-                  )}
-                  {pr.state === 'open' && approvedCount === 0 && !hasChangesRequested && (
-                    <StatusBadge variant="gray">Awaiting review</StatusBadge>
-                  )}
-                </div>
-                {pr.state === 'open' && approvedCount > 0 && (
-                  <p className="text-xs text-text-secondary mt-2">
-                    Approval recorded. The pull request stays <strong className="text-text">Open</strong> until someone merges it.
-                  </p>
+              <div className="min-w-0 flex-1">
+                {isEditing ? (
+                  <form
+                    className="space-y-3"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      if (!editTitle.trim()) return
+                      updateMutation.mutate({
+                        title: editTitle.trim(),
+                        body: editBody.trim() || undefined,
+                      })
+                    }}
+                  >
+                    <input
+                      type="text"
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="app-field w-full"
+                      required
+                      disabled={updateMutation.isPending}
+                    />
+                    <textarea
+                      value={editBody}
+                      onChange={(e) => setEditBody(e.target.value)}
+                      placeholder="Description (optional)"
+                      rows={5}
+                      className="app-field w-full resize-y"
+                      disabled={updateMutation.isPending}
+                    />
+                    <div className="flex flex-wrap gap-2">
+                      <PrimaryButton type="submit" disabled={updateMutation.isPending || !editTitle.trim()}>
+                        {updateMutation.isPending ? 'Saving…' : 'Save changes'}
+                      </PrimaryButton>
+                      <SecondaryButton
+                        type="button"
+                        disabled={updateMutation.isPending}
+                        onClick={() => {
+                          setIsEditing(false)
+                          setUpdateError(null)
+                          setEditTitle(pr.title)
+                          setEditBody(pr.body ?? '')
+                        }}
+                      >
+                        Cancel
+                      </SecondaryButton>
+                    </div>
+                  </form>
+                ) : (
+                  <>
+                    <h1 className="text-lg font-semibold text-text">
+                      {pr.title}{' '}
+                      <span className="text-muted font-normal">#{pr.number}</span>
+                    </h1>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <StatusBadge variant={prStateVariant(pr.state)}>{prStateLabel(pr.state)}</StatusBadge>
+                      {approvedCount > 0 && (
+                        <StatusBadge variant="green">
+                          Approved{approvedCount > 1 ? ` (${approvedCount})` : ''}
+                        </StatusBadge>
+                      )}
+                      {hasChangesRequested && (
+                        <StatusBadge variant="red">Changes requested</StatusBadge>
+                      )}
+                      {pr.state === 'open' && approvedCount === 0 && !hasChangesRequested && (
+                        <StatusBadge variant="gray">Awaiting review</StatusBadge>
+                      )}
+                      {protectionRule && requiredApprovals > 0 && pr.state === 'open' && (
+                        <StatusBadge variant={approvalsBlocking ? 'yellow' : 'green'}>
+                          {approvedCount}/{requiredApprovals} approvals
+                        </StatusBadge>
+                      )}
+                    </div>
+                    {pr.state === 'open' && approvedCount > 0 && !canMerge && !approvalsBlocking && !changesBlocking && (
+                      <p className="text-xs text-text-secondary mt-2">
+                        Approval recorded. The pull request stays <strong className="text-text">Open</strong> until merge checks pass.
+                      </p>
+                    )}
+                    {pr.state === 'open' && canMerge && approvedCount > 0 && (
+                      <p className="text-xs text-text-secondary mt-2">
+                        Approved and ready to merge.
+                      </p>
+                    )}
+                    <p className="text-sm text-text-secondary mt-1">
+                      {pr.source_branch} → {pr.target_branch} · {author.username} · {formatDateTime(pr.created_at)}
+                    </p>
+                  </>
                 )}
-                <p className="text-sm text-text-secondary mt-1">
-                  {pr.source_branch} → {pr.target_branch} · {author.username} · {formatDateTime(pr.created_at)}
-                </p>
               </div>
             </div>
-            {token && pr.state === 'open' && compare?.mergeable && !ciBlocking && (
+            {token && !isEditing && (
               <div className="flex flex-wrap items-center gap-2">
-                <select
-                  className="app-field !py-1.5 !text-sm"
-                  value={mergeStrategy}
-                  onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash' | 'rebase')}
-                  disabled={mergeMutation.isPending}
-                >
-                  <option value="merge">Create merge commit</option>
-                  <option value="squash">Squash and merge</option>
-                  <option value="rebase">Rebase and merge</option>
-                </select>
-                <PrimaryButton
-                  type="button"
-                  onClick={() => mergeMutation.mutate()}
-                  disabled={mergeMutation.isPending}
-                >
-                  {mergeMutation.isPending ? 'Merging…' : 'Merge pull request'}
-                </PrimaryButton>
+                {pr.state === 'open' && canMerge && (
+                  <>
+                    <select
+                      className="app-field !py-1.5 !text-sm"
+                      value={mergeStrategy}
+                      onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash' | 'rebase')}
+                      disabled={mergeMutation.isPending}
+                    >
+                      <option value="merge">Create merge commit</option>
+                      <option value="squash">Squash and merge</option>
+                      <option value="rebase">Rebase and merge</option>
+                    </select>
+                    <PrimaryButton
+                      type="button"
+                      onClick={() => mergeMutation.mutate()}
+                      disabled={mergeMutation.isPending}
+                    >
+                      {mergeMutation.isPending ? 'Merging…' : 'Merge pull request'}
+                    </PrimaryButton>
+                  </>
+                )}
+                {pr.state === 'open' && (
+                  <>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => {
+                        setUpdateError(null)
+                        setIsEditing(true)
+                      }}
+                      disabled={updateMutation.isPending}
+                    >
+                      <Pencil size={14} />
+                      Edit
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      onClick={() => updateMutation.mutate({ state: 'closed' })}
+                      disabled={updateMutation.isPending}
+                    >
+                      Close pull request
+                    </SecondaryButton>
+                  </>
+                )}
+                {pr.state === 'closed' && (
+                  <PrimaryButton
+                    type="button"
+                    onClick={() => updateMutation.mutate({ state: 'open' })}
+                    disabled={updateMutation.isPending}
+                  >
+                    Reopen pull request
+                  </PrimaryButton>
+                )}
               </div>
             )}
           </div>
+
+          {updateError && (
+            <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+              {updateError}
+            </div>
+          )}
 
           {mergeError && (
             <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
@@ -251,6 +399,19 @@ export function PullRequestDetailPage() {
               {ciStatuses.some((s) => s.required && s.state === 'pending')
                 ? 'CI checks are still running. Merge is disabled until they finish.'
                 : 'CI checks failed. Fix the pipeline before merging.'}
+            </p>
+          )}
+
+          {pr.state === 'open' && compare?.mergeable && !ciBlocking && approvalsBlocking && (
+            <p className="text-sm text-dashboard-danger">
+              Branch <strong className="text-text">{pr.target_branch}</strong> requires {requiredApprovals} approving
+              review{requiredApprovals === 1 ? '' : 's'} ({approvedCount} received).
+            </p>
+          )}
+
+          {pr.state === 'open' && compare?.mergeable && !ciBlocking && changesBlocking && (
+            <p className="text-sm text-dashboard-danger">
+              Merge is blocked until all change requests are resolved.
             </p>
           )}
 
@@ -273,7 +434,7 @@ export function PullRequestDetailPage() {
             />
           )}
 
-          {pr.body && (
+          {!isEditing && pr.body && (
             <div className="markdown-viewer border-t border-naturals-n4 pt-4">
               <MarkdownBody content={pr.body} orgSlug={orgSlug} repoSlug={projectSlug} />
             </div>

@@ -945,6 +945,23 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
+  updatePullRequest: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    pullNumber: number,
+    payload: {
+      title?: string
+      body?: string
+      state?: 'open' | 'closed'
+    },
+  ) =>
+    request<PullRequestDetail>(
+      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    ),
+
   mergePullRequest: (
     token: string,
     orgSlug: string,
