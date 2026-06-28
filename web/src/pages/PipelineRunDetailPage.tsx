@@ -5,11 +5,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import {
-  CiLogViewer,
-  CiPrompt,
-  CiRunLine,
-  CiTerminal,
-} from '../components/PipelineTerminal'
+  ActionsJobHeader,
+  ActionsJobSidebar,
+  ActionsLogPanel,
+  ActionsRunSummary,
+  ActionsStepList,
+  stepLogSubtitle,
+  stepLogTitle,
+} from '../components/PipelineActions'
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
 import { ConfirmModal } from '../components/ConfirmModal'
 import {
@@ -23,16 +26,13 @@ import {
   type RerunScope,
 } from '../lib/pipelineStatus'
 import { PipelineRerunMenu } from '../components/PipelineRerunMenu'
-import { PipelineRunStatusBadge } from '../components/PipelineStatus'
+import { ActionsStatusIcon } from '../components/PipelineStatus'
 import { projectTabPath } from '../lib/projectRoute'
 import { Breadcrumbs, SecondaryButton } from '../components/ui'
-import { formatDateTime } from '../lib/collaboration'
 import {
   inferRunningStepName,
   jobStepViews,
-  stepDisplayStatus,
   stepLogText,
-  stepMeta,
 } from '../lib/pipelineLog'
 
 function formatBytes(bytes: number): string {
@@ -169,7 +169,7 @@ export function PipelineRunDetailPage() {
     return (
       <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
         <Loader2 size={16} className="animate-spin" />
-        Loading pipeline…
+        Loading workflow run…
       </div>
     )
   }
@@ -182,46 +182,46 @@ export function PipelineRunDetailPage() {
     )
   }
 
-  const passed = run.jobs.filter((j) => j.status === 'success').length
   const branch = refLabel(run.ref_name)
+  const runStatus = displayRunStatus(run)
 
   const repoPath = `/groups/${orgSlug}/projects/${projectSlug}`
   const pipelinesPath = projectTabPath(repoPath, 'pipelines')
 
   return (
-    <div className="pipeline-run-page">
+    <div className="gha-run-page">
       <Breadcrumbs
         items={[
           { label: 'Groups', to: '/groups' },
           { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
           { label: repoName, to: pipelinesPath },
-          { label: `run ${shortSha(run.commit_sha)}` },
+          { label: shortSha(run.commit_sha) },
         ]}
       />
 
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+      <div className="gha-run-header">
         <div>
-          <Link
-            to={pipelinesPath}
-            className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary mb-2"
-          >
+          <Link to={pipelinesPath} className="gha-run-back">
             <ArrowLeft size={14} />
-            Back to pipelines
+            All workflows
           </Link>
-          <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-semibold text-text font-mono">pipeline run</h1>
-            <PipelineRunStatusBadge status={displayRunStatus(run)} />
+          <div className="gha-run-title-row">
+            <ActionsStatusIcon status={runStatus} size="lg" />
+            <h1 className="gha-run-title">
+              <span className="font-mono">.pertisk-ci.yaml</span>
+            </h1>
           </div>
-          <p className="text-sm text-text-secondary mt-1 font-mono">
-            {run.event_type} ·{' '}
+          <p className="gha-run-subtitle">
             <Link
               to={`/groups/${orgSlug}/projects/${projectSlug}/commit/${run.commit_sha}`}
-              className="text-primary hover:underline"
+              className="text-primary hover:underline font-mono"
             >
               {shortSha(run.commit_sha)}
             </Link>
             {' · '}
             {branch}
+            {' · '}
+            {run.event_type}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -237,7 +237,7 @@ export function PipelineRunDetailPage() {
               ) : (
                 <Square size={14} />
               )}
-              Cancel pipeline
+              Cancel workflow
             </SecondaryButton>
           )}
           <PipelineRerunMenu
@@ -269,7 +269,7 @@ export function PipelineRunDetailPage() {
         <ConfirmModal
           open
           variant="danger"
-          title="Delete pipeline run?"
+          title="Delete workflow run?"
           description={
             <>
               This removes the run, job logs, and any uploaded artifacts for{' '}
@@ -287,7 +287,7 @@ export function PipelineRunDetailPage() {
         cancelPipelineMutation.isError ||
         cancelStepMutation.isError ||
         deleteMutation.isError) && (
-        <div className="mb-4 p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
           {(
             (rerunMutation.error ??
               cancelPipelineMutation.error ??
@@ -297,36 +297,9 @@ export function PipelineRunDetailPage() {
         </div>
       )}
 
-      <CiTerminal
-        className="ci-terminal--detail"
-        bodyClassName="ci-terminal-body--detail"
-        title="pertisk-ci"
-        subtitle={`${projectSlug}@${shortSha(run.commit_sha)}`}
-        actions={
-          <span className="text-[10px] font-mono text-naturals-n9">
-            {passed}/{run.jobs.length} jobs ok
-          </span>
-        }
-      >
-        <div className="ci-terminal-meta-bar">
-          <span>
-            started <strong>{formatDateTime(run.started_at ?? run.created_at)}</strong>
-          </span>
-          <span>
-            finished <strong>{run.finished_at ? formatDateTime(run.finished_at) : '—'}</strong>
-          </span>
-          <span>
-            event <strong>{run.event_type}</strong>
-          </span>
-        </div>
+      <ActionsRunSummary run={run} />
 
-        <CiPrompt
-          user="runner"
-          host="pertisk-ci"
-          path={`${orgSlug}/${projectSlug}`}
-          command={`pipeline run --ref ${branch} --sha ${shortSha(run.commit_sha)}`}
-        />
-
+      <div className="gha-graph-panel">
         <PipelineGraph
           className="pipeline-graph-panel--inline"
           jobs={jobsFromRun(run.jobs, run.status)}
@@ -336,51 +309,34 @@ export function PipelineRunDetailPage() {
             if (match) selectJob(match.id)
           }}
         />
+      </div>
 
-        <div className="ci-terminal-split ci-terminal-split--detail">
-          <div className="ci-terminal-sidebar">
-            {run.jobs.map((job) => (
-              <div key={job.id}>
-                <CiRunLine
-                  status={displayJobStatus(job, run.status)}
-                  label={job.job_name}
-                  meta={job.runs_on}
-                  active={activeJob?.id === job.id && !activeStepKey}
-                  onClick={() => selectJob(job.id)}
-                />
-                {activeJob?.id === job.id &&
-                  activeSteps.map((step) => (
-                    <CiRunLine
-                      key={step.key}
-                      nested
-                      status={stepDisplayStatus(step, displayJobStatus(job, run.status), run.status)}
-                      label={step.name}
-                      meta={stepMeta(step)}
-                      active={activeStepKey === step.key}
-                      onClick={() => setActiveStepKey(step.key)}
-                    />
-                  ))}
-              </div>
-            ))}
-          </div>
+      <div className="gha-run-layout">
+        <ActionsJobSidebar
+          jobs={run.jobs}
+          runStatus={run.status}
+          activeJobId={activeJob?.id ?? null}
+          onSelectJob={selectJob}
+        />
 
-          <div className="ci-terminal-log-pane">
-            {activeJob ? (
-              <>
-                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-naturals-n4/40">
-                  <CiPrompt
-                    user="runner"
-                    host={activeJob.runs_on}
-                    path={activeJob.job_name}
-                    command={
-                      activeStep?.run ??
-                      (runningStepName ??
-                        (activeJob.metrics_json
-                          ? `exit ${activeJob.status === 'success' ? 0 : 1}`
-                          : activeStepKey ?? 'running…'))
-                    }
-                  />
-                  {canCancelStep && (
+        <div className="gha-run-main">
+          {activeJob ? (
+            <>
+              <ActionsJobHeader job={activeJob} jobStatus={displayJobStatus(activeJob, run.status)} />
+
+              <ActionsStepList
+                steps={activeSteps}
+                jobStatus={displayJobStatus(activeJob, run.status)}
+                runStatus={run.status}
+                activeStepKey={activeStepKey}
+                onSelectStep={setActiveStepKey}
+              />
+
+              <ActionsLogPanel
+                title={stepLogTitle(activeStep, activeJob.job_name)}
+                subtitle={stepLogSubtitle(activeStep)}
+                actions={
+                  canCancelStep ? (
                     <SecondaryButton
                       type="button"
                       className="shrink-0 border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg text-xs py-1 px-2.5"
@@ -399,89 +355,87 @@ export function PipelineRunDetailPage() {
                       )}
                       Cancel step
                     </SecondaryButton>
-                  )}
-                </div>
-                <CiLogViewer
-                  className="ci-log-viewer--fill"
-                  text={logText}
-                  emptyMessage={
-                    activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
-                      ? activeStepKey
-                        ? '(step running…)'
-                        : '(job running…)'
-                      : activeJobDisplayStatus === 'cancelled'
-                        ? '(cancelled)'
-                        : '(no log output)'
-                  }
-                />
-                {activeJob.metrics_json && (
-                  <div className="ci-terminal-meta-bar ci-terminal-meta-bar--footer">
-                    <span>
-                      queue <strong>{activeJob.metrics_json.queue_wait_ms}ms</strong>
-                    </span>
-                    <span>
-                      execute <strong>{activeJob.metrics_json.execution_ms}ms</strong>
-                    </span>
-                    <span>
-                      total <strong>{activeJob.metrics_json.total_ms}ms</strong>
-                    </span>
-                    <span>
-                      steps <strong>{activeJob.metrics_json.steps.length}</strong>
-                    </span>
-                  </div>
-                )}
-                {activeJob.artifacts?.length > 0 && (
-                  <div className="ci-artifacts-panel">
-                    <h4 className="ci-artifacts-title">Artifacts</h4>
-                    <ul className="ci-artifacts-list">
-                      {activeJob.artifacts.map((artifact) => (
-                        <li key={artifact.id} className="ci-artifacts-item">
-                          <span className="ci-artifacts-name">{artifact.name}</span>
-                          <span className="ci-artifacts-meta">
-                            {formatBytes(artifact.size_bytes)}
-                          </span>
-                          <button
-                            type="button"
-                            className="ci-artifacts-download"
-                            disabled={downloadingArtifactId === artifact.id}
-                            onClick={async () => {
-                              if (!token) return
-                              setDownloadingArtifactId(artifact.id)
-                              try {
-                                await api.downloadPipelineArtifact(
-                                  token,
-                                  orgSlug,
-                                  projectSlug,
-                                  runId,
-                                  artifact.id,
-                                  `${artifact.name}.tar.gz`,
-                                )
-                              } catch (err) {
-                                console.error(err)
-                              } finally {
-                                setDownloadingArtifactId(null)
-                              }
-                            }}
-                          >
-                            {downloadingArtifactId === artifact.id ? (
-                              <Loader2 className="ci-artifacts-icon animate-spin" size={14} />
-                            ) : (
-                              <Download className="ci-artifacts-icon" size={14} />
-                            )}
-                            Download
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </>
-            ) : (
-              <CiLogViewer text="" emptyMessage="(no jobs in this run)" />
-            )}
-          </div>
+                  ) : undefined
+                }
+                logText={logText}
+                emptyMessage={
+                  activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
+                    ? activeStepKey
+                      ? 'Waiting for log output…'
+                      : 'Select a step to view logs'
+                    : activeJobDisplayStatus === 'cancelled'
+                      ? 'Job was cancelled'
+                      : 'No log output'
+                }
+                footer={
+                  <>
+                    {activeJob.metrics_json && (
+                      <div className="gha-metrics-bar">
+                        <span>
+                          Queue <strong>{activeJob.metrics_json.queue_wait_ms}ms</strong>
+                        </span>
+                        <span>
+                          Execute <strong>{activeJob.metrics_json.execution_ms}ms</strong>
+                        </span>
+                        <span>
+                          Total <strong>{activeJob.metrics_json.total_ms}ms</strong>
+                        </span>
+                      </div>
+                    )}
+                    {activeJob.artifacts?.length > 0 && (
+                      <div className="gha-artifacts">
+                        <h4 className="gha-artifacts-title">Artifacts</h4>
+                        <ul className="gha-artifacts-list">
+                          {activeJob.artifacts.map((artifact) => (
+                            <li key={artifact.id} className="gha-artifacts-item">
+                              <span className="gha-artifacts-name">{artifact.name}</span>
+                              <span className="gha-artifacts-meta">
+                                {formatBytes(artifact.size_bytes)}
+                              </span>
+                              <button
+                                type="button"
+                                className="gha-artifacts-download"
+                                disabled={downloadingArtifactId === artifact.id}
+                                onClick={async () => {
+                                  if (!token) return
+                                  setDownloadingArtifactId(artifact.id)
+                                  try {
+                                    await api.downloadPipelineArtifact(
+                                      token,
+                                      orgSlug,
+                                      projectSlug,
+                                      runId,
+                                      artifact.id,
+                                      `${artifact.name}.tar.gz`,
+                                    )
+                                  } catch (err) {
+                                    console.error(err)
+                                  } finally {
+                                    setDownloadingArtifactId(null)
+                                  }
+                                }}
+                              >
+                                {downloadingArtifactId === artifact.id ? (
+                                  <Loader2 className="animate-spin" size={14} />
+                                ) : (
+                                  <Download size={14} />
+                                )}
+                                Download
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </>
+                }
+              />
+            </>
+          ) : (
+            <div className="gha-run-empty">No jobs in this workflow run.</div>
+          )}
         </div>
-      </CiTerminal>
+      </div>
     </div>
   )
 }

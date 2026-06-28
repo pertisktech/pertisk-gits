@@ -17,7 +17,7 @@ import {
   type PipelineGraphJob,
   type PipelineGraphNodeData,
 } from '../lib/pipelineGraphLayout'
-import { PipelineStatusDot } from './PipelineStatus'
+import { ActionsStatusIcon } from './PipelineStatus'
 
 function PipelineJobNode({ data }: NodeProps) {
   const nodeData = data as PipelineGraphNodeData
@@ -32,7 +32,7 @@ function PipelineJobNode({ data }: NodeProps) {
     >
       <Handle type="target" position={Position.Left} className="pipeline-graph-handle" />
       <div className="pipeline-graph-node-header">
-        <PipelineStatusDot status={status} />
+        <ActionsStatusIcon status={status} size="sm" />
         <Cpu size={12} className="pipeline-graph-node-icon" />
         <span className="pipeline-graph-node-name">{job.name}</span>
       </div>

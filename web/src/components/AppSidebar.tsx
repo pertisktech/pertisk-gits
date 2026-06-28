@@ -62,7 +62,7 @@ const projectNavItems: {
   { id: 'pulls', label: 'Pull requests', icon: GitPullRequest },
   { id: 'commits', label: 'Commits', icon: GitCommit },
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
-  { id: 'pipelines', label: 'Pipelines', icon: Workflow },
+  { id: 'pipelines', label: 'Actions', icon: Workflow },
   { id: 'settings', label: 'Settings', icon: Settings },
 ]
 

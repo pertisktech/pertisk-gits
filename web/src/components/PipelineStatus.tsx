@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { X } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, MinusCircle, X, XCircle } from 'lucide-react'
 import type { JobRun, PipelineRun } from '../api/types'
 import {
   isCancelledStatus,
@@ -9,6 +9,61 @@ import {
 } from '../lib/pipelineStatus'
 import { cn } from '../utils/cn'
 import { StatusBadge } from './StatusBadge'
+
+const ACTIONS_ICON = {
+  sm: 14,
+  md: 16,
+  lg: 20,
+} as const
+
+/** GitHub Actions–style status icon (check, X, spinner, hollow circle). */
+export function ActionsStatusIcon({
+  status,
+  size = 'md',
+  className,
+}: {
+  status: string
+  size?: keyof typeof ACTIONS_ICON
+  className?: string
+}) {
+  const px = ACTIONS_ICON[size]
+
+  if (status === 'success') {
+    return (
+      <CheckCircle2
+        size={px}
+        className={cn('gha-status-icon gha-status-icon--success', className)}
+        aria-hidden
+      />
+    )
+  }
+  if (status === 'failure') {
+    return (
+      <XCircle size={px} className={cn('gha-status-icon gha-status-icon--failure', className)} aria-hidden />
+    )
+  }
+  if (isCancelledStatus(status)) {
+    return (
+      <MinusCircle
+        size={px}
+        className={cn('gha-status-icon gha-status-icon--cancelled', className)}
+        aria-hidden
+      />
+    )
+  }
+  if (status === 'running') {
+    return (
+      <Loader2
+        size={px}
+        className={cn('gha-status-icon gha-status-icon--running animate-spin', className)}
+        aria-hidden
+      />
+    )
+  }
+  return (
+    <Circle size={px} className={cn('gha-status-icon gha-status-icon--pending', className)} aria-hidden />
+  )
+}
 
 export function PipelineStatusDot({ status }: { status: string }) {
   if (isCancelledStatus(status)) {

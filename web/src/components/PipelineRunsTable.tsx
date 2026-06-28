@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { PipelineRun } from '../api/types'
+import { formatRelativeTime, parseIsoTimestamp } from '../lib/relativeTime'
 import {
   canRerunFailed,
   countRerunnableFailedJobs,
@@ -12,8 +13,7 @@ import {
   shortSha,
   type RerunScope,
 } from '../lib/pipelineStatus'
-import { formatDateTime } from '../lib/collaboration'
-import { PipelineJobStatusBadge, PipelineRunStatusBadge } from './PipelineStatus'
+import { ActionsStatusIcon } from './PipelineStatus'
 import { PipelineRerunMenu } from './PipelineRerunMenu'
 
 export function PipelineRunsTable({
@@ -33,42 +33,26 @@ export function PipelineRunsTable({
 }) {
   if (runs.length === 0) {
     return (
-      <div className="pipeline-runs-empty">
-        No pipeline runs yet. Add <code className="font-mono text-xs">.pertisk-ci.yaml</code> and push,
-        or click Run pipeline.
+      <div className="gha-runs-empty">
+        No workflow runs yet. Add <code className="font-mono text-xs">.pertisk-ci.yaml</code> and push,
+        or click Run workflow.
       </div>
     )
   }
 
   return (
-    <div className="pipeline-runs-table-wrap">
-      <table className="app-list-table pipeline-runs-table">
-        <thead>
-          <tr>
-            <th>Status</th>
-            <th>Pipeline</th>
-            <th>Commit</th>
-            <th>Branch</th>
-            <th>Jobs</th>
-            <th>Started</th>
-            <th>Duration</th>
-            {onRerun && <th className="pipeline-runs-actions-col">Actions</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {runs.map((run) => (
-            <PipelineRunRow
-              key={run.id}
-              run={run}
-              orgSlug={orgSlug}
-              repoSlug={repoSlug}
-              onOpen={() => onOpenRun(run.id)}
-              onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
-              rerunLoading={rerunningRunId === run.id}
-            />
-          ))}
-        </tbody>
-      </table>
+    <div className="gha-runs-list">
+      {runs.map((run) => (
+        <PipelineRunRow
+          key={run.id}
+          run={run}
+          orgSlug={orgSlug}
+          repoSlug={repoSlug}
+          onOpen={() => onOpenRun(run.id)}
+          onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
+          rerunLoading={rerunningRunId === run.id}
+        />
+      ))}
     </div>
   )
 }
@@ -90,69 +74,56 @@ function PipelineRunRow({
 }) {
   const status = displayRunStatus(run)
   const summary = failureSummary(run.jobs)
-  const passed = run.jobs.filter((j) => j.status === 'success').length
+  const startedAt = run.started_at ?? run.created_at
+  const relative = formatRelativeTime(parseIsoTimestamp(startedAt))
 
   return (
-    <tr className="pipeline-runs-row" onClick={onOpen} tabIndex={0} onKeyDown={(e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault()
-        onOpen()
-      }
-    }}>
-      <td className="pipeline-runs-status">
-        <PipelineRunStatusBadge status={status} />
-      </td>
-      <td className="pipeline-runs-pipeline" title={summary ?? undefined}>
-        <div className="pipeline-runs-pipeline-line">
-          <span className="pipeline-runs-pipeline-event">{run.event_type}</span>
-          <span className="pipeline-runs-pipeline-meta">
-            {passed}/{run.jobs.length} jobs
-          </span>
-        </div>
-        {summary && (
-          <div className="pipeline-runs-pipeline-error" title={summary}>
-            {summary}
+    <div className="gha-run-row-wrap">
+      <button
+        type="button"
+        className="gha-run-row"
+        onClick={onOpen}
+      >
+        <ActionsStatusIcon status={status} size="lg" className="gha-run-row-icon" />
+        <div className="gha-run-row-body">
+          <div className="gha-run-row-title">
+            <span className="font-mono">.pertisk-ci.yaml</span>
+            <span className="gha-run-row-event">{run.event_type}</span>
           </div>
-        )}
-      </td>
-      <td className="pipeline-runs-sha">
-        <Link
-          to={`/groups/${orgSlug}/projects/${repoSlug}/commit/${run.commit_sha}`}
-          className="font-mono text-sm text-primary hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {shortSha(run.commit_sha)}
-        </Link>
-      </td>
-      <td className="pipeline-runs-branch font-mono text-sm text-text-secondary">
-        {refLabel(run.ref_name)}
-      </td>
-      <td className="pipeline-runs-jobs-cell">
-        <div className="pipeline-runs-jobs">
-          {run.jobs.map((job) => {
-            const jobStatus = displayJobStatus(job, run.status)
-            return (
-              <span
-                key={job.id}
-                className="pipeline-runs-job"
-                title={`${job.job_name}: ${jobStatus}`}
-              >
-                <PipelineJobStatusBadge status={jobStatus} className="pipeline-runs-job-badge">
-                  {job.job_name}
-                </PipelineJobStatusBadge>
+          <div className="gha-run-row-sub">
+            <Link
+              to={`/groups/${orgSlug}/projects/${repoSlug}/commit/${run.commit_sha}`}
+              className="font-mono text-primary hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {shortSha(run.commit_sha)}
+            </Link>
+            <span className="gha-summary-dot" aria-hidden>
+              ·
+            </span>
+            <span className="font-mono">{refLabel(run.ref_name)}</span>
+            {summary && (
+              <span className="gha-run-row-error" title={summary}>
+                — {summary}
               </span>
-            )
-          })}
+            )}
+          </div>
+          <div className="gha-run-row-jobs">
+            {run.jobs.map((job) => (
+              <span key={job.id} className="gha-run-row-job" title={job.job_name}>
+                <ActionsStatusIcon status={displayJobStatus(job, run.status)} size="sm" />
+                <span>{job.job_name}</span>
+              </span>
+            ))}
+          </div>
         </div>
-      </td>
-      <td className="pipeline-runs-started text-sm text-text-secondary">
-        {formatDateTime(run.started_at ?? run.created_at)}
-      </td>
-      <td className="pipeline-runs-duration font-mono text-sm text-text-secondary">
-        {formatRunDuration(run)}
-      </td>
+        <div className="gha-run-row-meta">
+          <span>{formatRunDuration(run)}</span>
+          <span>{relative}</span>
+        </div>
+      </button>
       {onRerun && (
-        <td className="pipeline-runs-actions" onClick={(e) => e.stopPropagation()}>
+        <div className="gha-run-row-actions" onClick={(e) => e.stopPropagation()}>
           <PipelineRerunMenu
             compact
             disabled={isRunInProgress(run)}
@@ -161,8 +132,8 @@ function PipelineRunRow({
             failedCount={countRerunnableFailedJobs(run)}
             onRerun={onRerun}
           />
-        </td>
+        </div>
       )}
-    </tr>
+    </div>
   )
 }
