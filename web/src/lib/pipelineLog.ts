@@ -192,12 +192,27 @@ export function formatRunPreview(run: string): string {
     .join('\n')
 }
 
+export function defaultStepKey(job: JobRun, runStatus?: PipelineRun['status']): string | null {
+  const steps = jobStepViews(job, runStatus)
+  if (steps.length === 0) return null
+
+  if (effectiveJobStatus(job, runStatus) === 'running') {
+    return inferRunningStepName(job, runStatus)
+  }
+
+  const failed = steps.find(
+    (step) =>
+      step.exitCode !== undefined && step.exitCode !== 0 && step.exitCode !== 130,
+  )
+  return failed?.key ?? steps[steps.length - 1]?.key ?? null
+}
+
 export function stepLogText(
   job: JobRun,
   stepKey: string | null,
   runStatus?: PipelineRun['status'],
 ): string {
-  if (!stepKey) return job.log_text
+  if (!stepKey) return ''
 
   const section = parseLogSteps(job.log_text).find((step) => step.name === stepKey)
   if (section) {

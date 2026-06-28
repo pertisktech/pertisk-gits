@@ -139,6 +139,7 @@ export function ActionsStepList({
             key={step.key}
             type="button"
             className={cn('gha-step-row', expanded && 'gha-step-row--active')}
+            aria-expanded={expanded}
             onClick={() => onSelectStep(step.key)}
           >
             <span className="gha-step-chevron" aria-hidden>

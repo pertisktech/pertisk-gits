@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Download, Loader2, Square, Trash2 } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
@@ -30,6 +30,7 @@ import { ActionsStatusIcon } from '../components/PipelineStatus'
 import { projectTabPath } from '../lib/projectRoute'
 import { Breadcrumbs, SecondaryButton } from '../components/ui'
 import {
+  defaultStepKey,
   inferRunningStepName,
   jobStepViews,
   stepLogText,
@@ -48,6 +49,7 @@ export function PipelineRunDetailPage() {
   const queryClient = useQueryClient()
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [activeStepKey, setActiveStepKey] = useState<string | null>(null)
+  const userPinnedStep = useRef(false)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -89,20 +91,39 @@ export function PipelineRunDetailPage() {
   )
 
   useEffect(() => {
+    userPinnedStep.current = false
     setActiveStepKey(null)
   }, [activeJob?.id])
 
   useEffect(() => {
-    if (!activeJob || !run || displayJobStatus(activeJob, run.status) !== 'running') return
-    const running = inferRunningStepName(activeJob, run.status)
-    if (running && running !== activeStepKey) {
-      setActiveStepKey(running)
+    if (!activeJob || !run || userPinnedStep.current) return
+
+    const jobStatus = displayJobStatus(activeJob, run.status)
+    if (jobStatus === 'running') {
+      const running = inferRunningStepName(activeJob, run.status)
+      if (running && running !== activeStepKey) {
+        setActiveStepKey(running)
+      }
+      return
+    }
+
+    if (activeStepKey !== null) return
+
+    const next = defaultStepKey(activeJob, run.status)
+    if (next) {
+      setActiveStepKey(next)
     }
   }, [activeJob, activeStepKey, run])
 
   const selectJob = (jobId: string) => {
+    userPinnedStep.current = false
     setActiveJobId(jobId)
     setActiveStepKey(null)
+  }
+
+  const selectStep = (stepKey: string) => {
+    userPinnedStep.current = true
+    setActiveStepKey((prev) => (prev === stepKey ? null : stepKey))
   }
 
   const logText = activeJob && run ? stepLogText(activeJob, activeStepKey, run.status) : ''
@@ -122,6 +143,7 @@ export function PipelineRunDetailPage() {
     onSuccess: (updatedRun) => {
       queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
       queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+      userPinnedStep.current = false
       setActiveJobId(null)
       setActiveStepKey(null)
     },
@@ -329,12 +351,12 @@ export function PipelineRunDetailPage() {
                 jobStatus={displayJobStatus(activeJob, run.status)}
                 runStatus={run.status}
                 activeStepKey={activeStepKey}
-                onSelectStep={setActiveStepKey}
+                onSelectStep={selectStep}
               />
 
               <ActionsLogPanel
-                title={stepLogTitle(activeStep, activeJob.job_name)}
-                subtitle={stepLogSubtitle(activeStep)}
+                title={activeStep ? stepLogTitle(activeStep, activeJob.job_name) : activeJob.job_name}
+                subtitle={activeStep ? stepLogSubtitle(activeStep) : undefined}
                 actions={
                   canCancelStep ? (
                     <SecondaryButton
