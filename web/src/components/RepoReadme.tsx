@@ -9,14 +9,24 @@ interface RepoReadmeProps {
   orgSlug: string
   repoSlug: string
   ref: string
+  refKind?: 'branch' | 'tag'
   readmePath: string
 }
 
-export function RepoReadme({ token, orgSlug, repoSlug, ref, readmePath }: RepoReadmeProps) {
+export function RepoReadme({
+  token,
+  orgSlug,
+  repoSlug,
+  ref,
+  refKind = 'branch',
+  readmePath,
+}: RepoReadmeProps) {
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['repo-readme', orgSlug, repoSlug, ref, readmePath],
-    queryFn: () => api.getRepoBlob(orgSlug, repoSlug, { ref, path: readmePath }, token),
+    queryKey: ['repo-readme', orgSlug, repoSlug, refKind, ref, readmePath],
+    queryFn: () =>
+      api.getRepoBlob(orgSlug, repoSlug, { ref, path: readmePath, ref_kind: refKind }, token),
     enabled: Boolean(readmePath),
+    retry: false,
   })
 
   if (isLoading) {

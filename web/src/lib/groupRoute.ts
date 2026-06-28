@@ -2,11 +2,15 @@ export type GroupTab = 'repositories' | 'registry' | 'members' | 'teams' | 'role
 
 const GROUP_PATH = /^\/groups\/([^/]+)(?:\/(.*))?$/
 
+/** Static routes under /groups that are not organization slugs. */
+export const RESERVED_GROUP_SLUGS = new Set(['new'])
+
 export function parseGroupRoute(pathname: string) {
   const match = pathname.match(GROUP_PATH)
   if (!match) return null
 
   const orgSlug = match[1]
+  if (RESERVED_GROUP_SLUGS.has(orgSlug)) return null
   const rest = match[2] ?? ''
 
   if (/^projects\/[^/]+/.test(rest) && rest !== 'projects/new') {

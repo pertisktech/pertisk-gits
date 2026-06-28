@@ -500,6 +500,7 @@ export function RepoBrowser({
           orgSlug={orgSlug}
           repoSlug={repoSlug}
           ref={activeRef}
+          refKind={refKind}
           readmePath={readmePath}
         />
       )}
