@@ -160,7 +160,9 @@ export function layoutPipelineGraph(
               ? '#f85149'
               : depStatus === 'running'
                 ? '#d29922'
-                : 'var(--color-border)'
+                : depStatus === 'skipped'
+                  ? 'var(--color-naturals-n7)'
+                  : 'var(--color-border)'
 
         return {
           id: `${dep}->${job.name}`,

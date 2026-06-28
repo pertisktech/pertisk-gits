@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, type MouseEvent } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -27,8 +27,11 @@ function PipelineJobNode({ data }: NodeProps) {
   return (
     <button
       type="button"
-      className={`pipeline-graph-node${selected ? ' pipeline-graph-node--selected' : ''}`}
-      onClick={() => nodeData.onSelect?.(job.job_id ?? job.name)}
+      className={`pipeline-graph-node nodrag nopan${selected ? ' pipeline-graph-node--selected' : ''}${status === 'skipped' ? ' pipeline-graph-node--skipped' : ''}`}
+      onClick={(event) => {
+        event.stopPropagation()
+        nodeData.onSelect?.(job.job_id ?? job.name)
+      }}
     >
       <Handle type="target" position={Position.Left} className="pipeline-graph-handle" />
       <div className="pipeline-graph-node-header">
@@ -103,9 +106,19 @@ export function PipelineGraph({
     [layout.nodes, onJobSelect, selectedJob],
   )
 
-  const graphKey = useMemo(
-    () => jobs.map((job) => `${job.name}:${job.status ?? 'preview'}`).join('|'),
+  const structureKey = useMemo(
+    () => jobs.map((job) => job.name).sort().join('|'),
     [jobs],
+  )
+
+  const handleNodeClick = useMemo(
+    () =>
+      onJobSelect
+        ? (_event: MouseEvent, node: { id: string; data: PipelineGraphNodeData }) => {
+            onJobSelect(node.data.job.job_id ?? node.id)
+          }
+        : undefined,
+    [onJobSelect],
   )
 
   if (loading) {
@@ -130,15 +143,17 @@ export function PipelineGraph({
   return (
     <div className={`pipeline-graph-panel${className ? ` ${className}` : ''}`} style={{ height }}>
       <ReactFlow
-        key={graphKey}
+        key={structureKey}
         nodes={nodes}
         edges={layout.edges}
         nodeTypes={nodeTypes}
+        onNodeClick={handleNodeClick}
         fitView
         fitViewOptions={{ padding: 0.2, maxZoom: 1.2 }}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}
+        nodesFocusable={false}
         panOnScroll
         zoomOnScroll
         minZoom={0.35}

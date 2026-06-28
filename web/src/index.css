@@ -4095,6 +4095,18 @@ select.app-field:disabled,
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary-p3) 35%, transparent);
 }
 
+.pipeline-graph-node--skipped {
+  opacity: 0.55;
+}
+
+.react-flow__node {
+  pointer-events: all !important;
+}
+
+.react-flow__node .pipeline-graph-node {
+  pointer-events: auto;
+}
+
 .pipeline-graph-node-header {
   display: flex;
   align-items: center;
