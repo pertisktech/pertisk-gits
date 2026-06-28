@@ -186,27 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn staged_qa_manual_skips_other_env_jobs() {
-        use crate::job_if::RunContext;
-        use crate::parse_pipeline_yaml;
-
-        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
-        let config = parse_pipeline_yaml(yaml).unwrap();
-        let ctx = RunContext {
-            event_type: "manual".into(),
-            branch: Some("qa".into()),
-            tag: None,
-        };
-        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
-
-        assert!(jobs.iter().find(|job| job.name == "deploy-dev").unwrap().skipped);
-        assert!(jobs.iter().find(|job| job.name == "deploy-uat").unwrap().skipped);
-        assert!(!jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
-        assert!(!jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
-    }
-
-    #[test]
-    fn staged_qa_push_skips_manual_deploy() {
+    fn staged_qa_push_runs_deploy_chain() {
         use crate::job_if::RunContext;
         use crate::parse_pipeline_yaml;
 
@@ -219,9 +199,28 @@ mod tests {
         };
         let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
 
+        assert!(jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
         assert!(jobs.iter().find(|job| job.name == "deploy-dev").unwrap().skipped);
-        assert!(jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
-        assert!(!jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
+        assert!(jobs.iter().find(|job| job.name == "deploy-uat").unwrap().skipped);
+        assert!(!jobs.iter().find(|job| job.name == "deploy-qa").unwrap().skipped);
+    }
+
+    #[test]
+    fn staged_release_tag_push_runs_prd_deploy() {
+        use crate::job_if::RunContext;
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext {
+            event_type: "push".into(),
+            branch: None,
+            tag: Some("release/1.0.0".into()),
+        };
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert!(jobs.iter().find(|job| job.name == "unit-test").unwrap().skipped);
+        assert!(!jobs.iter().find(|job| job.name == "deploy-prd").unwrap().skipped);
     }
 
     #[test]

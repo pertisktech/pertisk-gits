@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { PipelineRun } from '../api/types'
 import { formatRelativeTime, parseIsoTimestamp } from '../lib/relativeTime'
-import { filterRunJobsForList } from '../lib/pipelineSummary'
+import { filterRunJobsForList, runMatchesViewRef, type SummaryViewRef } from '../lib/pipelineSummary'
 import {
   canRerunFailed,
   countRerunnableFailedJobs,
@@ -21,6 +21,7 @@ export function PipelineRunsTable({
   runs,
   orgSlug,
   repoSlug,
+  viewRef,
   onOpenRun,
   onRerun,
   rerunningRunId,
@@ -28,22 +29,41 @@ export function PipelineRunsTable({
   runs: PipelineRun[]
   orgSlug: string
   repoSlug: string
+  viewRef?: SummaryViewRef
   onOpenRun: (runId: string) => void
   onRerun?: (runId: string, scope: RerunScope) => void
   rerunningRunId?: string | null
 }) {
-  if (runs.length === 0) {
+  const visibleRuns = viewRef
+    ? runs.filter((run) => runMatchesViewRef(run, viewRef))
+    : runs
+
+  if (visibleRuns.length === 0) {
+    const refHint = viewRef?.tag
+      ? `tag ${viewRef.tag}`
+      : viewRef?.branch
+        ? `branch ${viewRef.branch}`
+        : null
     return (
       <div className="gha-runs-empty">
-        No workflow runs yet. Add <code className="font-mono text-xs">.pertisk-ci.yaml</code> and push,
-        or click Run workflow.
+        {refHint ? (
+          <>
+            No workflow runs for <span className="font-mono">{refHint}</span> yet. Push to this ref
+            to start the pipeline.
+          </>
+        ) : (
+          <>
+            No workflow runs yet. Add <code className="font-mono text-xs">.pertisk-ci.yaml</code> and
+            push to start a pipeline.
+          </>
+        )}
       </div>
     )
   }
 
   return (
     <div className="gha-runs-list">
-      {runs.map((run) => (
+      {visibleRuns.map((run) => (
         <PipelineRunRow
           key={run.id}
           run={run}

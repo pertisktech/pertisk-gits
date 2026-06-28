@@ -50,6 +50,25 @@ impl TriggerMatcher {
     }
 }
 
+/// Whether `on.push` / `on.pull_request` branch filters apply to this event.
+/// Manual runs are user-initiated; job `if:` conditions select which jobs run.
+pub fn trigger_filter_applies(event_type: &str) -> bool {
+    event_type != "manual"
+}
+
+/// Match automatic triggers (`push`, `pull_request`). Manual events always match.
+pub fn matches_pipeline_trigger(
+    config: &PipelineConfig,
+    event_type: &str,
+    ref_name: &str,
+) -> bool {
+    if !trigger_filter_applies(event_type) {
+        return true;
+    }
+    let event = pipeline_event_from_ref(event_type, ref_name);
+    TriggerMatcher::matches(config, &event)
+}
+
 /// Build a push/pull_request event from a git ref and event type.
 pub fn pipeline_event_from_ref(event_type: &str, ref_name: &str) -> PipelineEvent {
     match event_type {
@@ -194,6 +213,23 @@ mod tests {
                 branch: String::new(),
                 tag: Some("other".into()),
             }
+        ));
+    }
+
+    #[test]
+    fn manual_bypasses_on_push_branch_filter() {
+        let cfg = sample_config();
+        assert!(!TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::Push {
+                branch: "qa".into(),
+                tag: None,
+            }
+        ));
+        assert!(matches_pipeline_trigger(
+            &cfg,
+            "manual",
+            "refs/heads/qa",
         ));
     }
 

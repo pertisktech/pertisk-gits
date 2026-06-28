@@ -102,26 +102,26 @@ const PATH_DEFS: Array<{
     id: 'qa',
     title: 'qa',
     branch: 'qa',
-    automatic: false,
-    triggerLabel: 'Push: build chain · Manual run: + QA deploy',
+    automatic: true,
+    triggerLabel: 'Automatic on push — QA deploy',
   },
   {
     id: 'uat',
     title: 'uat',
     branch: 'uat',
-    automatic: false,
-    triggerLabel: 'Push: build chain · Manual run: + UAT deploy',
+    automatic: true,
+    triggerLabel: 'Automatic on push — UAT deploy',
   },
   {
     id: 'release',
     title: 'release tag',
     tag: 'release/1.0.0',
-    automatic: false,
-    triggerLabel: 'Manual run on release/* tag — build + prod deploy',
+    automatic: true,
+    triggerLabel: 'Automatic on push — prod deploy',
   },
 ]
 
-function globMatch(pattern: string, value: string): boolean {
+export function globMatch(pattern: string, value: string): boolean {
   if (pattern === '*') return true
   if (pattern.startsWith('*')) return value.endsWith(pattern.slice(1))
   if (pattern.endsWith('*')) return value.startsWith(pattern.slice(0, -1))
@@ -281,13 +281,34 @@ export function inferPipelinePaths(
 }
 
 export function previewEventForRef(
+  _viewRef: SummaryViewRef,
+  _refKind: 'branch' | 'tag',
+): string {
+  return 'push'
+}
+
+/** Whether push to this ref starts a pipeline automatically (from on.push in config). */
+export function refTriggersOnPush(
+  config: PipelineConfigPreview | undefined,
   viewRef: SummaryViewRef,
   refKind: 'branch' | 'tag',
-): string {
-  if (refKind === 'tag') return 'manual'
-  if (viewRef.branch === 'main') return 'push'
-  if (viewRef.branch === 'qa' || viewRef.branch === 'uat') return 'manual'
-  return 'push'
+): boolean {
+  const push = config?.on.push
+  if (!push) return false
+  if (refKind === 'tag' && viewRef.tag) {
+    return push.tags?.some((pattern) => globMatch(pattern, viewRef.tag!)) ?? false
+  }
+  if (viewRef.branch) {
+    return push.branches?.some((pattern) => globMatch(pattern, viewRef.branch!)) ?? false
+  }
+  return false
+}
+
+export function runMatchesViewRef(run: PipelineRun, viewRef: SummaryViewRef): boolean {
+  const parsed = parseViewRef(run.ref_name)
+  if (viewRef.tag) return parsed.tag === viewRef.tag
+  if (viewRef.branch) return parsed.branch === viewRef.branch
+  return true
 }
 
 export function filterJobsForViewRef(
@@ -306,12 +327,7 @@ export function filterJobsForViewRef(
 }
 
 export function filterRunJobsForList(run: PipelineRun): JobRun[] {
-  if (run.jobs.length === 0) return run.jobs
-  const viewRef = parseViewRef(run.ref_name)
-  return run.jobs.filter((job) => {
-    if (job.status === 'skipped') return false
-    return jobNameMatchesView(job.job_name, viewRef)
-  })
+  return run.jobs.filter((job) => job.status !== 'skipped')
 }
 
 export function filterRunJobsForViewRef(
@@ -354,6 +370,19 @@ export function filterVisibleRunJobs(
   return runJobs.filter((job) => jobNameMatchesView(job.job_name, viewRef))
 }
 
+function pathTriggersOnPush(
+  def: (typeof PATH_DEFS)[number],
+  triggers: PipelineConfigPreview['on'],
+): boolean {
+  if (def.branch) {
+    return triggers.push?.branches?.some((branch) => globMatch(branch, def.branch!)) ?? false
+  }
+  if (def.id === 'release') {
+    return triggers.push?.tags?.some((tag) => globMatch(tag, 'release/*')) ?? false
+  }
+  return false
+}
+
 function inferPipelinePathsWithIf(
   jobs: PipelineJobPreview[],
   triggers: PipelineConfigPreview['on'],
@@ -368,12 +397,7 @@ function inferPipelinePathsWithIf(
       id: def.id,
       title: def.title,
       triggerLabel: def.triggerLabel,
-      automatic:
-        def.automatic &&
-        Boolean(
-          def.branch &&
-            triggers.push?.branches?.some((branch) => globMatch(branch, def.branch!)),
-        ),
+      automatic: pathTriggersOnPush(def, triggers),
       jobs: pathJobs,
       buildJobs,
       deployJobs,

@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use clap::Parser;
 use pertisk_cicd::{
-    parse_pipeline_yaml, pipeline_event_from_ref, RunContext, Scheduler, TriggerMatcher, CONFIG_PATHS,
+    matches_pipeline_trigger, parse_pipeline_yaml, RunContext, Scheduler, CONFIG_PATHS,
 };
 use sqlx::PgPool;
 use tokio::process::Command;
@@ -129,9 +129,8 @@ async fn process_trigger_now(
     };
 
     let config = parse_pipeline_yaml(&config_yaml)?;
-    let event = pipeline_event_from_ref(event_type, ref_name);
 
-    if !TriggerMatcher::matches(&config, &event) {
+    if !matches_pipeline_trigger(&config, event_type, ref_name) {
         anyhow::bail!("event does not match pipeline triggers");
     }
 

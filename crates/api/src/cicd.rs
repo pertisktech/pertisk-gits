@@ -15,9 +15,8 @@ use axum::{
 use chrono::{DateTime, Utc};
 use pertisk_git::explorer::RefKind;
 use pertisk_cicd::{
-    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, pipeline_event_from_ref,
-    PipelineEvent, RunContext, ScheduledJob, Scheduler, TriggerMatcher, GITHUB_WORKFLOWS_DIR,
-    CONFIG_PATHS,
+    convert_legacy_ci, detect_legacy_ci, parse_pipeline_yaml, matches_pipeline_trigger,
+    RunContext, ScheduledJob, Scheduler, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -2178,9 +2177,7 @@ async fn process_trigger_now(
         sqlx::Error::Protocol(format!("invalid pipeline config: {e}").into())
     })?;
 
-    let event = pipeline_event_from_ref(event_type, ref_name);
-
-    if !TriggerMatcher::matches(&config, &event) {
+    if !matches_pipeline_trigger(&config, event_type, ref_name) {
         return Err(sqlx::Error::RowNotFound);
     }
 

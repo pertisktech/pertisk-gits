@@ -21,7 +21,10 @@ pub use metrics::{JobMetrics, StepTiming};
 pub use schedule::{ScheduledJob, Scheduler};
 pub use script::render_job_script;
 pub use secrets::{apply_secrets_to_step, mask_secrets_in_text, resolve_secret_refs};
-pub use trigger::{pipeline_event_from_ref, PipelineEvent, TriggerMatcher};
+pub use trigger::{
+    matches_pipeline_trigger, pipeline_event_from_ref, trigger_filter_applies, PipelineEvent,
+    TriggerMatcher,
+};
 
 pub const CONFIG_PATHS: &[&str] = &[
     ".pertisk-ci.yaml",

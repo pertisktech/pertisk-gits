@@ -1,13 +1,14 @@
-# Build on main push only; QA/UAT/prod are manual deploy paths (no rebuild).
+# Build on main push only; QA/UAT/prod deploy on push to those refs (no rebuild).
 #
-#   main push  → build + dev deploy
-#   qa manual  → deploy-qa chain
-#   uat manual → deploy-uat chain
-#   tag manual → deploy-prd chain (release/*)
+#   main push     → build + dev deploy
+#   qa push       → deploy-qa chain
+#   uat push      → deploy-uat chain
+#   release/* tag → deploy-prd chain
 
 on:
   push:
-    branches: [main]
+    branches: [main, qa, uat]
+    tags: [release/*]
   pull_request:
     branches: [main]
 
@@ -70,9 +71,7 @@ jobs:
   deploy-qa:
     runs-on: kubernetes
     needs: []
-    if:
-      branch: qa
-      event: manual
+    if: branch == qa
     steps:
       - name: deploy qa
         run: echo "deploy qa ok"
@@ -80,9 +79,7 @@ jobs:
   health-check-qa:
     runs-on: kubernetes
     needs: [deploy-qa]
-    if:
-      branch: qa
-      event: manual
+    if: branch == qa
     steps:
       - name: health check
         run: echo "health check ok"
@@ -90,9 +87,7 @@ jobs:
   e2e-test-qa:
     runs-on: kubernetes
     needs: [health-check-qa]
-    if:
-      branch: qa
-      event: manual
+    if: branch == qa
     steps:
       - name: end-to-end test
         run: echo "end-to-end test ok"
@@ -100,9 +95,7 @@ jobs:
   deploy-uat:
     runs-on: kubernetes
     needs: []
-    if:
-      branch: uat
-      event: manual
+    if: branch == uat
     steps:
       - name: deploy uat
         run: echo "deploy uat ok"
@@ -110,9 +103,7 @@ jobs:
   health-check-uat:
     runs-on: kubernetes
     needs: [deploy-uat]
-    if:
-      branch: uat
-      event: manual
+    if: branch == uat
     steps:
       - name: health check
         run: echo "health check ok"
@@ -120,9 +111,7 @@ jobs:
   e2e-test-uat:
     runs-on: kubernetes
     needs: [health-check-uat]
-    if:
-      branch: uat
-      event: manual
+    if: branch == uat
     steps:
       - name: end-to-end test
         run: echo "end-to-end test ok"
@@ -130,9 +119,7 @@ jobs:
   deploy-prd:
     runs-on: kubernetes
     needs: []
-    if:
-      tag: release/*
-      event: manual
+    if: tag == release/*
     steps:
       - name: deploy prd
         run: echo "deploy prd ok"
@@ -140,9 +127,7 @@ jobs:
   health-check-prd:
     runs-on: kubernetes
     needs: [deploy-prd]
-    if:
-      tag: release/*
-      event: manual
+    if: tag == release/*
     steps:
       - name: health check
         run: echo "health check ok"
@@ -150,9 +135,7 @@ jobs:
   e2e-test-prd:
     runs-on: kubernetes
     needs: [health-check-prd]
-    if:
-      tag: release/*
-      event: manual
+    if: tag == release/*
     steps:
       - name: end-to-end test
         run: echo "end-to-end test ok"

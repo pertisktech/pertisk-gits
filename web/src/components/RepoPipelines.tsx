@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Copy, Loader2, Play, Workflow } from 'lucide-react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CiConvertResult } from '../api/types'
@@ -9,6 +9,7 @@ import {
   filterJobsForViewRef,
   pipelineRefName,
   previewEventForRef,
+  refTriggersOnPush,
   viewRefFromKind,
   type SummaryViewRef,
 } from '../lib/pipelineSummary'
@@ -119,6 +120,85 @@ export {
   shortSha,
 } from '../lib/pipelineStatus'
 
+function PipelineRefToolbar({
+  viewRefKind,
+  activeRefName,
+  refList,
+  branchCount,
+  tagCount,
+  disabled,
+  showRunWorkflow,
+  runWorkflowPending,
+  onRefKindChange,
+  onRefChange,
+  onRunWorkflow,
+}: {
+  viewRefKind: 'branch' | 'tag'
+  activeRefName: string
+  refList: string[]
+  branchCount: number
+  tagCount: number
+  disabled?: boolean
+  showRunWorkflow?: boolean
+  runWorkflowPending?: boolean
+  onRefKindChange: (kind: 'branch' | 'tag') => void
+  onRefChange: (name: string) => void
+  onRunWorkflow?: () => void
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 shrink-0">
+      <select
+        id="pipeline-ref-kind"
+        value={viewRefKind}
+        onChange={(event) => onRefKindChange(event.target.value as 'branch' | 'tag')}
+        className="app-branch-select"
+        aria-label="Reference type"
+        disabled={disabled}
+      >
+        <option value="branch">Branch</option>
+        <option value="tag">Tag</option>
+      </select>
+      <select
+        id="pipeline-view-ref"
+        value={activeRefName}
+        onChange={(event) => onRefChange(event.target.value)}
+        className="app-branch-select min-w-[8rem]"
+        disabled={disabled || refList.length === 0}
+        aria-label={viewRefKind === 'tag' ? 'Tag' : 'Branch'}
+      >
+        {refList.length === 0 ? (
+          <option value={activeRefName}>
+            {viewRefKind === 'tag' ? 'No tags' : activeRefName}
+          </option>
+        ) : (
+          refList.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))
+        )}
+      </select>
+      <span className="text-sm text-text-secondary whitespace-nowrap hidden sm:inline">
+        {branchCount} Branch.{`  ${tagCount} Tags`}
+      </span>
+      {showRunWorkflow && onRunWorkflow && (
+        <PrimaryButton
+          type="button"
+          disabled={disabled || runWorkflowPending || refList.length === 0}
+          onClick={onRunWorkflow}
+        >
+          {runWorkflowPending ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : (
+            <Play size={14} />
+          )}
+          Run workflow
+        </PrimaryButton>
+      )}
+    </div>
+  )
+}
+
 export function RepoPipelines({
   token,
   orgSlug,
@@ -166,22 +246,30 @@ export function RepoPipelines({
 
   const repoEmpty = browserData?.browser.empty ?? false
 
+  const branchCount = browser?.branches?.length ?? 0
+  const tagCount = browser?.tags?.length ?? 0
+
   const { data: hasPipelineConfig = false, isLoading: configLoading } = useQuery({
-    queryKey: ['pipeline-config', orgSlug, repoSlug, defaultBranch],
+    queryKey: ['pipeline-config', orgSlug, repoSlug, viewRefKind, activeRefName],
     queryFn: async () => {
-      const tree = await api.getRepoTree(orgSlug, repoSlug, { ref: defaultBranch }, token)
+      const tree = await api.getRepoTree(
+        orgSlug,
+        repoSlug,
+        { ref: activeRefName, ref_kind: viewRefKind },
+        token,
+      )
       return tree.entries.some(
         (entry) => PIPELINE_CONFIG_FILES.has(entry.name) && entry.kind === 'blob',
       )
     },
-    enabled: Boolean(token && orgSlug && repoSlug && defaultBranch && browserData && !repoEmpty),
+    enabled: Boolean(token && orgSlug && repoSlug && activeRefName && browserData && !repoEmpty),
   })
 
   const { data: migrateData, isLoading: migrateLoading } = useQuery({
-    queryKey: ['pipeline-migrate', orgSlug, repoSlug, defaultBranch],
-    queryFn: () => api.getPipelineMigrate(token, orgSlug, repoSlug, defaultBranch),
+    queryKey: ['pipeline-migrate', orgSlug, repoSlug, viewRefKind, activeRefName],
+    queryFn: () => api.getPipelineMigrate(token, orgSlug, repoSlug, activeRefName),
     enabled: Boolean(
-      token && orgSlug && repoSlug && defaultBranch && browserData && !repoEmpty && !hasPipelineConfig,
+      token && orgSlug && repoSlug && activeRefName && browserData && !repoEmpty && !hasPipelineConfig,
     ),
   })
 
@@ -199,6 +287,19 @@ export function RepoPipelines({
       return items.some((r) => isRunInProgress(r)) ? 5000 : false
     },
   })
+
+  const { data: pipelineConfig } = useQuery({
+    queryKey: ['pipeline-config-preview', orgSlug, repoSlug, viewRefKind, activeRefName],
+    queryFn: () => api.getPipelineConfig(token, orgSlug, repoSlug, activeRefName, viewRefKind),
+    enabled: Boolean(token && orgSlug && repoSlug && activeRefName && hasPipelineConfig),
+    retry: false,
+    staleTime: 5 * 60_000,
+  })
+
+  const autoTriggerRef = useMemo(
+    () => refTriggersOnPush(pipelineConfig, viewRef, viewRefKind),
+    [pipelineConfig, viewRef, viewRefKind],
+  )
 
   const triggerMutation = useMutation({
     mutationFn: async () => {
@@ -245,34 +346,35 @@ export function RepoPipelines({
     },
   })
 
-  if (browserLoading || configLoading || (migrateLoading && !hasPipelineConfig)) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
-        <Loader2 size={16} className="animate-spin" />
-        Loading pipelines…
-      </div>
-    )
-  }
+  const toolbarDisabled = browserLoading
+  const contentLoading =
+    browserLoading || configLoading || (migrateLoading && !hasPipelineConfig) || isLoading
+
+  let body: ReactNode
 
   if (repoEmpty) {
-    return (
+    body = (
       <EmptyState
         icon={<Workflow size={40} />}
         title="Push code to enable CI/CD"
         description="Pipelines run after you push commits to this repository. Use the Code tab clone instructions to push your first commit."
       />
     )
-  }
-
-  if (!hasPipelineConfig) {
-    return (
-      <div className="space-y-4">
-        <div>
-          <h2 className="text-base font-semibold text-text">Workflow runs</h2>
-          <p className="text-sm text-text-secondary mt-0.5">
-            Add a CI config file to the repository root to get started.
-          </p>
-        </div>
+  } else if (contentLoading) {
+    body = (
+      <div className="flex items-center gap-2 text-sm text-text-secondary py-8 px-4">
+        <Loader2 size={16} className="animate-spin" />
+        Loading pipelines…
+      </div>
+    )
+  } else if (!hasPipelineConfig) {
+    body = (
+      <div className="space-y-4 p-4">
+        <p className="text-sm text-text-secondary">
+          No <code className="text-xs font-mono">.pertisk-ci.yaml</code> on{' '}
+          <span className="font-mono">{refLabel(pipelineRefName(viewRefKind, activeRefName))}</span>.
+          Add a CI config file to the repository root to get started.
+        </p>
         {migrationSuggestions.length > 0 ? (
           <PipelineMigratePanel suggestions={migrationSuggestions} />
         ) : (
@@ -280,7 +382,7 @@ export function RepoPipelines({
             <EmptyState
               icon={<Workflow size={40} />}
               title="Set up CI/CD"
-              description="Commit a .pertisk-ci.yaml file on the default branch. Migrating from GitLab or GitHub Actions? Pertisk can suggest a converted config when .gitlab-ci.yml or .github/workflows/* is present."
+              description="Commit a .pertisk-ci.yaml file on this branch. Migrating from GitLab or GitHub Actions? Pertisk can suggest a converted config when .gitlab-ci.yml or .github/workflows/* is present."
               action={
                 <pre className="text-left text-xs font-mono bg-naturals-n2 border border-naturals-n4 rounded-md p-4 max-w-lg mx-auto overflow-x-auto text-text-secondary">
 {`# .pertisk-ci.yaml
@@ -298,117 +400,89 @@ jobs:
         )}
       </div>
     )
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
-        <Loader2 size={16} className="animate-spin" />
-        Loading pipelines…
+  } else if (error) {
+    body = (
+      <div className="p-4">
+        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+          {(error as Error).message}
+        </div>
       </div>
     )
-  }
+  } else {
+    body = (
+      <div className="space-y-4 p-4">
+        {autoTriggerRef && (
+          <p className="text-sm text-text-secondary">
+            Pushes to this {viewRefKind} start the pipeline automatically.
+          </p>
+        )}
 
-  if (error) {
-    return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error).message}
+        {triggerMutation.isError && (
+          <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+            {(triggerMutation.error as Error).message}
+          </div>
+        )}
+
+        {rerunMutation.isError && (
+          <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+            {(rerunMutation.error as Error).message}
+          </div>
+        )}
+
+        <PipelineConfigGraph
+          token={token}
+          orgSlug={orgSlug}
+          repoSlug={repoSlug}
+          configRef={activeRefName}
+          configRefKind={viewRefKind}
+          viewRef={viewRef}
+          showAllPaths={showAllPaths}
+          onShowAllPathsChange={setShowAllPaths}
+        />
+
+        <PipelineRunsTable
+          runs={runs}
+          orgSlug={orgSlug}
+          repoSlug={repoSlug}
+          viewRef={viewRef}
+          onOpenRun={(runId) => navigate(pipelineUrl(orgSlug, repoSlug, runId))}
+          onRerun={(runId, scope) => rerunMutation.mutate({ runId, scope })}
+          rerunningRunId={rerunningRunId}
+        />
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="rounded-lg border border-naturals-n4 overflow-hidden">
+      <div className="app-toolbar flex-wrap justify-between gap-3">
+        <div className="min-w-0">
           <h2 className="text-base font-semibold text-text">Workflow runs</h2>
           <p className="text-sm text-text-secondary mt-0.5">
             CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
-            {runs.length > 0 && (
+            {!contentLoading && runs.length > 0 && (
               <span className="text-muted"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
             )}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            id="pipeline-ref-kind"
-            value={viewRefKind}
-            onChange={(event) => {
-              setViewRefKind(event.target.value as 'branch' | 'tag')
-              setViewRefOverride(null)
-            }}
-            className="app-branch-select"
-            aria-label="Reference type"
-          >
-            <option value="branch">Branch</option>
-            <option value="tag">Tag</option>
-          </select>
-          <select
-            id="pipeline-view-ref"
-            value={activeRefName}
-            onChange={(event) => setViewRefOverride(event.target.value)}
-            className="app-branch-select min-w-[8rem]"
-            disabled={refList.length === 0}
-            aria-label={viewRefKind === 'tag' ? 'Tag' : 'Branch'}
-          >
-            {refList.length === 0 ? (
-              <option value={activeRefName}>
-                {viewRefKind === 'tag' ? 'No tags' : activeRefName}
-              </option>
-            ) : (
-              refList.map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))
-            )}
-          </select>
-          <PrimaryButton
-            type="button"
-            disabled={triggerMutation.isPending || refList.length === 0}
-            onClick={() => triggerMutation.mutate()}
-          >
-            {triggerMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Play size={14} />
-            )}
-            Run workflow
-          </PrimaryButton>
-        </div>
+        <PipelineRefToolbar
+          viewRefKind={viewRefKind}
+          activeRefName={activeRefName}
+          refList={refList}
+          branchCount={branchCount}
+          tagCount={tagCount}
+          disabled={toolbarDisabled}
+          showRunWorkflow={!contentLoading && hasPipelineConfig && !autoTriggerRef}
+          runWorkflowPending={triggerMutation.isPending}
+          onRefKindChange={(kind) => {
+            setViewRefKind(kind)
+            setViewRefOverride(null)
+          }}
+          onRefChange={setViewRefOverride}
+          onRunWorkflow={() => triggerMutation.mutate()}
+        />
       </div>
-
-      {triggerMutation.isError && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(triggerMutation.error as Error).message}
-        </div>
-      )}
-
-      {rerunMutation.isError && (
-        <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-          {(rerunMutation.error as Error).message}
-        </div>
-      )}
-
-      <PipelineConfigGraph
-        token={token}
-        orgSlug={orgSlug}
-        repoSlug={repoSlug}
-        configRef={activeRefName}
-        configRefKind={viewRefKind}
-        viewRef={viewRef}
-        showAllPaths={showAllPaths}
-        onShowAllPathsChange={setShowAllPaths}
-      />
-
-      <PipelineRunsTable
-        runs={runs}
-        orgSlug={orgSlug}
-        repoSlug={repoSlug}
-        onOpenRun={(runId) => navigate(pipelineUrl(orgSlug, repoSlug, runId))}
-        onRerun={(runId, scope) => rerunMutation.mutate({ runId, scope })}
-        rerunningRunId={rerunningRunId}
-      />
+      {body}
     </div>
   )
 }
