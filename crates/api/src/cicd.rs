@@ -658,8 +658,17 @@ struct PollJobResponse {
     repository_id: Uuid,
     org_slug: String,
     repo_slug: String,
+    repo_name: String,
     commit_sha: String,
     ref_name: String,
+    event_type: String,
+    pipeline_iid: i64,
+    pipeline_created_at: DateTime<Utc>,
+    config_path: Option<String>,
+    target_environment: Option<String>,
+    effective_environment: Option<String>,
+    default_branch: String,
+    pull_request_number: Option<i32>,
     steps: Value,
     artifacts: Value,
     timeout_minutes: Option<i32>,
@@ -1413,11 +1422,25 @@ async fn poll_runner_job(
                     j.timeout_minutes,
                     j.image,
                     j.dind,
+                    j.effective_environment,
                     p.repository_id,
                     p.commit_sha,
                     p.ref_name,
+                    p.event_type::text AS event_type,
+                    p.target_environment,
+                    p.config_path,
+                    p.created_at AS pipeline_created_at,
+                    p.pull_request_number,
+                    (
+                        SELECT COUNT(*)::bigint
+                        FROM pipeline_runs pr2
+                        WHERE pr2.repository_id = r.id
+                          AND pr2.created_at <= p.created_at
+                    ) AS pipeline_iid,
                     o.slug AS org_slug,
-                    r.slug AS repo_slug
+                    r.name AS repo_name,
+                    r.slug AS repo_slug,
+                    r.default_branch
                 FROM job_runs j
                 INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
                 INNER JOIN repositories r ON r.id = p.repository_id
@@ -1437,8 +1460,17 @@ async fn poll_runner_job(
                 repository_id: meta.repository_id,
                 org_slug: meta.org_slug,
                 repo_slug: meta.repo_slug,
+                repo_name: meta.repo_name,
                 commit_sha: meta.commit_sha,
                 ref_name: meta.ref_name,
+                event_type: meta.event_type,
+                pipeline_iid: meta.pipeline_iid,
+                pipeline_created_at: meta.pipeline_created_at,
+                config_path: meta.config_path,
+                target_environment: meta.target_environment,
+                effective_environment: meta.effective_environment,
+                default_branch: meta.default_branch,
+                pull_request_number: meta.pull_request_number,
                 steps: meta.steps_json,
                 artifacts: meta.artifacts_json,
                 timeout_minutes: meta.timeout_minutes,
@@ -3340,11 +3372,20 @@ struct JobPollRow {
     timeout_minutes: Option<i32>,
     image: Option<String>,
     dind: bool,
+    effective_environment: Option<String>,
     repository_id: Uuid,
     commit_sha: String,
     ref_name: String,
+    event_type: String,
+    target_environment: Option<String>,
+    config_path: Option<String>,
+    pipeline_created_at: DateTime<Utc>,
+    pull_request_number: Option<i32>,
+    pipeline_iid: i64,
     org_slug: String,
+    repo_name: String,
     repo_slug: String,
+    default_branch: String,
 }
 
 #[derive(sqlx::FromRow)]

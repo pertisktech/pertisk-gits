@@ -3,8 +3,22 @@ use std::collections::HashMap;
 use crate::config::{ArtifactDecl, Step};
 
 /// Shell-escape a value for use inside single quotes.
-fn shell_quote(value: &str) -> String {
+pub fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
+}
+
+/// Prepend `export` lines so `$VAR` references work reliably under `sh -lc`.
+pub fn wrap_shell_script_with_env(run: &str, env: &[(&str, String)]) -> String {
+    let mut script = String::with_capacity(run.len() + env.len() * 32);
+    for (key, value) in env {
+        script.push_str("export ");
+        script.push_str(key);
+        script.push('=');
+        script.push_str(&shell_quote(value));
+        script.push('\n');
+    }
+    script.push_str(run);
+    script
 }
 
 /// Render a bash script that runs pipeline steps (used by the Kubernetes job executor).
@@ -115,6 +129,14 @@ upload_artifact() {{
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn wrap_shell_script_with_env_exports_vars() {
+        let env = [("CI_JOB_NAME", "build".into())];
+        let script = wrap_shell_script_with_env("echo \"$CI_JOB_NAME\"", &env);
+        assert!(script.contains("export CI_JOB_NAME='build'"));
+        assert!(script.contains("echo \"$CI_JOB_NAME\""));
+    }
 
     #[test]
     fn renders_run_step() {

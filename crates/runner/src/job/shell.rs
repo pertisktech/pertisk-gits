@@ -59,7 +59,7 @@ pub async fn run_job(
         return Ok(());
     }
 
-    let secrets = prepare_secrets(api, job.job_id, work_root.path()).await?;
+    let secrets = prepare_secrets(api, &job, work_root.path()).await?;
 
     let executor = ShellExecutor::new();
     let queue_wait = queued_at.elapsed();

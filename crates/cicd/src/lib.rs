@@ -26,6 +26,7 @@ pub use job_if::{JobIfMatcher, JobScheduleMode, RunContext};
 pub use metrics::{JobMetrics, StepTiming};
 pub use schedule::{ScheduledJob, Scheduler};
 pub use script::render_job_script;
+pub use script::{shell_quote, wrap_shell_script_with_env};
 pub use secrets::{apply_secrets_to_step, mask_secrets_in_text, resolve_secret_refs};
 pub use trigger::{
     matches_pipeline_trigger, pipeline_event_from_ref, trigger_filter_applies, PipelineEvent,

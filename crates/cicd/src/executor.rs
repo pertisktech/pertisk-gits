@@ -9,6 +9,7 @@ use tokio::sync::{mpsc, watch};
 
 use crate::config::Step;
 use crate::metrics::{JobMetrics, StepTiming};
+use crate::script::wrap_shell_script_with_env;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StepOutput {
@@ -42,11 +43,34 @@ impl ShellExecutor {
         }
     }
 
-    fn shell_invocation(&self, script: &str) -> String {
+    /// Run `script` under the configured shell. When stdbuf is available, wrap the shell
+    /// (not the first line of the script) so multi-line export prefixes work.
+    fn command_for_script(&self, script: &str) -> Command {
         if std::path::Path::new("/usr/bin/stdbuf").exists() {
-            format!("stdbuf -oL -eL {script}")
+            let mut command = Command::new("/usr/bin/stdbuf");
+            command.args(["-oL", "-eL", &self.shell, "-c", script]);
+            command
         } else {
-            script.to_string()
+            let mut command = Command::new(&self.shell);
+            command.arg("-c").arg(script);
+            command
+        }
+    }
+
+    fn apply_step_env(
+        command: &mut Command,
+        job_env: &[(&str, String)],
+        step_env: &std::collections::HashMap<String, String>,
+    ) {
+        command
+            .env("CI", "true")
+            .env("PERTISK_CI", "true")
+            .env("PYTHONUNBUFFERED", "1");
+        for (key, value) in job_env {
+            command.env(key, value);
+        }
+        for (key, value) in step_env {
+            command.env(key, value);
         }
     }
 
@@ -69,22 +93,10 @@ impl ShellExecutor {
 
         let started = Instant::now();
 
-        let mut command = Command::new(&self.shell);
-        command
-            .arg("-lc")
-            .arg(self.shell_invocation(&step.run))
-            .current_dir(cwd)
-            .env("CI", "true")
-            .env("PERTISK_CI", "true")
-            .env("PYTHONUNBUFFERED", "1");
-
-        for (key, value) in job_env {
-            command.env(key, value);
-        }
-
-        for (key, value) in &step.env {
-            command.env(key, value);
-        }
+        let wrapped_run = wrap_shell_script_with_env(&step.run, job_env);
+        let mut command = self.command_for_script(&wrapped_run);
+        command.current_dir(cwd);
+        Self::apply_step_env(&mut command, job_env, &step.env);
 
         let output = command.output().await;
         let duration = started.elapsed();
@@ -142,24 +154,13 @@ impl ShellExecutor {
             .unwrap_or_else(|| workspace.to_path_buf());
 
         let started = Instant::now();
-        let mut command = Command::new(&self.shell);
+        let wrapped_run = wrap_shell_script_with_env(&step.run, job_env);
+        let mut command = self.command_for_script(&wrapped_run);
         command
-            .arg("-lc")
-            .arg(self.shell_invocation(&step.run))
             .current_dir(cwd)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .env("CI", "true")
-            .env("PERTISK_CI", "true")
-            .env("PYTHONUNBUFFERED", "1");
-
-        for (key, value) in job_env {
-            command.env(key, value);
-        }
-
-        for (key, value) in &step.env {
-            command.env(key, value);
-        }
+            .stderr(Stdio::piped());
+        Self::apply_step_env(&mut command, job_env, &step.env);
 
         let mut child = match command.spawn() {
             Ok(child) => child,

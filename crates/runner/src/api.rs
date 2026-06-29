@@ -1,4 +1,5 @@
 use anyhow::Context;
+use chrono::{DateTime, Utc};
 use pertisk_cicd::config::Step;
 use pertisk_cicd::ArtifactDecl;
 use reqwest::StatusCode;
@@ -14,13 +15,37 @@ pub struct RunnerApi {
     pub token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct PollJobResponse {
     pub job_id: Uuid,
+    #[serde(default = "default_uuid")]
+    pub pipeline_run_id: Uuid,
     pub job_name: String,
+    #[serde(default = "default_uuid")]
+    pub repository_id: Uuid,
     pub org_slug: String,
     pub repo_slug: String,
+    #[serde(default)]
+    pub repo_name: String,
     pub commit_sha: String,
+    #[serde(default)]
+    pub ref_name: String,
+    #[serde(default = "default_event_type")]
+    pub event_type: String,
+    #[serde(default)]
+    pub pipeline_iid: i64,
+    #[serde(default = "default_timestamp")]
+    pub pipeline_created_at: DateTime<Utc>,
+    #[serde(default)]
+    pub config_path: Option<String>,
+    #[serde(default)]
+    pub target_environment: Option<String>,
+    #[serde(default)]
+    pub effective_environment: Option<String>,
+    #[serde(default = "default_branch_name")]
+    pub default_branch: String,
+    #[serde(default)]
+    pub pull_request_number: Option<i32>,
     pub steps: Vec<Step>,
     #[serde(default)]
     pub artifacts: Vec<ArtifactDecl>,
@@ -30,6 +55,22 @@ pub struct PollJobResponse {
     pub image: Option<String>,
     #[serde(default)]
     pub dind: bool,
+}
+
+fn default_uuid() -> Uuid {
+    Uuid::nil()
+}
+
+fn default_event_type() -> String {
+    "push".into()
+}
+
+fn default_timestamp() -> DateTime<Utc> {
+    Utc::now()
+}
+
+fn default_branch_name() -> String {
+    "main".into()
 }
 
 #[derive(Debug, Clone, Deserialize)]

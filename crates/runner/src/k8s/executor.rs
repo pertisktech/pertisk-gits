@@ -59,7 +59,7 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
     .await?;
 
     let work_root = TempDir::with_prefix("pertisk-k8s-secrets-")?;
-    let secrets = prepare_secrets(api, job.job_id, work_root.path()).await?;
+    let secrets = prepare_secrets(api, &job, work_root.path()).await?;
 
     let resolved_steps: Vec<_> = job
         .steps
