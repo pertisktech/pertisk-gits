@@ -2646,6 +2646,31 @@ fn normalize_git_ref(ref_name: &str, kind: RefKind) -> String {
     }
 }
 
+pub(crate) async fn repository_has_ci(
+    repo_path: &FsPath,
+    default_branch: &str,
+    repository_id: Uuid,
+    pool: &PgPool,
+) -> bool {
+    let has_runs = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM pipeline_runs WHERE repository_id = $1)",
+    )
+    .bind(repository_id)
+    .fetch_one(pool)
+    .await
+    .unwrap_or(false);
+
+    if has_runs {
+        return true;
+    }
+
+    let Ok(commit_sha) = resolve_git_ref(repo_path, default_branch, RefKind::Branch).await else {
+        return false;
+    };
+
+    read_pipeline_config(repo_path, &commit_sha).await.is_some()
+}
+
 async fn read_pipeline_config(repo_path: &FsPath, commit_sha: &str) -> Option<(String, String)> {
     for path in CONFIG_PATHS {
         let output = Command::new("git")

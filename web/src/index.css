@@ -1628,6 +1628,28 @@ body,
   border-color: var(--color-naturals-n3);
 }
 
+.commit-history-pipeline {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--color-naturals-n4);
+  border-radius: 0.375rem;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast);
+}
+
+.commit-history-pipeline:hover {
+  background: var(--color-hover);
+}
+
 .app-diff {
   padding: 1rem;
   overflow-x: auto;

@@ -2,16 +2,17 @@ import {
   ChevronLeft,
   ChevronRight,
   FolderGit2,
-  Lock,
   Plus,
   Search,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
+import { DashboardProjectAside } from '../components/DashboardProjectAside'
 import { EmptyState, LinkButton } from '../components/ui'
 import { useAllProjects, type DashboardProject } from '../hooks/useAllProjects'
+import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
+import { projectInitial } from '../lib/projectInitial'
 import { formatRelativeTimeFromIso } from '../lib/relativeTime'
 import styles from './DashboardPage.module.css'
 
@@ -84,6 +85,7 @@ export function DashboardPage() {
     (currentPage - 1) * PAGE_SIZE,
     currentPage * PAGE_SIZE,
   )
+  const { getStats, isLoading: statsLoading } = useDashboardProjectStats(pageProjects)
 
   const rangeStart =
     filteredProjects.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
@@ -190,7 +192,9 @@ export function DashboardPage() {
               {pageProjects.map((project) => (
                 <li key={project.id} className={styles.row}>
                   <div className={styles.icon} aria-hidden>
-                    <FolderGit2 size={16} />
+                    <span className={styles.iconLetter}>
+                      {projectInitial(project.name, project.slug)}
+                    </span>
                   </div>
                   <div className={styles.main}>
                     <Link
@@ -202,13 +206,14 @@ export function DashboardPage() {
                       <span>{project.name}</span>
                     </Link>
                   </div>
+                  <DashboardProjectAside
+                    orgSlug={project.orgSlug}
+                    slug={project.slug}
+                    visibility={project.visibility}
+                    stats={getStats(project)}
+                    loading={statsLoading}
+                  />
                   <div className={styles.meta}>
-                    {project.visibility === 'private' && (
-                      <Lock size={14} className="text-muted shrink-0" aria-label="Private" />
-                    )}
-                    <StatusBadge variant={visibilityVariant(project.visibility)}>
-                      {project.visibility}
-                    </StatusBadge>
                     <span
                       className={styles.updated}
                       title={new Date(project.updated_at).toLocaleString()}

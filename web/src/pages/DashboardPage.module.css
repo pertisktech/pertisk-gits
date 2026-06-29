@@ -117,6 +117,61 @@
   align-items: center;
   gap: 0.75rem;
   flex-shrink: 0;
+  margin-left: auto;
+}
+
+.aside {
+  flex-shrink: 0;
+}
+
+.stats {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.stat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border-radius: var(--radius-md);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: background 0.12s, color 0.12s;
+}
+
+.statWithCount {
+  width: auto;
+  min-width: 2.5rem;
+  height: auto;
+  gap: 0.3rem;
+  padding: 0.25rem 0.45rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.stat:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.statIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-muted);
+}
+
+.stat:hover .statIcon {
+  color: var(--color-primary);
+}
+
+.statValue {
+  font-variant-numeric: tabular-nums;
+  min-width: 1ch;
 }
 
 .updated {

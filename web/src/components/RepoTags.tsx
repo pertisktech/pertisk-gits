@@ -3,9 +3,12 @@ import { Check, Copy, Loader2, Plus, Tag } from 'lucide-react'
 import { useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { TagInfo } from '../api/types'
+import type { PipelineRun, TagInfo } from '../api/types'
 import { formatRelativeTime } from '../lib/relativeTime'
+import { pipelineRunForTag } from '../lib/pipelineRunIndex'
+import { useRepoPipelineRunsIndex } from '../hooks/useRepoPipelineRunsIndex'
 import { CreateTagDialog } from './CreateTagDialog'
+import { PipelineRunStatusLink } from './PipelineRunStatusLink'
 import { commitUrl } from './RepoCommits'
 import { EmptyState, PrimaryButton } from './ui'
 
@@ -54,6 +57,7 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
   })
 
   const tags = data?.tags ?? []
+  const { index: pipelineIndex } = useRepoPipelineRunsIndex(orgSlug, repoSlug, token)
   const branches = browserData?.browser.branches.length
     ? browserData.browser.branches
     : [defaultBranch]
@@ -125,7 +129,13 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
         ) : (
           <ul className="commit-history-date-body">
             {tags.map((tag) => (
-              <TagRow key={tag.name} tag={tag} orgSlug={orgSlug} repoSlug={repoSlug} />
+              <TagRow
+                key={tag.name}
+                tag={tag}
+                orgSlug={orgSlug}
+                repoSlug={repoSlug}
+                pipelineRun={pipelineRunForTag(pipelineIndex, tag.name, tag.sha)}
+              />
             ))}
           </ul>
         )}
@@ -153,10 +163,12 @@ function TagRow({
   tag,
   orgSlug,
   repoSlug,
+  pipelineRun,
 }: {
   tag: TagInfo
   orgSlug: string
   repoSlug: string
+  pipelineRun?: PipelineRun
 }) {
   return (
     <li className="commit-history-row">
@@ -169,7 +181,6 @@ function TagRow({
           <div className="commit-history-row-title">
             <span className="commit-history-subject font-medium">{tag.name}</span>
             <code className="commit-history-sha">{tag.short_sha}</code>
-            <CopyShaButton sha={tag.sha} label={`Copy commit SHA for ${tag.name}`} />
           </div>
           {tag.message && (
             <p className="commit-history-body">{tag.message}</p>
@@ -180,6 +191,8 @@ function TagRow({
           </p>
         </div>
       </Link>
+      <PipelineRunStatusLink run={pipelineRun} orgSlug={orgSlug} repoSlug={repoSlug} />
+      <CopyShaButton sha={tag.sha} label={`Copy commit SHA for ${tag.name}`} />
     </li>
   )
 }

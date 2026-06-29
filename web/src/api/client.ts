@@ -17,6 +17,7 @@ import type {
   Label,
   Milestone,
   CustomRolePermissions,
+  DashboardProjectStats,
   OrganizationCustomRole,
   Organization,
   OrgMember,
@@ -225,6 +226,16 @@ export const api = {
 
   listOrganizations: (token: string) =>
     request<Organization[]>('/organizations', {}, token),
+
+  getDashboardProjectStats: (
+    token: string,
+    projects: { org_path: string; slug: string }[],
+  ) =>
+    request<{ stats: DashboardProjectStats[] }>(
+      '/dashboard/project-stats',
+      { method: 'POST', body: JSON.stringify({ projects }) },
+      token,
+    ),
 
   listSubgroups: (token: string, orgPath: string) =>
     request<Organization[]>(`/organizations/${orgApiPath(orgPath)}/subgroups`, {}, token),

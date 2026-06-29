@@ -3,14 +3,18 @@ import { Check, ChevronDown, ChevronRight, Copy, GitCommit, Loader2 } from 'luci
 import { useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { CommitInfo } from '../api/types'
+import type { CommitInfo, PipelineRun } from '../api/types'
+import type { PipelineRunIndex } from '../lib/pipelineRunIndex'
 import {
   groupCommitsByDate,
   shouldExpandCommitDateGroup,
   type CommitDateGroup,
 } from '../lib/commitGroups'
 import { formatRelativeTime } from '../lib/relativeTime'
+import { pipelineRunForCommit } from '../lib/pipelineRunIndex'
 import { cn } from '../utils/cn'
+import { useRepoPipelineRunsIndex } from '../hooks/useRepoPipelineRunsIndex'
+import { PipelineRunStatusLink } from './PipelineRunStatusLink'
 import { EmptyState } from './ui'
 
 export function commitUrl(orgSlug: string, repoSlug: string, sha: string) {
@@ -42,6 +46,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
     queryFn: () => api.getRepoCommits(orgSlug, repoSlug, { ref, limit: 100 }, token),
     enabled: Boolean(orgSlug && repoSlug && browser && !browser.empty),
   })
+
+  const { index: pipelineIndex } = useRepoPipelineRunsIndex(orgSlug, repoSlug, token)
 
   const dateGroups = groupCommitsByDate(data?.commits ?? [])
 
@@ -120,6 +126,7 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
               group={group}
               orgSlug={orgSlug}
               repoSlug={repoSlug}
+              pipelineIndex={pipelineIndex}
               defaultOpen={shouldExpandCommitDateGroup(group.key, index)}
             />
           ))}
@@ -133,11 +140,13 @@ function CommitDateGroup({
   group,
   orgSlug,
   repoSlug,
+  pipelineIndex,
   defaultOpen,
 }: {
   group: CommitDateGroup
   orgSlug: string
   repoSlug: string
+  pipelineIndex: PipelineRunIndex
   defaultOpen: boolean
 }) {
   const [open, setOpen] = useState(defaultOpen)
@@ -167,6 +176,7 @@ function CommitDateGroup({
               commit={commit}
               orgSlug={orgSlug}
               repoSlug={repoSlug}
+              pipelineRun={pipelineRunForCommit(pipelineIndex, commit.sha)}
             />
           ))}
         </ul>
@@ -208,10 +218,12 @@ function CommitRow({
   commit,
   orgSlug,
   repoSlug,
+  pipelineRun,
 }: {
   commit: CommitInfo
   orgSlug: string
   repoSlug: string
+  pipelineRun?: PipelineRun
 }) {
   const [title, ...rest] = commit.message.split('\n')
   const bodyPreview = rest.join('\n').trim()
@@ -237,6 +249,7 @@ function CommitRow({
           </div>
         </div>
       </Link>
+      <PipelineRunStatusLink run={pipelineRun} orgSlug={orgSlug} repoSlug={repoSlug} />
       <CopyCommitButton sha={commit.sha} label={commit.short_sha} />
     </li>
   )

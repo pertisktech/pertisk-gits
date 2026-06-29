@@ -43,6 +43,7 @@ mod collaboration;
 mod compression;
 mod contents;
 mod custom_roles;
+mod dashboard;
 mod cicd;
 mod code_search;
 mod config;
@@ -193,6 +194,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(sso::sso_routes())
         .route("/me", get(me))
         .route("/users/search", get(search_users))
+        .merge(dashboard::dashboard_routes())
         .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
         .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
         .route("/organizations", get(list_organizations).post(create_organization))

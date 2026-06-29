@@ -30,6 +30,16 @@ export interface Repository {
   updated_at: string
 }
 
+export interface DashboardProjectStats {
+  org_path: string
+  slug: string
+  branch_count: number
+  tag_count: number
+  open_issue_count: number
+  has_pipelines: boolean
+  latest_pipeline_status: string | null
+}
+
 export interface RepositoryDetail {
   repository: Repository
   clone_url_http: string
