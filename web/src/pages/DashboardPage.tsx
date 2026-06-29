@@ -209,7 +209,6 @@ export function DashboardPage() {
                   <DashboardProjectAside
                     orgSlug={project.orgSlug}
                     slug={project.slug}
-                    visibility={project.visibility}
                     stats={getStats(project)}
                     loading={statsLoading}
                   />
