@@ -49,6 +49,17 @@ ingress:
 
 resources: {}
 
+podSecurityContext: {}
+  # HA + NFS example:
+  # fsGroup: 1000
+  # fsGroupChangePolicy: OnRootMismatch
+
+secrets:
+  encryptionKey: ""
+  existingSecret:
+    name: ""
+    key: secrets-encryption-key
+
 nodeSelector: {}
 tolerations: []
 affinity: {}

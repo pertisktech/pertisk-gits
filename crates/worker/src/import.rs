@@ -15,6 +15,8 @@ use tokio::process::Command;
 use uuid::Uuid;
 
 const NONCE_LEN: usize = 12;
+/// Re-claim stuck import work after a pod crash (HA / shared storage).
+const IMPORT_STALE_MINUTES: i32 = 30;
 
 pub struct ImportWorker {
     pub pool: PgPool,
@@ -42,7 +44,11 @@ impl ImportWorker {
             FROM (
                 SELECT id
                 FROM import_jobs
-                WHERE status IN ('pending', 'mirroring', 'metadata')
+                WHERE status = 'pending'
+                   OR (
+                     status IN ('mirroring', 'metadata')
+                     AND updated_at < NOW() - make_interval(mins => $1)
+                   )
                 ORDER BY created_at ASC
                 LIMIT 5
                 FOR UPDATE SKIP LOCKED
@@ -51,6 +57,7 @@ impl ImportWorker {
             RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text, j.import_issues, j.import_pull_requests
             "#,
         )
+        .bind(IMPORT_STALE_MINUTES)
         .fetch_all(&self.pool)
         .await?;
 
@@ -210,17 +217,17 @@ impl ImportWorker {
         };
 
         if repo.status == "pending" || repo.status == "mirroring" {
-            sqlx::query(
-                r#"
-                UPDATE import_job_repos
-                SET repository_id = $2, status = 'mirroring', updated_at = NOW()
-                WHERE id = $1
-                "#,
-            )
-            .bind(repo.id)
-            .bind(repository_id)
-            .execute(&self.pool)
-            .await?;
+            if !self
+                .try_claim_repo_mirror(repo.id, repository_id)
+                .await?
+            {
+                tracing::debug!(
+                    job = %job.id,
+                    repo = %repo.source_full_name,
+                    "import repo skipped — claimed by another worker"
+                );
+                return Ok(());
+            }
 
             let repo_path = repo_disk_path(&self.repos_root, org_slug, &repo.target_slug);
             let auth_url = authenticated_clone_url(provider, &repo.source_clone_url, token)?;
@@ -434,6 +441,31 @@ impl ImportWorker {
             });
         Ok((provider, token, base_url))
     }
+
+    async fn try_claim_repo_mirror(&self, repo_id: Uuid, repository_id: Uuid) -> anyhow::Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE import_job_repos
+            SET repository_id = COALESCE(repository_id, $2),
+                status = 'mirroring',
+                updated_at = NOW()
+            WHERE id = $1
+              AND (
+                status = 'pending'
+                OR (
+                  status = 'mirroring'
+                  AND updated_at < NOW() - make_interval(mins => $3)
+                )
+              )
+            "#,
+        )
+        .bind(repo_id)
+        .bind(repository_id)
+        .bind(IMPORT_STALE_MINUTES)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
 }
 
 async fn mirror_repository(auth_url: &str, repo_path: &Path) -> anyhow::Result<()> {
@@ -459,8 +491,9 @@ async fn mirror_repository(auth_url: &str, repo_path: &Path) -> anyhow::Result<(
         return Ok(());
     }
 
-    if repo_path.exists() {
-        tokio::fs::remove_dir_all(repo_path).await?;
+    let tmp_path = repo_path.with_extension("import-tmp");
+    if tmp_path.exists() {
+        remove_repo_dir(&tmp_path).await?;
     }
 
     git_run(
@@ -468,13 +501,31 @@ async fn mirror_repository(auth_url: &str, repo_path: &Path) -> anyhow::Result<(
             "clone",
             "--mirror",
             auth_url,
-            repo_path.to_str().unwrap_or_default(),
+            tmp_path.to_str().unwrap_or_default(),
         ],
         "git clone --mirror",
     )
     .await?;
 
+    if repo_path.exists() {
+        remove_repo_dir(repo_path).await?;
+    }
+
+    tokio::fs::rename(&tmp_path, repo_path).await?;
     Ok(())
+}
+
+async fn remove_repo_dir(path: &Path) -> anyhow::Result<()> {
+    match tokio::fs::remove_dir_all(path).await {
+        Ok(()) => Ok(()),
+        Err(err) if err.raw_os_error() == Some(39) => {
+            // NFS or concurrent import left a non-empty partial directory — retry once.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            tokio::fs::remove_dir_all(path).await?;
+            Ok(())
+        }
+        Err(err) => Err(err.into()),
+    }
 }
 
 async fn git_has_remote(repo_path: &str, name: &str) -> anyhow::Result<bool> {

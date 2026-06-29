@@ -18,6 +18,10 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -45,6 +49,19 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.jwt.existingSecret.name | default (include "pertisk-gits.fullname" .) }}
                   key: {{ .Values.jwt.existingSecret.key | default "jwt-secret" }}
+            - name: WEB_DIST
+              value: /usr/share/pertisk-gits/web
+            {{- if or .Values.secrets.encryptionKey .Values.secrets.existingSecret.name }}
+            - name: SECRETS_ENCRYPTION_KEY
+              {{- if .Values.secrets.existingSecret.name }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.existingSecret.name }}
+                  key: {{ .Values.secrets.existingSecret.key }}
+              {{- else }}
+              value: {{ .Values.secrets.encryptionKey | quote }}
+              {{- end }}
+            {{- end }}
           volumeMounts:
             - name: repos
               mountPath: /data/repos

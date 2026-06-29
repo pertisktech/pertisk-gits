@@ -73,6 +73,15 @@ resources:
 nodeSelector:
   kubernetes.io/arch: arm64
 
+podSecurityContext:
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+
+secrets:
+  existingSecret:
+    name: pertisk-gits-secret
+    key: secrets-encryption-key
+
 # Spread API pods across nodes (same pattern as pertisk-runner)
 affinity:
   podAntiAffinity:

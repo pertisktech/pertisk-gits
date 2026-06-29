@@ -24,13 +24,22 @@ impl CodeIndexWorker {
     pub async fn process_pending_jobs(&self) -> anyhow::Result<u32> {
         let jobs = sqlx::query_as::<_, IndexJobRow>(
             r#"
-            SELECT j.id, j.repository_id, j.commit_sha, j.ref_name, o.slug AS org_slug, r.slug AS repo_slug
-            FROM code_index_jobs j
-            INNER JOIN repositories r ON r.id = j.repository_id
-            INNER JOIN organizations o ON o.id = r.organization_id
-            WHERE j.processed = FALSE
-            ORDER BY j.created_at ASC
-            LIMIT 10
+            UPDATE code_index_jobs j
+            SET processed_at = j.processed_at
+            FROM (
+                SELECT id
+                FROM code_index_jobs
+                WHERE processed = FALSE
+                ORDER BY created_at ASC
+                LIMIT 10
+                FOR UPDATE SKIP LOCKED
+            ) picked
+            WHERE j.id = picked.id
+            RETURNING j.id, j.repository_id, j.commit_sha, j.ref_name,
+                (SELECT o.slug FROM organizations o
+                 INNER JOIN repositories r ON r.organization_id = o.id
+                 WHERE r.id = j.repository_id) AS org_slug,
+                (SELECT r.slug FROM repositories r WHERE r.id = j.repository_id) AS repo_slug
             "#,
         )
         .fetch_all(&self.pool)

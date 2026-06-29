@@ -86,8 +86,8 @@ RUN apk add --no-cache \
       curl \
       file \
       shadow \
-    && addgroup -S pertisk-gits \
-    && adduser -S -G pertisk-gits -h /var/lib/pertisk-gits -s /sbin/nologin pertisk-gits \
+    && addgroup -g 1000 -S pertisk-gits \
+    && adduser -u 1000 -G pertisk-gits -S -h /var/lib/pertisk-gits -s /sbin/nologin pertisk-gits \
     && mkdir -p /var/lib/pertisk-gits/repos /usr/share/pertisk-gits/web \
     && chown -R pertisk-gits:pertisk-gits /var/lib/pertisk-gits
 
