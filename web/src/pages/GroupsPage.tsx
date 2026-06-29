@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { Package, Plus, Users } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Plus, Users } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { groupBaseUrl, groupUrlPath } from '../lib/groupPath'
+import { GroupListRow } from '../components/GroupListRow'
+import listStyles from '../components/ProjectList.module.css'
 import { EmptyState, LinkButton } from '../components/ui'
+import { useTopLevelGroupStats } from '../hooks/useTopLevelGroupStats'
 
 export function GroupsPage() {
   const { token } = useAuth()
@@ -15,7 +16,7 @@ export function GroupsPage() {
     enabled: Boolean(token),
   })
 
-  const topLevelGroups = groups.filter((g) => !g.parent_id)
+  const { topLevelGroups, statsByGroupId, isLoading: statsLoading } = useTopLevelGroupStats(groups)
 
   return (
     <>
@@ -59,46 +60,20 @@ export function GroupsPage() {
         )}
 
         {!isLoading && topLevelGroups.length > 0 && (
-          <table className="app-list-table">
-            <thead>
-              <tr>
-                <th>Group</th>
-                <th>Description</th>
-                <th>Created</th>
-                <th className="w-24" />
-              </tr>
-            </thead>
-            <tbody>
-              {topLevelGroups.map((group) => (
-                <tr key={group.id}>
-                  <td>
-                    <Link to={groupBaseUrl(group)} className="font-medium text-text hover:text-primary">
-                      {group.name}
-                    </Link>
-                    <div className="text-xs text-muted font-mono mt-0.5">{groupUrlPath(group)}</div>
-                  </td>
-                  <td className="text-text-secondary">{group.description ?? '—'}</td>
-                  <td className="text-text-secondary text-sm">
-                    {new Date(group.created_at).toLocaleDateString()}
-                  </td>
-                  <td className="text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <Link
-                        to={`${groupBaseUrl(group)}/registry`}
-                        className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary"
-                      >
-                        <Package size={13} aria-hidden />
-                        Registry
-                      </Link>
-                      <Link to={groupBaseUrl(group)} className="text-sm text-primary hover:underline">
-                        View
-                      </Link>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className={listStyles.list}>
+            {topLevelGroups.map((group) => {
+              const stats = statsByGroupId.get(group.id)
+              return (
+                <GroupListRow
+                  key={group.id}
+                  group={group}
+                  subgroupCount={stats?.subgroups ?? 0}
+                  projectCount={stats?.projects ?? 0}
+                  statsLoading={statsLoading}
+                />
+              )
+            })}
+          </ul>
         )}
       </div>
     </>

@@ -4,6 +4,7 @@ import { FolderGit2, FolderTree, Plus, Settings, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { GroupLandingHero } from '../components/GroupLandingHero'
 import { ProjectListRow } from '../components/ProjectListRow'
 import listStyles from '../components/ProjectList.module.css'
 import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
@@ -54,13 +55,15 @@ export function GroupDetailPage() {
         )}
       />
 
-      <div className="app-repo-header mb-4">
-        <h1 className="app-repo-title">
-          <span>{group?.name ?? orgPath}</span>
-        </h1>
-        {group?.description && <p className="app-repo-desc">{group.description}</p>}
-        <p className="text-xs text-muted font-mono mt-1">@{orgPath}</p>
-      </div>
+      <GroupLandingHero
+        name={group?.name ?? orgPath}
+        slug={group?.slug ?? orgPath.split('/').pop() ?? orgPath}
+        path={orgPath}
+        description={group?.description}
+        subgroupCount={subgroups.length}
+        projectCount={projects.length}
+        statsLoading={subgroupsLoading || isLoading}
+      />
 
       <div className="mb-4 flex justify-end gap-2">
         {canManage && (
