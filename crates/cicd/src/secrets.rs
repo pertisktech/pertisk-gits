@@ -94,6 +94,21 @@ mod tests {
     }
 
     #[test]
+    fn resolves_predefined_pipeline_vars() {
+        let mut secrets = HashMap::new();
+        secrets.insert("CI_PIPELINE_ID".into(), "11111111-1111-1111-1111-111111111111".into());
+        secrets.insert("CI_JOB_NAME".into(), "build".into());
+        let resolved = resolve_secret_refs(
+            "pipeline=${{ secrets.CI_PIPELINE_ID }} job=${{ secrets.CI_JOB_NAME }}",
+            &secrets,
+        );
+        assert_eq!(
+            resolved,
+            "pipeline=11111111-1111-1111-1111-111111111111 job=build"
+        );
+    }
+
+    #[test]
     fn masks_secret_values() {
         let masked = mask_secrets_in_text("token=supersecret123 done", &["supersecret123".into()]);
         assert_eq!(masked, "token=*** done");

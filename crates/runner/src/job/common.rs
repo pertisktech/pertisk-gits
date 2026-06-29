@@ -10,6 +10,18 @@ pub struct PreparedSecrets {
     pub mask_values: Vec<String>,
 }
 
+/// Build step environment from injected secrets/variables, overlaying the workspace path.
+pub fn build_job_env(
+    secrets: &HashMap<String, String>,
+    project_dir: &str,
+) -> Vec<(String, String)> {
+    let mut env = secrets.clone();
+    env.insert("CI_PROJECT_DIR".into(), project_dir.into());
+    let mut pairs: Vec<_> = env.into_iter().collect();
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    pairs
+}
+
 pub async fn prepare_secrets(
     api: &RunnerApi,
     job_id: Uuid,
@@ -35,7 +47,7 @@ pub async fn prepare_secrets(
     let mut mask_values = Vec::new();
 
     for item in response.secrets {
-        if item.value.len() >= 4 {
+        if item.masked && item.value.len() >= 4 {
             mask_values.push(item.value.clone());
         }
         let value = if item.secret_kind == "file" {

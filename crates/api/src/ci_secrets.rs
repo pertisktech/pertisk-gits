@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use pertisk_cicd::{build_predefined_vars, PredefinedCiContext, PullRequestContext};
 use crate::permissions::{ensure_can_admin_repo, ensure_can_manage_org_secrets};
 use crate::secrets_crypto::SecretsCrypto;
 use crate::{find_org_for_member, ApiError, AppState, AuthUser};
@@ -128,6 +129,12 @@ pub struct RunnerJobSecret {
     pub name: String,
     pub secret_kind: CiSecretKind,
     pub value: String,
+    #[serde(default = "default_true")]
+    pub masked: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Serialize)]
@@ -502,13 +509,60 @@ pub async fn load_job_secrets_for_runner(
     crypto: &SecretsCrypto,
     job_id: Uuid,
     runner_id: Uuid,
+    server_url: &str,
 ) -> Result<RunnerJobSecretsResponse, (StatusCode, String)> {
-    let context = sqlx::query_as::<_, (Uuid, Uuid, Option<String>)>(
+    #[derive(sqlx::FromRow)]
+    struct JobSecretsContextRow {
+        organization_id: Uuid,
+        repository_id: Uuid,
+        effective_environment: Option<String>,
+        pipeline_run_id: Uuid,
+        commit_sha: String,
+        ref_name: String,
+        event_type: String,
+        target_environment: Option<String>,
+        config_path: Option<String>,
+        pipeline_created_at: DateTime<Utc>,
+        pull_request_number: Option<i32>,
+        pipeline_iid: i64,
+        job_name: String,
+        job_image: Option<String>,
+        org_slug: String,
+        repo_name: String,
+        repo_slug: String,
+        default_branch: String,
+    }
+
+    let context = sqlx::query_as::<_, JobSecretsContextRow>(
         r#"
-        SELECT r.organization_id, p.repository_id, j.effective_environment
+        SELECT
+            r.organization_id,
+            p.repository_id,
+            j.effective_environment,
+            p.id AS pipeline_run_id,
+            p.commit_sha,
+            p.ref_name,
+            p.event_type::text AS event_type,
+            p.target_environment,
+            p.config_path,
+            p.created_at AS pipeline_created_at,
+            p.pull_request_number,
+            (
+                SELECT COUNT(*)::bigint
+                FROM pipeline_runs pr2
+                WHERE pr2.repository_id = r.id
+                  AND pr2.created_at <= p.created_at
+            ) AS pipeline_iid,
+            j.job_name,
+            j.image AS job_image,
+            o.slug AS org_slug,
+            r.name AS repo_name,
+            r.slug AS repo_slug,
+            r.default_branch
         FROM job_runs j
         INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
         INNER JOIN repositories r ON r.id = p.repository_id
+        INNER JOIN organizations o ON o.id = r.organization_id
         WHERE j.id = $1 AND j.runner_id = $2
         "#,
     )
@@ -519,7 +573,55 @@ pub async fn load_job_secrets_for_runner(
     .map_err(|e| internal(e.to_string()))?
     .ok_or((StatusCode::NOT_FOUND, "job not found".into()))?;
 
-    let (org_id, repo_id, job_environment) = context;
+    let pull_request = if let Some(number) = context.pull_request_number {
+        sqlx::query_as::<_, (Uuid, i32, String, String, String)>(
+            r#"
+            SELECT id, number, title, source_branch, target_branch
+            FROM pull_requests
+            WHERE repository_id = $1 AND number = $2
+            "#,
+        )
+        .bind(context.repository_id)
+        .bind(number)
+        .fetch_optional(pool)
+        .await
+        .map_err(|e| internal(e.to_string()))?
+        .map(|(id, number, title, source_branch, target_branch)| PullRequestContext {
+            id: id.to_string(),
+            number,
+            title,
+            source_branch,
+            target_branch,
+        })
+    } else {
+        None
+    };
+
+    let predefined_ctx = PredefinedCiContext {
+        server_url: server_url.trim_end_matches('/').to_string(),
+        pipeline_run_id: context.pipeline_run_id.to_string(),
+        pipeline_iid: context.pipeline_iid,
+        pipeline_created_at: context.pipeline_created_at,
+        pipeline_event: context.event_type,
+        config_path: context.config_path,
+        target_environment: context.target_environment,
+        job_id: job_id.to_string(),
+        job_name: context.job_name,
+        effective_environment: context.effective_environment.clone(),
+        commit_sha: context.commit_sha,
+        ref_name: context.ref_name,
+        repository_id: context.repository_id.to_string(),
+        repo_name: context.repo_name,
+        repo_slug: context.repo_slug,
+        org_slug: context.org_slug,
+        default_branch: context.default_branch,
+        pull_request,
+        runner_id: Some(runner_id.to_string()),
+        job_image: context.job_image,
+    };
+
+    let predefined = build_predefined_vars(&predefined_ctx);
+    let job_environment = context.effective_environment.as_deref();
 
     let org_rows = sqlx::query_as::<_, (String, CiSecretKind, CiSecretEnvironment, Vec<u8>)>(
         r#"
@@ -528,7 +630,7 @@ pub async fn load_job_secrets_for_runner(
         WHERE organization_id = $1
         "#,
     )
-    .bind(org_id)
+    .bind(context.organization_id)
     .fetch_all(pool)
     .await
     .map_err(|e| internal(e.to_string()))?;
@@ -540,37 +642,42 @@ pub async fn load_job_secrets_for_runner(
         WHERE repository_id = $1
         "#,
     )
-    .bind(repo_id)
+    .bind(context.repository_id)
     .fetch_all(pool)
     .await
     .map_err(|e| internal(e.to_string()))?;
 
-    let mut merged: HashMap<String, (CiSecretKind, String)> = HashMap::new();
+    let mut merged: HashMap<String, (CiSecretKind, String, bool)> = predefined
+        .into_iter()
+        .map(|(name, value)| (name, (CiSecretKind::Variable, value, false)))
+        .collect();
+
     for (name, kind, environment, blob) in org_rows {
-        if !environment.matches_job(job_environment.as_deref()) {
+        if !environment.matches_job(job_environment) {
             continue;
         }
         let value = crypto
             .decrypt(&blob)
             .map_err(|e| internal(e.to_string()))?;
-        merged.insert(name, (kind, value));
+        merged.insert(name, (kind, value, true));
     }
     for (name, kind, environment, blob) in repo_rows {
-        if !environment.matches_job(job_environment.as_deref()) {
+        if !environment.matches_job(job_environment) {
             continue;
         }
         let value = crypto
             .decrypt(&blob)
             .map_err(|e| internal(e.to_string()))?;
-        merged.insert(name, (kind, value));
+        merged.insert(name, (kind, value, true));
     }
 
     let secrets = merged
         .into_iter()
-        .map(|(name, (secret_kind, value))| RunnerJobSecret {
+        .map(|(name, (secret_kind, value, masked))| RunnerJobSecret {
             name,
             secret_kind,
             value,
+            masked,
         })
         .collect();
 

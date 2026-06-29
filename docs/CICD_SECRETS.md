@@ -79,6 +79,54 @@ jobs:
 
 After a job is claimed, the runner fetches decrypted secrets from `GET /api/v1/runner/jobs/{id}/secrets` (filtered by job environment), materializes file secrets, resolves `${{ secrets.* }}` in each step, and masks known secret values in streamed logs.
 
+## Predefined variables (GitLab-style)
+
+Every job automatically receives GitLab-compatible **predefined variables**. They are injected as shell environment variables and available via `${{ secrets.NAME }}` in pipeline YAML. User-defined group/repository secrets **override** predefined variables with the same name.
+
+| Variable | Description |
+|----------|-------------|
+| `CI_PIPELINE_ID` | Pipeline run UUID |
+| `CI_PIPELINE_IID` | Pipeline number within the repository (1, 2, 3, …) |
+| `CI_PIPELINE_URL` | Web URL of the pipeline run |
+| `CI_PIPELINE_SOURCE` | Trigger source (`push`, `merge_request_event`, `web`) |
+| `CI_PIPELINE_CREATED_AT` | Pipeline creation time (RFC 3339) |
+| `CI_JOB_ID` | Job run UUID |
+| `CI_JOB_NAME` | Job name from `.pertisk-ci.yaml` |
+| `CI_JOB_URL` | Web URL of the job |
+| `CI_JOB_MANUAL` | `true` when the pipeline was triggered manually |
+| `CI_COMMIT_SHA` | Full commit SHA |
+| `CI_COMMIT_SHORT_SHA` | First 8 characters of the commit SHA |
+| `CI_COMMIT_REF_NAME` | Branch or tag name (without `refs/heads/` prefix) |
+| `CI_COMMIT_BRANCH` | Branch name (push/PR pipelines only) |
+| `CI_COMMIT_TAG` | Tag name (tag pipelines only) |
+| `CI_PROJECT_PATH` | `{group}/{project}` slug path |
+| `CI_PROJECT_NAMESPACE` | Group slug |
+| `CI_PROJECT_URL` | Web URL of the project |
+| `CI_REPOSITORY_URL` | Git clone URL |
+| `CI_DEFAULT_BRANCH` | Repository default branch |
+| `CI_CONFIG_PATH` | Path to the pipeline config file used |
+| `CI_ENVIRONMENT_NAME` | Effective deploy environment (`dev` / `qa` / `uat` / `prd`) |
+| `CI_SERVER_URL` | Git server base URL |
+| `CI_MERGE_REQUEST_*` | Merge request fields when the pipeline runs for a PR |
+
+Example:
+
+```yaml
+jobs:
+  report:
+    runs-on: linux
+    steps:
+      - run: |
+          echo "Pipeline ${{ secrets.CI_PIPELINE_IID }} on ${{ secrets.CI_COMMIT_REF_NAME }}"
+          curl -sf "${{ secrets.CI_PIPELINE_URL }}"
+```
+
+Or use standard shell variables (same values):
+
+```yaml
+      - run: echo "$CI_PIPELINE_ID $CI_JOB_NAME"
+```
+
 ## UI locations
 
 - **Group → Secrets** — group-level secrets

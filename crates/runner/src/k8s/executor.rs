@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
 use anyhow::Context;
@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use super::config::{job_resource_name, K8sExecutorConfig};
 use crate::api::{PollJobResponse, RunnerApi};
-use crate::job::prepare_secrets;
+use crate::job::{build_job_env, prepare_secrets};
 use crate::log_stream::LogStreamer;
 
 pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()> {
@@ -67,12 +67,10 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
         .map(|step| apply_secrets_to_step(step, &secrets.injection))
         .collect();
 
-    let mut extra_env = secrets.injection.clone();
-    extra_env.insert("CI_COMMIT_SHA".into(), job.commit_sha.clone());
-    extra_env.insert(
-        "CI_REPOSITORY_SLUG".into(),
-        format!("{}/{}", job.org_slug, job.repo_slug),
-    );
+    let mut extra_env: HashMap<String, String> =
+        build_job_env(&secrets.injection, &config.workspace_mount_path)
+            .into_iter()
+            .collect();
     if job.dind {
         extra_env.insert("BUILDKIT_PROGRESS".into(), "plain".into());
         extra_env.insert("DOCKER_BUILDKIT".into(), "1".into());

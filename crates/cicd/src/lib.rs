@@ -1,6 +1,7 @@
 pub mod config;
 pub mod convert;
 pub mod environment;
+pub mod predefined;
 pub mod secrets;
 pub mod executor;
 pub mod job_if;
@@ -19,6 +20,7 @@ pub use convert::{
 pub use environment::{
     effective_job_environment, infer_environment_from_ref, normalize_environment, CI_ENVIRONMENTS,
 };
+pub use predefined::{build_predefined_vars, PredefinedCiContext, PullRequestContext};
 pub use executor::{bench_noop_steps, JobExecutor, ShellExecutor, StepOutput};
 pub use job_if::{JobIfMatcher, JobScheduleMode, RunContext};
 pub use metrics::{JobMetrics, StepTiming};

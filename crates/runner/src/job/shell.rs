@@ -9,7 +9,7 @@ use tempfile::TempDir;
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
 
-use super::common::prepare_secrets;
+use super::common::{build_job_env, prepare_secrets};
 use crate::api::{PollJobResponse, RunnerApi};
 use crate::artifacts::{upload_artifact_step, upload_declared_artifact};
 use crate::log_stream::LogStreamer;
@@ -63,14 +63,11 @@ pub async fn run_job(
 
     let executor = ShellExecutor::new();
     let queue_wait = queued_at.elapsed();
-    let job_env = [
-        ("CI_PROJECT_DIR", workspace.display().to_string()),
-        ("CI_COMMIT_SHA", job.commit_sha.clone()),
-        (
-            "CI_REPOSITORY_SLUG",
-            format!("{}/{}", job.org_slug, job.repo_slug),
-        ),
-    ];
+    let job_env_owned = build_job_env(&secrets.injection, &workspace.display().to_string());
+    let job_env: Vec<(&str, String)> = job_env_owned
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.clone()))
+        .collect();
 
     let mut timings = Vec::with_capacity(job.steps.len());
     let mut cancelled = false;

@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::api::{PollJobResponse, RunnerApi};
 
-pub use common::{is_kubernetes_executor, prepare_secrets, runner_executor};
+pub use common::{build_job_env, is_kubernetes_executor, prepare_secrets, runner_executor};
 
 pub async fn run_job(
     api: &RunnerApi,

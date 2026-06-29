@@ -300,6 +300,12 @@ pub struct JobSecretItem {
     pub name: String,
     pub secret_kind: String,
     pub value: String,
+    #[serde(default = "default_true")]
+    pub masked: bool,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]

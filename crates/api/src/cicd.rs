@@ -3593,6 +3593,7 @@ async fn runner_job_secrets(
         &state.secrets_crypto,
         job_id,
         runner_id,
+        &state.config.git_public_base_url,
     )
     .await?;
     Ok(Json(secrets))
