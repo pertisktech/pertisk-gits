@@ -9,7 +9,6 @@ use tokio::sync::{mpsc, watch};
 
 use crate::config::Step;
 use crate::metrics::{JobMetrics, StepTiming};
-use crate::script::wrap_shell_script_with_env;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StepOutput {
@@ -43,18 +42,10 @@ impl ShellExecutor {
         }
     }
 
-    /// Run `script` under the configured shell. When stdbuf is available, wrap the shell
-    /// (not the first line of the script) so multi-line export prefixes work.
     fn command_for_script(&self, script: &str) -> Command {
-        if std::path::Path::new("/usr/bin/stdbuf").exists() {
-            let mut command = Command::new("/usr/bin/stdbuf");
-            command.args(["-oL", "-eL", &self.shell, "-c", script]);
-            command
-        } else {
-            let mut command = Command::new(&self.shell);
-            command.arg("-c").arg(script);
-            command
-        }
+        let mut command = Command::new(&self.shell);
+        command.arg("-c").arg(script);
+        command
     }
 
     fn apply_step_env(
@@ -93,8 +84,7 @@ impl ShellExecutor {
 
         let started = Instant::now();
 
-        let wrapped_run = wrap_shell_script_with_env(&step.run, job_env);
-        let mut command = self.command_for_script(&wrapped_run);
+        let mut command = self.command_for_script(&step.run);
         command.current_dir(cwd);
         Self::apply_step_env(&mut command, job_env, &step.env);
 
@@ -154,8 +144,7 @@ impl ShellExecutor {
             .unwrap_or_else(|| workspace.to_path_buf());
 
         let started = Instant::now();
-        let wrapped_run = wrap_shell_script_with_env(&step.run, job_env);
-        let mut command = self.command_for_script(&wrapped_run);
+        let mut command = self.command_for_script(&step.run);
         command
             .current_dir(cwd)
             .stdout(Stdio::piped())
