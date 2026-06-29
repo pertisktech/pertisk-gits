@@ -49,6 +49,7 @@ import type {
   ContainerImageDetail,
   ContainerImageSummary,
   RegistryGcReport,
+  TagInfo,
   TreeEntry,
   User,
   UserSshKey,
@@ -721,6 +722,25 @@ export const api = {
       token,
     )
   },
+
+  getRepoTags: (orgSlug: string, repoSlug: string, token?: string | null) =>
+    request<{ tags: TagInfo[] }>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/tags`,
+      {},
+      token,
+    ),
+
+  createRepoTag: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { name: string; target_ref?: string; message?: string },
+  ) =>
+    request<{ tag: TagInfo }>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/tags`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
 
   getRepoCommit: (orgSlug: string, repoSlug: string, commitSha: string, token?: string | null) =>
     request<{ commit: CommitDetail }>(

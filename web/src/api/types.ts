@@ -79,6 +79,15 @@ export interface CommitInfo {
   message: string
 }
 
+export interface TagInfo {
+  name: string
+  sha: string
+  short_sha: string
+  message: string
+  tagger_name: string
+  tagged_at: number
+}
+
 export interface CommitDetail extends CommitInfo {
   body: string
   parents: string[]

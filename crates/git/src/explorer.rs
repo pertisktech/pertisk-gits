@@ -34,6 +34,16 @@ pub struct CommitInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct TagInfo {
+    pub name: String,
+    pub sha: String,
+    pub short_sha: String,
+    pub message: String,
+    pub tagger_name: String,
+    pub tagged_at: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct RepoBrowser {
     pub branches: Vec<String>,
     pub tags: Vec<String>,
@@ -67,6 +77,184 @@ pub async fn list_branches(repo_path: &Path) -> anyhow::Result<Vec<String>> {
 
 pub async fn list_tags(repo_path: &Path) -> anyhow::Result<Vec<String>> {
     list_refs(repo_path, "refs/tags/").await
+}
+
+pub async fn list_tag_details(repo_path: &Path) -> anyhow::Result<Vec<TagInfo>> {
+    const SEP: char = '\x1f';
+    let pretty = format!(
+        "--format=%(refname:short){SEP}%(objectname){SEP}%(*objectname){SEP}%(committerdate:unix){SEP}%(*committerdate:unix){SEP}%(subject){SEP}%(*subject){SEP}%(taggername){SEP}%(creatordate:unix)",
+        SEP = SEP,
+    );
+    let output = git(
+        repo_path,
+        &[
+            "for-each-ref",
+            "--sort=-creatordate",
+            "refs/tags/",
+            &pretty,
+        ],
+    )
+    .await?;
+
+    let mut tags = Vec::new();
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split(SEP).collect();
+        if parts.len() < 9 {
+            continue;
+        }
+
+        let sha = if parts[2].is_empty() {
+            parts[1].trim()
+        } else {
+            parts[2].trim()
+        };
+        if sha.is_empty() {
+            continue;
+        }
+
+        let commit_date = if parts[4].is_empty() {
+            parts[3].trim().parse().unwrap_or(0)
+        } else {
+            parts[4].trim().parse().unwrap_or(0)
+        };
+        let tag_date = parts[8].trim().parse().unwrap_or(commit_date);
+        let tagger_name = parts[7].trim().to_string();
+        let tagged_at = if tagger_name.is_empty() {
+            commit_date
+        } else {
+            tag_date
+        };
+        let message = if parts[5].is_empty() {
+            parts[6].trim().to_string()
+        } else {
+            parts[5].trim().to_string()
+        };
+
+        tags.push(TagInfo {
+            name: parts[0].trim().to_string(),
+            short_sha: sha.chars().take(7).collect(),
+            sha: sha.to_string(),
+            message,
+            tagger_name,
+            tagged_at,
+        });
+    }
+
+    Ok(tags)
+}
+
+#[derive(Debug, Clone)]
+pub struct TaggerIdentity<'a> {
+    pub name: &'a str,
+    pub email: &'a str,
+}
+
+pub async fn create_tag(
+    repo_path: &Path,
+    name: &str,
+    target: &str,
+    message: Option<&str>,
+    tagger: Option<TaggerIdentity<'_>>,
+) -> anyhow::Result<TagInfo> {
+    let name = name.trim();
+    validate_tag_name(name)?;
+
+    if tag_exists(repo_path, name).await? {
+        anyhow::bail!("tag '{name}' already exists");
+    }
+
+    let commit_sha = resolve_commit_target(repo_path, target).await?;
+    let annotated = message.map(str::trim).is_some_and(|value| !value.is_empty());
+
+    let mut cmd = Command::new("git");
+    cmd.arg(format!("--git-dir={}", repo_path.display()));
+    if annotated {
+        let TaggerIdentity { name: tagger_name, email } = tagger.ok_or_else(|| {
+            anyhow::anyhow!("tagger identity is required for annotated tags")
+        })?;
+        cmd.args([
+            "-c",
+            &format!("user.name={tagger_name}"),
+            "-c",
+            &format!("user.email={email}"),
+        ]);
+        cmd.args([
+            "tag",
+            "-a",
+            name,
+            &commit_sha,
+            "-m",
+            message.unwrap().trim(),
+        ]);
+    } else {
+        cmd.args(["tag", name, &commit_sha]);
+    }
+
+    let output = cmd.output().await.context("spawn git tag")?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!("git tag failed: {stderr}");
+    }
+
+    let tags = list_tag_details(repo_path).await?;
+    tags.into_iter()
+        .find(|tag| tag.name == name)
+        .ok_or_else(|| anyhow::anyhow!("failed to read created tag '{name}'"))
+}
+
+fn validate_tag_name(name: &str) -> anyhow::Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("tag name is required");
+    }
+    if name.len() > 255 {
+        anyhow::bail!("tag name is too long");
+    }
+    if name.starts_with('.')
+        || name.ends_with('.')
+        || name.ends_with(".lock")
+        || name.contains("..")
+        || name.contains('/')
+        || name.contains('\\')
+        || name.contains(' ')
+        || name.contains('~')
+        || name.contains('^')
+        || name.contains(':')
+        || name.contains('?')
+        || name.contains('*')
+        || name.contains('[')
+    {
+        anyhow::bail!("invalid tag name");
+    }
+    Ok(())
+}
+
+async fn resolve_commit_target(repo_path: &Path, target: &str) -> anyhow::Result<String> {
+    let target = target.trim();
+    if target.is_empty() {
+        anyhow::bail!("target ref is required");
+    }
+
+    let candidates = [
+        format!("refs/heads/{target}"),
+        format!("refs/tags/{target}"),
+        format!("{target}^{{commit}}"),
+        target.to_string(),
+    ];
+
+    for spec in candidates {
+        let result = Command::new("git")
+            .arg(format!("--git-dir={}", repo_path.display()))
+            .args(["rev-parse", "--verify", &spec])
+            .output()
+            .await
+            .context("spawn git rev-parse")?;
+
+        if result.status.success() {
+            return Ok(String::from_utf8_lossy(&result.stdout).trim().to_string());
+        }
+    }
+
+    anyhow::bail!("target '{target}' not found");
 }
 
 async fn list_refs(repo_path: &Path, prefix: &str) -> anyhow::Result<Vec<String>> {
@@ -835,4 +1023,32 @@ async fn create_commit_and_update_ref(
     git(repo_path, &["update-ref", target_ref, &merge_sha]).await?;
 
     Ok(merge_sha)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    #[tokio::test]
+    async fn list_tag_details_reads_lightweight_and_annotated_tags() {
+        let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/repos/gitlab/mp/digimall/backend/adaptor-ais-query.git");
+        if !repo.exists() {
+            return;
+        }
+
+        let tags = list_tag_details(&repo).await.expect("list tags");
+        assert_eq!(tags.len(), 14, "expected all repository tags");
+        assert!(
+            tags.iter()
+                .any(|tag| tag.name == "0.0.12" && tag.sha.len() == 40),
+            "annotated tag should resolve peeled commit sha"
+        );
+        assert!(
+            tags.iter()
+                .any(|tag| tag.name == "0.0.10" && tag.sha.len() == 40),
+            "lightweight tag should resolve commit sha"
+        );
+    }
 }

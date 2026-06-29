@@ -17,7 +17,7 @@ use pertisk_domain::{
 use pertisk_git::{
     access::{self, AuthUser as GitAuthUser, RepoRecord},
     config::repo_disk_path,
-    explorer::{self, CommitDetail, CommitInfo, RefKind, RepoBrowser, TreeEntry},
+    explorer::{self, CommitDetail, CommitInfo, RefKind, RepoBrowser, TagInfo, TreeEntry},
     http::GitHttpState,
     ssh::{GitSshConfig, GitSshState},
     storage::{ensure_bare_repo, init_bare_repo},
@@ -58,6 +58,7 @@ mod registry;
 mod secrets_crypto;
 mod sso;
 mod system_metrics;
+mod tags;
 mod teams;
 mod version;
 mod wiki;
@@ -164,6 +165,10 @@ async fn main() -> anyhow::Result<()> {
             get(get_repo_archive),
         )
         .route(
+            "/organizations/{org_path}/repositories/{repo_slug}/tags",
+            get(get_repo_tags),
+        )
+        .route(
             "/organizations/{org_path}/repositories/{repo_slug}/commits",
             get(get_repo_commits),
         )
@@ -211,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(wiki::wiki_write_routes())
         .merge(deploy_keys::deploy_key_routes())
         .merge(contents::contents_routes())
+        .merge(tags::tags_write_routes())
         .merge(api_tokens::api_token_routes())
         .merge(gitops::gitops_routes())
         .merge(cicd::cicd_write_routes())
@@ -1370,6 +1376,11 @@ struct CommitsResponse {
 }
 
 #[derive(Serialize)]
+struct TagsResponse {
+    tags: Vec<TagInfo>,
+}
+
+#[derive(Serialize)]
 struct CommitResponse {
     commit: CommitDetail,
 }
@@ -1586,6 +1597,21 @@ async fn get_repo_archive(
         bytes,
     )
         .into_response())
+}
+
+async fn get_repo_tags(
+    State(state): State<AppState>,
+    OptionalAuth(auth): OptionalAuth,
+    Path((org_path, repo_slug)): Path<(String, String)>,
+) -> Result<Json<TagsResponse>, ApiError> {
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
+
+    let tags = explorer::list_tag_details(&repo_path)
+        .await
+        .map_err(map_explorer_error)?;
+
+    Ok(Json(TagsResponse { tags }))
 }
 
 async fn get_repo_commits(

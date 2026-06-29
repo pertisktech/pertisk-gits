@@ -9,6 +9,7 @@ import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoCodeSearch } from '../components/RepoCodeSearch'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
+import { RepoTags } from '../components/RepoTags'
 import { RepoIssues } from '../components/RepoIssues'
 import { RepoPullRequests } from '../components/RepoPullRequests'
 import { RepoPipelines } from '../components/RepoPipelines'
@@ -63,7 +64,7 @@ export function ProjectDetailPage() {
       return
     }
 
-    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'pipelines', 'wiki', 'settings']
+    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'tags', 'pipelines', 'wiki', 'settings']
     if (!legacyTabs.includes(requested as ProjectTab)) {
       navigate(basePath, { replace: true })
       return
@@ -151,6 +152,15 @@ export function ProjectDetailPage() {
 
         {tab === 'commits' && (
           <RepoCommits
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            defaultBranch={project.default_branch}
+          />
+        )}
+
+        {tab === 'tags' && (
+          <RepoTags
             token={token}
             orgSlug={orgSlug}
             repoSlug={projectSlug}
