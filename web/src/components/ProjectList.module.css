@@ -33,6 +33,16 @@
   color: var(--color-primary);
 }
 
+.iconGroup {
+  background: color-mix(in srgb, var(--color-yellow-y1) 16%, transparent);
+  color: var(--color-yellow-y1);
+}
+
+.iconRepo {
+  background: color-mix(in srgb, var(--color-blue-b1) 16%, transparent);
+  color: var(--color-blue-b1);
+}
+
 .iconLetter {
   font-size: 0.875rem;
   font-weight: 600;

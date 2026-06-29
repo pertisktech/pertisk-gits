@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { DashboardProjectStats } from '../api/types'
 import { projectInitial } from '../lib/projectInitial'
 import { formatRelativeTimeFromIso } from '../lib/relativeTime'
+import { cn } from '../utils/cn'
 import { DashboardProjectAside } from './DashboardProjectAside'
 import styles from './ProjectList.module.css'
 
@@ -22,7 +23,7 @@ export function ProjectListRow({
 }) {
   return (
     <li className={styles.row}>
-      <div className={styles.icon} aria-hidden>
+      <div className={cn(styles.icon, styles.iconRepo)} aria-hidden>
         <span className={styles.iconLetter}>{projectInitial(name, slug)}</span>
       </div>
       <div className={styles.main}>

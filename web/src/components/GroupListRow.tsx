@@ -50,7 +50,7 @@ export function GroupListRow({
 
   return (
     <li className={styles.row}>
-      <div className={styles.icon} aria-hidden>
+      <div className={cn(styles.icon, styles.iconGroup)} aria-hidden>
         <span className={styles.iconLetter}>{projectInitial(group.name, group.slug)}</span>
       </div>
       <div className={styles.main}>
