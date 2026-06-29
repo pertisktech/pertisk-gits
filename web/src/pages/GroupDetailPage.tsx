@@ -1,21 +1,18 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { FolderGit2, FolderTree, Plus, Settings, Download } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Plus, Settings, Download } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { GroupChildrenPanel } from '../components/GroupChildrenPanel'
 import { GroupLandingHero } from '../components/GroupLandingHero'
-import { ProjectListRow } from '../components/ProjectListRow'
-import listStyles from '../components/ProjectList.module.css'
-import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
+import { Breadcrumbs, LinkButton } from '../components/ui'
 import { useGroupFromRoute } from '../hooks/useGroupFromRoute'
 import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
-import { groupBaseUrl } from '../lib/groupPath'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
 
 export function GroupDetailPage() {
   const { token, user } = useAuth()
-  const { orgPath, group } = useGroupFromRoute()
+  const { orgPath, group, groups } = useGroupFromRoute()
 
   const { data: members = [] } = useQuery({
     queryKey: ['org-members', orgPath],
@@ -90,86 +87,18 @@ export function GroupDetailPage() {
         </LinkButton>
       </div>
 
-      {(subgroups.length > 0 || subgroupsLoading) && (
-        <div className="app-panel mb-4">
-          <div className="app-panel-header flex items-center justify-between">
-            <span>Subgroups</span>
-            <span className="font-normal text-text-secondary">{subgroups.length}</span>
-          </div>
-          {subgroupsLoading && (
-            <div className="p-6 text-center text-text-secondary text-sm">Loading…</div>
-          )}
-          {!subgroupsLoading && subgroups.length > 0 && (
-            <table className="app-list-table">
-              <thead>
-                <tr>
-                  <th>Subgroup</th>
-                  <th>Path</th>
-                </tr>
-              </thead>
-              <tbody>
-                {subgroups.map((sub) => (
-                  <tr key={sub.id}>
-                    <td>
-                      <Link
-                        to={groupBaseUrl(sub)}
-                        className="font-medium text-text hover:text-primary text-sm inline-flex items-center gap-1.5"
-                      >
-                        <FolderTree size={14} className="text-muted" />
-                        {sub.name}
-                      </Link>
-                    </td>
-                    <td className="font-mono text-xs text-text-secondary">{sub.full_path}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-
-      <div className="app-panel">
-        <div className="app-panel-header flex items-center justify-between">
-          <span>Repositories</span>
-          <span className="font-normal text-text-secondary">{projects.length}</span>
-        </div>
-
-        {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
-        {error && (
-          <div className="m-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-            {(error as Error).message}
-          </div>
-        )}
-
-        {!isLoading && projects.length === 0 && (
-          <EmptyState
-            icon={<FolderGit2 size={40} />}
-            title="No repositories"
-            description="Create a repository in this group."
-            action={
-              <LinkButton to={`${basePath}/projects/new`} primary>
-                New repository
-              </LinkButton>
-            }
-          />
-        )}
-
-        {!isLoading && projects.length > 0 && (
-          <ul className={listStyles.list}>
-            {projects.map((project) => (
-              <ProjectListRow
-                key={project.id}
-                orgSlug={orgPath}
-                slug={project.slug}
-                name={project.name}
-                updatedAt={project.updated_at}
-                stats={getStats({ orgSlug: orgPath, slug: project.slug })}
-                statsLoading={statsLoading}
-              />
-            ))}
-          </ul>
-        )}
-      </div>
+      <GroupChildrenPanel
+        orgPath={orgPath}
+        basePath={basePath}
+        subgroups={subgroups}
+        subgroupsLoading={subgroupsLoading}
+        projects={projects}
+        projectsLoading={isLoading}
+        projectsError={error as Error | null}
+        allGroups={groups}
+        getProjectStats={getStats}
+        projectStatsLoading={statsLoading}
+      />
     </>
   )
 }
