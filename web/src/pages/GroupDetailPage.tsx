@@ -47,8 +47,8 @@ export function GroupDetailPage() {
   return (
     <>
       <Breadcrumbs
-        items={groupBreadcrumbItems(orgPath).map((item, i, arr) =>
-          i === arr.length - 1 ? { label: group?.name ?? item.label } : item,
+        items={groupBreadcrumbItems(orgPath, groups).map((item, i, arr) =>
+          i === arr.length - 1 ? { label: item.label } : item,
         )}
       />
 

@@ -10,6 +10,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import { Card } from '../components/Card'
 import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
 import { chunkImportRepos, DEFAULT_IMPORT_MAX_REPOS_PER_JOB } from '../lib/importLimits'
+import { groupBreadcrumbItems } from '../lib/groupRoute'
 
 const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
@@ -45,6 +46,12 @@ export function GroupImportPage() {
     queryKey: ['org-members', orgPath],
     queryFn: () => api.listOrganizationMembers(token!, orgPath),
     enabled: Boolean(token && orgPath),
+  })
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => api.listOrganizations(token!),
+    enabled: Boolean(token),
   })
 
   const canManage = useMemo(() => {
@@ -210,11 +217,7 @@ export function GroupImportPage() {
   return (
     <>
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: orgPath, to: `/groups/${orgPath}` },
-          { label: 'Import' },
-        ]}
+        items={[...groupBreadcrumbItems(orgPath, groups), { label: 'Import' }]}
       />
       <PageHeader
         title="Import repositories"

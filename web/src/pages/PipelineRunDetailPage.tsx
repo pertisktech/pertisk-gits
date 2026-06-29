@@ -7,7 +7,6 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
 import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
-import { findGroupByPath } from '../lib/groupPath'
 import {
   ActionsJobHeader,
   ActionsJobSidebar,
@@ -38,6 +37,8 @@ import {
 import { PipelineRerunMenu } from '../components/PipelineRerunMenu'
 import { ActionsStatusIcon } from '../components/PipelineStatus'
 import { projectTabPath } from '../lib/projectRoute'
+import { projectBreadcrumbItems } from '../lib/groupRoute'
+import { displayRepoName } from '../lib/projectInitial'
 import { Breadcrumbs, SecondaryButton } from '../components/ui'
 import {
   defaultStepKey,
@@ -76,7 +77,6 @@ export function PipelineRunDetailPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = findGroupByPath(groups, orgSlug)
 
   const { data: run, isLoading, error } = useQuery({
     queryKey: ['pipeline-run', orgSlug, projectSlug, runId],
@@ -230,7 +230,8 @@ export function PipelineRunDetailPage() {
     },
   })
 
-  const repoName = repoData?.repository.name ?? projectSlug
+  const repo = repoData?.repository
+  const repoName = repo ? displayRepoName(repo.name, repo.slug) : projectSlug
 
   if (!token) {
     return <div className="text-sm text-text-secondary py-8">Sign in to view pipeline runs.</div>
@@ -267,12 +268,13 @@ export function PipelineRunDetailPage() {
   return (
     <div className="gha-run-page">
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
-          { label: repoName, to: pipelinesPath },
-          { label: shortSha(run.commit_sha) },
-        ]}
+        items={projectBreadcrumbItems({
+          orgPath: orgSlug,
+          groups,
+          projectName: repoName,
+          projectTo: pipelinesPath,
+          suffix: [{ label: shortSha(run.commit_sha) }],
+        })}
       />
 
       <div className="gha-run-header">

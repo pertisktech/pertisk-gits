@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { DashboardProjectStats } from '../api/types'
-import { projectInitial } from '../lib/projectInitial'
+import { displayRepoName, projectInitial } from '../lib/projectInitial'
 import { formatRelativeTimeFromIso } from '../lib/relativeTime'
 import { cn } from '../utils/cn'
 import { DashboardProjectAside } from './DashboardProjectAside'
@@ -21,10 +21,12 @@ export function ProjectListRow({
   stats?: DashboardProjectStats
   statsLoading?: boolean
 }) {
+  const shortName = displayRepoName(name, slug)
+
   return (
     <li className={styles.row}>
       <div className={cn(styles.icon, styles.iconRepo)} aria-hidden>
-        <span className={styles.iconLetter}>{projectInitial(name, slug)}</span>
+        <span className={styles.iconLetter}>{projectInitial(shortName, slug)}</span>
       </div>
       <div className={styles.main}>
         <Link
@@ -33,7 +35,7 @@ export function ProjectListRow({
         >
           <span className={styles.pathGroup}>{orgSlug}</span>
           <span className={styles.pathSep}>/</span>
-          <span>{name}</span>
+          <span>{shortName}</span>
         </Link>
       </div>
       <DashboardProjectAside

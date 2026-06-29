@@ -63,19 +63,23 @@ export function GroupChildrenPanel({
   const { statsByGroupId, isLoading: subgroupStatsLoading } = useGroupStats(subgroups, allGroups)
 
   const children = useMemo<GroupChild[]>(() => {
-    const items: GroupChild[] = [
-      ...subgroups.map((subgroup) => ({
+    const subgroupItems: GroupChild[] = subgroups
+      .map((subgroup) => ({
         kind: 'subgroup' as const,
         name: subgroup.name,
         subgroup,
-      })),
-      ...projects.map((project) => ({
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+    const projectItems: GroupChild[] = projects
+      .map((project) => ({
         kind: 'project' as const,
         name: project.name,
         project,
-      })),
-    ]
-    return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+
+    return [...subgroupItems, ...projectItems]
   }, [subgroups, projects])
 
   const filteredChildren = useMemo(() => {

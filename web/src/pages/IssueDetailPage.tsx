@@ -10,6 +10,8 @@ import { IssueSidebar } from '../components/IssueSidebar'
 import { LabelBadge } from '../components/LabelBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, PrimaryButton } from '../components/ui'
+import { projectBreadcrumbItems } from '../lib/groupRoute'
+import { displayRepoName } from '../lib/projectInitial'
 import { projectTabPath } from '../lib/projectRoute'
 
 export function IssueDetailPage() {
@@ -20,6 +22,12 @@ export function IssueDetailPage() {
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [comment, setComment] = useState('')
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => api.listOrganizations(token!),
+    enabled: Boolean(token),
+  })
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -74,17 +82,19 @@ export function IssueDetailPage() {
   }
 
   const { issue, author, assignee, labels } = data
-  const repoName = repoData?.repository.name ?? projectSlug
+  const repo = repoData?.repository
+  const repoName = repo ? displayRepoName(repo.name, repo.slug) : projectSlug
 
   return (
     <>
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: orgSlug, to: `/groups/${orgSlug}` },
-          { label: repoName, to: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'issues') },
-          { label: `#${issue.number}` },
-        ]}
+        items={projectBreadcrumbItems({
+          orgPath: orgSlug,
+          groups,
+          projectName: repoName,
+          projectTo: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'issues'),
+          suffix: [{ label: `#${issue.number}` }],
+        })}
       />
 
       <div className="app-issue-grid">

@@ -12,6 +12,8 @@ import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, PrimaryButton, SecondaryButton } from '../components/ui'
+import { projectBreadcrumbItems } from '../lib/groupRoute'
+import { displayRepoName } from '../lib/projectInitial'
 import { projectTabPath } from '../lib/projectRoute'
 import { branchMatchesPattern } from '../lib/branchProtection'
 import { cn } from '../utils/cn'
@@ -57,6 +59,12 @@ export function PullRequestDetailPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editBody, setEditBody] = useState('')
   const [updateError, setUpdateError] = useState<string | null>(null)
+
+  const { data: groups = [] } = useQuery({
+    queryKey: ['organizations'],
+    queryFn: () => api.listOrganizations(token!),
+    enabled: Boolean(token),
+  })
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -217,17 +225,19 @@ export function PullRequestDetailPage() {
   }
 
   const { pull_request: pr, author, compare } = data
-  const repoName = repoData?.repository.name ?? projectSlug
+  const repo = repoData?.repository
+  const repoName = repo ? displayRepoName(repo.name, repo.slug) : projectSlug
 
   return (
     <>
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: orgSlug, to: `/groups/${orgSlug}` },
-          { label: repoName, to: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'pulls') },
-          { label: `#${pr.number}` },
-        ]}
+        items={projectBreadcrumbItems({
+          orgPath: orgSlug,
+          groups,
+          projectName: repoName,
+          projectTo: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'pulls'),
+          suffix: [{ label: `#${pr.number}` }],
+        })}
       />
 
       <div className="app-panel mb-4">

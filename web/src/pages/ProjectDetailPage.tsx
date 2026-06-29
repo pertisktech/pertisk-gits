@@ -4,7 +4,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
-import { findGroupByPath } from '../lib/groupPath'
 import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoCodeSearch } from '../components/RepoCodeSearch'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
@@ -20,6 +19,8 @@ import { Breadcrumbs } from '../components/ui'
 import { useProjectNav } from '../hooks/useProjectNav'
 import type { ProjectTab } from '../lib/projectRoute'
 import { projectTabPath } from '../lib/projectRoute'
+import { projectBreadcrumbItems } from '../lib/groupRoute'
+import { displayRepoName } from '../lib/projectInitial'
 
 export function ProjectDetailPage() {
   const { orgSlug, projectSlug } = useProjectParams()
@@ -36,7 +37,6 @@ export function ProjectDetailPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = findGroupByPath(groups, orgSlug)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -96,17 +96,16 @@ export function ProjectDetailPage() {
   return (
     <>
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
-          { label: project.name },
-        ]}
+        items={projectBreadcrumbItems({
+          orgPath: orgSlug,
+          groups,
+          projectName: displayRepoName(project.name, project.slug),
+        })}
       />
 
       <RepoHeader
-        orgName={group?.name ?? orgSlug}
-        orgSlug={orgSlug}
         repoName={project.name}
+        repoSlug={project.slug}
         description={project.description}
         visibility={project.visibility}
         action={

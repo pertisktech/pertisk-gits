@@ -6,6 +6,7 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { findGroupByPath, groupBaseUrl, groupUrlPath } from '../lib/groupPath'
+import { groupBreadcrumbItems } from '../lib/groupRoute'
 import { Card } from '../components/Card'
 import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
 
@@ -101,11 +102,7 @@ export function GroupSettingsPage() {
   return (
     <>
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group.name, to: groupBaseUrl(group) },
-          { label: 'Settings' },
-        ]}
+        items={[...groupBreadcrumbItems(orgPath, groups), { label: 'Settings' }]}
       />
       <PageHeader
         title="Group settings"

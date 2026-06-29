@@ -5,11 +5,12 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
 import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
-import { findGroupByPath } from '../lib/groupPath'
 import { commitUrl } from '../components/RepoCommits'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { DiffViewer } from '../components/DiffViewer'
 import { Breadcrumbs } from '../components/ui'
+import { projectBreadcrumbItems } from '../lib/groupRoute'
+import { displayRepoName } from '../lib/projectInitial'
 import { projectTabPath } from '../lib/projectRoute'
 
 function formatDate(ts: number) {
@@ -27,7 +28,6 @@ export function CommitDetailPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = findGroupByPath(groups, orgSlug)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -42,7 +42,8 @@ export function CommitDetailPage() {
   })
 
   const commit = data?.commit
-  const repoName = repoData?.repository.name ?? projectSlug
+  const repo = repoData?.repository
+  const repoName = repo ? displayRepoName(repo.name, repo.slug) : projectSlug
 
   if (isLoading) {
     return (
@@ -66,13 +67,16 @@ export function CommitDetailPage() {
   return (
     <>
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? orgSlug, to: `/groups/${orgSlug}` },
-          { label: repoName, to: `/groups/${orgSlug}/projects/${projectSlug}` },
-          { label: 'Commits', to: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'commits') },
-          { label: commit.short_sha },
-        ]}
+        items={projectBreadcrumbItems({
+          orgPath: orgSlug,
+          groups,
+          projectName: repoName,
+          projectTo: `/groups/${orgSlug}/projects/${projectSlug}`,
+          suffix: [
+            { label: 'Commits', to: projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'commits') },
+            { label: commit.short_sha },
+          ],
+        })}
       />
 
       <div className="app-panel mb-4">

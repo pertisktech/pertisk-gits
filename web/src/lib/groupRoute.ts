@@ -74,13 +74,43 @@ export function groupTabPath(basePath: string, tab: GroupTab) {
   return `${basePath}/${tab}`
 }
 
-export function groupBreadcrumbItems(fullPath: string): { label: string; to?: string }[] {
+import type { Organization } from '../api/types'
+import { findGroupByPath } from './groupPath'
+
+export function groupBreadcrumbItems(
+  fullPath: string,
+  groups?: Organization[],
+): { label: string; to?: string }[] {
   const items: { label: string; to?: string }[] = [{ label: 'Groups', to: '/groups' }]
   const segments = fullPath.split('/').filter(Boolean)
   let path = ''
   for (const segment of segments) {
     path = path ? `${path}/${segment}` : segment
-    items.push({ label: segment, to: `/groups/${path}` })
+    const group = groups ? findGroupByPath(groups, path) : undefined
+    items.push({
+      label: group?.name ?? segment,
+      to: `/groups/${path}`,
+    })
   }
   return items
+}
+
+export function projectBreadcrumbItems({
+  orgPath,
+  groups,
+  projectName,
+  projectTo,
+  suffix = [],
+}: {
+  orgPath: string
+  groups?: Organization[]
+  projectName: string
+  projectTo?: string
+  suffix?: { label: string; to?: string }[]
+}): { label: string; to?: string }[] {
+  return [
+    ...groupBreadcrumbItems(orgPath, groups),
+    projectTo ? { label: projectName, to: projectTo } : { label: projectName },
+    ...suffix,
+  ]
 }
