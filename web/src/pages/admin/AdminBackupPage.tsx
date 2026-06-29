@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../../api/client'
 import type { BackupComponentId, BackupJob } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
+import { DeleteBackupConfirm, RestoreBackupConfirm } from '../../components/ConfirmModal'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
 import { StatusBadge } from '../../components/StatusBadge'
 import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../../components/ui'
@@ -68,6 +69,8 @@ export function AdminBackupPage() {
   const [restoreConfirm, setRestoreConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pollingId, setPollingId] = useState<string | null>(null)
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<BackupJob | null>(null)
 
   const { data: overview, isLoading: overviewLoading } = useQuery({
     queryKey: ['admin-backup-overview'],
@@ -103,6 +106,7 @@ export function AdminBackupPage() {
   const deleteBackup = useMutation({
     mutationFn: (backupId: string) => api.deleteBackup(token!, backupId),
     onSuccess: () => {
+      setPendingDelete(null)
       queryClient.invalidateQueries({ queryKey: ['admin-backups'] })
       setError(null)
     },
@@ -113,6 +117,7 @@ export function AdminBackupPage() {
     mutationFn: () =>
       api.restoreBackup(token!, restoreFile!, restoreSelected, restoreConfirm),
     onSuccess: () => {
+      setShowRestoreConfirm(false)
       setRestoreFile(null)
       setRestoreConfirm('')
       setError(null)
@@ -120,19 +125,9 @@ export function AdminBackupPage() {
     onError: (err: Error) => setError(err.message),
   })
 
-  async function onDownload(backupId: string) {
-    try {
-      const blob = await api.downloadBackup(token!, backupId)
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `pertisk-backup-${backupId}.tar.gz`
-      link.click()
-      URL.revokeObjectURL(url)
-      setError(null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Download failed')
-    }
+  function onDownload(backupId: string) {
+    api.downloadBackup(token!, backupId)
+    setError(null)
   }
 
   function toggleComponent(
@@ -169,14 +164,7 @@ export function AdminBackupPage() {
       setError('Type RESTORE to confirm')
       return
     }
-    if (
-      !window.confirm(
-        'Restore will overwrite selected data on this instance. Continue?',
-      )
-    ) {
-      return
-    }
-    restoreBackup.mutate()
+    setShowRestoreConfirm(true)
   }
 
   return (
@@ -231,7 +219,9 @@ export function AdminBackupPage() {
           <form onSubmit={onCreateBackup} className="app-panel-body space-y-4">
             <p className="text-sm text-text-secondary">
               Select components to include in a compressed archive. Requires{' '}
-              <code>pg_dump</code> on the server.
+              <code>pg_dump</code> and <code>pg_restore</code> on the server
+              (package <code>postgresql-client</code> on Debian/Alpine,{' '}
+              <code>postgresql</code> on RHEL/AlmaLinux).
             </p>
             <div className="space-y-3">
               {COMPONENT_OPTIONS.map(({ id, label, description, icon: Icon }) => (
@@ -271,7 +261,8 @@ export function AdminBackupPage() {
           <form onSubmit={onRestore} className="app-panel-body space-y-4">
             <p className="text-sm text-text-secondary">
               Upload a backup archive created on this platform. Restore overwrites the selected
-              components. Requires <code>pg_restore</code> for database restore.
+              components. Requires <code>pg_restore</code> (same PostgreSQL client package as
+              backup).
             </p>
             <label className="block text-sm font-semibold text-text">
               Backup archive (.tar.gz)
@@ -388,11 +379,7 @@ export function AdminBackupPage() {
                         type="button"
                         className="p-2 rounded-md hover:bg-hover text-text-secondary hover:text-dashboard-danger"
                         title="Delete backup"
-                        onClick={() => {
-                          if (window.confirm('Delete this backup?')) {
-                            deleteBackup.mutate(entry.id)
-                          }
-                        }}
+                        onClick={() => setPendingDelete(entry)}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -404,6 +391,30 @@ export function AdminBackupPage() {
           </table>
         )}
       </div>
+
+      {showRestoreConfirm && restoreFile && (
+        <RestoreBackupConfirm
+          fileName={restoreFile.name}
+          components={componentLabels(restoreSelected)}
+          loading={restoreBackup.isPending}
+          onConfirm={() => restoreBackup.mutate()}
+          onCancel={() => {
+            if (!restoreBackup.isPending) setShowRestoreConfirm(false)
+          }}
+        />
+      )}
+
+      {pendingDelete && (
+        <DeleteBackupConfirm
+          createdAt={formatDateTime(pendingDelete.created_at)}
+          components={componentLabels(pendingDelete.components)}
+          loading={deleteBackup.isPending}
+          onConfirm={() => deleteBackup.mutate(pendingDelete.id)}
+          onCancel={() => {
+            if (!deleteBackup.isPending) setPendingDelete(null)
+          }}
+        />
+      )}
     </>
   )
 }

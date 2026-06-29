@@ -68,6 +68,21 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
+function triggerBrowserDownload(url: string, filename?: string) {
+  const link = document.createElement('a')
+  link.href = url
+  if (filename) link.download = filename
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+}
+
+function downloadUrl(path: string, token: string) {
+  const params = new URLSearchParams({ access_token: token })
+  return `${API_BASE}${path}?${params}`
+}
+
 /** Nested group path as one URL segment (`a/b` → `a%2Fb`) for Axum `{org_path}` routes. */
 export function orgApiPath(path: string): string {
   return encodeURIComponent(path.replace(/^\/+|\/+$/g, ''))
@@ -1068,7 +1083,7 @@ export const api = {
       token,
     ),
 
-  downloadPipelineArtifact: async (
+  downloadPipelineArtifact: (
     token: string,
     orgSlug: string,
     repoSlug: string,
@@ -1076,21 +1091,11 @@ export const api = {
     artifactId: string,
     filename: string,
   ) => {
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/artifacts/${artifactId}/download`,
-      { headers: { Authorization: `Bearer ${token}` } },
+    const url = downloadUrl(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/artifacts/${artifactId}/download`,
+      token,
     )
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(text || `Download failed (${response.status})`)
-    }
-    const blob = await response.blob()
-    const url = URL.createObjectURL(blob)
-    const anchor = document.createElement('a')
-    anchor.href = url
-    anchor.download = filename
-    anchor.click()
-    URL.revokeObjectURL(url)
+    triggerBrowserDownload(url, filename)
   },
 
   getPipelineConfig: (
@@ -1625,16 +1630,9 @@ export const api = {
     }
   },
 
-  downloadBackup: async (token: string, backupId: string) => {
-    const headers = new Headers()
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/admin/backups/${backupId}/download`, { headers })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Download failed'
-      throw new Error(message)
-    }
-    return response.blob()
+  downloadBackup: (token: string, backupId: string) => {
+    const url = downloadUrl(`/admin/backups/${backupId}/download`, token)
+    triggerBrowserDownload(url, `pertisk-backup-${backupId}.tar.gz`)
   },
 
   restoreBackup: async (

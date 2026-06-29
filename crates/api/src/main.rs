@@ -1690,29 +1690,70 @@ pub struct AuthUser {
     pub username: String,
 }
 
+fn token_from_download_query(query: Option<&str>) -> Option<String> {
+    let query = query?;
+    for pair in query.split('&') {
+        let (key, value) = pair.split_once('=')?;
+        if key == "access_token" {
+            return urlencoding::decode(value).ok().map(|s| s.into_owned());
+        }
+    }
+    None
+}
+
+fn extract_auth_token(
+    headers: &axum::http::HeaderMap,
+    path: &str,
+    query: Option<&str>,
+) -> Option<String> {
+    if let Some(header_token) = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+    {
+        return Some(header_token.to_string());
+    }
+
+    if path.ends_with("/download") {
+        return token_from_download_query(query);
+    }
+
+    None
+}
+
+async fn authenticate_token(state: &AppState, token: &str) -> Result<AuthUser, ApiError> {
+    if let Ok(claims) = verify_token(&state.config.jwt_secret, token) {
+        admin::ensure_user_approved(&state.pool, claims.sub).await?;
+        return Ok(AuthUser {
+            user_id: claims.sub,
+            username: claims.username,
+        });
+    }
+
+    if let Some(api_auth) = api_tokens::authenticate_api_token(&state.pool, token)
+        .await
+        .map_err(|_| DomainError::Unauthorized)?
+    {
+        admin::ensure_user_approved(&state.pool, api_auth.user_id).await?;
+        return Ok(AuthUser {
+            user_id: api_auth.user_id,
+            username: api_auth.username,
+        });
+    }
+
+    Err(DomainError::Unauthorized.into())
+}
+
 async fn optional_auth_middleware(
     State(state): State<AppState>,
     mut req: Request<axum::body::Body>,
     next: Next,
 ) -> Response {
-    if let Some(token) = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-    {
-        if let Ok(claims) = verify_token(&state.config.jwt_secret, token) {
-            req.extensions_mut().insert(AuthUser {
-                user_id: claims.sub,
-                username: claims.username,
-            });
-        } else if let Ok(Some(api_auth)) =
-            api_tokens::authenticate_api_token(&state.pool, token).await
-        {
-            req.extensions_mut().insert(AuthUser {
-                user_id: api_auth.user_id,
-                username: api_auth.username,
-            });
+    let path = req.uri().path().to_string();
+    let query = req.uri().query().map(str::to_string);
+    if let Some(token) = extract_auth_token(req.headers(), &path, query.as_deref()) {
+        if let Ok(auth) = authenticate_token(&state, &token).await {
+            req.extensions_mut().insert(auth);
         }
     }
 
@@ -1739,36 +1780,16 @@ async fn auth_middleware(
     next: Next,
 ) -> Result<Response, ApiError> {
     let path = req.uri().path();
+    let query = req.uri().query();
 
     if is_auth_exempt_path(path) {
         return Ok(next.run(req).await);
     }
 
-    let token = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.strip_prefix("Bearer "))
-        .ok_or(DomainError::Unauthorized)?;
+    let token = extract_auth_token(req.headers(), path, query).ok_or(DomainError::Unauthorized)?;
 
-    if let Ok(claims) = verify_token(&state.config.jwt_secret, token) {
-        admin::ensure_user_approved(&state.pool, claims.sub).await?;
-        req.extensions_mut().insert(AuthUser {
-            user_id: claims.sub,
-            username: claims.username,
-        });
-    } else if let Some(api_auth) = api_tokens::authenticate_api_token(&state.pool, token)
-        .await
-        .map_err(|_| DomainError::Unauthorized)?
-    {
-        admin::ensure_user_approved(&state.pool, api_auth.user_id).await?;
-        req.extensions_mut().insert(AuthUser {
-            user_id: api_auth.user_id,
-            username: api_auth.username,
-        });
-    } else {
-        return Err(DomainError::Unauthorized.into());
-    }
+    let auth = authenticate_token(&state, &token).await?;
+    req.extensions_mut().insert(auth);
 
     Ok(next.run(req).await)
 }

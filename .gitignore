@@ -4,6 +4,9 @@
 .env.local
 data/registry/repos
 data/repos
+data/artifacts
+data/backups
+data/registry
 web/.npm-cache
 web/node_modules
 web/dist

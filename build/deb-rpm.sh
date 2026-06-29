@@ -23,6 +23,7 @@ fpm -s dir -t deb --force \
   --vendor "Pertisk" \
   --category "net" \
   --depends git \
+  --depends postgresql-client \
   --before-install /work/preinstall.sh \
   --after-install /work/postinstall.sh \
   --before-remove /work/preremove.sh \
@@ -45,6 +46,7 @@ fpm -s dir -t rpm --force \
   --category "System Environment/Daemons" \
   --depends git \
   --depends shadow-utils \
+  --depends postgresql \
   --before-install /work/preinstall.sh \
   --after-install /work/postinstall.sh \
   --before-remove /work/preremove.sh \

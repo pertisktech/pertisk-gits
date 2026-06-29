@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, RefreshCw, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Loader2, RefreshCw, Trash2, Upload, X } from 'lucide-react'
 import { useEffect, type ReactNode } from 'react'
 import { cn } from '../utils/cn'
 import { SecondaryButton } from './ui'
@@ -169,6 +169,78 @@ export function DeleteRunnerConfirm({
         </>
       }
       confirmLabel="Delete runner"
+      loading={loading}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+    />
+  )
+}
+
+export function RestoreBackupConfirm({
+  fileName,
+  components,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  fileName: string
+  components: string
+  loading?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <ConfirmModal
+      open
+      variant="danger"
+      title="Restore backup?"
+      description={
+        <>
+          This will overwrite <strong className="text-text">{components}</strong> on this instance
+          using <strong className="text-text font-mono">{fileName}</strong>. This action cannot be
+          undone.
+        </>
+      }
+      confirmLabel="Restore"
+      loading={loading}
+      onConfirm={onConfirm}
+      onCancel={onCancel}
+      icon={<Upload size={18} className="text-dashboard-danger" />}
+    />
+  )
+}
+
+export function DeleteBackupConfirm({
+  createdAt,
+  components,
+  loading,
+  onConfirm,
+  onCancel,
+}: {
+  createdAt: string
+  components: string
+  loading?: boolean
+  onConfirm: () => void
+  onCancel: () => void
+}) {
+  return (
+    <ConfirmModal
+      open
+      variant="danger"
+      title="Delete backup?"
+      description={
+        <>
+          Permanently delete the backup from <strong className="text-text">{createdAt}</strong>
+          {components ? (
+            <>
+              {' '}
+              ({components})
+            </>
+          ) : null}
+          . The archive file will be removed from disk.
+        </>
+      }
+      confirmLabel="Delete backup"
       loading={loading}
       onConfirm={onConfirm}
       onCancel={onCancel}

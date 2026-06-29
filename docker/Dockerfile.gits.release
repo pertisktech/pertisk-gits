@@ -85,6 +85,7 @@ RUN apk add --no-cache \
       git \
       curl \
       file \
+      postgresql-client \
       shadow \
     && addgroup -g 1000 -S pertisk-gits \
     && adduser -u 1000 -G pertisk-gits -S -h /var/lib/pertisk-gits -s /sbin/nologin pertisk-gits \

@@ -1,5 +1,6 @@
+use std::io;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{Command, Output, Stdio};
 
 use axum::{
     body::Body,
@@ -27,6 +28,43 @@ use crate::{ApiError, AppState, AuthUser};
 use crate::version;
 
 const BACKUP_FORMAT_VERSION: u32 = 1;
+
+fn pg_tool_path(tool: &str) -> PathBuf {
+    let env_key = match tool {
+        "pg_dump" => "PG_DUMP_PATH",
+        "pg_restore" => "PG_RESTORE_PATH",
+        _ => "PG_TOOL_PATH",
+    };
+    if let Ok(path) = std::env::var(env_key) {
+        return PathBuf::from(path);
+    }
+    PathBuf::from(tool)
+}
+
+fn pg_tool_missing_error(tool: &str, program: &Path) -> anyhow::Error {
+    anyhow::anyhow!(
+        "{tool} not found at {}. Install PostgreSQL client tools \
+         (Alpine/Debian: postgresql-client, RHEL/AlmaLinux: postgresql) \
+         or set PG_DUMP_PATH / PG_RESTORE_PATH.",
+        program.display()
+    )
+}
+
+fn run_pg_tool(tool: &str, args: &[&str]) -> anyhow::Result<Output> {
+    let program = pg_tool_path(tool);
+    Command::new(&program)
+        .args(args)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|error| {
+            if error.kind() == io::ErrorKind::NotFound {
+                pg_tool_missing_error(tool, &program)
+            } else {
+                error.into()
+            }
+        })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -415,18 +453,26 @@ async fn run_backup_job(
 
 async fn backup_db(database_url: &str, output: &Path) -> anyhow::Result<()> {
     let url = database_url.to_string();
-    let output = output.to_path_buf();
+    let dump_file = output.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let status = std::process::Command::new("pg_dump")
-            .args(["-Fc", "--no-owner", "--no-acl"])
-            .arg("-f")
-            .arg(&output)
-            .arg(&url)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .status()?;
-        if !status.success() {
-            anyhow::bail!("pg_dump exited with {status}");
+        let result = run_pg_tool(
+            "pg_dump",
+            &[
+                "-Fc",
+                "--no-owner",
+                "--no-acl",
+                "-f",
+                &dump_file.display().to_string(),
+                &url,
+            ],
+        )?;
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            anyhow::bail!(
+                "pg_dump exited with {}: {}",
+                result.status,
+                stderr.trim()
+            );
         }
         Ok(())
     })
@@ -560,6 +606,11 @@ async fn download_backup(
         return Err(DomainError::NotFound.into());
     }
 
+    let metadata = tokio::fs::metadata(&path)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    let file_size = metadata.len();
+
     let file = tokio::fs::File::open(&path)
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
@@ -570,6 +621,7 @@ async fn download_backup(
     Ok(Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/gzip")
+        .header(header::CONTENT_LENGTH, file_size.to_string())
         .header(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{filename}\""),
@@ -750,21 +802,25 @@ async fn restore_db(database_url: &str, dump_path: &Path) -> anyhow::Result<()> 
     let url = database_url.to_string();
     let dump_path = dump_path.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let status = std::process::Command::new("pg_restore")
-            .args([
+        let result = run_pg_tool(
+            "pg_restore",
+            &[
                 "--clean",
                 "--if-exists",
                 "--no-owner",
                 "--no-acl",
                 "-d",
                 &url,
-            ])
-            .arg(&dump_path)
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .status()?;
-        if !status.success() {
-            anyhow::bail!("pg_restore exited with {status}");
+                &dump_path.display().to_string(),
+            ],
+        )?;
+        if !result.status.success() {
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            anyhow::bail!(
+                "pg_restore exited with {}: {}",
+                result.status,
+                stderr.trim()
+            );
         }
         Ok(())
     })
