@@ -1,14 +1,17 @@
 import { useQuery } from '@tanstack/react-query'
-import { GitCommit, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { Check, ChevronDown, ChevronRight, Copy, GitCommit, Loader2 } from 'lucide-react'
+import { useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CommitInfo } from '../api/types'
+import {
+  groupCommitsByDate,
+  shouldExpandCommitDateGroup,
+  type CommitDateGroup,
+} from '../lib/commitGroups'
+import { formatRelativeTime } from '../lib/relativeTime'
+import { cn } from '../utils/cn'
 import { EmptyState } from './ui'
-
-function formatDate(ts: number) {
-  return new Date(ts * 1000).toLocaleString()
-}
 
 export function commitUrl(orgSlug: string, repoSlug: string, sha: string) {
   return `/groups/${orgSlug}/projects/${repoSlug}/commit/${sha}`
@@ -39,6 +42,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
     queryFn: () => api.getRepoCommits(orgSlug, repoSlug, { ref, limit: 100 }, token),
     enabled: Boolean(orgSlug && repoSlug && browser && !browser.empty),
   })
+
+  const dateGroups = groupCommitsByDate(data?.commits ?? [])
 
   if (browserLoading) {
     return (
@@ -81,6 +86,12 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
         </select>
         <span className="text-xs text-text-secondary">
           {data?.commits.length ?? 0} commit{(data?.commits.length ?? 0) === 1 ? '' : 's'}
+          {dateGroups.length > 0 && (
+            <>
+              {' '}
+              · {dateGroups.length} day{dateGroups.length === 1 ? '' : 's'}
+            </>
+          )}
         </span>
       </div>
 
@@ -95,23 +106,101 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
           <Loader2 size={16} className="animate-spin" />
           Loading commits…
         </div>
+      ) : dateGroups.length === 0 ? (
+        <EmptyState
+          icon={<GitCommit size={40} />}
+          title="No commits on this branch"
+          description="This branch has no commits yet, or history has not been fetched."
+        />
       ) : (
-        <ul className="divide-y divide-naturals-n4">
-          {(data?.commits ?? []).map((commit) => (
-            <CommitRow key={commit.sha} commit={commit} orgSlug={orgSlug} repoSlug={repoSlug} />
+        <div className="commit-history-groups">
+          {dateGroups.map((group, index) => (
+            <CommitDateGroup
+              key={group.key}
+              group={group}
+              orgSlug={orgSlug}
+              repoSlug={repoSlug}
+              defaultOpen={shouldExpandCommitDateGroup(group.key, index)}
+            />
           ))}
-          {(data?.commits ?? []).length === 0 && (
-            <li>
-              <EmptyState
-                icon={<GitCommit size={40} />}
-                title="No commits on this branch"
-                description="This branch has no commits yet, or history has not been fetched."
-              />
-            </li>
-          )}
-        </ul>
+        </div>
       )}
     </div>
+  )
+}
+
+function CommitDateGroup({
+  group,
+  orgSlug,
+  repoSlug,
+  defaultOpen,
+}: {
+  group: CommitDateGroup
+  orgSlug: string
+  repoSlug: string
+  defaultOpen: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+
+  return (
+    <section className={cn('commit-history-date', open && 'commit-history-date--open')}>
+      <button
+        type="button"
+        className="commit-history-date-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className="commit-history-date-chevron" aria-hidden>
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </span>
+        <span className="commit-history-date-label">{group.label}</span>
+        <span className="commit-history-date-count">
+          {group.commits.length} commit{group.commits.length === 1 ? '' : 's'}
+        </span>
+      </button>
+
+      {open && (
+        <ul className="commit-history-date-body">
+          {group.commits.map((commit) => (
+            <CommitRow
+              key={commit.sha}
+              commit={commit}
+              orgSlug={orgSlug}
+              repoSlug={repoSlug}
+            />
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
+function CopyCommitButton({ sha, label }: { sha: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+
+  async function copy(event: MouseEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    try {
+      await navigator.clipboard.writeText(sha)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // clipboard may be unavailable
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      className="commit-history-copy"
+      onClick={copy}
+      title={copied ? 'Copied!' : `Copy commit ${sha}`}
+      aria-label={copied ? 'Copied commit hash' : `Copy commit ${label}`}
+      data-no-global-button-hover="true"
+    >
+      {copied ? <Check size={14} className="text-primary" /> : <Copy size={14} />}
+    </button>
   )
 }
 
@@ -128,26 +217,27 @@ function CommitRow({
   const bodyPreview = rest.join('\n').trim()
 
   return (
-    <li>
-      <Link
-        to={commitUrl(orgSlug, repoSlug, commit.sha)}
-        className="flex items-start gap-3 px-4 py-3 hover:bg-hover transition-colors"
-      >
-        <GitCommit size={16} className="text-primary shrink-0 mt-0.5" />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="font-mono text-sm text-primary">{commit.short_sha}</span>
-            <span className="text-sm text-text font-medium truncate">{title || commit.message}</span>
+    <li className="commit-history-row">
+      <Link to={commitUrl(orgSlug, repoSlug, commit.sha)} className="commit-history-row-link">
+        <GitCommit size={16} className="commit-history-row-icon" aria-hidden />
+        <div className="commit-history-row-main">
+          <div className="commit-history-row-title">
+            <code className="commit-history-sha">{commit.short_sha}</code>
+            <span className="commit-history-subject">{title || commit.message}</span>
           </div>
           {bodyPreview && (
-            <p className="text-xs text-text-secondary mt-1 line-clamp-2 whitespace-pre-wrap">{bodyPreview}</p>
+            <p className="commit-history-body">{bodyPreview}</p>
           )}
-          <div className="text-xs text-muted mt-1.5 flex flex-wrap gap-x-2">
+          <div className="commit-history-meta">
             <span>{commit.author_name}</span>
-            <span>{formatDate(commit.committed_at)}</span>
+            <span aria-hidden>·</span>
+            <time dateTime={new Date(commit.committed_at * 1000).toISOString()}>
+              {formatRelativeTime(commit.committed_at)}
+            </time>
           </div>
         </div>
       </Link>
+      <CopyCommitButton sha={commit.sha} label={commit.short_sha} />
     </li>
   )
 }
