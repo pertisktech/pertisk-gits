@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom'
 import type { DashboardProjectStats } from '../api/types'
 import { projectTabPath } from '../lib/projectRoute'
 import { cn } from '../utils/cn'
-import styles from '../pages/DashboardPage.module.css'
+import styles from './ProjectList.module.css'
 import { ActionsStatusIcon } from './PipelineStatus'
 
 function StatLink({

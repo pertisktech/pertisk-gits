@@ -6,14 +6,12 @@ import {
   Search,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
-import { DashboardProjectAside } from '../components/DashboardProjectAside'
+import { ProjectListRow } from '../components/ProjectListRow'
+import listStyles from '../components/ProjectList.module.css'
 import { EmptyState, LinkButton } from '../components/ui'
 import { useAllProjects, type DashboardProject } from '../hooks/useAllProjects'
 import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
-import { projectInitial } from '../lib/projectInitial'
-import { formatRelativeTimeFromIso } from '../lib/relativeTime'
 import styles from './DashboardPage.module.css'
 
 const PAGE_SIZE = 20
@@ -61,10 +59,6 @@ function matchesSearch(project: DashboardProject, query: string) {
     project.orgName.toLowerCase().includes(q) ||
     path.includes(q)
   )
-}
-
-function lastActivityLabel(project: DashboardProject) {
-  return formatRelativeTimeFromIso(project.updated_at)
 }
 
 export function DashboardPage() {
@@ -188,39 +182,17 @@ export function DashboardPage() {
 
         {!isLoading && pageProjects.length > 0 && (
           <>
-            <ul className={styles.list}>
+            <ul className={listStyles.list}>
               {pageProjects.map((project) => (
-                <li key={project.id} className={styles.row}>
-                  <div className={styles.icon} aria-hidden>
-                    <span className={styles.iconLetter}>
-                      {projectInitial(project.name, project.slug)}
-                    </span>
-                  </div>
-                  <div className={styles.main}>
-                    <Link
-                      to={`/groups/${project.orgSlug}/projects/${project.slug}`}
-                      className={styles.pathLink}
-                    >
-                      <span className={styles.pathGroup}>{project.orgSlug}</span>
-                      <span className={styles.pathSep}>/</span>
-                      <span>{project.name}</span>
-                    </Link>
-                  </div>
-                  <DashboardProjectAside
-                    orgSlug={project.orgSlug}
-                    slug={project.slug}
-                    stats={getStats(project)}
-                    loading={statsLoading}
-                  />
-                  <div className={styles.meta}>
-                    <span
-                      className={styles.updated}
-                      title={new Date(project.updated_at).toLocaleString()}
-                    >
-                      {lastActivityLabel(project)}
-                    </span>
-                  </div>
-                </li>
+                <ProjectListRow
+                  key={project.id}
+                  orgSlug={project.orgSlug}
+                  slug={project.slug}
+                  name={project.name}
+                  updatedAt={project.updated_at}
+                  stats={getStats(project)}
+                  statsLoading={statsLoading}
+                />
               ))}
             </ul>
 

@@ -3,13 +3,16 @@ import { useMemo } from 'react'
 import { api } from '../api/client'
 import type { DashboardProjectStats } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import type { DashboardProject } from './useAllProjects'
+export interface ProjectStatsRef {
+  orgSlug: string
+  slug: string
+}
 
-function statsKey(project: DashboardProject) {
+function statsKey(project: ProjectStatsRef) {
   return `${project.orgSlug}/${project.slug}`
 }
 
-export function useDashboardProjectStats(projects: DashboardProject[]) {
+export function useDashboardProjectStats(projects: ProjectStatsRef[]) {
   const { token } = useAuth()
 
   const payload = useMemo(
@@ -43,6 +46,6 @@ export function useDashboardProjectStats(projects: DashboardProject[]) {
 
   return {
     isLoading,
-    getStats: (project: DashboardProject) => statsByKey.get(statsKey(project)),
+    getStats: (project: ProjectStatsRef) => statsByKey.get(statsKey(project)),
   }
 }

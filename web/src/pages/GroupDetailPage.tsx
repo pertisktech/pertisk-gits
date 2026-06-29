@@ -1,11 +1,14 @@
+import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { FolderGit2, FolderTree, Plus, Settings, Download } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
+import { ProjectListRow } from '../components/ProjectListRow'
+import listStyles from '../components/ProjectList.module.css'
 import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
 import { useGroupFromRoute } from '../hooks/useGroupFromRoute'
+import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
 import { groupBaseUrl } from '../lib/groupPath'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
 
@@ -34,6 +37,12 @@ export function GroupDetailPage() {
   const canManage =
     members.find((member) => member.user.id === user?.id)?.role === 'owner' ||
     members.find((member) => member.user.id === user?.id)?.role === 'admin'
+
+  const projectRefs = useMemo(
+    () => projects.map((project) => ({ orgSlug: orgPath, slug: project.slug })),
+    [projects, orgPath],
+  )
+  const { getStats, isLoading: statsLoading } = useDashboardProjectStats(projectRefs)
 
   const basePath = `/groups/${orgPath}`
 
@@ -143,41 +152,19 @@ export function GroupDetailPage() {
         )}
 
         {!isLoading && projects.length > 0 && (
-          <table className="app-list-table">
-            <thead>
-              <tr>
-                <th>Repository</th>
-                <th>Visibility</th>
-                <th>Branch</th>
-                <th>Updated</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((project) => (
-                <tr key={project.id}>
-                  <td>
-                    <Link
-                      to={`${basePath}/projects/${project.slug}`}
-                      className="font-medium text-text hover:text-primary text-sm"
-                    >
-                      <span className="text-text-secondary font-normal">{orgPath}</span>
-                      <span className="text-muted mx-1">/</span>
-                      <span className="font-mono">{project.name}</span>
-                    </Link>
-                  </td>
-                  <td>
-                    <StatusBadge variant={visibilityVariant(project.visibility)}>
-                      {project.visibility}
-                    </StatusBadge>
-                  </td>
-                  <td className="font-mono text-xs text-text-secondary">{project.default_branch}</td>
-                  <td className="text-text-secondary text-sm">
-                    {new Date(project.updated_at).toLocaleDateString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className={listStyles.list}>
+            {projects.map((project) => (
+              <ProjectListRow
+                key={project.id}
+                orgSlug={orgPath}
+                slug={project.slug}
+                name={project.name}
+                updatedAt={project.updated_at}
+                stats={getStats({ orgSlug: orgPath, slug: project.slug })}
+                statsLoading={statsLoading}
+              />
+            ))}
+          </ul>
         )}
       </div>
     </>
