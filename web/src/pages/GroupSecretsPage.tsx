@@ -1,10 +1,10 @@
-import { useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { api } from '../api/client'
 import { SecretsPanel } from '../components/SecretsPanel'
 
 export function GroupSecretsPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token } = useAuth()
 
   if (!token) return null
@@ -26,11 +26,11 @@ export function GroupSecretsPage() {
         token={token}
         title="Group secrets"
         description="Visible to group owners and admins. Values are never shown after creation."
-        queryKey={['org-secrets', slug]}
-        listSecrets={() => api.listOrgSecrets(token, slug)}
-        createSecret={(payload) => api.createOrgSecret(token, slug, payload)}
-        updateSecret={(id, payload) => api.updateOrgSecret(token, slug, id, payload)}
-        deleteSecret={(id) => api.deleteOrgSecret(token, slug, id)}
+        queryKey={['org-secrets', orgPath]}
+        listSecrets={() => api.listOrgSecrets(token, orgPath)}
+        createSecret={(payload) => api.createOrgSecret(token, orgPath, payload)}
+        updateSecret={(id, payload) => api.updateOrgSecret(token, orgPath, id, payload)}
+        deleteSecret={(id) => api.deleteOrgSecret(token, orgPath, id)}
       />
     </>
   )

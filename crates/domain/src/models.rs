@@ -76,6 +76,8 @@ pub struct Organization {
     pub slug: String,
     pub name: String,
     pub description: Option<String>,
+    pub parent_id: Option<Uuid>,
+    pub full_path: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -372,6 +374,8 @@ pub struct CreateOrganizationRequest {
     #[validate(length(min = 1, max = 100))]
     pub slug: String,
     pub description: Option<String>,
+    /// Parent group full path (e.g. `a/b`). Omit for a top-level group.
+    pub parent_path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Validate)]

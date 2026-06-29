@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useProjectParams } from '../hooks/useProjectParams'
+import { findGroupByPath } from '../lib/groupPath'
 import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoCodeSearch } from '../components/RepoCodeSearch'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
@@ -19,7 +21,7 @@ import type { ProjectTab } from '../lib/projectRoute'
 import { projectTabPath } from '../lib/projectRoute'
 
 export function ProjectDetailPage() {
-  const { slug: orgSlug = '', projectSlug = '' } = useParams()
+  const { orgSlug, projectSlug } = useProjectParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { token, user } = useAuth()
@@ -33,7 +35,7 @@ export function ProjectDetailPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = groups.find((g) => g.slug === orgSlug)
+  const group = findGroupByPath(groups, orgSlug)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],

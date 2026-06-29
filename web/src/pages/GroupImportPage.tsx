@@ -1,7 +1,8 @@
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Download, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useParams } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ImportJobDetail, ImportProvider, RemoteNamespace, RemoteRepo } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -21,7 +22,7 @@ function jobStatusVariant(status: string) {
 }
 
 export function GroupImportPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token, user } = useAuth()
   const queryClient = useQueryClient()
 
@@ -39,9 +40,9 @@ export function GroupImportPage() {
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
 
   const { data: members = [] } = useQuery({
-    queryKey: ['org-members', slug],
-    queryFn: () => api.listOrganizationMembers(token!, slug),
-    enabled: Boolean(token && slug),
+    queryKey: ['org-members', orgPath],
+    queryFn: () => api.listOrganizationMembers(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const canManage = useMemo(() => {
@@ -50,22 +51,22 @@ export function GroupImportPage() {
   }, [members, user?.id])
 
   const { data: credentials = [] } = useQuery({
-    queryKey: ['import-credentials', slug],
-    queryFn: () => api.listImportCredentials(token!, slug),
-    enabled: Boolean(token && slug && canManage),
+    queryKey: ['import-credentials', orgPath],
+    queryFn: () => api.listImportCredentials(token!, orgPath),
+    enabled: Boolean(token && orgPath && canManage),
   })
 
   const { data: jobs = [] } = useQuery({
-    queryKey: ['import-jobs', slug],
-    queryFn: () => api.listImportJobs(token!, slug),
-    enabled: Boolean(token && slug && canManage),
+    queryKey: ['import-jobs', orgPath],
+    queryFn: () => api.listImportJobs(token!, orgPath),
+    enabled: Boolean(token && orgPath && canManage),
     refetchInterval: activeJobId ? 3000 : false,
   })
 
   const { data: activeJob } = useQuery({
-    queryKey: ['import-job', slug, activeJobId],
-    queryFn: () => api.getImportJob(token!, slug, activeJobId!),
-    enabled: Boolean(token && slug && activeJobId),
+    queryKey: ['import-job', orgPath, activeJobId],
+    queryFn: () => api.getImportJob(token!, orgPath, activeJobId!),
+    enabled: Boolean(token && orgPath && activeJobId),
     refetchInterval: (query) => {
       const job = query.state.data as ImportJobDetail | undefined
       if (!job) return 3000
@@ -76,21 +77,21 @@ export function GroupImportPage() {
   useEffect(() => {
     if (!activeJob) return
     if (activeJob.status === 'done' || activeJob.status === 'failed') {
-      queryClient.invalidateQueries({ queryKey: ['repositories', slug] })
-      queryClient.invalidateQueries({ queryKey: ['import-jobs', slug] })
+      queryClient.invalidateQueries({ queryKey: ['repositories', orgPath] })
+      queryClient.invalidateQueries({ queryKey: ['import-jobs', orgPath] })
     }
-  }, [activeJob, queryClient, slug])
+  }, [activeJob, queryClient, orgPath])
 
   const saveCredential = useMutation({
     mutationFn: () =>
-      api.saveImportCredential(token!, slug, {
+      api.saveImportCredential(token!, orgPath, {
         provider,
         token: pat,
         base_url: baseUrl.trim() || undefined,
       }),
     onSuccess: (saved) => {
       setCredentialId(saved.id)
-      queryClient.invalidateQueries({ queryKey: ['import-credentials', slug] })
+      queryClient.invalidateQueries({ queryKey: ['import-credentials', orgPath] })
     },
   })
 
@@ -110,14 +111,14 @@ export function GroupImportPage() {
   const discover = useMutation({
     mutationFn: async () => {
       if (pat.trim()) {
-        const saved = await api.saveImportCredential(token!, slug, {
+        const saved = await api.saveImportCredential(token!, orgPath, {
           provider,
           token: pat,
           base_url: baseUrl.trim() || undefined,
         })
         setCredentialId(saved.id)
-        queryClient.invalidateQueries({ queryKey: ['import-credentials', slug] })
-        return api.discoverImportRepos(token!, slug, {
+        queryClient.invalidateQueries({ queryKey: ['import-credentials', orgPath] })
+        return api.discoverImportRepos(token!, orgPath, {
           ...discoverPayload,
           credential_id: saved.id,
         })
@@ -125,7 +126,7 @@ export function GroupImportPage() {
       if (!credentialId) {
         throw new Error('Enter a personal access token or select a saved credential')
       }
-      return api.discoverImportRepos(token!, slug, discoverPayload)
+      return api.discoverImportRepos(token!, orgPath, discoverPayload)
     },
     onSuccess: (result) => {
       setAccount(result.account)
@@ -142,7 +143,7 @@ export function GroupImportPage() {
   const refreshRepos = useMutation({
     mutationFn: () => {
       if (!credentialId) throw new Error('Save credentials before listing repositories')
-      return api.discoverImportRepos(token!, slug, discoverPayload)
+      return api.discoverImportRepos(token!, orgPath, discoverPayload)
     },
     onSuccess: (result) => {
       setNamespaces(result.namespaces)
@@ -170,7 +171,7 @@ export function GroupImportPage() {
           visibility: repo.visibility,
           default_branch: repo.default_branch,
         }))
-      return api.createImportJob(token!, slug, {
+      return api.createImportJob(token!, orgPath, {
         credential_id: id,
         import_issues: importIssues,
         import_pull_requests: importPullRequests,
@@ -179,7 +180,7 @@ export function GroupImportPage() {
     },
     onSuccess: (job) => {
       setActiveJobId(job.id)
-      queryClient.invalidateQueries({ queryKey: ['import-jobs', slug] })
+      queryClient.invalidateQueries({ queryKey: ['import-jobs', orgPath] })
     },
   })
 
@@ -192,7 +193,7 @@ export function GroupImportPage() {
   const selectedCount = Object.values(selected).filter(Boolean).length
 
   if (!canManage && members.length > 0) {
-    return <Navigate to={`/groups/${slug}`} replace />
+    return <Navigate to={`/groups/${orgPath}`} replace />
   }
 
   return (
@@ -200,7 +201,7 @@ export function GroupImportPage() {
       <Breadcrumbs
         items={[
           { label: 'Groups', to: '/groups' },
-          { label: slug, to: `/groups/${slug}` },
+          { label: orgPath, to: `/groups/${orgPath}` },
           { label: 'Import' },
         ]}
       />
@@ -507,14 +508,14 @@ export function GroupImportPage() {
                       <td>
                         {repo.repository_id ? (
                           <Link
-                            to={`/groups/${slug}/projects/${repo.target_slug}`}
+                            to={`/groups/${orgPath}/projects/${repo.target_slug}`}
                             className="font-mono text-primary hover:underline"
                           >
-                            {slug}/{repo.target_slug}
+                            {orgPath}/{repo.target_slug}
                           </Link>
                         ) : (
                           <span className="font-mono text-text-secondary">
-                            {slug}/{repo.target_slug}
+                            {orgPath}/{repo.target_slug}
                           </span>
                         )}
                       </td>

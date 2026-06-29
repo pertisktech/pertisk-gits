@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
+import { findGroupByPath, groupBaseUrl, groupUrlPath } from '../lib/groupPath'
 import { Card } from '../components/Card'
 import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
 
@@ -11,7 +13,7 @@ const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
 
 export function GroupSettingsPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token, user } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -25,12 +27,12 @@ export function GroupSettingsPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = groups.find((item) => item.slug === slug)
+  const group = findGroupByPath(groups, orgPath)
 
   const { data: members = [], isLoading: membersLoading } = useQuery({
-    queryKey: ['org-members', slug],
-    queryFn: () => api.listOrganizationMembers(token!, slug),
-    enabled: Boolean(token && slug),
+    queryKey: ['org-members', orgPath],
+    queryFn: () => api.listOrganizationMembers(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const myRole = useMemo(
@@ -48,19 +50,20 @@ export function GroupSettingsPage() {
 
   const updateGroup = useMutation({
     mutationFn: () =>
-      api.updateOrganization(token!, slug, {
+      api.updateOrganization(token!, orgPath, {
         name,
         slug: newSlug,
         description: description.trim() ? description : '',
       }),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
-      queryClient.invalidateQueries({ queryKey: ['repositories', slug] })
-      queryClient.invalidateQueries({ queryKey: ['org-members', slug] })
-      if (updated.slug !== slug) {
-        queryClient.invalidateQueries({ queryKey: ['repositories', updated.slug] })
-        queryClient.invalidateQueries({ queryKey: ['org-members', updated.slug] })
-        navigate(`/groups/${updated.slug}/settings`, { replace: true })
+      queryClient.invalidateQueries({ queryKey: ['repositories', orgPath] })
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgPath] })
+      if (groupUrlPath(updated) !== orgPath) {
+        const nextPath = groupBaseUrl(updated)
+        queryClient.invalidateQueries({ queryKey: ['repositories', nextPath] })
+        queryClient.invalidateQueries({ queryKey: ['org-members', nextPath] })
+        navigate(`${nextPath}/settings`, { replace: true })
       }
       setSaved(true)
       setTimeout(() => setSaved(false), 2500)
@@ -90,7 +93,7 @@ export function GroupSettingsPage() {
   }
 
   if (!canManage) {
-    return <Navigate to={`/groups/${slug}`} replace />
+    return <Navigate to={groupBaseUrl(group)} replace />
   }
 
   const slugChanged = newSlug !== group.slug
@@ -100,7 +103,7 @@ export function GroupSettingsPage() {
       <Breadcrumbs
         items={[
           { label: 'Groups', to: '/groups' },
-          { label: group.name, to: `/groups/${slug}` },
+          { label: group.name, to: groupBaseUrl(group) },
           { label: 'Settings' },
         ]}
       />
@@ -164,7 +167,7 @@ export function GroupSettingsPage() {
             <PrimaryButton type="submit" disabled={updateGroup.isPending}>
               {updateGroup.isPending ? 'Saving…' : 'Save changes'}
             </PrimaryButton>
-            <LinkButton to={`/groups/${slug}`}>Cancel</LinkButton>
+            <LinkButton to={groupBaseUrl(group)}>Cancel</LinkButton>
           </div>
         </form>
       </Card>

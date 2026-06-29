@@ -17,19 +17,19 @@ use crate::{
 pub fn wiki_read_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/wiki/pages",
+            "/organizations/{org_path}/repositories/{repo_slug}/wiki/pages",
             get(list_wiki_pages),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/wiki/pages/{page_slug}",
+            "/organizations/{org_path}/repositories/{repo_slug}/wiki/pages/{page_slug}",
             get(get_wiki_page),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/wiki/pages/{page_slug}/revisions",
+            "/organizations/{org_path}/repositories/{repo_slug}/wiki/pages/{page_slug}/revisions",
             get(list_wiki_revisions),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/wiki/pages/{page_slug}/revisions/{revision_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/wiki/pages/{page_slug}/revisions/{revision_id}",
             get(get_wiki_revision),
         )
 }
@@ -37,11 +37,11 @@ pub fn wiki_read_routes() -> Router<AppState> {
 pub fn wiki_write_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/wiki/pages",
+            "/organizations/{org_path}/repositories/{repo_slug}/wiki/pages",
             post(create_wiki_page),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/wiki/pages/{page_slug}",
+            "/organizations/{org_path}/repositories/{repo_slug}/wiki/pages/{page_slug}",
             patch(update_wiki_page).delete(delete_wiki_page),
         )
 }
@@ -201,9 +201,9 @@ async fn insert_revision(
 async fn list_wiki_pages(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<WikiPageListResponse>, ApiError> {
-    let (repo, _) = load_repo(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let pages = sqlx::query_as::<_, WikiPage>(
         r#"
@@ -236,9 +236,9 @@ async fn list_wiki_pages(
 async fn get_wiki_page(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, page_slug)): Path<(String, String, String)>,
+    Path((org_path, repo_slug, page_slug)): Path<(String, String, String)>,
 ) -> Result<Json<WikiPageDetailResponse>, ApiError> {
-    let (repo, _) = load_repo(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let page = get_page_by_slug(&state.pool, repo.id, &page_slug).await?;
     let author = fetch_user_public(&state.pool, page.author_id).await?;
 
@@ -248,15 +248,15 @@ async fn get_wiki_page(
 async fn create_wiki_page(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreateWikiPageRequest>,
 ) -> Result<(StatusCode, Json<WikiPageDetailResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let base_slug = body
         .slug
@@ -298,15 +298,15 @@ async fn create_wiki_page(
 async fn update_wiki_page(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, page_slug)): Path<(String, String, String)>,
+    Path((org_path, repo_slug, page_slug)): Path<(String, String, String)>,
     Json(body): Json<UpdateWikiPageRequest>,
 ) -> Result<Json<WikiPageDetailResponse>, ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let existing = get_page_by_slug(&state.pool, repo.id, &page_slug).await?;
 
@@ -347,11 +347,11 @@ async fn update_wiki_page(
 async fn delete_wiki_page(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, page_slug)): Path<(String, String, String)>,
+    Path((org_path, repo_slug, page_slug)): Path<(String, String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let result = sqlx::query(
         r#"
@@ -375,9 +375,9 @@ async fn delete_wiki_page(
 async fn list_wiki_revisions(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, page_slug)): Path<(String, String, String)>,
+    Path((org_path, repo_slug, page_slug)): Path<(String, String, String)>,
 ) -> Result<Json<WikiRevisionListResponse>, ApiError> {
-    let (repo, _) = load_repo(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let page = get_page_by_slug(&state.pool, repo.id, &page_slug).await?;
 
     let rows = sqlx::query_as::<_, WikiPageRevision>(
@@ -411,9 +411,9 @@ async fn list_wiki_revisions(
 async fn get_wiki_revision(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, page_slug, revision_id)): Path<(String, String, String, Uuid)>,
+    Path((org_path, repo_slug, page_slug, revision_id)): Path<(String, String, String, Uuid)>,
 ) -> Result<Json<WikiRevisionDetailResponse>, ApiError> {
-    let (repo, _) = load_repo(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let page = get_page_by_slug(&state.pool, repo.id, &page_slug).await?;
 
     let revision = sqlx::query_as::<_, WikiPageRevision>(

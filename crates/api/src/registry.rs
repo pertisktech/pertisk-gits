@@ -15,11 +15,11 @@ use crate::{find_org_for_member, permissions, ApiError, AppState, AuthUser};
 pub fn registry_read_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/registry/images",
+            "/organizations/{org_path}/registry/images",
             get(list_container_images),
         )
         .route(
-            "/organizations/{org_slug}/registry/images/{image_name}",
+            "/organizations/{org_path}/registry/images/{image_name}",
             get(get_container_image),
         )
 }
@@ -27,15 +27,15 @@ pub fn registry_read_routes() -> Router<AppState> {
 pub fn registry_write_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/registry/images/{image_name}",
+            "/organizations/{org_path}/registry/images/{image_name}",
             patch(update_container_image).delete(delete_container_image),
         )
         .route(
-            "/organizations/{org_slug}/registry/images/{image_name}/tags/{tag_name}",
+            "/organizations/{org_path}/registry/images/{image_name}/tags/{tag_name}",
             delete(delete_container_tag),
         )
         .route(
-            "/organizations/{org_slug}/registry/gc",
+            "/organizations/{org_path}/registry/gc",
             post(run_registry_gc),
         )
 }
@@ -90,9 +90,9 @@ struct GcResponse {
 async fn list_container_images(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<ContainerImageSummary>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<Uuid>, Option<String>, i64, DateTime<Utc>, DateTime<Utc>)>(
         r#"
@@ -139,9 +139,9 @@ async fn list_container_images(
 async fn get_container_image(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, image_name)): Path<(String, String)>,
+    Path((org_path, image_name)): Path<(String, String)>,
 ) -> Result<Json<ContainerImageDetail>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = load_container_repo(&state.pool, org.id, &image_name)
         .await?
         .ok_or(ApiError::from(DomainError::NotFound))?;
@@ -198,10 +198,10 @@ async fn get_container_image(
 async fn update_container_image(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, image_name)): Path<(String, String)>,
+    Path((org_path, image_name)): Path<(String, String)>,
     Json(body): Json<UpdateContainerImageRequest>,
 ) -> Result<Json<ContainerImageDetail>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let repo = load_container_repo(&state.pool, org.id, &image_name)
@@ -246,15 +246,15 @@ async fn update_container_image(
         .map_err(sqlx_error)?;
     }
 
-    get_container_image(State(state), auth, Path((org_slug, image_name))).await
+    get_container_image(State(state), auth, Path((org_path, image_name))).await
 }
 
 async fn delete_container_image(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, image_name)): Path<(String, String)>,
+    Path((org_path, image_name)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let repo = load_container_repo(&state.pool, org.id, &image_name)
@@ -277,9 +277,9 @@ async fn delete_container_image(
 async fn delete_container_tag(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, image_name, tag_name)): Path<(String, String, String)>,
+    Path((org_path, image_name, tag_name)): Path<(String, String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let repo = load_container_repo(&state.pool, org.id, &image_name)
@@ -309,9 +309,9 @@ async fn delete_container_tag(
 async fn run_registry_gc(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<GcResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let store = blob_store().map_err(|e| DomainError::Internal(e.to_string()))?;

@@ -6,39 +6,20 @@ import { useAuth } from '../auth/AuthContext'
 import { findGroupByPath } from '../lib/groupPath'
 import { parseGroupRoute } from '../lib/groupRoute'
 
-export function useGroupNav() {
+export function useGroupFromRoute() {
   const location = useLocation()
-  const { token, user } = useAuth()
+  const { token } = useAuth()
 
   const route = useMemo(() => parseGroupRoute(location.pathname), [location.pathname])
+  const orgPath = route?.orgPath ?? ''
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
     queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token && route),
-  })
-
-  const orgPath = route?.orgPath ?? ''
-
-  const { data: members = [] } = useQuery({
-    queryKey: ['org-members', orgPath],
-    queryFn: () => api.listOrganizationMembers(token!, orgPath),
     enabled: Boolean(token && orgPath),
-    staleTime: 60_000,
   })
-
-  if (!route) return null
 
   const group = findGroupByPath(groups, orgPath)
-  const myRole = members.find((member) => member.user.id === user?.id)?.role
-  const canViewAudit = myRole === 'owner' || myRole === 'admin'
-  const canManage = canViewAudit
 
-  return {
-    ...route,
-    orgSlug: orgPath,
-    groupName: group?.name ?? orgPath,
-    canViewAudit,
-    canManage,
-  }
+  return { route, orgPath, group, groups }
 }

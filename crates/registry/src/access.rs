@@ -25,7 +25,7 @@ pub async fn is_org_member(pool: &PgPool, org_slug: &str, user_id: Uuid) -> anyh
         SELECT EXISTS(
             SELECT 1 FROM organization_members m
             INNER JOIN organizations o ON o.id = m.organization_id
-            WHERE o.slug = $1 AND m.user_id = $2
+            WHERE o.full_path = $1 AND m.user_id = $2
         )
         "#,
     )
@@ -42,7 +42,7 @@ pub async fn can_push(pool: &PgPool, org_slug: &str, user_id: Uuid) -> anyhow::R
         SELECT m.role
         FROM organization_members m
         INNER JOIN organizations o ON o.id = m.organization_id
-        WHERE o.slug = $1 AND m.user_id = $2
+        WHERE o.full_path = $1 AND m.user_id = $2
         "#,
     )
     .bind(org_slug)
@@ -103,7 +103,7 @@ pub async fn find_repository(
         SELECT r.id
         FROM container_repositories r
         INNER JOIN organizations o ON o.id = r.organization_id
-        WHERE o.slug = $1 AND r.name = $2
+        WHERE o.full_path = $1 AND r.name = $2
         "#,
     )
     .bind(org_slug)
@@ -143,12 +143,12 @@ pub async fn list_catalog_repositories(
 ) -> anyhow::Result<Vec<String>> {
     let rows = sqlx::query_scalar::<_, String>(
         r#"
-        SELECT o.slug || '/' || cr.name AS full_name
+        SELECT o.full_path || '/' || cr.name AS full_name
         FROM container_repositories cr
         INNER JOIN organizations o ON o.id = cr.organization_id
         INNER JOIN organization_members m ON m.organization_id = o.id AND m.user_id = $1
-        WHERE ($2::text IS NULL OR (o.slug || '/' || cr.name) > $2)
-        ORDER BY o.slug || '/' || cr.name ASC
+        WHERE ($2::text IS NULL OR (o.full_path || '/' || cr.name) > $2)
+        ORDER BY o.full_path || '/' || cr.name ASC
         LIMIT $3
         "#,
     )
@@ -175,7 +175,7 @@ pub async fn list_org_catalog_repositories(
         FROM container_repositories cr
         INNER JOIN organizations o ON o.id = cr.organization_id
         INNER JOIN organization_members m ON m.organization_id = o.id AND m.user_id = $2
-        WHERE o.slug = $1
+        WHERE o.full_path = $1
           AND ($3::text IS NULL OR cr.name > $3)
         ORDER BY cr.name ASC
         LIMIT $4

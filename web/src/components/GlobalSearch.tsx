@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { groupUrlPath } from '../lib/groupPath'
 
 type SearchResult =
-  | { type: 'group'; slug: string; name: string; description?: string | null }
+  | { type: 'group'; orgPath: string; name: string; description?: string | null }
   | { type: 'repo'; orgSlug: string; slug: string; name: string; fullPath: string }
   | {
       type: 'code'
@@ -18,7 +19,7 @@ type SearchResult =
     }
 
 function resultUrl(result: SearchResult) {
-  if (result.type === 'group') return `/groups/${result.slug}`
+  if (result.type === 'group') return `/groups/${result.orgPath}`
   if (result.type === 'repo') return `/groups/${result.orgSlug}/projects/${result.slug}`
   return `/groups/${result.orgSlug}/projects/${result.repoSlug}?file=${encodeURIComponent(result.path)}`
 }
@@ -38,11 +39,14 @@ export function GlobalSearch() {
   })
 
   const repoQueries = useQueries({
-    queries: groups.map((group) => ({
-      queryKey: ['repositories', group.slug],
-      queryFn: () => api.listRepositories(token!, group.slug),
-      enabled: Boolean(token),
-    })),
+    queries: groups.map((group) => {
+      const orgPath = groupUrlPath(group)
+      return {
+        queryKey: ['repositories', orgPath],
+        queryFn: () => api.listRepositories(token!, orgPath),
+        enabled: Boolean(token),
+      }
+    }),
   })
 
   const trimmedQuery = query.trim()
@@ -61,10 +65,12 @@ export function GlobalSearch() {
     const items: SearchResult[] = []
 
     for (const group of groups) {
-      if (group.name.toLowerCase().includes(q) || group.slug.toLowerCase().includes(q)) {
+      const orgPath = groupUrlPath(group)
+      const haystack = `${group.name} ${orgPath} ${group.slug}`.toLowerCase()
+      if (haystack.includes(q)) {
         items.push({
           type: 'group',
-          slug: group.slug,
+          orgPath,
           name: group.name,
           description: group.description,
         })
@@ -72,9 +78,10 @@ export function GlobalSearch() {
     }
 
     groups.forEach((group, index) => {
+      const orgPath = groupUrlPath(group)
       const repos = repoQueries[index]?.data ?? []
       for (const repo of repos) {
-        const fullPath = `${group.slug}/${repo.slug}`
+        const fullPath = `${orgPath}/${repo.slug}`
         if (
           repo.name.toLowerCase().includes(q) ||
           repo.slug.toLowerCase().includes(q) ||
@@ -82,7 +89,7 @@ export function GlobalSearch() {
         ) {
           items.push({
             type: 'repo',
-            orgSlug: group.slug,
+            orgSlug: orgPath,
             slug: repo.slug,
             name: repo.name,
             fullPath,
@@ -176,7 +183,7 @@ export function GlobalSearch() {
                 <li
                   key={
                     result.type === 'group'
-                      ? `g-${result.slug}`
+                      ? `g-${result.orgPath}`
                       : result.type === 'repo'
                         ? `r-${result.fullPath}`
                         : `c-${result.fullPath}`
@@ -201,7 +208,7 @@ export function GlobalSearch() {
                         {result.type === 'code' ? result.path : result.name}
                       </span>
                       <span className="block text-xs text-muted font-mono truncate">
-                        {result.type === 'code' ? result.fullPath : result.type === 'group' ? result.slug : result.fullPath}
+                        {result.type === 'code' ? result.fullPath : result.type === 'group' ? result.orgPath : result.fullPath}
                       </span>
                       {result.type === 'code' ? (
                         <span className="block text-xs text-text-secondary font-mono truncate mt-0.5">

@@ -19,11 +19,11 @@ pub fn code_search_read_routes() -> Router<AppState> {
     Router::new()
         .route("/search/code", get(global_code_search))
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/search/code",
+            "/organizations/{org_path}/repositories/{repo_slug}/search/code",
             get(repo_code_search),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/search/status",
+            "/organizations/{org_path}/repositories/{repo_slug}/search/status",
             get(repo_search_status),
         )
 }
@@ -98,11 +98,11 @@ async fn global_code_search(
 async fn repo_code_search(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<SearchQuery>,
 ) -> Result<Json<CodeSearchResponse>, ApiError> {
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let hits = run_search(&state, &query.q, Some(repo.id), None, query.limit)?;
     Ok(Json(CodeSearchResponse {
@@ -114,10 +114,10 @@ async fn repo_code_search(
 async fn repo_search_status(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<CodeSearchStatusResponse>, ApiError> {
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let row = sqlx::query_as::<_, IndexMetaRow>(
         r#"

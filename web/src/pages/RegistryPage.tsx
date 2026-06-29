@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Package, Trash2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ContainerImageSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
+import { useRegistryImageParam } from '../hooks/useRegistryImageParam'
 import {
   EmptyState,
   LinkButton,
@@ -23,53 +25,54 @@ function shortDigest(digest: string): string {
 }
 
 export function RegistryPage() {
-  const { slug = '', imageName } = useParams()
+  const orgPath = useOrgPathParam()
+  const imageName = useRegistryImageParam()
   const navigate = useNavigate()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  const decodedImage = imageName ? decodeURIComponent(imageName) : null
+  const decodedImage = imageName
 
   const { data: images = [], isLoading: listLoading } = useQuery({
-    queryKey: ['registry-images', slug],
-    queryFn: () => api.listContainerImages(token!, slug),
-    enabled: Boolean(token && slug),
+    queryKey: ['registry-images', orgPath],
+    queryFn: () => api.listContainerImages(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const { data: detail, isLoading: detailLoading } = useQuery({
-    queryKey: ['registry-image', slug, decodedImage],
-    queryFn: () => api.getContainerImage(token!, slug, decodedImage!),
-    enabled: Boolean(token && slug && decodedImage),
+    queryKey: ['registry-image', orgPath, decodedImage],
+    queryFn: () => api.getContainerImage(token!, orgPath, decodedImage!),
+    enabled: Boolean(token && orgPath && decodedImage),
   })
 
   const { data: projects = [] } = useQuery({
-    queryKey: ['repositories', slug],
-    queryFn: () => api.listRepositories(token!, slug),
-    enabled: Boolean(token && slug && decodedImage),
+    queryKey: ['repositories', orgPath],
+    queryFn: () => api.listRepositories(token!, orgPath),
+    enabled: Boolean(token && orgPath && decodedImage),
   })
 
   const deleteImage = useMutation({
-    mutationFn: (name: string) => api.deleteContainerImage(token!, slug, name),
+    mutationFn: (name: string) => api.deleteContainerImage(token!, orgPath, name),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-images', slug] })
+      queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath] })
       setError(null)
-      if (decodedImage) navigate(`/groups/${slug}/registry`)
+      if (decodedImage) navigate(`/groups/${orgPath}/registry`)
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const deleteTag = useMutation({
-    mutationFn: (tag: string) => api.deleteContainerTag(token!, slug, decodedImage!, tag),
+    mutationFn: (tag: string) => api.deleteContainerTag(token!, orgPath, decodedImage!, tag),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-image', slug, decodedImage] })
-      queryClient.invalidateQueries({ queryKey: ['registry-images', slug] })
+      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, decodedImage] })
+      queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath] })
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const runGc = useMutation({
-    mutationFn: () => api.runRegistryGc(token!, slug),
+    mutationFn: () => api.runRegistryGc(token!, orgPath),
     onSuccess: (report) => {
       setError(null)
       alert(
@@ -81,15 +84,15 @@ export function RegistryPage() {
 
   const updateImage = useMutation({
     mutationFn: (payload: { description?: string; linked_repository_id?: string | null }) =>
-      api.updateContainerImage(token!, slug, decodedImage!, payload),
+      api.updateContainerImage(token!, orgPath, decodedImage!, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-image', slug, decodedImage] })
+      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, decodedImage] })
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
   })
 
-  const registryBase = `/groups/${slug}/registry`
+  const registryBase = `/groups/${orgPath}/registry`
 
   return (
     <>
@@ -99,7 +102,7 @@ export function RegistryPage() {
             <span>{decodedImage ?? 'Container registry'}</span>
           </h1>
           <p className="app-repo-desc">
-            OCI images for @{slug} — push with docker login &amp;&amp; docker push host/{slug}/image:tag
+            OCI images for @{orgPath} — push with docker login &amp;&amp; docker push host/{orgPath}/image:tag
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
@@ -138,7 +141,7 @@ export function RegistryPage() {
             <EmptyState
               icon={<Package size={40} />}
               title="No container images"
-              description={`Push an image to ${slug}/my-app:tag after docker login.`}
+              description={`Push an image to ${orgPath}/my-app:tag after docker login.`}
             />
           )}
 
@@ -161,7 +164,7 @@ export function RegistryPage() {
                         to={`${registryBase}/${encodeURIComponent(image.name)}`}
                         className="font-mono text-sm text-primary hover:underline"
                       >
-                        {slug}/{image.name}
+                        {orgPath}/{image.name}
                       </Link>
                       {image.description && (
                         <div className="text-xs text-text-secondary mt-0.5">{image.description}</div>
@@ -202,7 +205,7 @@ export function RegistryPage() {
             <Link to={registryBase} className="text-sm text-primary hover:underline">
               ← All images
             </Link>
-            <span className="font-mono text-sm text-text">{slug}/{decodedImage}</span>
+            <span className="font-mono text-sm text-text">{orgPath}/{decodedImage}</span>
           </div>
 
           {detailLoading && (
@@ -302,7 +305,7 @@ export function RegistryPage() {
                             {tag.commit_sha ? (
                               detail.linked_repository_slug ? (
                                 <Link
-                                  to={`/groups/${slug}/projects/${detail.linked_repository_slug}/commit/${tag.commit_sha}`}
+                                  to={`/groups/${orgPath}/projects/${detail.linked_repository_slug}/commit/${tag.commit_sha}`}
                                   className="text-primary hover:underline"
                                 >
                                   {tag.commit_sha.slice(0, 7)}

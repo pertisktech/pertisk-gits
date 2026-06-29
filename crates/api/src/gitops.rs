@@ -18,19 +18,19 @@ use crate::{
 pub fn gitops_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/gitops-webhooks",
+            "/organizations/{org_path}/gitops-webhooks",
             get(list_org_gitops_webhooks).post(create_org_gitops_webhook),
         )
         .route(
-            "/organizations/{org_slug}/gitops-webhooks/{webhook_id}",
+            "/organizations/{org_path}/gitops-webhooks/{webhook_id}",
             patch(update_org_gitops_webhook).delete(delete_org_gitops_webhook),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/gitops-webhooks",
+            "/organizations/{org_path}/repositories/{repo_slug}/gitops-webhooks",
             get(list_repo_gitops_webhooks).post(create_repo_gitops_webhook),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/gitops-webhooks/{webhook_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/gitops-webhooks/{webhook_id}",
             patch(update_repo_gitops_webhook).delete(delete_repo_gitops_webhook),
         )
 }
@@ -140,9 +140,9 @@ pub async fn dispatch_gitops_webhooks(
 async fn list_org_gitops_webhooks(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<GitOpsWebhookResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, GitOpsWebhook>(
@@ -165,10 +165,10 @@ async fn list_org_gitops_webhooks(
 async fn create_org_gitops_webhook(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<CreateGitOpsWebhookRequest>,
 ) -> Result<(StatusCode, Json<GitOpsWebhookResponse>), ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
     insert_webhook(&state.pool, org.id, None, auth.user_id, body).await
 }
@@ -176,9 +176,9 @@ async fn create_org_gitops_webhook(
 async fn list_repo_gitops_webhooks(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<GitOpsWebhookResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = permissions::find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
@@ -203,10 +203,10 @@ async fn list_repo_gitops_webhooks(
 async fn create_repo_gitops_webhook(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreateGitOpsWebhookRequest>,
 ) -> Result<(StatusCode, Json<GitOpsWebhookResponse>), ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = permissions::find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
     insert_webhook(&state.pool, org.id, Some(repo.id), auth.user_id, body).await
@@ -215,10 +215,10 @@ async fn create_repo_gitops_webhook(
 async fn update_org_gitops_webhook(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, webhook_id)): Path<(String, Uuid)>,
+    Path((org_path, webhook_id)): Path<(String, Uuid)>,
     Json(body): Json<UpdateGitOpsWebhookRequest>,
 ) -> Result<Json<GitOpsWebhookResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
     update_webhook(&state.pool, org.id, None, webhook_id, body).await
 }
@@ -226,9 +226,9 @@ async fn update_org_gitops_webhook(
 async fn delete_org_gitops_webhook(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, webhook_id)): Path<(String, Uuid)>,
+    Path((org_path, webhook_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
     delete_webhook(&state.pool, org.id, None, webhook_id).await
 }
@@ -236,10 +236,10 @@ async fn delete_org_gitops_webhook(
 async fn update_repo_gitops_webhook(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, webhook_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, webhook_id)): Path<(String, String, Uuid)>,
     Json(body): Json<UpdateGitOpsWebhookRequest>,
 ) -> Result<Json<GitOpsWebhookResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = permissions::find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
     update_webhook(&state.pool, org.id, Some(repo.id), webhook_id, body).await
@@ -248,9 +248,9 @@ async fn update_repo_gitops_webhook(
 async fn delete_repo_gitops_webhook(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, webhook_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, webhook_id)): Path<(String, String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = permissions::find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
     delete_webhook(&state.pool, org.id, Some(repo.id), webhook_id).await

@@ -1,8 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { GitCommit, Loader2 } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useProjectParams } from '../hooks/useProjectParams'
+import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
+import { findGroupByPath } from '../lib/groupPath'
 import { commitUrl } from '../components/RepoCommits'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { DiffViewer } from '../components/DiffViewer'
@@ -14,7 +17,9 @@ function formatDate(ts: number) {
 }
 
 export function CommitDetailPage() {
-  const { slug: orgSlug = '', projectSlug = '', commitSha = '' } = useParams()
+  const { orgSlug, projectSlug } = useProjectParams()
+  const projectSub = useProjectSubRoute()
+  const commitSha = projectSub?.kind === 'commit' ? projectSub.commitSha : ''
   const { token } = useAuth()
 
   const { data: groups = [] } = useQuery({
@@ -22,7 +27,7 @@ export function CommitDetailPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = groups.find((g) => g.slug === orgSlug)
+  const group = findGroupByPath(groups, orgSlug)
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],

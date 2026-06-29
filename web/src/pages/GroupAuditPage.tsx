@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { Download, ScrollText } from 'lucide-react'
 import { useMemo, useState } from 'react'
-import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuditEventType } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
+import { findGroupByPath } from '../lib/groupPath'
 import { StatusBadge } from '../components/StatusBadge'
 import { SecondaryButton } from '../components/ui'
 
@@ -27,7 +28,7 @@ function eventVariant(type: AuditEventType) {
 }
 
 export function GroupAuditPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token } = useAuth()
   const [eventType, setEventType] = useState<'' | AuditEventType>('')
   const [exporting, setExporting] = useState(false)
@@ -37,38 +38,38 @@ export function GroupAuditPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = groups.find((g) => g.slug === slug)
+  const group = findGroupByPath(groups, orgPath)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['audit-events', slug, eventType],
+    queryKey: ['audit-events', orgPath, eventType],
     queryFn: () =>
-      api.listAuditEvents(token!, slug, {
+      api.listAuditEvents(token!, orgPath, {
         event_type: eventType || undefined,
         limit: 100,
       }),
-    enabled: Boolean(token && slug),
+    enabled: Boolean(token && orgPath),
   })
 
   const events = data?.events ?? []
   const total = data?.total ?? 0
 
   const subtitle = useMemo(
-    () => `Security and activity events for ${group?.name ?? slug}. Visible to group owners and admins.`,
-    [group?.name, slug],
+    () => `Security and activity events for ${group?.name ?? orgPath}. Visible to group owners and admins.`,
+    [group?.name, orgPath],
   )
 
   async function onExport() {
     if (!token) return
     setExporting(true)
     try {
-      const csv = await api.exportAuditEvents(token, slug, {
+      const csv = await api.exportAuditEvents(token, orgPath, {
         event_type: eventType || undefined,
       })
       const blob = new Blob([csv], { type: 'text/csv' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${slug}-audit.csv`
+      a.download = `${orgPath}-audit.csv`
       a.click()
       URL.revokeObjectURL(url)
     } finally {

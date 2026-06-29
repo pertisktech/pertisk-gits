@@ -17,11 +17,11 @@ use crate::{
 pub fn deploy_key_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/deploy-keys",
+            "/organizations/{org_path}/repositories/{repo_slug}/deploy-keys",
             get(list_deploy_keys).post(create_deploy_key),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/deploy-keys/{key_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/deploy-keys/{key_id}",
             delete(delete_deploy_key),
         )
 }
@@ -39,11 +39,11 @@ struct DeployKeyResponse {
 async fn list_deploy_keys(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<DeployKeyResponse>>, ApiError> {
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let rows = sqlx::query_as::<_, RepositoryDeployKey>(
         r#"
@@ -75,15 +75,15 @@ async fn list_deploy_keys(
 async fn create_deploy_key(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreateDeployKeyRequest>,
 ) -> Result<(StatusCode, Json<DeployKeyResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let parsed = ssh_keys::parse_public_key(&body.public_key)
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
@@ -135,11 +135,11 @@ async fn create_deploy_key(
 async fn delete_deploy_key(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, key_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, key_id)): Path<(String, String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
     let (_org, repo, _path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let result = sqlx::query(
         r#"

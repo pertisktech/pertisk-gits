@@ -16,19 +16,19 @@ use pertisk_git::access;
 pub fn permissions_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/members",
+            "/organizations/{org_path}/members",
             post(add_organization_member),
         )
         .route(
-            "/organizations/{org_slug}/members/{user_id}",
+            "/organizations/{org_path}/members/{user_id}",
             patch(update_organization_member).delete(remove_organization_member),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/collaborators",
+            "/organizations/{org_path}/repositories/{repo_slug}/collaborators",
             get(list_repository_collaborators).post(add_repository_collaborator),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/collaborators/{user_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/collaborators/{user_id}",
             patch(update_repository_collaborator).delete(remove_repository_collaborator),
         )
 }
@@ -48,13 +48,13 @@ struct RepoCollaboratorResponse {
 async fn add_organization_member(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<AddOrganizationMemberRequest>,
 ) -> Result<(StatusCode, Json<OrgMemberResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let actor_role = ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
 
     let role = body.role.unwrap_or(OrgRole::Member);
@@ -116,10 +116,10 @@ async fn add_organization_member(
 async fn update_organization_member(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, target_user_id)): Path<(String, Uuid)>,
+    Path((org_path, target_user_id)): Path<(String, Uuid)>,
     Json(body): Json<UpdateOrganizationMemberRequest>,
 ) -> Result<Json<OrgMemberResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let actor_role = ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
 
     let target_role = get_org_member_role(&state.pool, org.id, target_user_id)
@@ -184,9 +184,9 @@ async fn update_organization_member(
 async fn remove_organization_member(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, target_user_id)): Path<(String, Uuid)>,
+    Path((org_path, target_user_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let actor_role = ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
 
     let target_role = get_org_member_role(&state.pool, org.id, target_user_id)
@@ -237,9 +237,9 @@ async fn remove_organization_member(
 async fn list_repository_collaborators(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<RepoCollaboratorResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
@@ -276,13 +276,13 @@ async fn list_repository_collaborators(
 async fn add_repository_collaborator(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<AddRepositoryCollaboratorRequest>,
 ) -> Result<(StatusCode, Json<RepoCollaboratorResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
@@ -322,10 +322,10 @@ async fn add_repository_collaborator(
 async fn update_repository_collaborator(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, target_user_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, target_user_id)): Path<(String, String, Uuid)>,
     Json(body): Json<UpdateRepositoryCollaboratorRequest>,
 ) -> Result<Json<RepoCollaboratorResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
@@ -358,9 +358,9 @@ async fn update_repository_collaborator(
 async fn remove_repository_collaborator(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, target_user_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, target_user_id)): Path<(String, String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 

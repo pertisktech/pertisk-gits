@@ -24,43 +24,43 @@ use crate::{
 pub fn collaboration_read_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/labels",
+            "/organizations/{org_path}/repositories/{repo_slug}/labels",
             get(list_labels),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/milestones",
+            "/organizations/{org_path}/repositories/{repo_slug}/milestones",
             get(list_milestones),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/issues",
+            "/organizations/{org_path}/repositories/{repo_slug}/issues",
             get(list_issues),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/issues/{issue_number}",
+            "/organizations/{org_path}/repositories/{repo_slug}/issues/{issue_number}",
             get(get_issue),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/issues/{issue_number}/comments",
+            "/organizations/{org_path}/repositories/{repo_slug}/issues/{issue_number}/comments",
             get(list_issue_comments),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls",
             get(list_pull_requests),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}",
             get(get_pull_request),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}/compare",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}/compare",
             get(get_pull_request_compare),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}/comments",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}/comments",
             get(list_pull_request_comments),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}/reviews",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}/reviews",
             get(list_pull_request_reviews),
         )
 }
@@ -68,43 +68,43 @@ pub fn collaboration_read_routes() -> Router<AppState> {
 pub fn collaboration_write_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/labels",
+            "/organizations/{org_path}/repositories/{repo_slug}/labels",
             post(create_label),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/milestones",
+            "/organizations/{org_path}/repositories/{repo_slug}/milestones",
             post(create_milestone),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/issues",
+            "/organizations/{org_path}/repositories/{repo_slug}/issues",
             post(create_issue),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/issues/{issue_number}",
+            "/organizations/{org_path}/repositories/{repo_slug}/issues/{issue_number}",
             patch(update_issue),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/issues/{issue_number}/comments",
+            "/organizations/{org_path}/repositories/{repo_slug}/issues/{issue_number}/comments",
             post(create_issue_comment),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls",
             post(create_pull_request),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}",
             patch(update_pull_request),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}/merge",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}/merge",
             post(merge_pull_request),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}/comments",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}/comments",
             post(create_pull_request_comment),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pulls/{pull_number}/reviews",
+            "/organizations/{org_path}/repositories/{repo_slug}/pulls/{pull_number}/reviews",
             post(create_pull_request_review),
         )
 }
@@ -351,9 +351,9 @@ async fn get_pull_by_number(
 async fn list_labels(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<Label>>, ApiError> {
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let labels = sqlx::query_as::<_, Label>(
         r#"
@@ -372,14 +372,14 @@ async fn list_labels(
 async fn create_label(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreateLabelRequest>,
 ) -> Result<(StatusCode, Json<Label>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let color = body.color.unwrap_or_else(|| "#6366f1".into());
 
@@ -404,9 +404,9 @@ async fn create_label(
 async fn list_milestones(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<Milestone>>, ApiError> {
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let milestones = sqlx::query_as::<_, Milestone>(
         r#"
@@ -425,14 +425,14 @@ async fn list_milestones(
 async fn create_milestone(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreateMilestoneRequest>,
 ) -> Result<(StatusCode, Json<Milestone>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let milestone = sqlx::query_as::<_, Milestone>(
         r#"
@@ -455,10 +455,10 @@ async fn create_milestone(
 async fn list_issues(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<IssueListQuery>,
 ) -> Result<Json<IssueListResponse>, ApiError> {
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let state_filter = query.state.as_deref().unwrap_or("open");
     let search = query.q.as_deref().unwrap_or("").trim();
@@ -544,9 +544,9 @@ async fn list_issues(
 async fn get_issue(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, issue_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, issue_number)): Path<(String, String, i32)>,
 ) -> Result<Json<IssueDetailResponse>, ApiError> {
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let issue = get_issue_by_number(&state.pool, repo.id, issue_number).await?;
     Ok(Json(build_issue_detail(&state.pool, issue).await?))
 }
@@ -554,14 +554,14 @@ async fn get_issue(
 async fn create_issue(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreateIssueRequest>,
 ) -> Result<(StatusCode, Json<IssueDetailResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let number = next_issue_number(&state.pool, repo.id).await?;
     let body_text = body.body.unwrap_or_default();
@@ -611,14 +611,14 @@ async fn create_issue(
 async fn update_issue(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, issue_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, issue_number)): Path<(String, String, i32)>,
     Json(body): Json<UpdateIssueRequest>,
 ) -> Result<Json<IssueDetailResponse>, ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let existing = get_issue_by_number(&state.pool, repo.id, issue_number).await?;
 
@@ -689,9 +689,9 @@ async fn update_issue(
 async fn list_issue_comments(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, issue_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, issue_number)): Path<(String, String, i32)>,
 ) -> Result<Json<Vec<IssueCommentResponse>>, ApiError> {
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let issue = get_issue_by_number(&state.pool, repo.id, issue_number).await?;
 
     let comments = sqlx::query_as::<_, IssueComment>(
@@ -719,14 +719,14 @@ async fn list_issue_comments(
 async fn create_issue_comment(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, issue_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, issue_number)): Path<(String, String, i32)>,
     Json(body): Json<CreateIssueCommentRequest>,
 ) -> Result<(StatusCode, Json<IssueCommentResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
     let issue = get_issue_by_number(&state.pool, repo.id, issue_number).await?;
 
     let comment = sqlx::query_as::<_, IssueComment>(
@@ -838,10 +838,10 @@ async fn fetch_review_summary(
 async fn list_pull_requests(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<PullRequestListQuery>,
 ) -> Result<Json<PullRequestListResponse>, ApiError> {
-    let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, repo_path) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let state_filter = query.state.as_deref().unwrap_or("open");
 
     let pulls = sqlx::query_as::<_, PullRequest>(
@@ -890,9 +890,9 @@ async fn list_pull_requests(
 async fn get_pull_request(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
 ) -> Result<Json<PullRequestDetailResponse>, ApiError> {
-    let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, repo_path) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
     Ok(Json(
         build_pull_detail(&state.pool, &repo_path, pull, true).await?,
@@ -902,9 +902,9 @@ async fn get_pull_request(
 async fn get_pull_request_compare(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
 ) -> Result<Json<CompareResult>, ApiError> {
-    let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, repo_path) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let compare = explorer::compare_branches(&repo_path, &pull.target_branch, &pull.source_branch)
@@ -917,7 +917,7 @@ async fn get_pull_request_compare(
 async fn create_pull_request(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreatePullRequestRequest>,
 ) -> Result<(StatusCode, Json<PullRequestDetailResponse>), ApiError> {
     body.validate()
@@ -927,8 +927,8 @@ async fn create_pull_request(
         return Err(DomainError::Validation("source and target branches must differ".into()).into());
     }
 
-    let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, repo_path) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let compare = explorer::compare_branches(&repo_path, &body.target_branch, &body.source_branch)
         .await
@@ -978,14 +978,14 @@ async fn create_pull_request(
 async fn update_pull_request(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
     Json(body): Json<UpdatePullRequestRequest>,
 ) -> Result<Json<PullRequestDetailResponse>, ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, repo_path) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
     let existing = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let title = body.title.unwrap_or(existing.title);
@@ -1030,11 +1030,11 @@ async fn update_pull_request(
 async fn merge_pull_request(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
     Json(body): Json<MergePullRequestRequest>,
 ) -> Result<Json<MergePullRequestResponse>, ApiError> {
-    let (repo, repo_path) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (repo, repo_path) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
     let existing = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     if existing.state != PullRequestState::Open {
@@ -1171,9 +1171,9 @@ async fn merge_pull_request(
 async fn list_pull_request_comments(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
 ) -> Result<Json<Vec<PullRequestCommentResponse>>, ApiError> {
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let comments = sqlx::query_as::<_, PullRequestComment>(
@@ -1201,14 +1201,14 @@ async fn list_pull_request_comments(
 async fn create_pull_request_comment(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
     Json(body): Json<CreatePullRequestCommentRequest>,
 ) -> Result<(StatusCode, Json<PullRequestCommentResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_read_repo(&state, &org_slug, &repo, Some(&auth)).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_read_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, Some(&auth)).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let comment = sqlx::query_as::<_, PullRequestComment>(
@@ -1239,9 +1239,9 @@ async fn create_pull_request_comment(
 async fn list_pull_request_reviews(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
 ) -> Result<Json<Vec<PullRequestReviewResponse>>, ApiError> {
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let reviews = sqlx::query_as::<_, PullRequestReview>(
@@ -1269,14 +1269,14 @@ async fn list_pull_request_reviews(
 async fn create_pull_request_review(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, pull_number)): Path<(String, String, i32)>,
+    Path((org_path, repo_slug, pull_number)): Path<(String, String, i32)>,
     Json(body): Json<CreatePullRequestReviewRequest>,
 ) -> Result<(StatusCode, Json<PullRequestReviewResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (repo, _) = load_repo_db(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_read_repo(&state, &org_slug, &repo, Some(&auth)).await?;
+    let (repo, _) = load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_read_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, Some(&auth)).await?;
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let review = if let Some(existing) = sqlx::query_as::<_, PullRequestReview>(

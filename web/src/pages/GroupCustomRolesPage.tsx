@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Shield, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CustomRolePermissions, OrganizationCustomRole } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { Checkbox, PrimaryButton, SecondaryButton, Select } from '../components/ui'
 
 const EMPTY_PERMISSIONS: CustomRolePermissions = {
@@ -72,7 +72,7 @@ function PermissionEditor({
 }
 
 export function GroupCustomRolesPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [name, setName] = useState('')
@@ -81,17 +81,17 @@ export function GroupCustomRolesPage() {
   const [editing, setEditing] = useState<OrganizationCustomRole | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const queryKey = ['custom-roles', slug]
+  const queryKey = ['custom-roles', orgPath]
 
   const { data: roles = [], isLoading } = useQuery({
     queryKey,
-    queryFn: () => api.listCustomRoles(token!, slug),
-    enabled: Boolean(token && slug),
+    queryFn: () => api.listCustomRoles(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const createRole = useMutation({
     mutationFn: () =>
-      api.createCustomRole(token!, slug, {
+      api.createCustomRole(token!, orgPath, {
         name: name.trim(),
         description: description.trim() || undefined,
         permissions,
@@ -108,7 +108,7 @@ export function GroupCustomRolesPage() {
 
   const updateRole = useMutation({
     mutationFn: () =>
-      api.updateCustomRole(token!, slug, editing!.slug, {
+      api.updateCustomRole(token!, orgPath, editing!.slug, {
         name: name.trim(),
         description: description.trim() || undefined,
         permissions,
@@ -125,7 +125,7 @@ export function GroupCustomRolesPage() {
   })
 
   const deleteRole = useMutation({
-    mutationFn: (roleSlug: string) => api.deleteCustomRole(token!, slug, roleSlug),
+    mutationFn: (roleSlug: string) => api.deleteCustomRole(token!, orgPath, roleSlug),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   })
 

@@ -13,7 +13,7 @@ use crate::{permissions, ApiError, AppState, AuthUser};
 
 pub fn branch_protection_read_routes() -> Router<AppState> {
     Router::new().route(
-        "/organizations/{org_slug}/repositories/{repo_slug}/branch-protection",
+        "/organizations/{org_path}/repositories/{repo_slug}/branch-protection",
         get(list_branch_protection_rules),
     )
 }
@@ -21,11 +21,11 @@ pub fn branch_protection_read_routes() -> Router<AppState> {
 pub fn branch_protection_write_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/branch-protection",
+            "/organizations/{org_path}/repositories/{repo_slug}/branch-protection",
             post(create_branch_protection_rule),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/branch-protection/{rule_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/branch-protection/{rule_id}",
             patch(update_branch_protection_rule).delete(delete_branch_protection_rule),
         )
 }
@@ -33,9 +33,9 @@ pub fn branch_protection_write_routes() -> Router<AppState> {
 async fn list_branch_protection_rules(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<BranchProtectionRule>>, ApiError> {
-    let (org, repo) = load_repo(&state.pool, &org_slug, &repo_slug).await?;
+    let (org, repo) = load_repo(&state.pool, &crate::org::org_path_from_param(&org_path), &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
     let rules = sqlx::query_as::<_, BranchProtectionRule>(
@@ -59,13 +59,13 @@ async fn list_branch_protection_rules(
 async fn create_branch_protection_rule(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CreateBranchProtectionRequest>,
 ) -> Result<(StatusCode, Json<BranchProtectionRule>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (org, repo) = load_repo(&state.pool, &org_slug, &repo_slug).await?;
+    let (org, repo) = load_repo(&state.pool, &crate::org::org_path_from_param(&org_path), &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
     let branch_pattern = body.branch_pattern.trim().to_string();
@@ -114,13 +114,13 @@ async fn create_branch_protection_rule(
 async fn update_branch_protection_rule(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, rule_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, rule_id)): Path<(String, String, Uuid)>,
     Json(body): Json<UpdateBranchProtectionRequest>,
 ) -> Result<Json<BranchProtectionRule>, ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let (org, repo) = load_repo(&state.pool, &org_slug, &repo_slug).await?;
+    let (org, repo) = load_repo(&state.pool, &crate::org::org_path_from_param(&org_path), &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
     let existing = fetch_rule(&state.pool, repo.id, rule_id).await?;
@@ -182,9 +182,9 @@ async fn update_branch_protection_rule(
 async fn delete_branch_protection_rule(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, rule_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, rule_id)): Path<(String, String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let (org, repo) = load_repo(&state.pool, &org_slug, &repo_slug).await?;
+    let (org, repo) = load_repo(&state.pool, &crate::org::org_path_from_param(&org_path), &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
     let deleted = sqlx::query(
@@ -413,7 +413,7 @@ async fn load_repo(
     repo_slug: &str,
 ) -> Result<(Organization, Repository), ApiError> {
     let org = sqlx::query_as::<_, Organization>(
-        "SELECT id, slug, name, description, created_at, updated_at FROM organizations WHERE slug = $1",
+        "SELECT id, slug, name, description, parent_id, full_path, created_at, updated_at FROM organizations WHERE full_path = $1",
     )
     .bind(org_slug)
     .fetch_optional(pool)

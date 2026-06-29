@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import type { Repository } from '../api/types'
+import { groupUrlPath } from '../lib/groupPath'
 
 export interface DashboardProject extends Repository {
   orgSlug: string
@@ -46,8 +47,8 @@ export function useAllProjects() {
 
   const repoQueries = useQueries({
     queries: groups.map((group) => ({
-      queryKey: ['repositories', group.slug],
-      queryFn: () => api.listRepositories(token!, group.slug),
+      queryKey: ['repositories', groupUrlPath(group)],
+      queryFn: () => api.listRepositories(token!, groupUrlPath(group)),
       enabled: Boolean(token),
     })),
   })
@@ -58,7 +59,7 @@ export function useAllProjects() {
       for (const repo of repoQueries[index]?.data ?? []) {
         items.push({
           ...repo,
-          orgSlug: group.slug,
+          orgSlug: groupUrlPath(group),
           orgName: group.name,
         })
       }

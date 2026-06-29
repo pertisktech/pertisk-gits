@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Bot, Loader2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { OrgMember } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { formatDateTime } from '../lib/collaboration'
 import { PrimaryButton, Select } from '../components/ui'
 
@@ -12,7 +12,7 @@ const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
 
 export function GroupMachineUsersPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token } = useAuth()
   const queryClient = useQueryClient()
 
@@ -23,17 +23,17 @@ export function GroupMachineUsersPage() {
   const [createdToken, setCreatedToken] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const queryKey = ['machine-users', slug]
+  const queryKey = ['machine-users', orgPath]
 
   const { data: machineUsers = [], isLoading } = useQuery({
     queryKey,
-    queryFn: () => api.listMachineUsers(token!, slug),
-    enabled: Boolean(token && slug),
+    queryFn: () => api.listMachineUsers(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const createUser = useMutation({
     mutationFn: () =>
-      api.createMachineUser(token!, slug, {
+      api.createMachineUser(token!, orgPath, {
         username: username.trim(),
         display_name: displayName.trim() || undefined,
         token_name: tokenName.trim(),

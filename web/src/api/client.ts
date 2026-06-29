@@ -66,6 +66,11 @@ import type {
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
+/** Nested group path as one URL segment (`a/b` → `a%2Fb`) for Axum `{org_path}` routes. */
+export function orgApiPath(path: string): string {
+  return encodeURIComponent(path.replace(/^\/+|\/+$/g, ''))
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -160,7 +165,7 @@ export const api = {
   },
 
   listMachineUsers: (token: string, orgSlug: string) =>
-    request<MachineUserSummary[]>(`/organizations/${orgSlug}/machine-users`, {}, token),
+    request<MachineUserSummary[]>(`/organizations/${orgApiPath(orgSlug)}/machine-users`, {}, token),
 
   createMachineUser: (
     token: string,
@@ -174,14 +179,14 @@ export const api = {
     },
   ) =>
     request<CreateMachineUserResponse>(
-      `/organizations/${orgSlug}/machine-users`,
+      `/organizations/${orgApiPath(orgSlug)}/machine-users`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
 
   listRepoGitOpsWebhooks: (token: string, orgSlug: string, repoSlug: string) =>
     request<GitOpsWebhookSummary[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/gitops-webhooks`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/gitops-webhooks`,
       {},
       token,
     ),
@@ -193,7 +198,7 @@ export const api = {
     payload: { name: string; url: string; provider?: string },
   ) =>
     request<GitOpsWebhookSummary>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/gitops-webhooks`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/gitops-webhooks`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -207,7 +212,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/gitops-webhooks/${webhookId}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/gitops-webhooks/${webhookId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -220,8 +225,11 @@ export const api = {
   listOrganizations: (token: string) =>
     request<Organization[]>('/organizations', {}, token),
 
+  listSubgroups: (token: string, orgPath: string) =>
+    request<Organization[]>(`/organizations/${orgApiPath(orgPath)}/subgroups`, {}, token),
+
   listOrganizationMembers: (token: string, orgSlug: string) =>
-    request<OrgMember[]>(`/organizations/${orgSlug}/members`, {}, token),
+    request<OrgMember[]>(`/organizations/${orgApiPath(orgSlug)}/members`, {}, token),
 
   addOrganizationMember: (
     token: string,
@@ -233,7 +241,7 @@ export const api = {
       custom_role_id?: string | null
     },
   ) =>
-    request<OrgMember>(`/organizations/${orgSlug}/members`, {
+    request<OrgMember>(`/organizations/${orgApiPath(orgSlug)}/members`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -244,7 +252,7 @@ export const api = {
     userId: string,
     payload: { role: 'owner' | 'admin' | 'member'; custom_role_id?: string | null },
   ) =>
-    request<OrgMember>(`/organizations/${orgSlug}/members/${userId}`, {
+    request<OrgMember>(`/organizations/${orgApiPath(orgSlug)}/members/${userId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }, token),
@@ -252,7 +260,7 @@ export const api = {
   removeOrganizationMember: async (token: string, orgSlug: string, userId: string) => {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/members/${userId}`, {
+    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/members/${userId}`, {
       method: 'DELETE',
       headers,
     })
@@ -264,7 +272,7 @@ export const api = {
   },
 
   listCustomRoles: (token: string, orgSlug: string) =>
-    request<OrganizationCustomRole[]>(`/organizations/${orgSlug}/custom-roles`, {}, token),
+    request<OrganizationCustomRole[]>(`/organizations/${orgApiPath(orgSlug)}/custom-roles`, {}, token),
 
   createCustomRole: (
     token: string,
@@ -276,7 +284,7 @@ export const api = {
       permissions: CustomRolePermissions
     },
   ) =>
-    request<OrganizationCustomRole>(`/organizations/${orgSlug}/custom-roles`, {
+    request<OrganizationCustomRole>(`/organizations/${orgApiPath(orgSlug)}/custom-roles`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -291,7 +299,7 @@ export const api = {
       permissions?: CustomRolePermissions
     },
   ) =>
-    request<OrganizationCustomRole>(`/organizations/${orgSlug}/custom-roles/${roleSlug}`, {
+    request<OrganizationCustomRole>(`/organizations/${orgApiPath(orgSlug)}/custom-roles/${roleSlug}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }, token),
@@ -299,7 +307,7 @@ export const api = {
   deleteCustomRole: async (token: string, orgSlug: string, roleSlug: string) => {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/custom-roles/${roleSlug}`, {
+    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/custom-roles/${roleSlug}`, {
       method: 'DELETE',
       headers,
     })
@@ -311,20 +319,20 @@ export const api = {
   },
 
   listTeams: (token: string, orgSlug: string) =>
-    request<TeamSummary[]>(`/organizations/${orgSlug}/teams`, {}, token),
+    request<TeamSummary[]>(`/organizations/${orgApiPath(orgSlug)}/teams`, {}, token),
 
   createTeam: (
     token: string,
     orgSlug: string,
     payload: { name: string; slug?: string; description?: string },
   ) =>
-    request<TeamDetail>(`/organizations/${orgSlug}/teams`, {
+    request<TeamDetail>(`/organizations/${orgApiPath(orgSlug)}/teams`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
 
   getTeam: (token: string, orgSlug: string, teamSlug: string) =>
-    request<TeamDetail>(`/organizations/${orgSlug}/teams/${teamSlug}`, {}, token),
+    request<TeamDetail>(`/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}`, {}, token),
 
   updateTeam: (
     token: string,
@@ -332,7 +340,7 @@ export const api = {
     teamSlug: string,
     payload: { name?: string; description?: string },
   ) =>
-    request<TeamDetail>(`/organizations/${orgSlug}/teams/${teamSlug}`, {
+    request<TeamDetail>(`/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }, token),
@@ -340,7 +348,7 @@ export const api = {
   deleteTeam: async (token: string, orgSlug: string, teamSlug: string) => {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/teams/${teamSlug}`, {
+    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}`, {
       method: 'DELETE',
       headers,
     })
@@ -352,7 +360,7 @@ export const api = {
   },
 
   listTeamMembers: (token: string, orgSlug: string, teamSlug: string) =>
-    request<TeamMemberEntry[]>(`/organizations/${orgSlug}/teams/${teamSlug}/members`, {}, token),
+    request<TeamMemberEntry[]>(`/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/members`, {}, token),
 
   addTeamMember: (
     token: string,
@@ -360,7 +368,7 @@ export const api = {
     teamSlug: string,
     payload: { username?: string; user_id?: string },
   ) =>
-    request<TeamMemberEntry>(`/organizations/${orgSlug}/teams/${teamSlug}/members`, {
+    request<TeamMemberEntry>(`/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/members`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -369,7 +377,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/teams/${teamSlug}/members/${userId}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/members/${userId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -381,7 +389,7 @@ export const api = {
 
   listTeamRepositories: (token: string, orgSlug: string, teamSlug: string) =>
     request<TeamRepositoryAccess[]>(
-      `/organizations/${orgSlug}/teams/${teamSlug}/repositories`,
+      `/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/repositories`,
       {},
       token,
     ),
@@ -393,7 +401,7 @@ export const api = {
     payload: { repo_slug: string; role: 'admin' | 'write' | 'read' },
   ) =>
     request<TeamRepositoryAccess>(
-      `/organizations/${orgSlug}/teams/${teamSlug}/repositories`,
+      `/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/repositories`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -407,7 +415,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/teams/${teamSlug}/repositories/${repoSlug}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/repositories/${repoSlug}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -419,14 +427,14 @@ export const api = {
 
   listRepositoryTeamAccess: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepositoryTeamAccess[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/team-access`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/team-access`,
       {},
       token,
     ),
 
   listRepositoryCollaborators: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepoCollaborator[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/collaborators`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/collaborators`,
       {},
       token,
     ),
@@ -438,7 +446,7 @@ export const api = {
     payload: { username?: string; user_id?: string; role?: 'admin' | 'write' | 'read' },
   ) =>
     request<RepoCollaborator>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/collaborators`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/collaborators`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -451,7 +459,7 @@ export const api = {
     payload: { role: 'admin' | 'write' | 'read' },
   ) =>
     request<RepoCollaborator>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/collaborators/${userId}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/collaborators/${userId}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,
     ),
@@ -465,7 +473,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/collaborators/${userId}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/collaborators/${userId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -477,7 +485,7 @@ export const api = {
 
   listBranchProtectionRules: (token: string, orgSlug: string, repoSlug: string) =>
     request<BranchProtectionRule[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branch-protection`,
       {},
       token,
     ),
@@ -496,7 +504,7 @@ export const api = {
     },
   ) =>
     request<BranchProtectionRule>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branch-protection`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -516,7 +524,7 @@ export const api = {
     },
   ) =>
     request<BranchProtectionRule>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection/${ruleId}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branch-protection/${ruleId}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,
     ),
@@ -530,7 +538,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/branch-protection/${ruleId}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branch-protection/${ruleId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -542,7 +550,7 @@ export const api = {
 
   listDeployKeys: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepositoryDeployKey[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/deploy-keys`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/deploy-keys`,
       {},
       token,
     ),
@@ -554,7 +562,7 @@ export const api = {
     payload: { title: string; public_key: string; read_only?: boolean },
   ) =>
     request<RepositoryDeployKey>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/deploy-keys`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/deploy-keys`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -563,7 +571,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/deploy-keys/${keyId}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/deploy-keys/${keyId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -575,7 +583,7 @@ export const api = {
 
   createOrganization: (
     token: string,
-    payload: { name: string; slug: string; description?: string },
+    payload: { name: string; slug: string; description?: string; parent_path?: string },
   ) =>
     request<Organization>('/organizations', {
       method: 'POST',
@@ -587,26 +595,26 @@ export const api = {
     orgSlug: string,
     payload: { name?: string; slug?: string; description?: string },
   ) =>
-    request<Organization>(`/organizations/${orgSlug}`, {
+    request<Organization>(`/organizations/${orgApiPath(orgSlug)}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }, token),
 
   listRepositories: (token: string, orgSlug: string) =>
-    request<Repository[]>(`/organizations/${orgSlug}/repositories`, {}, token),
+    request<Repository[]>(`/organizations/${orgApiPath(orgSlug)}/repositories`, {}, token),
 
   createRepository: (
     token: string,
     orgSlug: string,
     payload: { name: string; slug: string; description?: string; visibility?: 'public' | 'private' },
   ) =>
-    request<Repository>(`/organizations/${orgSlug}/repositories`, {
+    request<Repository>(`/organizations/${orgApiPath(orgSlug)}/repositories`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
 
   getRepository: (orgSlug: string, repoSlug: string, token?: string | null) =>
-    request<RepositoryDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}`, {}, token),
+    request<RepositoryDetail>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}`, {}, token),
 
   updateRepository: (
     token: string,
@@ -619,14 +627,14 @@ export const api = {
       default_branch?: string
     },
   ) =>
-    request<RepositoryDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}`, {
+    request<RepositoryDetail>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }, token),
 
   getRepoBrowser: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<{ browser: RepoBrowser }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/browser`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/browser`,
       {},
       token,
     ),
@@ -641,7 +649,7 @@ export const api = {
     if (params.path) search.set('path', params.path)
     if (params.ref_kind) search.set('ref_kind', params.ref_kind)
     return request<{ entries: TreeEntry[]; path: string; ref: string }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/tree?${search}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/tree?${search}`,
       {},
       token,
     )
@@ -656,7 +664,7 @@ export const api = {
     const search = new URLSearchParams({ ref: params.ref, path: params.path })
     if (params.ref_kind) search.set('ref_kind', params.ref_kind)
     return request<{ path: string; ref: string; content: string; is_binary: boolean }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/blob?${search}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/blob?${search}`,
       {},
       token,
     )
@@ -673,7 +681,7 @@ export const api = {
     },
   ) =>
     request<{ commit_sha: string; short_sha: string }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/contents`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/contents`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -685,7 +693,7 @@ export const api = {
   ) => {
     const search = new URLSearchParams({ ref: params.ref, path: params.path })
     if (params.ref_kind) search.set('ref_kind', params.ref_kind)
-    return `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/raw?${search}`
+    return `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/raw?${search}`
   },
 
   repoArchiveUrl: (
@@ -695,7 +703,7 @@ export const api = {
   ) => {
     const search = new URLSearchParams({ ref: params.ref })
     if (params.ref_kind) search.set('ref_kind', params.ref_kind)
-    return `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/archive?${search}`
+    return `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/archive?${search}`
   },
 
   getRepoCommits: (
@@ -708,7 +716,7 @@ export const api = {
     if (params.limit) search.set('limit', String(params.limit))
     if (params.ref_kind) search.set('ref_kind', params.ref_kind)
     return request<{ commits: CommitInfo[]; ref: string }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/commits?${search}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/commits?${search}`,
       {},
       token,
     )
@@ -716,22 +724,22 @@ export const api = {
 
   getRepoCommit: (orgSlug: string, repoSlug: string, commitSha: string, token?: string | null) =>
     request<{ commit: CommitDetail }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/commits/${commitSha}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/commits/${commitSha}`,
       {},
       token,
     ),
 
   listLabels: (orgSlug: string, repoSlug: string, token?: string | null) =>
-    request<Label[]>(`/organizations/${orgSlug}/repositories/${repoSlug}/labels`, {}, token),
+    request<Label[]>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/labels`, {}, token),
 
   createLabel: (token: string, orgSlug: string, repoSlug: string, payload: { name: string; color?: string; description?: string }) =>
-    request<Label>(`/organizations/${orgSlug}/repositories/${repoSlug}/labels`, {
+    request<Label>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/labels`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
 
   listMilestones: (orgSlug: string, repoSlug: string, token?: string | null) =>
-    request<Milestone[]>(`/organizations/${orgSlug}/repositories/${repoSlug}/milestones`, {}, token),
+    request<Milestone[]>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/milestones`, {}, token),
 
   createMilestone: (
     token: string,
@@ -739,7 +747,7 @@ export const api = {
     repoSlug: string,
     payload: { title: string; description?: string; due_on?: string },
   ) =>
-    request<Milestone>(`/organizations/${orgSlug}/repositories/${repoSlug}/milestones`, {
+    request<Milestone>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/milestones`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -756,7 +764,7 @@ export const api = {
     if (params?.q) search.set('q', params.q)
     const qs = search.toString()
     return request<{ issues: IssueDetail[]; open_count: number; closed_count: number }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/issues${qs ? `?${qs}` : ''}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/issues${qs ? `?${qs}` : ''}`,
       {},
       token,
     )
@@ -764,7 +772,7 @@ export const api = {
 
   getIssue: (orgSlug: string, repoSlug: string, issueNumber: number, token?: string | null) =>
     request<IssueDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/issues/${issueNumber}`,
       {},
       token,
     ),
@@ -781,7 +789,7 @@ export const api = {
       label_ids?: string[]
     },
   ) =>
-    request<IssueDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/issues`, {
+    request<IssueDetail>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/issues`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -800,35 +808,35 @@ export const api = {
       label_ids?: string[]
     },
   ) =>
-    request<IssueDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}`, {
+    request<IssueDetail>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/issues/${issueNumber}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }, token),
 
   listIssueComments: (orgSlug: string, repoSlug: string, issueNumber: number, token?: string | null) =>
     request<IssueCommentDetail[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}/comments`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/issues/${issueNumber}/comments`,
       {},
       token,
     ),
 
   createIssueComment: (token: string, orgSlug: string, repoSlug: string, issueNumber: number, body: string) =>
     request<IssueCommentDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/issues/${issueNumber}/comments`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/issues/${issueNumber}/comments`,
       { method: 'POST', body: JSON.stringify({ body }) },
       token,
     ),
 
   listWikiPages: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<{ pages: WikiPageSummary[] }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/wiki/pages`,
       {},
       token,
     ),
 
   getWikiPage: (orgSlug: string, repoSlug: string, pageSlug: string, token?: string | null) =>
     request<WikiPageDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
       {},
       token,
     ),
@@ -839,7 +847,7 @@ export const api = {
     repoSlug: string,
     payload: { title: string; slug?: string; body?: string; parent_slug?: string | null; position?: number },
   ) =>
-    request<WikiPageDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages`, {
+    request<WikiPageDetail>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/wiki/pages`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -852,21 +860,21 @@ export const api = {
     payload: { title?: string; body?: string; parent_slug?: string | null; position?: number },
   ) =>
     request<WikiPageDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,
     ),
 
   deleteWikiPage: (token: string, orgSlug: string, repoSlug: string, pageSlug: string) =>
     request<void>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}`,
       { method: 'DELETE' },
       token,
     ),
 
   listWikiRevisions: (orgSlug: string, repoSlug: string, pageSlug: string, token?: string | null) =>
     request<{ revisions: WikiRevisionSummary[] }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}/revisions`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}/revisions`,
       {},
       token,
     ),
@@ -879,7 +887,7 @@ export const api = {
     token?: string | null,
   ) =>
     request<WikiRevisionDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}/revisions/${revisionId}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/wiki/pages/${encodeURIComponent(pageSlug)}/revisions/${revisionId}`,
       {},
       token,
     ),
@@ -898,7 +906,7 @@ export const api = {
   ) => {
     const search = new URLSearchParams({ q: query, limit: String(limit) })
     return request<CodeSearchResponse>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/search/code?${search}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/search/code?${search}`,
       {},
       token,
     )
@@ -906,7 +914,7 @@ export const api = {
 
   getRepoSearchStatus: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<CodeSearchStatus>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/search/status`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/search/status`,
       {},
       token,
     ),
@@ -921,7 +929,7 @@ export const api = {
     if (params?.state) search.set('state', params.state)
     const qs = search.toString()
     return request<{ pull_requests: PullRequestDetail[]; open_count: number; closed_count: number }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls${qs ? `?${qs}` : ''}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls${qs ? `?${qs}` : ''}`,
       {},
       token,
     )
@@ -929,7 +937,7 @@ export const api = {
 
   getPullRequest: (orgSlug: string, repoSlug: string, pullNumber: number, token?: string | null) =>
     request<PullRequestDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}`,
       {},
       token,
     ),
@@ -940,7 +948,7 @@ export const api = {
     repoSlug: string,
     payload: { title: string; body?: string; source_branch: string; target_branch: string },
   ) =>
-    request<PullRequestDetail>(`/organizations/${orgSlug}/repositories/${repoSlug}/pulls`, {
+    request<PullRequestDetail>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -957,7 +965,7 @@ export const api = {
     },
   ) =>
     request<PullRequestDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,
     ),
@@ -970,14 +978,14 @@ export const api = {
     payload?: { merge_strategy?: 'merge' | 'squash' | 'rebase' },
   ) =>
     request<{ merge_commit_sha: string; pull_request: PullRequestDetail['pull_request'] }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/merge`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}/merge`,
       { method: 'POST', body: JSON.stringify(payload ?? {}) },
       token,
     ),
 
   listPullRequestComments: (orgSlug: string, repoSlug: string, pullNumber: number, token?: string | null) =>
     request<PullRequestCommentDetail[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
       {},
       token,
     ),
@@ -990,14 +998,14 @@ export const api = {
     payload: { body: string; path?: string; line?: number },
   ) =>
     request<PullRequestCommentDetail>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}/comments`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
 
   listPullRequestReviews: (orgSlug: string, repoSlug: string, pullNumber: number, token?: string | null) =>
     request<PullRequestReviewDetail[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/reviews`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}/reviews`,
       {},
       token,
     ),
@@ -1010,21 +1018,21 @@ export const api = {
     payload: { state: 'approved' | 'changes_requested' | 'commented'; body?: string },
   ) =>
     request<{ review: PullRequestReview; reviewer: User }>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pulls/${pullNumber}/reviews`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}/reviews`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
 
   listPipelineRuns: (token: string, orgSlug: string, repoSlug: string) =>
     request<PipelineRun[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines`,
       {},
       token,
     ),
 
   getPipelineRun: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
     request<PipelineRun>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}`,
       {},
       token,
     ),
@@ -1038,7 +1046,7 @@ export const api = {
     filename: string,
   ) => {
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/artifacts/${artifactId}/download`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/artifacts/${artifactId}/download`,
       { headers: { Authorization: `Bearer ${token}` } },
     )
     if (!response.ok) {
@@ -1066,7 +1074,7 @@ export const api = {
     if (refKind) search.set('ref_kind', refKind)
     const qs = search.toString()
     return request<PipelineConfigPreview>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/config${qs ? `?${qs}` : ''}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/config${qs ? `?${qs}` : ''}`,
       {},
       token,
     )
@@ -1079,7 +1087,7 @@ export const api = {
     ref?: string,
   ) =>
     request<PipelineMigrateResponse>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/migrate${
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/migrate${
         ref ? `?ref=${encodeURIComponent(ref)}` : ''
       }`,
       {},
@@ -1098,7 +1106,7 @@ export const api = {
     },
   ) =>
     request<PipelineRun>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/trigger`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/trigger`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -1111,7 +1119,7 @@ export const api = {
     scope: 'all' | 'failed' = 'all',
   ) =>
     request<PipelineRun>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/rerun`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/rerun`,
       {
         method: 'POST',
         body: JSON.stringify(scope === 'failed' ? { scope: 'failed' } : {}),
@@ -1121,7 +1129,7 @@ export const api = {
 
   cancelPipeline: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
     request<PipelineRun>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/cancel`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/cancel`,
       { method: 'POST' },
       token,
     ),
@@ -1135,7 +1143,7 @@ export const api = {
     stepName?: string,
   ) =>
     request<PipelineRun>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/jobs/${jobId}/cancel-step`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/jobs/${jobId}/cancel-step`,
       {
         method: 'POST',
         body: JSON.stringify(stepName ? { step_name: stepName } : {}),
@@ -1151,7 +1159,7 @@ export const api = {
     jobId: string,
   ) =>
     request<PipelineRun>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}/jobs/${jobId}/play`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/jobs/${jobId}/play`,
       { method: 'POST' },
       token,
     ),
@@ -1163,7 +1171,7 @@ export const api = {
     runId: string,
   ) => {
     await request<void>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/pipelines/${runId}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}`,
       { method: 'DELETE' },
       token,
     )
@@ -1176,7 +1184,7 @@ export const api = {
     token?: string | null,
   ) =>
     request<CommitStatus[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/commits/${commitSha}/statuses`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/commits/${commitSha}/statuses`,
       {},
       token,
     ),
@@ -1210,11 +1218,11 @@ export const api = {
     }, token),
 
   listContainerImages: (token: string, orgSlug: string) =>
-    request<ContainerImageSummary[]>(`/organizations/${orgSlug}/registry/images`, {}, token),
+    request<ContainerImageSummary[]>(`/organizations/${orgApiPath(orgSlug)}/registry/images`, {}, token),
 
   getContainerImage: (token: string, orgSlug: string, imageName: string) =>
     request<ContainerImageDetail>(
-      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}`,
       {},
       token,
     ),
@@ -1226,14 +1234,14 @@ export const api = {
     payload: { description?: string; linked_repository_id?: string | null },
   ) =>
     request<ContainerImageDetail>(
-      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,
     ),
 
   deleteContainerImage: async (token: string, orgSlug: string, imageName: string) => {
     await request<void>(
-      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}`,
       { method: 'DELETE' },
       token,
     )
@@ -1246,7 +1254,7 @@ export const api = {
     tagName: string,
   ) => {
     await request<void>(
-      `/organizations/${orgSlug}/registry/images/${encodeURIComponent(imageName)}/tags/${encodeURIComponent(tagName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}/tags/${encodeURIComponent(tagName)}`,
       { method: 'DELETE' },
       token,
     )
@@ -1254,7 +1262,7 @@ export const api = {
 
   runRegistryGc: (token: string, orgSlug: string) =>
     request<RegistryGcReport>(
-      `/organizations/${orgSlug}/registry/gc`,
+      `/organizations/${orgApiPath(orgSlug)}/registry/gc`,
       { method: 'POST', body: JSON.stringify({}) },
       token,
     ),
@@ -1352,7 +1360,7 @@ export const api = {
     if (params?.offset) search.set('offset', String(params.offset))
     const qs = search.toString()
     return request<import('./types').AuditListResponse>(
-      `/organizations/${orgSlug}/audit-events${qs ? `?${qs}` : ''}`,
+      `/organizations/${orgApiPath(orgSlug)}/audit-events${qs ? `?${qs}` : ''}`,
       {},
       token,
     )
@@ -1371,7 +1379,7 @@ export const api = {
     const headers = new Headers()
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/audit-events/export${qs ? `?${qs}` : ''}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/audit-events/export${qs ? `?${qs}` : ''}`,
       { headers },
     )
     if (!response.ok) throw new Error('Export failed')
@@ -1379,7 +1387,7 @@ export const api = {
   },
 
   listOrgSecrets: (token: string, orgSlug: string) =>
-    request<import('./types').CiSecret[]>(`/organizations/${orgSlug}/secrets`, {}, token),
+    request<import('./types').CiSecret[]>(`/organizations/${orgApiPath(orgSlug)}/secrets`, {}, token),
 
   createOrgSecret: (
     token: string,
@@ -1391,7 +1399,7 @@ export const api = {
       value: string
     },
   ) =>
-    request<import('./types').CiSecret>(`/organizations/${orgSlug}/secrets`, {
+    request<import('./types').CiSecret>(`/organizations/${orgApiPath(orgSlug)}/secrets`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -1406,7 +1414,7 @@ export const api = {
       value?: string
     },
   ) =>
-    request<import('./types').CiSecret>(`/organizations/${orgSlug}/secrets/${secretId}`, {
+    request<import('./types').CiSecret>(`/organizations/${orgApiPath(orgSlug)}/secrets/${secretId}`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }, token),
@@ -1414,7 +1422,7 @@ export const api = {
   deleteOrgSecret: async (token: string, orgSlug: string, secretId: string) => {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgSlug}/secrets/${secretId}`, {
+    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/secrets/${secretId}`, {
       method: 'DELETE',
       headers,
     })
@@ -1427,7 +1435,7 @@ export const api = {
 
   listRepoSecrets: (token: string, orgSlug: string, repoSlug: string) =>
     request<import('./types').CiSecret[]>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/secrets`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/secrets`,
       {},
       token,
     ),
@@ -1444,7 +1452,7 @@ export const api = {
     },
   ) =>
     request<import('./types').CiSecret>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/secrets`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/secrets`,
       {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -1464,7 +1472,7 @@ export const api = {
     },
   ) =>
     request<import('./types').CiSecret>(
-      `/organizations/${orgSlug}/repositories/${repoSlug}/secrets/${secretId}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/secrets/${secretId}`,
       {
         method: 'PATCH',
         body: JSON.stringify(payload),
@@ -1481,7 +1489,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/repositories/${repoSlug}/secrets/${secretId}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/secrets/${secretId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -1624,7 +1632,7 @@ export const api = {
   },
 
   listImportCredentials: (token: string, orgSlug: string) =>
-    request<ImportCredential[]>(`/organizations/${orgSlug}/import/credentials`, {}, token),
+    request<ImportCredential[]>(`/organizations/${orgApiPath(orgSlug)}/import/credentials`, {}, token),
 
   saveImportCredential: (
     token: string,
@@ -1636,7 +1644,7 @@ export const api = {
       label?: string
     },
   ) =>
-    request<ImportCredential>(`/organizations/${orgSlug}/import/credentials`, {
+    request<ImportCredential>(`/organizations/${orgApiPath(orgSlug)}/import/credentials`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
@@ -1645,7 +1653,7 @@ export const api = {
     const headers = new Headers({ 'Content-Type': 'application/json' })
     headers.set('Authorization', `Bearer ${token}`)
     const response = await fetch(
-      `${API_BASE}/organizations/${orgSlug}/import/credentials/${credentialId}`,
+      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/import/credentials/${credentialId}`,
       { method: 'DELETE', headers },
     )
     if (!response.ok) {
@@ -1667,7 +1675,7 @@ export const api = {
     },
   ) =>
     request<{ account: string; namespaces: RemoteNamespace[]; repos: RemoteRepo[] }>(
-      `/organizations/${orgSlug}/import/discover`,
+      `/organizations/${orgApiPath(orgSlug)}/import/discover`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,
     ),
@@ -1691,14 +1699,14 @@ export const api = {
       }>
     },
   ) =>
-    request<ImportJobDetail>(`/organizations/${orgSlug}/import/jobs`, {
+    request<ImportJobDetail>(`/organizations/${orgApiPath(orgSlug)}/import/jobs`, {
       method: 'POST',
       body: JSON.stringify(payload),
     }, token),
 
   listImportJobs: (token: string, orgSlug: string) =>
-    request<ImportJob[]>(`/organizations/${orgSlug}/import/jobs`, {}, token),
+    request<ImportJob[]>(`/organizations/${orgApiPath(orgSlug)}/import/jobs`, {}, token),
 
   getImportJob: (token: string, orgSlug: string, jobId: string) =>
-    request<ImportJobDetail>(`/organizations/${orgSlug}/import/jobs/${jobId}`, {}, token),
+    request<ImportJobDetail>(`/organizations/${orgApiPath(orgSlug)}/import/jobs/${jobId}`, {}, token),
 }

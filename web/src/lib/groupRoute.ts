@@ -1,49 +1,86 @@
 export type GroupTab = 'repositories' | 'registry' | 'members' | 'teams' | 'roles' | 'machine-users' | 'audit' | 'secrets' | 'import' | 'settings'
 
-const GROUP_PATH = /^\/groups\/([^/]+)(?:\/(.*))?$/
+const GROUP_PATH = /^\/groups\/([^?#]+)/
 
-/** Static routes under /groups that are not organization slugs. */
+/** Static routes under /groups that are not organization paths. */
 export const RESERVED_GROUP_SLUGS = new Set(['new'])
+
+const TAB_SUFFIXES: { suffix: string; tab: GroupTab }[] = [
+  { suffix: '/registry', tab: 'registry' },
+  { suffix: '/members', tab: 'members' },
+  { suffix: '/teams', tab: 'teams' },
+  { suffix: '/roles', tab: 'roles' },
+  { suffix: '/machine-users', tab: 'machine-users' },
+  { suffix: '/audit', tab: 'audit' },
+  { suffix: '/secrets', tab: 'secrets' },
+  { suffix: '/import', tab: 'import' },
+  { suffix: '/settings', tab: 'settings' },
+]
+
+const REGISTRY_IMAGE_PATH = /^\/groups\/(.+?)\/registry\/([^/]+)\/?$/
+
+export function parseRegistryImageRoute(pathname: string) {
+  const match = pathname.match(REGISTRY_IMAGE_PATH)
+  if (!match) return null
+  return {
+    orgPath: match[1].replace(/\/$/, ''),
+    imageName: decodeURIComponent(match[2]),
+  }
+}
 
 export function parseGroupRoute(pathname: string) {
   const match = pathname.match(GROUP_PATH)
   if (!match) return null
 
-  const orgSlug = match[1]
-  if (RESERVED_GROUP_SLUGS.has(orgSlug)) return null
-  const rest = match[2] ?? ''
+  let rest = match[1]
+  if (RESERVED_GROUP_SLUGS.has(rest.split('/')[0])) return null
 
-  if (/^projects\/[^/]+/.test(rest) && rest !== 'projects/new') {
+  // Project URLs are handled by projectRoute.ts
+  if (rest.includes('/projects/')) return null
+
+  const registryImage = rest.match(/^(.+)\/registry\/([^/]+)$/)
+  if (registryImage) {
+    const orgPath = registryImage[1].replace(/\/$/, '')
+    return { orgPath, orgSlug: orgPath, tab: 'registry' as GroupTab, basePath: `/groups/${orgPath}` }
+  }
+
+  let tab: GroupTab = 'repositories'
+  for (const { suffix, tab: tabName } of TAB_SUFFIXES) {
+    if (rest === suffix.slice(1) || rest.endsWith(suffix)) {
+      tab = tabName
+      if (rest.endsWith(suffix)) {
+        rest = rest.slice(0, -suffix.length).replace(/\/$/, '')
+      } else {
+        rest = ''
+      }
+      break
+    }
+  }
+
+  if (rest.endsWith('/projects/new')) {
     return null
   }
 
-  const basePath = `/groups/${orgSlug}`
+  const orgPath = rest.replace(/\/$/, '')
+  if (!orgPath && tab === 'repositories') return null
 
-  let tab: GroupTab = 'repositories'
-  if (rest === 'registry' || rest.startsWith('registry/')) {
-    tab = 'registry'
-  } else if (rest === 'members') {
-    tab = 'members'
-  } else if (rest === 'teams') {
-    tab = 'teams'
-  } else if (rest === 'roles') {
-    tab = 'roles'
-  } else if (rest === 'machine-users') {
-    tab = 'machine-users'
-  } else if (rest === 'audit') {
-    tab = 'audit'
-  } else if (rest === 'secrets') {
-    tab = 'secrets'
-  } else if (rest === 'import') {
-    tab = 'import'
-  } else if (rest === 'settings') {
-    tab = 'settings'
-  }
+  const basePath = `/groups/${orgPath}`
 
-  return { orgSlug, tab, basePath }
+  return { orgPath, orgSlug: orgPath, tab, basePath }
 }
 
 export function groupTabPath(basePath: string, tab: GroupTab) {
   if (tab === 'repositories') return basePath
   return `${basePath}/${tab}`
+}
+
+export function groupBreadcrumbItems(fullPath: string): { label: string; to?: string }[] {
+  const items: { label: string; to?: string }[] = [{ label: 'Groups', to: '/groups' }]
+  const segments = fullPath.split('/').filter(Boolean)
+  let path = ''
+  for (const segment of segments) {
+    path = path ? `${path}/${segment}` : segment
+    items.push({ label: segment, to: `/groups/${path}` })
+  }
+  return items
 }

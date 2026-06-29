@@ -1,17 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Trash2, UserPlus, UsersRound } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { TeamSummary, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { UserPicker } from '../components/UserPicker'
 import { PrimaryButton, SecondaryButton, Select } from '../components/ui'
 
 type RepoRole = 'admin' | 'write' | 'read'
 
 export function GroupTeamsPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [teamName, setTeamName] = useState('')
@@ -22,17 +22,17 @@ export function GroupTeamsPage() {
   const [repoRole, setRepoRole] = useState<RepoRole>('read')
   const [error, setError] = useState<string | null>(null)
 
-  const teamsKey = ['teams', slug]
+  const teamsKey = ['teams', orgPath]
   const { data: teams = [], isLoading } = useQuery({
     queryKey: teamsKey,
-    queryFn: () => api.listTeams(token!, slug),
-    enabled: Boolean(token && slug),
+    queryFn: () => api.listTeams(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const { data: repositories = [] } = useQuery({
-    queryKey: ['repositories', slug],
-    queryFn: () => api.listRepositories(token!, slug),
-    enabled: Boolean(token && slug),
+    queryKey: ['repositories', orgPath],
+    queryFn: () => api.listRepositories(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const selectedTeam = useMemo(
@@ -40,23 +40,23 @@ export function GroupTeamsPage() {
     [teams, selectedTeamSlug],
   )
 
-  const membersKey = ['team-members', slug, selectedTeamSlug]
+  const membersKey = ['team-members', orgPath, selectedTeamSlug]
   const { data: teamMembers = [] } = useQuery({
     queryKey: membersKey,
-    queryFn: () => api.listTeamMembers(token!, slug, selectedTeamSlug!),
-    enabled: Boolean(token && slug && selectedTeamSlug),
+    queryFn: () => api.listTeamMembers(token!, orgPath, selectedTeamSlug!),
+    enabled: Boolean(token && orgPath && selectedTeamSlug),
   })
 
-  const reposKey = ['team-repos', slug, selectedTeamSlug]
+  const reposKey = ['team-repos', orgPath, selectedTeamSlug]
   const { data: teamRepos = [] } = useQuery({
     queryKey: reposKey,
-    queryFn: () => api.listTeamRepositories(token!, slug, selectedTeamSlug!),
-    enabled: Boolean(token && slug && selectedTeamSlug),
+    queryFn: () => api.listTeamRepositories(token!, orgPath, selectedTeamSlug!),
+    enabled: Boolean(token && orgPath && selectedTeamSlug),
   })
 
   const createTeam = useMutation({
     mutationFn: () =>
-      api.createTeam(token!, slug, {
+      api.createTeam(token!, orgPath, {
         name: teamName.trim(),
         description: teamDescription.trim() || undefined,
       }),
@@ -71,7 +71,7 @@ export function GroupTeamsPage() {
   })
 
   const deleteTeam = useMutation({
-    mutationFn: (teamSlug: string) => api.deleteTeam(token!, slug, teamSlug),
+    mutationFn: (teamSlug: string) => api.deleteTeam(token!, orgPath, teamSlug),
     onSuccess: (_data, teamSlug) => {
       queryClient.invalidateQueries({ queryKey: teamsKey })
       if (selectedTeamSlug === teamSlug) setSelectedTeamSlug(null)
@@ -80,7 +80,7 @@ export function GroupTeamsPage() {
 
   const addMember = useMutation({
     mutationFn: () =>
-      api.addTeamMember(token!, slug, selectedTeamSlug!, { user_id: selectedUser!.id }),
+      api.addTeamMember(token!, orgPath, selectedTeamSlug!, { user_id: selectedUser!.id }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: membersKey })
       queryClient.invalidateQueries({ queryKey: teamsKey })
@@ -91,7 +91,7 @@ export function GroupTeamsPage() {
   })
 
   const removeMember = useMutation({
-    mutationFn: (userId: string) => api.removeTeamMember(token!, slug, selectedTeamSlug!, userId),
+    mutationFn: (userId: string) => api.removeTeamMember(token!, orgPath, selectedTeamSlug!, userId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: membersKey })
       queryClient.invalidateQueries({ queryKey: teamsKey })
@@ -100,7 +100,7 @@ export function GroupTeamsPage() {
 
   const setRepoAccess = useMutation({
     mutationFn: () =>
-      api.setTeamRepositoryAccess(token!, slug, selectedTeamSlug!, {
+      api.setTeamRepositoryAccess(token!, orgPath, selectedTeamSlug!, {
         repo_slug: repoSlug,
         role: repoRole,
       }),
@@ -116,7 +116,7 @@ export function GroupTeamsPage() {
 
   const removeRepoAccess = useMutation({
     mutationFn: (targetRepoSlug: string) =>
-      api.removeTeamRepositoryAccess(token!, slug, selectedTeamSlug!, targetRepoSlug),
+      api.removeTeamRepositoryAccess(token!, orgPath, selectedTeamSlug!, targetRepoSlug),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: reposKey })
       queryClient.invalidateQueries({ queryKey: teamsKey })

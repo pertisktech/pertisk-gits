@@ -16,7 +16,7 @@ use crate::{
 
 pub fn contents_routes() -> Router<AppState> {
     Router::new().route(
-        "/organizations/{org_slug}/repositories/{repo_slug}/contents",
+        "/organizations/{org_path}/repositories/{repo_slug}/contents",
         post(commit_contents),
     )
 }
@@ -43,7 +43,7 @@ struct CommitContentsResponse {
 async fn commit_contents(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<CommitContentsRequest>,
 ) -> Result<(StatusCode, Json<CommitContentsResponse>), ApiError> {
     if body.message.trim().is_empty() {
@@ -55,8 +55,8 @@ async fn commit_contents(
     }
 
     let (_org, repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let branch = body.branch.trim();
     if branch.is_empty() {

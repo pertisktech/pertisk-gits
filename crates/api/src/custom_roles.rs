@@ -14,11 +14,11 @@ use crate::{find_org_for_member, permissions, ApiError, AppState, AuthUser};
 pub fn custom_role_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/custom-roles",
+            "/organizations/{org_path}/custom-roles",
             get(list_custom_roles).post(create_custom_role),
         )
         .route(
-            "/organizations/{org_slug}/custom-roles/{role_slug}",
+            "/organizations/{org_path}/custom-roles/{role_slug}",
             patch(update_custom_role).delete(delete_custom_role),
         )
 }
@@ -37,9 +37,9 @@ struct CustomRoleResponse {
 async fn list_custom_roles(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<CustomRoleResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, OrganizationCustomRole>(
         r#"
@@ -60,13 +60,13 @@ async fn list_custom_roles(
 async fn create_custom_role(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<CreateCustomRoleRequest>,
 ) -> Result<(StatusCode, Json<CustomRoleResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_custom_roles(&state.pool, org.id, auth.user_id).await?;
 
     let slug = body
@@ -99,7 +99,7 @@ async fn create_custom_role(
 async fn update_custom_role(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, role_slug)): Path<(String, String)>,
+    Path((org_path, role_slug)): Path<(String, String)>,
     Json(body): Json<UpdateCustomRoleRequest>,
 ) -> Result<Json<CustomRoleResponse>, ApiError> {
     body.validate()
@@ -109,7 +109,7 @@ async fn update_custom_role(
         return Err(DomainError::Validation("no fields to update".into()).into());
     }
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_custom_roles(&state.pool, org.id, auth.user_id).await?;
 
     let existing = find_custom_role(&state.pool, org.id, &role_slug).await?;
@@ -147,9 +147,9 @@ async fn update_custom_role(
 async fn delete_custom_role(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, role_slug)): Path<(String, String)>,
+    Path((org_path, role_slug)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_custom_roles(&state.pool, org.id, auth.user_id).await?;
 
     let existing = find_custom_role(&state.pool, org.id, &role_slug).await?;

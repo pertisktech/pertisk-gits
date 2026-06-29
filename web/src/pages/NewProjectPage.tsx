@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
 import { LinkButton, PrimaryButton } from '../components/ui'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
+import { findGroupByPath } from '../lib/groupPath'
 
 function slugify(value: string) {
   return value
@@ -18,7 +20,7 @@ const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
 
 export function NewProjectPage() {
-  const { slug: orgSlug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -33,19 +35,19 @@ export function NewProjectPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = groups.find((g) => g.slug === orgSlug)
+  const group = findGroupByPath(groups, orgPath)
 
   const createProject = useMutation({
     mutationFn: () =>
-      api.createRepository(token!, orgSlug, {
+      api.createRepository(token!, orgPath, {
         name,
         slug: projectSlug,
         description: description || undefined,
         visibility,
       }),
     onSuccess: (project) => {
-      queryClient.invalidateQueries({ queryKey: ['repositories', orgSlug] })
-      navigate(`/groups/${orgSlug}/projects/${project.slug}`)
+      queryClient.invalidateQueries({ queryKey: ['repositories', orgPath] })
+      navigate(`/groups/${orgPath}/projects/${project.slug}`)
     },
   })
 
@@ -66,7 +68,7 @@ export function NewProjectPage() {
           <span>New repository</span>
         </h1>
         <p className="app-repo-desc">
-          Create a repository under {group?.name ?? orgSlug}.
+          Create a repository under {group?.name ?? orgPath}.
         </p>
       </div>
 
@@ -93,7 +95,7 @@ export function NewProjectPage() {
               required
             />
             <span className="text-xs text-text-secondary mt-1 block font-mono">
-              {orgSlug}/{projectSlug || 'project-slug'}
+              {orgPath}/{projectSlug || 'project-slug'}
             </span>
           </label>
           <label className="block text-sm font-semibold text-text">
@@ -120,7 +122,7 @@ export function NewProjectPage() {
             <PrimaryButton type="submit" disabled={createProject.isPending}>
               {createProject.isPending ? 'Creating…' : 'Create project'}
             </PrimaryButton>
-            <LinkButton to={`/groups/${orgSlug}`}>Cancel</LinkButton>
+            <LinkButton to={`/groups/${orgPath}`}>Cancel</LinkButton>
           </div>
         </form>
       </Card>

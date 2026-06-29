@@ -11,6 +11,7 @@ use axum::{
 use pertisk_domain::{
     auth::{create_token, verify_token},
     models::*,
+    org_path::{join_org_path, normalize_org_path},
     DomainError,
 };
 use pertisk_git::{
@@ -48,8 +49,11 @@ mod deploy_keys;
 mod db;
 mod gitops;
 mod import;
+mod org;
 mod password;
 mod permissions;
+pub(crate) use org::find_org_for_member;
+
 mod registry;
 mod secrets_crypto;
 mod sso;
@@ -136,35 +140,35 @@ async fn main() -> anyhow::Result<()> {
 
     let repo_read_routes = Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}",
+            "/organizations/{org_path}/repositories/{repo_slug}",
             get(get_repository),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/browser",
+            "/organizations/{org_path}/repositories/{repo_slug}/browser",
             get(get_repo_browser),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/tree",
+            "/organizations/{org_path}/repositories/{repo_slug}/tree",
             get(get_repo_tree),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/blob",
+            "/organizations/{org_path}/repositories/{repo_slug}/blob",
             get(get_repo_blob),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/raw",
+            "/organizations/{org_path}/repositories/{repo_slug}/raw",
             get(get_repo_raw),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/archive",
+            "/organizations/{org_path}/repositories/{repo_slug}/archive",
             get(get_repo_archive),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/commits",
+            "/organizations/{org_path}/repositories/{repo_slug}/commits",
             get(get_repo_commits),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/commits/{commit_sha}",
+            "/organizations/{org_path}/repositories/{repo_slug}/commits/{commit_sha}",
             get(get_repo_commit),
         )
         .merge(collaboration::collaboration_read_routes())
@@ -187,16 +191,17 @@ async fn main() -> anyhow::Result<()> {
         .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
         .route("/organizations", get(list_organizations).post(create_organization))
         .route(
-            "/organizations/{org_slug}",
+            "/organizations/{org_path}",
             patch(update_organization),
         )
-        .route("/organizations/{org_slug}/members", get(list_organization_members))
+        .route("/organizations/{org_path}/subgroups", get(list_organization_subgroups))
+        .route("/organizations/{org_path}/members", get(list_organization_members))
         .route(
-            "/organizations/{org_slug}/repositories",
+            "/organizations/{org_path}/repositories",
             get(list_repositories).post(create_repository),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}",
+            "/organizations/{org_path}/repositories/{repo_slug}",
             patch(update_repository),
         )
         .merge(permissions::permissions_routes())
@@ -262,11 +267,13 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    let git_state = Arc::new(git_state);
+
     let mut app = Router::new()
         .route("/health", get(health))
         .route("/health/live", get(health_live))
         .nest("/api/v1", api_routes)
-        .merge(pertisk_git::http::router().with_state(git_state));
+        .layer(from_fn_with_state(git_state, git_smart_http_middleware));
 
     if std::env::var("REGISTRY_EMBEDDED").unwrap_or_else(|_| "1".into()) != "0" {
         let registry_config = pertisk_registry::config::RegistryConfig::from_env()?;
@@ -324,6 +331,17 @@ async fn root() -> Json<serde_json::Value> {
         "api_health": "/api/v1/health",
         "api_base": "/api/v1"
     }))
+}
+
+async fn git_smart_http_middleware(
+    State(git): State<Arc<GitHttpState>>,
+    req: Request<axum::body::Body>,
+    next: Next,
+) -> Response {
+    if !pertisk_git::http::is_smart_http_path(req.uri().path()) {
+        return next.run(req).await;
+    }
+    pertisk_git::http::handle(State((*git).clone()), req).await
 }
 
 async fn spa_index(method: Method, State(state): State<AppState>) -> Result<Response, StatusCode> {
@@ -680,11 +698,19 @@ async fn list_organizations(
 ) -> Result<Json<Vec<Organization>>, ApiError> {
     let orgs = sqlx::query_as::<_, Organization>(
         r#"
-        SELECT o.id, o.slug, o.name, o.description, o.created_at, o.updated_at
+        SELECT DISTINCT o.id, o.slug, o.name, o.description, o.parent_id, o.full_path, o.created_at, o.updated_at
         FROM organizations o
-        INNER JOIN organization_members m ON m.organization_id = o.id
-        WHERE m.user_id = $1
-        ORDER BY o.name
+        WHERE EXISTS (
+            SELECT 1
+            FROM organization_members m
+            INNER JOIN organizations member_org ON member_org.id = m.organization_id
+            WHERE m.user_id = $1
+              AND (
+                o.full_path = member_org.full_path
+                OR o.full_path LIKE member_org.full_path || '/%'
+              )
+        )
+        ORDER BY o.full_path
         "#,
     )
     .bind(auth.user_id)
@@ -693,6 +719,17 @@ async fn list_organizations(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok(Json(orgs))
+}
+
+async fn list_organization_subgroups(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(org_path): Path<String>,
+) -> Result<Json<Vec<Organization>>, ApiError> {
+    let org =
+        find_org_for_member(&state.pool, &org::org_path_from_param(&org_path), auth.user_id).await?;
+    let subgroups = org::list_subgroups(&state.pool, org.id).await?;
+    Ok(Json(subgroups))
 }
 
 #[derive(Serialize)]
@@ -725,9 +762,9 @@ struct OrgMemberRow {
 async fn list_organization_members(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<OrgMemberResponse>>, ApiError> {
-    find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, OrgMemberRow>(
         r#"
@@ -745,11 +782,11 @@ async fn list_organization_members(
         INNER JOIN users u ON u.id = m.user_id
         INNER JOIN organizations o ON o.id = m.organization_id
         LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
-        WHERE o.slug = $1
+        WHERE o.full_path = $1
         ORDER BY u.username
         "#,
     )
-    .bind(&org_slug)
+    .bind(&crate::org::org_path_from_param(&org_path))
     .fetch_all(&state.pool)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
@@ -783,6 +820,37 @@ async fn create_organization(
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
+    let parent_id = if let Some(ref parent_path) = body.parent_path {
+        let parent_path = normalize_org_path(parent_path);
+        if parent_path.is_empty() {
+            None
+        } else {
+            let parent =
+                find_org_for_member(&state.pool, &parent_path, auth.user_id).await?;
+            permissions::ensure_can_manage_org_settings(&state.pool, parent.id, auth.user_id)
+                .await?;
+            Some(parent.id)
+        }
+    } else {
+        None
+    };
+
+    let parent_full_path = if let Some(parent_id) = parent_id {
+        sqlx::query_scalar::<_, String>("SELECT full_path FROM organizations WHERE id = $1")
+            .bind(parent_id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    } else {
+        String::new()
+    };
+
+    let full_path = if parent_full_path.is_empty() {
+        body.slug.clone()
+    } else {
+        join_org_path(&parent_full_path, &body.slug)
+    };
+
     let mut tx = state
         .pool
         .begin()
@@ -791,19 +859,21 @@ async fn create_organization(
 
     let org = sqlx::query_as::<_, Organization>(
         r#"
-        INSERT INTO organizations (slug, name, description)
-        VALUES ($1, $2, $3)
-        RETURNING id, slug, name, description, created_at, updated_at
+        INSERT INTO organizations (slug, name, description, parent_id, full_path)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, slug, name, description, parent_id, full_path, created_at, updated_at
         "#,
     )
     .bind(&body.slug)
     .bind(&body.name)
     .bind(&body.description)
+    .bind(parent_id)
+    .bind(&full_path)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| match e {
         sqlx::Error::Database(db) if db.constraint().is_some() => {
-            ApiError::from(DomainError::Conflict("organization slug already exists".into()))
+            ApiError::from(DomainError::Conflict("group path already exists".into()))
         }
         other => ApiError::from(DomainError::Internal(other.to_string())),
     })?;
@@ -830,7 +900,7 @@ async fn create_organization(
 async fn update_organization(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<UpdateOrganizationRequest>,
 ) -> Result<Json<Organization>, ApiError> {
     body.validate()
@@ -840,7 +910,7 @@ async fn update_organization(
         return Err(DomainError::Validation("no fields to update".into()).into());
     }
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
     let name = body.name.unwrap_or_else(|| org.name.clone());
@@ -856,9 +926,25 @@ async fn update_organization(
         None => org.description.clone(),
     };
 
-    if new_slug != org.slug {
-        let old_dir = state.config.repos_root.join(&org.slug);
-        let new_dir = state.config.repos_root.join(&new_slug);
+    let parent_full_path = if let Some(parent_id) = org.parent_id {
+        sqlx::query_scalar::<_, String>("SELECT full_path FROM organizations WHERE id = $1")
+            .bind(parent_id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    } else {
+        String::new()
+    };
+
+    let new_full_path = if parent_full_path.is_empty() {
+        new_slug.clone()
+    } else {
+        join_org_path(&parent_full_path, &new_slug)
+    };
+
+    if new_full_path != org.full_path {
+        let old_dir = group_storage_dir(&state.config.repos_root, &org.full_path);
+        let new_dir = group_storage_dir(&state.config.repos_root, &new_full_path);
         if old_dir.exists() {
             if new_dir.exists() {
                 return Err(DomainError::Conflict(
@@ -870,13 +956,39 @@ async fn update_organization(
     }
 
     let mut renamed_storage = false;
-    let old_dir = state.config.repos_root.join(&org.slug);
-    let new_dir = state.config.repos_root.join(&new_slug);
-    if new_slug != org.slug && old_dir.exists() {
+    let old_dir = group_storage_dir(&state.config.repos_root, &org.full_path);
+    let new_dir = group_storage_dir(&state.config.repos_root, &new_full_path);
+    if new_full_path != org.full_path && old_dir.exists() {
+        if let Some(parent) = new_dir.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        }
         tokio::fs::rename(&old_dir, &new_dir)
             .await
             .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
         renamed_storage = true;
+    }
+
+    let mut tx = state
+        .pool
+        .begin()
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if new_full_path != org.full_path {
+        sqlx::query(
+            r#"
+            UPDATE organizations
+            SET full_path = $2 || substring(full_path FROM char_length($1) + 1)
+            WHERE full_path = $1 OR full_path LIKE $1 || '/%'
+            "#,
+        )
+        .bind(&org.full_path)
+        .bind(&new_full_path)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
     }
 
     let updated = match sqlx::query_as::<_, Organization>(
@@ -887,14 +999,14 @@ async fn update_organization(
             description = $3,
             updated_at = NOW()
         WHERE id = $4
-        RETURNING id, slug, name, description, created_at, updated_at
+        RETURNING id, slug, name, description, parent_id, full_path, created_at, updated_at
         "#,
     )
     .bind(&name)
     .bind(&new_slug)
     .bind(&description)
     .bind(org.id)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await
     {
         Ok(org) => org,
@@ -904,12 +1016,25 @@ async fn update_organization(
             }
             return Err(match e {
                 sqlx::Error::Database(db) if db.constraint().is_some() => {
-                    ApiError::from(DomainError::Conflict("organization slug already exists".into()))
+                    ApiError::from(DomainError::Conflict("group path already exists".into()))
                 }
                 other => ApiError::from(DomainError::Internal(other.to_string())),
             });
         }
     };
+
+    tx.commit()
+        .await
+        .map_err(|e| {
+            if renamed_storage {
+                let old_dir = old_dir.clone();
+                let new_dir = new_dir.clone();
+                tokio::spawn(async move {
+                    let _ = tokio::fs::rename(new_dir, old_dir).await;
+                });
+            }
+            ApiError::from(DomainError::Internal(e.to_string()))
+        })?;
 
     let _ = audit::record_audit_event(
         &state.pool,
@@ -937,9 +1062,9 @@ async fn update_organization(
 async fn list_repositories(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<Repository>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
 
     let repos = sqlx::query_as::<_, Repository>(
         r#"
@@ -960,13 +1085,13 @@ async fn list_repositories(
 async fn create_repository(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<CreateRepositoryRequest>,
 ) -> Result<(StatusCode, Json<Repository>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let visibility = body.visibility.unwrap_or(RepoVisibility::Private);
 
     let mut tx = state
@@ -1012,7 +1137,7 @@ async fn create_repository(
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    init_bare_repo(&state.config.repos_root, &org_slug, &repo.slug)
+    init_bare_repo(&state.config.repos_root, &crate::org::org_path_from_param(&org_path), &repo.slug)
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok((StatusCode::CREATED, Json(repo)))
@@ -1021,18 +1146,18 @@ async fn create_repository(
 async fn get_repository(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<RepositoryResponse>, ApiError> {
     let (_org, repo, _repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
-    Ok(Json(repo_response(&state.config, &org_slug, repo)))
+    Ok(Json(repo_response(&state.config, &crate::org::org_path_from_param(&org_path), repo)))
 }
 
 async fn update_repository(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<UpdateRepositoryRequest>,
 ) -> Result<Json<RepositoryResponse>, ApiError> {
     body.validate()
@@ -1046,7 +1171,7 @@ async fn update_repository(
         return Err(DomainError::Validation("no fields to update".into()).into());
     }
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
 
     let repo = sqlx::query_as::<_, Repository>(
         r#"
@@ -1062,10 +1187,10 @@ async fn update_repository(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::NotFound)?;
 
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     if let Some(default_branch) = &body.default_branch {
-        let repo_path = repo_disk_path(&state.config.repos_root, &org_slug, &repo.slug);
+        let repo_path = repo_disk_path(&state.config.repos_root, &crate::org::org_path_from_param(&org_path), &repo.slug);
         if !explorer::ref_exists(&repo_path, default_branch)
             .await
             .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
@@ -1114,18 +1239,28 @@ async fn update_repository(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    Ok(Json(repo_response(&state.config, &org_slug, updated)))
+    Ok(Json(repo_response(&state.config, &crate::org::org_path_from_param(&org_path), updated)))
+}
+
+fn group_storage_dir(root: &std::path::Path, org_path: &str) -> std::path::PathBuf {
+    let mut path = root.to_path_buf();
+    for segment in org_path.split('/').filter(|s| !s.is_empty()) {
+        path.push(segment);
+    }
+    path
 }
 
 pub(crate) async fn ensure_can_write_repo(
     state: &AppState,
-    org_slug: &str,
+    org_path: &str,
     repo: &Repository,
     auth: &AuthUser,
 ) -> Result<(), ApiError> {
+    let org = org::find_org_by_path(&state.pool, org_path).await?;
     let record = RepoRecord {
         id: repo.id,
-        org_slug: org_slug.to_string(),
+        org_id: org.id,
+        org_path: org.full_path,
         repo_slug: repo.slug.clone(),
         visibility: repo.visibility,
     };
@@ -1241,11 +1376,11 @@ struct CommitResponse {
 
 pub(crate) async fn load_repo_for_read(
     state: &AppState,
-    org_slug: &str,
+    org_path: &str,
     repo_slug: &str,
     user: Option<&AuthUser>,
 ) -> Result<(Organization, Repository, std::path::PathBuf), ApiError> {
-    let org = find_org_by_slug(&state.pool, org_slug).await?;
+    let org = org::find_org_by_path(&state.pool, org_path).await?;
 
     let repo = sqlx::query_as::<_, Repository>(
         r#"
@@ -1261,25 +1396,27 @@ pub(crate) async fn load_repo_for_read(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::NotFound)?;
 
-    ensure_can_read_repo(state, org_slug, &repo, user).await?;
+    ensure_can_read_repo(state, &org.full_path, &repo, user).await?;
 
-    ensure_bare_repo(&state.config.repos_root, org_slug, &repo.slug)
+    ensure_bare_repo(&state.config.repos_root, &org.full_path, &repo.slug)
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    let repo_path = repo_disk_path(&state.config.repos_root, org_slug, &repo.slug);
+    let repo_path = repo_disk_path(&state.config.repos_root, &org.full_path, &repo.slug);
     Ok((org, repo, repo_path))
 }
 
 pub(crate) async fn ensure_can_read_repo(
     state: &AppState,
-    org_slug: &str,
+    org_path: &str,
     repo: &Repository,
     user: Option<&AuthUser>,
 ) -> Result<(), ApiError> {
+    let org = org::find_org_by_path(&state.pool, org_path).await?;
     let record = RepoRecord {
         id: repo.id,
-        org_slug: org_slug.to_string(),
+        org_id: org.id,
+        org_path: org.full_path,
         repo_slug: repo.slug.clone(),
         visibility: repo.visibility,
     };
@@ -1303,21 +1440,6 @@ pub(crate) async fn ensure_can_read_repo(
     }
 }
 
-async fn find_org_by_slug(pool: &PgPool, org_slug: &str) -> Result<Organization, ApiError> {
-    sqlx::query_as::<_, Organization>(
-        r#"
-        SELECT o.id, o.slug, o.name, o.description, o.created_at, o.updated_at
-        FROM organizations o
-        WHERE o.slug = $1
-        "#,
-    )
-    .bind(org_slug)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
-    .ok_or(DomainError::NotFound.into())
-}
-
 pub(crate) fn map_explorer_error(err: anyhow::Error) -> ApiError {
     let msg = err.to_string().to_lowercase();
     if msg.contains("not found") || msg.contains("unknown revision") || msg.contains("bad revision") {
@@ -1334,10 +1456,10 @@ pub(crate) fn map_explorer_error(err: anyhow::Error) -> ApiError {
 async fn get_repo_browser(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<BrowserResponse>, ApiError> {
     let (_org, repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let browser = explorer::repo_browser(&repo_path, &repo.default_branch)
         .await
@@ -1349,11 +1471,11 @@ async fn get_repo_browser(
 async fn get_repo_tree(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<TreeQuery>,
 ) -> Result<Json<TreeResponse>, ApiError> {
     let (_org, _repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let entries = explorer::list_tree(&repo_path, &query.r#ref, ref_kind, &query.path)
@@ -1370,7 +1492,7 @@ async fn get_repo_tree(
 async fn get_repo_blob(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<BlobQuery>,
 ) -> Result<Json<BlobResponse>, ApiError> {
     if query.path.is_empty() {
@@ -1378,7 +1500,7 @@ async fn get_repo_blob(
     }
 
     let (_org, _repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let content = explorer::read_blob(&repo_path, &query.r#ref, ref_kind, &query.path)
@@ -1398,7 +1520,7 @@ async fn get_repo_blob(
 async fn get_repo_raw(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<BlobQuery>,
 ) -> Result<Response, ApiError> {
     if query.path.is_empty() {
@@ -1406,7 +1528,7 @@ async fn get_repo_raw(
     }
 
     let (_org, _repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let bytes = explorer::read_blob_bytes(&repo_path, &query.r#ref, ref_kind, &query.path)
@@ -1435,11 +1557,11 @@ async fn get_repo_raw(
 async fn get_repo_archive(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<TreeQuery>,
 ) -> Result<Response, ApiError> {
     let (_org, _repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let bytes = explorer::create_archive(&repo_path, &query.r#ref, ref_kind)
@@ -1463,11 +1585,11 @@ async fn get_repo_archive(
 async fn get_repo_commits(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<CommitsQuery>,
 ) -> Result<Json<CommitsResponse>, ApiError> {
     let (_org, _repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
     let commits = explorer::list_commits(&repo_path, &query.r#ref, ref_kind, query.limit.min(100))
@@ -1483,37 +1605,16 @@ async fn get_repo_commits(
 async fn get_repo_commit(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
-    Path((org_slug, repo_slug, commit_sha)): Path<(String, String, String)>,
+    Path((org_path, repo_slug, commit_sha)): Path<(String, String, String)>,
 ) -> Result<Json<CommitResponse>, ApiError> {
     let (_org, _repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, auth.as_ref()).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
     let commit = explorer::get_commit(&repo_path, &commit_sha)
         .await
         .map_err(map_explorer_error)?;
 
     Ok(Json(CommitResponse { commit }))
-}
-
-pub(crate) async fn find_org_for_member(
-    pool: &PgPool,
-    org_slug: &str,
-    user_id: Uuid,
-) -> Result<Organization, ApiError> {
-    sqlx::query_as::<_, Organization>(
-        r#"
-        SELECT o.id, o.slug, o.name, o.description, o.created_at, o.updated_at
-        FROM organizations o
-        INNER JOIN organization_members m ON m.organization_id = o.id
-        WHERE o.slug = $1 AND m.user_id = $2
-        "#,
-    )
-    .bind(org_slug)
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
-    .ok_or(DomainError::Forbidden.into())
 }
 
 #[derive(Clone, Debug)]

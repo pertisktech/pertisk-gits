@@ -7,28 +7,12 @@ import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { ActivityApproveUsersPage } from './pages/activity/ActivityApproveUsersPage'
 import { ActivityMergeRequestsPage } from './pages/activity/ActivityMergeRequestsPage'
 import { AdminAuthPage } from './pages/admin/AdminAuthPage'
-import { CommitDetailPage } from './pages/CommitDetailPage'
-import { IssueDetailPage } from './pages/IssueDetailPage'
-import { PullRequestDetailPage } from './pages/PullRequestDetailPage'
 import { DashboardPage } from './pages/DashboardPage'
-import { GroupAuditPage } from './pages/GroupAuditPage'
-import { GroupSecretsPage } from './pages/GroupSecretsPage'
-import { GroupImportPage } from './pages/GroupImportPage'
-import { GroupDetailPage } from './pages/GroupDetailPage'
-import { GroupCustomRolesPage } from './pages/GroupCustomRolesPage'
-import { GroupMachineUsersPage } from './pages/GroupMachineUsersPage'
-import { GroupMembersPage } from './pages/GroupMembersPage'
-import { GroupTeamsPage } from './pages/GroupTeamsPage'
-import { GroupSettingsPage } from './pages/GroupSettingsPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { LoginPage } from './pages/LoginPage'
 import { NewGroupPage } from './pages/NewGroupPage'
-import { NewProjectPage } from './pages/NewProjectPage'
-import { PipelineRunDetailPage } from './pages/PipelineRunDetailPage'
 import { ProfilePage } from './pages/ProfilePage'
-import { ProjectDetailPage } from './pages/ProjectDetailPage'
 import { RegisterPage } from './pages/RegisterPage'
-import { RegistryPage } from './pages/RegistryPage'
 import { RunnersPage } from './pages/RunnersPage'
 import { SuperAdminRoute } from './routes/SuperAdminRoute'
 import { AdminBackupPage } from './pages/admin/AdminBackupPage'
@@ -36,6 +20,7 @@ import { AdminConfigurationPage } from './pages/admin/AdminConfigurationPage'
 import { AdminHealthPage } from './pages/admin/AdminHealthPage'
 import { AdminSystemPage } from './pages/admin/AdminSystemPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
+import { GroupAreaRouter } from './routes/GroupAreaRouter'
 import { ProtectedRoute } from './routes/ProtectedRoute'
 
 const queryClient = new QueryClient()
@@ -61,10 +46,10 @@ function RedirectLegacyOrg() {
   return <Navigate to={`/groups/${slug}`} replace />
 }
 
-/** /{org}/{repo}.git → project page (browser-friendly clone URL). */
+/** /{org}/{repo}.git → project page (single-segment org; nested groups use /groups/a/b/...). */
 function RedirectShortRepo() {
   const { orgSlug, repoSlug } = useParams()
-  if (!orgSlug || !repoSlug || RESERVED_PATHS.has(orgSlug)) {
+  if (!orgSlug || !repoSlug || RESERVED_PATHS.has(orgSlug) || orgSlug === 'groups') {
     return <Navigate to="/dashboard" replace />
   }
   const repo = repoSlug.replace(/\.git$/i, '')
@@ -74,7 +59,7 @@ function RedirectShortRepo() {
 /** /{org} → group page. */
 function RedirectShortOrg() {
   const { orgSlug } = useParams()
-  if (!orgSlug || RESERVED_PATHS.has(orgSlug)) {
+  if (!orgSlug || RESERVED_PATHS.has(orgSlug) || orgSlug === 'groups') {
     return <Navigate to="/dashboard" replace />
   }
   return <Navigate to={`/groups/${orgSlug}`} replace />
@@ -91,70 +76,11 @@ export default function App() {
               <Route path="/register" element={<RegisterPage />} />
               <Route path="/auth/callback" element={<AuthCallbackPage />} />
               <Route element={<AppLayout />}>
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/commit/:commitSha"
-                  element={<CommitDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/issues/:issueNumber"
-                  element={<IssueDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/pulls/:pullNumber"
-                  element={<PullRequestDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/pipelines/:runId"
-                  element={<PipelineRunDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/settings"
-                  element={<ProjectDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/commits"
-                  element={<ProjectDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/issues"
-                  element={<ProjectDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/pulls"
-                  element={<ProjectDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/wiki/:pageSlug"
-                  element={<ProjectDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/wiki"
-                  element={<ProjectDetailPage />}
-                />
-                <Route
-                  path="/groups/:slug/projects/:projectSlug/pipelines"
-                  element={<ProjectDetailPage />}
-                />
-                <Route path="/groups/:slug/projects/:projectSlug" element={<ProjectDetailPage />} />
-                <Route path="/:orgSlug/:repoSlug" element={<RedirectShortRepo />} />
-                <Route path="/:orgSlug" element={<RedirectShortOrg />} />
                 <Route element={<ProtectedRoute />}>
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   <Route path="/groups/new" element={<NewGroupPage />} />
-                  <Route path="/groups/:slug/registry" element={<RegistryPage />} />
-                  <Route path="/groups/:slug/registry/:imageName" element={<RegistryPage />} />
-                  <Route path="/groups/:slug/settings" element={<GroupSettingsPage />} />
-                  <Route path="/groups/:slug/members" element={<GroupMembersPage />} />
-                  <Route path="/groups/:slug/teams" element={<GroupTeamsPage />} />
-                  <Route path="/groups/:slug/roles" element={<GroupCustomRolesPage />} />
-                  <Route path="/groups/:slug/machine-users" element={<GroupMachineUsersPage />} />
-                  <Route path="/groups/:slug/audit" element={<GroupAuditPage />} />
-                  <Route path="/groups/:slug/secrets" element={<GroupSecretsPage />} />
-                  <Route path="/groups/:slug/import" element={<GroupImportPage />} />
-                  <Route path="/groups/:slug" element={<GroupDetailPage />} />
-                  <Route path="/groups/:slug/projects/new" element={<NewProjectPage />} />
                   <Route path="/activity" element={<Navigate to="/activity/merge-requests" replace />} />
                   <Route path="/activity/merge-requests" element={<ActivityMergeRequestsPage />} />
                   <Route element={<SuperAdminRoute />}>
@@ -175,6 +101,9 @@ export default function App() {
                   <Route path="/organizations" element={<Navigate to="/groups" replace />} />
                   <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />
                 </Route>
+                <Route path="/groups/*" element={<GroupAreaRouter />} />
+                <Route path="/:orgSlug/:repoSlug" element={<RedirectShortRepo />} />
+                <Route path="/:orgSlug" element={<RedirectShortOrg />} />
               </Route>
               <Route path="*" element={<Navigate to="/dashboard" replace />} />
             </Routes>

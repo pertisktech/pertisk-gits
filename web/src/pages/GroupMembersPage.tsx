@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Loader2, Trash2, UserPlus } from 'lucide-react'
 import { useMemo, useState, type FormEvent } from 'react'
-import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { OrgMember, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useOrgPathParam } from '../hooks/useOrgPathParam'
+import { findGroupByPath } from '../lib/groupPath'
 import { StatusBadge } from '../components/StatusBadge'
 import { UserPicker } from '../components/UserPicker'
 import { PrimaryButton, SecondaryButton, Select } from '../components/ui'
@@ -18,7 +19,7 @@ function roleVariant(role: OrgRole) {
 }
 
 export function GroupMembersPage() {
-  const { slug = '' } = useParams()
+  const orgPath = useOrgPathParam()
   const { token, user } = useAuth()
   const queryClient = useQueryClient()
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
@@ -31,12 +32,12 @@ export function GroupMembersPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = groups.find((g) => g.slug === slug)
+  const group = findGroupByPath(groups, orgPath)
 
   const { data: members = [], isLoading } = useQuery({
-    queryKey: ['org-members', slug],
-    queryFn: () => api.listOrganizationMembers(token!, slug),
-    enabled: Boolean(token && slug),
+    queryKey: ['org-members', orgPath],
+    queryFn: () => api.listOrganizationMembers(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const myMembership = useMemo(
@@ -47,20 +48,20 @@ export function GroupMembersPage() {
   const isOwner = myMembership?.role === 'owner'
 
   const { data: customRoles = [] } = useQuery({
-    queryKey: ['custom-roles', slug],
-    queryFn: () => api.listCustomRoles(token!, slug),
-    enabled: Boolean(token && slug && canManage),
+    queryKey: ['custom-roles', orgPath],
+    queryFn: () => api.listCustomRoles(token!, orgPath),
+    enabled: Boolean(token && orgPath && canManage),
   })
 
   const addMember = useMutation({
     mutationFn: () =>
-      api.addOrganizationMember(token!, slug, {
+      api.addOrganizationMember(token!, orgPath, {
         user_id: selectedUser!.id,
         role: newRole,
         custom_role_id: newCustomRoleId || null,
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', slug] })
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgPath] })
       setSelectedUser(null)
       setNewRole('member')
       setNewCustomRoleId('')
@@ -78,18 +79,18 @@ export function GroupMembersPage() {
       userId: string
       role: OrgRole
       custom_role_id?: string | null
-    }) => api.updateOrganizationMember(token!, slug, userId, { role, custom_role_id }),
+    }) => api.updateOrganizationMember(token!, orgPath, userId, { role, custom_role_id }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', slug] })
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgPath] })
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const removeMember = useMutation({
-    mutationFn: (userId: string) => api.removeOrganizationMember(token!, slug, userId),
+    mutationFn: (userId: string) => api.removeOrganizationMember(token!, orgPath, userId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['org-members', slug] })
+      queryClient.invalidateQueries({ queryKey: ['org-members', orgPath] })
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
@@ -122,7 +123,7 @@ export function GroupMembersPage() {
           <span>Members</span>
         </h1>
         <p className="app-repo-desc">
-          Manage who belongs to {group?.name ?? slug} and their group role.
+          Manage who belongs to {group?.name ?? orgPath} and their group role.
         </p>
       </div>
 

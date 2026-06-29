@@ -16,11 +16,11 @@ use crate::{find_org_for_member, permissions, ApiError, AppState, AuthUser};
 pub fn audit_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/audit-events",
+            "/organizations/{org_path}/audit-events",
             get(list_audit_events),
         )
         .route(
-            "/organizations/{org_slug}/audit-events/export",
+            "/organizations/{org_path}/audit-events/export",
             get(export_audit_events),
         )
 }
@@ -117,10 +117,10 @@ struct AuditListResponse {
 async fn list_audit_events(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Query(query): Query<AuditListQuery>,
 ) -> Result<Json<AuditListResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_view_audit(&state.pool, org.id, auth.user_id).await?;
 
     let limit = query.limit.clamp(1, 200);
@@ -181,10 +181,10 @@ async fn list_audit_events(
 async fn export_audit_events(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Query(query): Query<AuditListQuery>,
 ) -> Result<Response, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_view_audit(&state.pool, org.id, auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, AuditEvent>(&format!(
@@ -241,7 +241,10 @@ async fn export_audit_events(
             (header::CONTENT_TYPE, "text/csv; charset=utf-8".to_string()),
             (
                 header::CONTENT_DISPOSITION,
-                format!("attachment; filename=\"{}-audit.csv\"", org_slug),
+                format!(
+                    "attachment; filename=\"{}-audit.csv\"",
+                    crate::org::org_path_from_param(&org_path).replace("/", "-")
+                ),
             ),
         ],
         csv,

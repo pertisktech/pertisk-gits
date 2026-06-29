@@ -10,7 +10,8 @@ use crate::password::verify_password;
 #[derive(Debug, Clone)]
 pub struct RepoRecord {
     pub id: Uuid,
-    pub org_slug: String,
+    pub org_id: Uuid,
+    pub org_path: String,
     pub repo_slug: String,
     pub visibility: RepoVisibility,
 }
@@ -37,23 +38,24 @@ impl GitPrincipal {
     }
 }
 
-pub async fn find_repo(pool: &PgPool, org_slug: &str, repo_slug: &str) -> anyhow::Result<Option<RepoRecord>> {
-    let row = sqlx::query_as::<_, (Uuid, RepoVisibility)>(
+pub async fn find_repo(pool: &PgPool, org_path: &str, repo_slug: &str) -> anyhow::Result<Option<RepoRecord>> {
+    let row = sqlx::query_as::<_, (Uuid, Uuid, RepoVisibility)>(
         r#"
-        SELECT r.id, r.visibility
+        SELECT r.id, o.id, r.visibility
         FROM repositories r
         INNER JOIN organizations o ON o.id = r.organization_id
-        WHERE o.slug = $1 AND r.slug = $2
+        WHERE o.full_path = $1 AND r.slug = $2
         "#,
     )
-    .bind(org_slug)
+    .bind(org_path)
     .bind(repo_slug)
     .fetch_optional(pool)
     .await?;
 
-    Ok(row.map(|(id, visibility)| RepoRecord {
+    Ok(row.map(|(id, org_id, visibility)| RepoRecord {
         id,
-        org_slug: org_slug.to_string(),
+        org_id,
+        org_path: org_path.to_string(),
         repo_slug: repo_slug.to_string(),
         visibility,
     }))
@@ -204,12 +206,12 @@ pub async fn effective_repo_role(
         INNER JOIN team_members tm ON tm.team_id = trp.team_id
         INNER JOIN teams t ON t.id = trp.team_id
         INNER JOIN organizations o ON o.id = t.organization_id
-        WHERE trp.repository_id = $1 AND tm.user_id = $2 AND o.slug = $3
+        WHERE trp.repository_id = $1 AND tm.user_id = $2 AND o.full_path = $3
         "#,
     )
     .bind(repo.id)
     .bind(user_id)
-    .bind(&repo.org_slug)
+    .bind(&repo.org_path)
     .fetch_all(pool)
     .await?;
 
@@ -217,21 +219,27 @@ pub async fn effective_repo_role(
         effective = max_repo_role(effective, Some(team_role));
     }
 
-    let membership = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
+    let memberships = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
         r#"
+        WITH RECURSIVE ancestors AS (
+            SELECT id, parent_id FROM organizations WHERE id = $1
+            UNION ALL
+            SELECT o.id, o.parent_id FROM organizations o
+            INNER JOIN ancestors a ON o.id = a.parent_id
+        )
         SELECT m.role, cr.permissions
         FROM organization_members m
-        INNER JOIN organizations o ON o.id = m.organization_id
         LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
-        WHERE o.slug = $1 AND m.user_id = $2
+        WHERE m.user_id = $2
+          AND m.organization_id IN (SELECT id FROM ancestors)
         "#,
     )
-    .bind(&repo.org_slug)
+    .bind(repo.org_id)
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
 
-    if let Some((org_role, custom_permissions)) = membership {
+    for (org_role, custom_permissions) in memberships {
         let baseline = match org_role {
             OrgRole::Owner | OrgRole::Admin => Some(RepoRole::Write),
             OrgRole::Member => Some(RepoRole::Read),

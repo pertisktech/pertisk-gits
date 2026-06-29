@@ -19,26 +19,26 @@ use crate::{find_org_for_member, ApiError, AppState, AuthUser};
 
 pub fn ci_secrets_read_routes() -> Router<AppState> {
     Router::new()
-        .route("/organizations/{org_slug}/secrets", get(list_org_secrets))
+        .route("/organizations/{org_path}/secrets", get(list_org_secrets))
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/secrets",
+            "/organizations/{org_path}/repositories/{repo_slug}/secrets",
             get(list_repo_secrets),
         )
 }
 
 pub fn ci_secrets_write_routes() -> Router<AppState> {
     Router::new()
-        .route("/organizations/{org_slug}/secrets", post(create_org_secret))
+        .route("/organizations/{org_path}/secrets", post(create_org_secret))
         .route(
-            "/organizations/{org_slug}/secrets/{secret_id}",
+            "/organizations/{org_path}/secrets/{secret_id}",
             patch(update_org_secret).delete(delete_org_secret),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/secrets",
+            "/organizations/{org_path}/repositories/{repo_slug}/secrets",
             post(create_repo_secret),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/secrets/{secret_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/secrets/{secret_id}",
             patch(update_repo_secret).delete(delete_repo_secret),
         )
 }
@@ -145,9 +145,9 @@ pub struct RunnerJobSecretsResponse {
 async fn list_org_secrets(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<CiSecretSummary>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiSecretEnvironment, DateTime<Utc>, DateTime<Utc>)>(
@@ -180,10 +180,10 @@ async fn list_org_secrets(
 async fn create_org_secret(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<UpsertSecretRequest>,
 ) -> Result<(StatusCode, Json<CiSecretSummary>), ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
     let name = normalize_secret_name(&body.name)?;
     let kind = body.secret_kind.unwrap_or(CiSecretKind::Variable);
@@ -236,10 +236,10 @@ async fn create_org_secret(
 async fn update_org_secret(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, secret_id)): Path<(String, Uuid)>,
+    Path((org_path, secret_id)): Path<(String, Uuid)>,
     Json(body): Json<UpdateSecretRequest>,
 ) -> Result<Json<CiSecretSummary>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
 
     let existing = sqlx::query_as::<_, (CiSecretKind,)>(
@@ -303,9 +303,9 @@ async fn update_org_secret(
 async fn delete_org_secret(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, secret_id)): Path<(String, Uuid)>,
+    Path((org_path, secret_id)): Path<(String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     ensure_can_manage_org_secrets(&state.pool, org.id, auth.user_id).await?;
 
     let result = sqlx::query("DELETE FROM organization_secrets WHERE id = $1 AND organization_id = $2")
@@ -324,9 +324,9 @@ async fn delete_org_secret(
 async fn list_repo_secrets(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<CiSecretSummary>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
@@ -360,10 +360,10 @@ async fn list_repo_secrets(
 async fn create_repo_secret(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<UpsertSecretRequest>,
 ) -> Result<(StatusCode, Json<CiSecretSummary>), ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
     let name = normalize_secret_name(&body.name)?;
@@ -417,10 +417,10 @@ async fn create_repo_secret(
 async fn update_repo_secret(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, secret_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, secret_id)): Path<(String, String, Uuid)>,
     Json(body): Json<UpdateSecretRequest>,
 ) -> Result<Json<CiSecretSummary>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 
@@ -485,9 +485,9 @@ async fn update_repo_secret(
 async fn delete_repo_secret(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, secret_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, secret_id)): Path<(String, String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 

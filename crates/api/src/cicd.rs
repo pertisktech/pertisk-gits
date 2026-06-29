@@ -305,27 +305,27 @@ async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
 pub fn cicd_read_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines",
             get(list_pipeline_runs),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/config",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/config",
             get(get_pipeline_config_preview),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/migrate",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/migrate",
             get(get_pipeline_migrate),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}",
             get(get_pipeline_run),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/artifacts/{artifact_id}/download",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}/artifacts/{artifact_id}/download",
             get(download_pipeline_artifact),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/commits/{commit_sha}/statuses",
+            "/organizations/{org_path}/repositories/{repo_slug}/commits/{commit_sha}/statuses",
             get(list_commit_statuses),
         )
 }
@@ -334,27 +334,27 @@ pub fn cicd_write_routes() -> Router<AppState> {
     Router::new()
         .route("/runners", get(list_runners))
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/trigger",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/trigger",
             post(trigger_pipeline),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/rerun",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}/rerun",
             post(rerun_pipeline),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/cancel",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}/cancel",
             post(cancel_pipeline),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}",
             delete(delete_pipeline),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/cancel-step",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/cancel-step",
             post(cancel_job_step),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/play",
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/play",
             post(play_manual_job),
         )
         .route("/runners/register", post(register_runner))
@@ -691,11 +691,11 @@ struct AppendLogRequest {
 async fn get_pipeline_migrate(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<PipelineConfigQuery>,
 ) -> Result<Json<PipelineMigrateResponse>, ApiError> {
     let (_org, repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
 
     let ref_name = query
         .r#ref
@@ -739,11 +739,11 @@ async fn get_pipeline_migrate(
 async fn get_pipeline_config_preview(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<PipelineConfigQuery>,
 ) -> Result<Json<PipelineConfigPreviewResponse>, ApiError> {
     let (_org, repo, repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
 
     let ref_name = query
         .r#ref
@@ -805,9 +805,9 @@ async fn get_pipeline_config_preview(
 async fn list_pipeline_runs(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<PipelineRunResponse>>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
 
     let runs = sqlx::query_as::<_, PipelineRunRow>(
         r#"
@@ -834,9 +834,9 @@ async fn list_pipeline_runs(
 async fn get_pipeline_run(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
 
     if let Err(err) = sync_pipeline_run_state(&state.pool, run_id).await {
         tracing::warn!(%run_id, error = %err, "pipeline sync failed on get; returning run anyway");
@@ -853,10 +853,10 @@ async fn get_pipeline_run(
 async fn delete_pipeline(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     ensure_pipeline_idle(&state.pool, repo.id, run_id).await?;
 
@@ -881,9 +881,9 @@ async fn delete_pipeline(
 async fn list_commit_statuses(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, commit_sha)): Path<(String, String, String)>,
+    Path((org_path, repo_slug, commit_sha)): Path<(String, String, String)>,
 ) -> Result<Json<Vec<CommitStatusResponse>>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
 
     let rows = sqlx::query_as::<_, CommitStatusRow>(
         r#"
@@ -916,11 +916,11 @@ async fn list_commit_statuses(
 async fn trigger_pipeline(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Json(body): Json<TriggerPipelineRequest>,
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let event_type = body.event_type.as_deref().unwrap_or("manual");
     let target_environment = resolve_trigger_environment(body.environment.as_deref(), event_type, &body.ref_name)
@@ -929,7 +929,7 @@ async fn trigger_pipeline(
     let run_id = process_trigger_now(
         &state,
         repo.id,
-        &org_slug,
+        &crate::org::org_path_from_param(&org_path),
         &repo_slug,
         &body.commit_sha,
         &body.ref_name,
@@ -980,11 +980,11 @@ struct RerunPipelineRequest {
 async fn rerun_pipeline(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, run_id)): Path<(String, String, Uuid)>,
     body: Option<Json<RerunPipelineRequest>>,
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
         .await
@@ -993,7 +993,7 @@ async fn rerun_pipeline(
 
     ensure_pipeline_idle(&state.pool, repo.id, run_id).await?;
 
-    let repo_path = pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
+    let repo_path = pertisk_git::config::repo_disk_path(&state.config.repos_root, &crate::org::org_path_from_param(&org_path), &repo_slug);
     let Some((config_yaml, config_path)) = read_pipeline_config(&repo_path, &run.commit_sha).await else {
         return Err(DomainError::Validation(
             "no pipeline config (.pertisk-ci.yaml) at this commit".into(),
@@ -1058,10 +1058,10 @@ async fn rerun_pipeline(
 async fn cancel_pipeline(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, run_id)): Path<(String, String, Uuid)>,
+    Path((org_path, repo_slug, run_id)): Path<(String, String, Uuid)>,
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     cancel_pipeline_run(&state.pool, repo.id, run_id)
         .await
@@ -1094,11 +1094,11 @@ struct CancelJobStepRequest {
 async fn cancel_job_step(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
+    Path((org_path, repo_slug, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
     Json(body): Json<CancelJobStepRequest>,
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     cancel_job_step_run(&state.pool, repo.id, run_id, job_id, body.step_name.as_deref())
         .await
@@ -1123,10 +1123,10 @@ async fn cancel_job_step(
 async fn play_manual_job(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
+    Path((org_path, repo_slug, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
 ) -> Result<Json<PipelineRunResponse>, ApiError> {
-    let (_org, repo, _path) = load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
-    ensure_can_write_repo(&state, &org_slug, &repo, &auth).await?;
+    let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     play_manual_job_run(&state.pool, repo.id, run_id, job_id)
         .await
@@ -1917,7 +1917,7 @@ struct WorkspaceQuery {
 async fn runner_workspace(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
     Query(query): Query<WorkspaceQuery>,
 ) -> Result<Response, (StatusCode, String)> {
     let runner_id = authenticate_runner(&state.pool, &headers).await?;
@@ -1939,7 +1939,7 @@ async fn runner_workspace(
         "#,
     )
     .bind(runner_id)
-    .bind(&org_slug)
+    .bind(&crate::org::org_path_from_param(&org_path))
     .bind(&repo_slug)
     .bind(&query.commit_sha)
     .fetch_one(&state.pool)
@@ -1954,8 +1954,8 @@ async fn runner_workspace(
     }
 
     let repo_path =
-        pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
-    serve_runner_workspace(&state, &repo_path, &org_slug, &repo_slug, &query.commit_sha).await
+        pertisk_git::config::repo_disk_path(&state.config.repos_root, &crate::org::org_path_from_param(&org_path), &repo_slug);
+    serve_runner_workspace(&state, &repo_path, &crate::org::org_path_from_param(&org_path), &repo_slug, &query.commit_sha).await
 }
 
 async fn runner_job_workspace(
@@ -1967,7 +1967,7 @@ async fn runner_job_workspace(
 
     let meta = sqlx::query_as::<_, (String, String, String)>(
         r#"
-        SELECT o.slug, r.slug, p.commit_sha
+        SELECT o.full_path, r.slug, p.commit_sha
         FROM job_runs j
         INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
         INNER JOIN repositories r ON r.id = p.repository_id
@@ -1984,10 +1984,10 @@ async fn runner_job_workspace(
     .map_err(|e| internal(e.to_string()))?
     .ok_or((StatusCode::NOT_FOUND, "job not found".into()))?;
 
-    let (org_slug, repo_slug, commit_sha) = meta;
+    let (org_path, repo_slug, commit_sha) = meta;
     let repo_path =
-        pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_slug, &repo_slug);
-    serve_runner_workspace(&state, &repo_path, &org_slug, &repo_slug, &commit_sha).await
+        pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_path, &repo_slug);
+    serve_runner_workspace(&state, &repo_path, &org_path, &repo_slug, &commit_sha).await
 }
 
 async fn serve_runner_workspace(
@@ -2168,13 +2168,13 @@ pub async fn flush_pending_triggers(state: &AppState) -> anyhow::Result<u32> {
         }
 
         for trigger in triggers {
-            if let Some((org_slug, repo_slug)) =
+            if let Some((org_path, repo_slug)) =
                 repo_slugs(&state.pool, trigger.repository_id).await?
             {
                 match process_trigger_now(
                     state,
                     trigger.repository_id,
-                    &org_slug,
+                    &org_path,
                     &repo_slug,
                     &trigger.commit_sha,
                     &trigger.ref_name,
@@ -2187,7 +2187,7 @@ pub async fn flush_pending_triggers(state: &AppState) -> anyhow::Result<u32> {
                         tracing::info!(
                             run_id = %run_id,
                             event = %trigger.event_type,
-                            repo = %format!("{org_slug}/{repo_slug}"),
+                            repo = %format!("{org_path}/{repo_slug}"),
                             "pipeline triggered by push"
                         );
                     }
@@ -2199,14 +2199,14 @@ pub async fn flush_pending_triggers(state: &AppState) -> anyhow::Result<u32> {
                                 commit = %trigger.commit_sha,
                                 ref_name = %trigger.ref_name,
                                 event = %trigger.event_type,
-                                repo = %format!("{org_slug}/{repo_slug}"),
+                                repo = %format!("{org_path}/{repo_slug}"),
                                 "pipeline trigger skipped (no .pertisk-ci.yaml at commit or branch filter)"
                             );
                         } else {
                             tracing::warn!(
                                 trigger_id = %trigger.id,
                                 event = %trigger.event_type,
-                                repo = %format!("{org_slug}/{repo_slug}"),
+                                repo = %format!("{org_path}/{repo_slug}"),
                                 "pipeline trigger failed: {reason}"
                             );
                         }
@@ -2226,7 +2226,7 @@ pub async fn flush_pending_triggers(state: &AppState) -> anyhow::Result<u32> {
 async fn repo_slugs(pool: &PgPool, repository_id: Uuid) -> anyhow::Result<Option<(String, String)>> {
     Ok(sqlx::query_as::<_, (String, String)>(
         r#"
-        SELECT o.slug, r.slug
+        SELECT o.full_path, r.slug
         FROM repositories r
         INNER JOIN organizations o ON o.id = r.organization_id
         WHERE r.id = $1
@@ -3487,10 +3487,10 @@ async fn upload_runner_artifact(
 async fn download_pipeline_artifact(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug, run_id, artifact_id)): Path<(String, String, Uuid, Uuid)>,
+    Path((org_path, repo_slug, run_id, artifact_id)): Path<(String, String, Uuid, Uuid)>,
 ) -> Result<Response, ApiError> {
     let (_org, repo, _repo_path) =
-        load_repo_for_read(&state, &org_slug, &repo_slug, Some(&auth)).await?;
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
 
     let artifact = sqlx::query_as::<_, JobArtifactRow>(
         r#"

@@ -5,9 +5,8 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
-use pertisk_domain::models::{
-    ImportProvider, OrgRole, RepoVisibility,
-};
+use pertisk_domain::models::{ImportProvider, OrgRole, RepoVisibility};
+use pertisk_domain::org_groups::{ensure_org_chain, import_target_org_path};
 use pertisk_git::config::repo_disk_path;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
@@ -73,7 +72,7 @@ impl ImportWorker {
 
     async fn process_job(&self, job: JobRow) -> anyhow::Result<()> {
         let (provider, token, base_url) = self.load_credential(job.credential_id).await?;
-        let org_slug = self.org_slug(job.organization_id).await?;
+        let org_full_path = self.org_full_path(job.organization_id).await?;
 
         let repos = sqlx::query_as::<_, RepoRow>(
             r#"
@@ -95,7 +94,7 @@ impl ImportWorker {
             if let Err(err) = self
                 .import_repo(
                     &job,
-                    &org_slug,
+                    &org_full_path,
                     provider,
                     &token,
                     &base_url,
@@ -175,7 +174,7 @@ impl ImportWorker {
     async fn import_repo(
         &self,
         job: &JobRow,
-        org_slug: &str,
+        target_org_full_path: &str,
         provider: ImportProvider,
         token: &str,
         base_url: &str,
@@ -186,11 +185,16 @@ impl ImportWorker {
             _ => RepoVisibility::Private,
         };
 
+        let target_org_path =
+            import_target_org_path(target_org_full_path, &repo.source_full_name);
+        let target_org_id =
+            ensure_org_chain(&self.pool, &target_org_path, job.created_by).await?;
+
         let repository_id = match repo.repository_id {
             Some(id) => id,
             None => {
                 self.ensure_repository(
-                    job.organization_id,
+                    target_org_id,
                     job.created_by,
                     &repo.target_slug,
                     &repo.target_name,
@@ -229,7 +233,7 @@ impl ImportWorker {
                 return Ok(());
             }
 
-            let repo_path = repo_disk_path(&self.repos_root, org_slug, &repo.target_slug);
+            let repo_path = repo_disk_path(&self.repos_root, &target_org_path, &repo.target_slug);
             let auth_url = authenticated_clone_url(provider, &repo.source_clone_url, token)?;
             mirror_repository(&auth_url, &repo_path).await?;
 
@@ -401,9 +405,9 @@ impl ImportWorker {
         Ok(repo_id)
     }
 
-    async fn org_slug(&self, org_id: Uuid) -> anyhow::Result<String> {
+    async fn org_full_path(&self, org_id: Uuid) -> anyhow::Result<String> {
         Ok(sqlx::query_scalar::<_, String>(
-            "SELECT slug FROM organizations WHERE id = $1",
+            "SELECT full_path FROM organizations WHERE id = $1",
         )
         .bind(org_id)
         .fetch_one(&self.pool)

@@ -1,73 +1,120 @@
 import { useQuery } from '@tanstack/react-query'
-import { FolderGit2, Plus, Settings, Download } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { FolderGit2, FolderTree, Plus, Settings, Download } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge, visibilityVariant } from '../components/StatusBadge'
 import { Breadcrumbs, EmptyState, LinkButton } from '../components/ui'
+import { useGroupFromRoute } from '../hooks/useGroupFromRoute'
+import { groupBaseUrl } from '../lib/groupPath'
+import { groupBreadcrumbItems } from '../lib/groupRoute'
 
 export function GroupDetailPage() {
-  const { slug = '' } = useParams()
   const { token, user } = useAuth()
-
-  const { data: groups = [] } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token),
-  })
-  const group = groups.find((g) => g.slug === slug)
+  const { orgPath, group } = useGroupFromRoute()
 
   const { data: members = [] } = useQuery({
-    queryKey: ['org-members', slug],
-    queryFn: () => api.listOrganizationMembers(token!, slug),
-    enabled: Boolean(token && slug),
+    queryKey: ['org-members', orgPath],
+    queryFn: () => api.listOrganizationMembers(token!, orgPath),
+    enabled: Boolean(token && orgPath),
+  })
+
+  const { data: subgroups = [], isLoading: subgroupsLoading } = useQuery({
+    queryKey: ['subgroups', orgPath],
+    queryFn: () => api.listSubgroups(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const { data: projects = [], isLoading, error } = useQuery({
-    queryKey: ['repositories', slug],
-    queryFn: () => api.listRepositories(token!, slug),
-    enabled: Boolean(token && slug),
+    queryKey: ['repositories', orgPath],
+    queryFn: () => api.listRepositories(token!, orgPath),
+    enabled: Boolean(token && orgPath),
   })
 
   const canManage =
     members.find((member) => member.user.id === user?.id)?.role === 'owner' ||
     members.find((member) => member.user.id === user?.id)?.role === 'admin'
 
+  const basePath = `/groups/${orgPath}`
+
   return (
     <>
       <Breadcrumbs
-        items={[
-          { label: 'Groups', to: '/groups' },
-          { label: group?.name ?? slug },
-        ]}
+        items={groupBreadcrumbItems(orgPath).map((item, i, arr) =>
+          i === arr.length - 1 ? { label: group?.name ?? item.label } : item,
+        )}
       />
 
       <div className="app-repo-header mb-4">
         <h1 className="app-repo-title">
-          <span>{group?.name ?? slug}</span>
+          <span>{group?.name ?? orgPath}</span>
         </h1>
         {group?.description && <p className="app-repo-desc">{group.description}</p>}
-        <p className="text-xs text-muted font-mono mt-1">@{slug}</p>
+        <p className="text-xs text-muted font-mono mt-1">@{orgPath}</p>
       </div>
 
       <div className="mb-4 flex justify-end gap-2">
         {canManage && (
-          <LinkButton to={`/groups/${slug}/settings`}>
+          <LinkButton to={`${basePath}/settings`}>
             <Settings size={14} />
             Settings
           </LinkButton>
         )}
         {canManage && (
-          <LinkButton to={`/groups/${slug}/import`}>
+          <LinkButton to={`${basePath}/import`}>
             <Download size={14} />
             Import
           </LinkButton>
         )}
-        <LinkButton to={`/groups/${slug}/projects/new`} primary>
+        {canManage && (
+          <LinkButton to={`/groups/new?parent=${encodeURIComponent(orgPath)}`}>
+            <Plus size={14} />
+            New subgroup
+          </LinkButton>
+        )}
+        <LinkButton to={`${basePath}/projects/new`} primary>
           <Plus size={14} />
           New repository
         </LinkButton>
       </div>
+
+      {(subgroups.length > 0 || subgroupsLoading) && (
+        <div className="app-panel mb-4">
+          <div className="app-panel-header flex items-center justify-between">
+            <span>Subgroups</span>
+            <span className="font-normal text-text-secondary">{subgroups.length}</span>
+          </div>
+          {subgroupsLoading && (
+            <div className="p-6 text-center text-text-secondary text-sm">Loading…</div>
+          )}
+          {!subgroupsLoading && subgroups.length > 0 && (
+            <table className="app-list-table">
+              <thead>
+                <tr>
+                  <th>Subgroup</th>
+                  <th>Path</th>
+                </tr>
+              </thead>
+              <tbody>
+                {subgroups.map((sub) => (
+                  <tr key={sub.id}>
+                    <td>
+                      <Link
+                        to={groupBaseUrl(sub)}
+                        className="font-medium text-text hover:text-primary text-sm inline-flex items-center gap-1.5"
+                      >
+                        <FolderTree size={14} className="text-muted" />
+                        {sub.name}
+                      </Link>
+                    </td>
+                    <td className="font-mono text-xs text-text-secondary">{sub.full_path}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       <div className="app-panel">
         <div className="app-panel-header flex items-center justify-between">
@@ -88,7 +135,7 @@ export function GroupDetailPage() {
             title="No repositories"
             description="Create a repository in this group."
             action={
-              <LinkButton to={`/groups/${slug}/projects/new`} primary>
+              <LinkButton to={`${basePath}/projects/new`} primary>
                 New repository
               </LinkButton>
             }
@@ -110,10 +157,10 @@ export function GroupDetailPage() {
                 <tr key={project.id}>
                   <td>
                     <Link
-                      to={`/groups/${slug}/projects/${project.slug}`}
+                      to={`${basePath}/projects/${project.slug}`}
                       className="font-medium text-text hover:text-primary text-sm"
                     >
-                      <span className="text-text-secondary font-normal">{slug}</span>
+                      <span className="text-text-secondary font-normal">{orgPath}</span>
                       <span className="text-muted mx-1">/</span>
                       <span className="font-mono">{project.name}</span>
                     </Link>
@@ -123,8 +170,8 @@ export function GroupDetailPage() {
                       {project.visibility}
                     </StatusBadge>
                   </td>
-                  <td className="font-mono text-sm text-text-secondary">{project.default_branch}</td>
-                  <td className="text-sm text-text-secondary">
+                  <td className="font-mono text-xs text-text-secondary">{project.default_branch}</td>
+                  <td className="text-text-secondary text-sm">
                     {new Date(project.updated_at).toLocaleDateString()}
                   </td>
                 </tr>

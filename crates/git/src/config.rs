@@ -31,6 +31,11 @@ impl GitConfig {
     }
 }
 
-pub fn repo_disk_path(root: &Path, org_slug: &str, repo_slug: &str) -> PathBuf {
-    root.join(org_slug).join(format!("{repo_slug}.git"))
+pub fn repo_disk_path(root: &Path, org_path: &str, repo_slug: &str) -> PathBuf {
+    let mut path = root.to_path_buf();
+    for segment in org_path.split('/').filter(|s| !s.is_empty()) {
+        path.push(segment);
+    }
+    path.push(format!("{repo_slug}.git"));
+    path
 }

@@ -3,6 +3,7 @@ import { Package, Plus, Users } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { groupBaseUrl, groupUrlPath } from '../lib/groupPath'
 import { EmptyState, LinkButton } from '../components/ui'
 
 export function GroupsPage() {
@@ -14,13 +15,15 @@ export function GroupsPage() {
     enabled: Boolean(token),
   })
 
+  const topLevelGroups = groups.filter((g) => !g.parent_id)
+
   return (
     <>
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold text-text">Groups</h1>
           <p className="text-sm text-text-secondary mt-0.5">
-            Top-level namespaces that contain your repositories
+            Top-level namespaces; create subgroups inside each group (GitLab-style)
           </p>
         </div>
         <LinkButton to="/groups/new" primary>
@@ -32,7 +35,7 @@ export function GroupsPage() {
       <div className="app-panel">
         <div className="app-panel-header flex items-center justify-between">
           <span>All groups</span>
-          <span className="font-normal text-text-secondary">{groups.length} total</span>
+          <span className="font-normal text-text-secondary">{topLevelGroups.length} top-level</span>
         </div>
 
         {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
@@ -42,7 +45,7 @@ export function GroupsPage() {
           </div>
         )}
 
-        {!isLoading && groups.length === 0 && (
+        {!isLoading && topLevelGroups.length === 0 && (
           <EmptyState
             icon={<Users size={40} />}
             title="No groups found"
@@ -55,7 +58,7 @@ export function GroupsPage() {
           />
         )}
 
-        {!isLoading && groups.length > 0 && (
+        {!isLoading && topLevelGroups.length > 0 && (
           <table className="app-list-table">
             <thead>
               <tr>
@@ -66,13 +69,13 @@ export function GroupsPage() {
               </tr>
             </thead>
             <tbody>
-              {groups.map((group) => (
+              {topLevelGroups.map((group) => (
                 <tr key={group.id}>
                   <td>
-                    <Link to={`/groups/${group.slug}`} className="font-medium text-text hover:text-primary">
+                    <Link to={groupBaseUrl(group)} className="font-medium text-text hover:text-primary">
                       {group.name}
                     </Link>
-                    <div className="text-xs text-muted font-mono mt-0.5">{group.slug}</div>
+                    <div className="text-xs text-muted font-mono mt-0.5">{groupUrlPath(group)}</div>
                   </td>
                   <td className="text-text-secondary">{group.description ?? '—'}</td>
                   <td className="text-text-secondary text-sm">
@@ -81,13 +84,13 @@ export function GroupsPage() {
                   <td className="text-right">
                     <div className="flex items-center justify-end gap-3">
                       <Link
-                        to={`/groups/${group.slug}/registry`}
+                        to={`${groupBaseUrl(group)}/registry`}
                         className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary"
                       >
                         <Package size={13} aria-hidden />
                         Registry
                       </Link>
-                      <Link to={`/groups/${group.slug}`} className="text-sm text-primary hover:underline">
+                      <Link to={groupBaseUrl(group)} className="text-sm text-primary hover:underline">
                         View
                       </Link>
                     </div>

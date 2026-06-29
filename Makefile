@@ -1,6 +1,6 @@
 .PHONY: build build-local build-package check test run run-release \
-	infra infra-down install-web web-dist web-dist-docker fix-perms fix-web-dist-owner \
-	dev dev-vite dev-serve dev-web dev-stop \
+	infra infra-down dev-infra install-web web-dist web-dist-docker fix-perms fix-web-dist-owner \
+	dev dev-vite dev-local dev-serve dev-web dev-stop \
 	package package-clean package-amd64 package-arm64 package-deb package-rpm \
 	package-runner package-runner-clean package-runner-amd64 package-runner-arm64 \
 	release release-amd release-arm \
@@ -24,6 +24,23 @@ CACHE_DIR ?= .buildx-cache/release
 DEV_API_PORT ?= 8080
 DEV_USER ?= $(if $(SUDO_USER),$(SUDO_USER),$(USER))
 RUN_AS_USER = $(if $(filter root,$(USER)),sudo -u $(DEV_USER) ,)
+
+# Remote dev DB (Talos / shared Postgres). Override: make dev DEV_DATABASE_URL=...
+# Or set DATABASE_URL in .env (gitignored).
+-include .env
+DEV_DATABASE_URL ?= postgres://postgres:c2UT3eavGQ7eEykq@10.1.1.233:5432/pertisk_local_gits
+ifneq ($(strip $(DATABASE_URL)),)
+DEV_DATABASE_URL := $(DATABASE_URL)
+endif
+# Set DEV_USE_LOCAL_DB=1 to start docker-compose Postgres on localhost instead.
+DEV_USE_LOCAL_DB ?= 0
+DEV_LOCAL_DATABASE_URL ?= postgres://pertisk:pertisk@localhost:5432/pertisk_gits
+ifeq ($(DEV_USE_LOCAL_DB),1)
+DEV_ACTIVE_DATABASE_URL := $(DEV_LOCAL_DATABASE_URL)
+else
+DEV_ACTIVE_DATABASE_URL := $(DEV_DATABASE_URL)
+endif
+DEV_EXPORT_ENV = DATABASE_URL='$(DEV_ACTIVE_DATABASE_URL)'
 
 # Remote deploy — use DEPLOY_HOST=user@host (like pertisk-proxy) or REMOTE_USER + REMOTE_HOST
 DEPLOY_HOST ?=
@@ -66,6 +83,15 @@ infra:
 
 infra-down:
 	$(COMPOSE) down
+
+.PHONY: dev-infra
+dev-infra:
+	@if [ "$(DEV_USE_LOCAL_DB)" = "1" ]; then \
+		echo "Starting local Postgres (docker compose)..."; \
+		$(COMPOSE) up -d postgres; \
+	else \
+		echo "Using DATABASE_URL ($$(echo '$(DEV_ACTIVE_DATABASE_URL)' | sed 's/:\/\/[^:]*:[^@]*@/:\/\/***:***@/'))"; \
+	fi
 
 # --- Web UI (React + Vite) ---
 install-web:
@@ -158,17 +184,23 @@ dev-stop:
 
 DEV_PREFIX = build/dev-prefix-log.sh
 
-# Single-port dev: Postgres + API serves web/dist (set WEB_DIST in .env).
-dev: web-dist dev-stop infra
+# Single-port dev: API serves web/dist. Default DB: DEV_DATABASE_URL (remote).
+# Local Postgres: make dev DEV_USE_LOCAL_DB=1
+dev: web-dist dev-stop dev-infra
 	chmod +x $(DEV_PREFIX)
-	$(CARGO) watch -i web -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api
+	$(DEV_EXPORT_ENV) $(CARGO) watch -i web -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api
 
 # Hot-reload UI on :5173, API on DEV_API_PORT (Vite proxies /api/v1).
-dev-vite: dev-stop infra
+dev-vite: web-dist dev-stop dev-infra
 	chmod +x $(DEV_PREFIX)
-	$(CARGO) watch -i web -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api & \
+	$(DEV_EXPORT_ENV) $(CARGO) watch -i web -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api & \
 	(cd web && $(RUN_AS_USER)npm run dev 2>&1 | $(DEV_PREFIX) vite) & \
 	wait
+
+# Legacy: local docker Postgres + localhost DATABASE_URL
+dev-local: DEV_USE_LOCAL_DB=1
+dev-local: DEV_DATABASE_URL=$(DEV_LOCAL_DATABASE_URL)
+dev-local: dev
 
 dev-serve: dev
 

@@ -2,9 +2,12 @@ import type { JobRun } from '../api/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Download, Loader2, Square, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useProjectParams } from '../hooks/useProjectParams'
+import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
+import { findGroupByPath } from '../lib/groupPath'
 import {
   ActionsJobHeader,
   ActionsJobSidebar,
@@ -50,7 +53,9 @@ function formatBytes(bytes: number): string {
 }
 
 export function PipelineRunDetailPage() {
-  const { slug: orgSlug = '', projectSlug = '', runId = '' } = useParams()
+  const { orgSlug, projectSlug } = useProjectParams()
+  const projectSub = useProjectSubRoute()
+  const runId = projectSub?.kind === 'pipeline' ? projectSub.runId : ''
   const navigate = useNavigate()
   const { token } = useAuth()
   const queryClient = useQueryClient()
@@ -71,7 +76,7 @@ export function PipelineRunDetailPage() {
     queryFn: () => api.listOrganizations(token!),
     enabled: Boolean(token),
   })
-  const group = groups.find((g) => g.slug === orgSlug)
+  const group = findGroupByPath(groups, orgSlug)
 
   const { data: run, isLoading, error } = useQuery({
     queryKey: ['pipeline-run', orgSlug, projectSlug, runId],

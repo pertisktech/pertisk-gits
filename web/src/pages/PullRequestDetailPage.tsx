@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, GitPullRequest, Loader2, Pencil, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { PullRequest, PullRequestReviewDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
+import { useProjectParams } from '../hooks/useProjectParams'
+import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
 import { PullRequestDiff } from '../components/PullRequestDiff'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
@@ -40,7 +42,9 @@ function reviewLabel(state: PullRequestReviewDetail['review']['state']) {
 }
 
 export function PullRequestDetailPage() {
-  const { slug: orgSlug = '', projectSlug = '', pullNumber = '' } = useParams()
+  const { orgSlug, projectSlug } = useProjectParams()
+  const projectSub = useProjectSubRoute()
+  const pullNumber = projectSub?.kind === 'pull' ? projectSub.pullNumber : ''
   const number = Number(pullNumber)
   const { token, user } = useAuth()
   const queryClient = useQueryClient()

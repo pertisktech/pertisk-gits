@@ -174,7 +174,7 @@ impl russh::server::Handler for SshSession {
 
         let repo = access::find_repo(
             &self.state.pool,
-            &git_cmd.org_slug,
+            &git_cmd.org_path,
             &git_cmd.repo_slug,
         )
         .await?
@@ -196,7 +196,7 @@ impl russh::server::Handler for SshSession {
             };
             tracing::warn!(
                 user = %actor,
-                repo = %format!("{}/{}", git_cmd.org_slug, git_cmd.repo_slug),
+                repo = %format!("{}/{}", git_cmd.org_path, git_cmd.repo_slug),
                 "ssh git access denied"
             );
             session.channel_failure(channel_id)?;
@@ -205,7 +205,7 @@ impl russh::server::Handler for SshSession {
 
         ensure_bare_repo(
             &self.state.repos_root,
-            &git_cmd.org_slug,
+            &git_cmd.org_path,
             &git_cmd.repo_slug,
         )
         .await?;
@@ -213,7 +213,7 @@ impl russh::server::Handler for SshSession {
         let repo_id = repo.id;
         let repo_path = repo_disk_path(
             &self.state.repos_root,
-            &git_cmd.org_slug,
+            &git_cmd.org_path,
             &git_cmd.repo_slug,
         );
         let post_receive = self.state.post_receive.clone();

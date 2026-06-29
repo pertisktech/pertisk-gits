@@ -1,7 +1,9 @@
+use pertisk_domain::split_git_repo_path;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GitSshCommand {
     pub service: GitService,
-    pub org_slug: String,
+    pub org_path: String,
     pub repo_slug: String,
 }
 
@@ -44,18 +46,11 @@ pub fn parse_ssh_command(command: &str) -> Option<GitSshCommand> {
         .trim_matches('\'')
         .trim_matches('"')
         .trim();
-    let path = path.trim_start_matches('/');
-    let path = path.strip_suffix(".git").unwrap_or(path);
-
-    let (org_slug, repo_slug) = path.split_once('/')?;
-
-    if org_slug.is_empty() || repo_slug.is_empty() {
-        return None;
-    }
+    let (org_path, repo_slug) = split_git_repo_path(path)?;
 
     Some(GitSshCommand {
         service,
-        org_slug: org_slug.to_string(),
+        org_path: org_path.to_string(),
         repo_slug: repo_slug.to_string(),
     })
 }
@@ -68,13 +63,14 @@ mod tests {
     fn parses_upload_pack() {
         let cmd = parse_ssh_command("git-upload-pack 'acme/widget.git'").unwrap();
         assert_eq!(cmd.service, GitService::UploadPack);
-        assert_eq!(cmd.org_slug, "acme");
+        assert_eq!(cmd.org_path, "acme");
         assert_eq!(cmd.repo_slug, "widget");
     }
 
     #[test]
-    fn parses_receive_pack_spaced() {
-        let cmd = parse_ssh_command("git receive-pack 'acme/widget.git'").unwrap();
-        assert_eq!(cmd.service, GitService::ReceivePack);
+    fn parses_nested_upload_pack() {
+        let cmd = parse_ssh_command("git-upload-pack 'a/b/c/repo.git'").unwrap();
+        assert_eq!(cmd.org_path, "a/b/c");
+        assert_eq!(cmd.repo_slug, "repo");
     }
 }

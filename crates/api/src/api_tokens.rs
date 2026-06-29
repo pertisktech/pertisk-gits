@@ -18,7 +18,7 @@ pub fn api_token_routes() -> Router<AppState> {
         .route("/me/tokens", get(list_my_tokens).post(create_my_token))
         .route("/me/tokens/{token_id}", delete(delete_my_token))
         .route(
-            "/organizations/{org_slug}/machine-users",
+            "/organizations/{org_path}/machine-users",
             get(list_machine_users).post(create_machine_user),
         )
 }
@@ -167,9 +167,9 @@ async fn delete_my_token(
 async fn list_machine_users(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<MachineUserListItem>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, (Uuid, String, String, Option<String>, chrono::DateTime<chrono::Utc>, OrgRole, i64, Option<String>)>(
@@ -227,13 +227,13 @@ async fn list_machine_users(
 async fn create_machine_user(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<CreateMachineUserRequest>,
 ) -> Result<(StatusCode, Json<MachineUserResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_org(&state.pool, org.id, auth.user_id).await?;
 
     let username = body.username.trim();

@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
 import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
+import { groupBaseUrl } from '../lib/groupPath'
+import { groupBreadcrumbItems } from '../lib/groupRoute'
 
 function slugify(value: string) {
   return value
@@ -21,10 +23,14 @@ export function NewGroupPage() {
   const { token } = useAuth()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const parentPath = searchParams.get('parent')?.trim() || undefined
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [slugTouched, setSlugTouched] = useState(false)
   const [description, setDescription] = useState('')
+
+  const fullPathPreview = parentPath ? `${parentPath}/${slug || 'subgroup'}` : slug || 'your-group'
 
   const createGroup = useMutation({
     mutationFn: () =>
@@ -32,10 +38,14 @@ export function NewGroupPage() {
         name,
         slug,
         description: description || undefined,
+        parent_path: parentPath,
       }),
     onSuccess: (group) => {
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
-      navigate(`/groups/${group.slug}`)
+      if (parentPath) {
+        queryClient.invalidateQueries({ queryKey: ['subgroups', parentPath] })
+      }
+      navigate(groupBaseUrl(group))
     },
   })
 
@@ -49,10 +59,21 @@ export function NewGroupPage() {
     createGroup.mutate()
   }
 
+  const breadcrumbItems = parentPath
+    ? [...groupBreadcrumbItems(parentPath), { label: 'New subgroup' }]
+    : [{ label: 'Groups', to: '/groups' }, { label: 'New group' }]
+
   return (
     <>
-      <Breadcrumbs items={[{ label: 'Groups', to: '/groups' }, { label: 'New group' }]} />
-      <PageHeader title="New group" subtitle="A group contains one or more projects (repositories)." />
+      <Breadcrumbs items={breadcrumbItems} />
+      <PageHeader
+        title={parentPath ? 'New subgroup' : 'New group'}
+        subtitle={
+          parentPath
+            ? `Creates a subgroup under ${parentPath}.`
+            : 'A group contains subgroups and repositories (like GitLab).'
+        }
+      />
 
       <Card className="max-w-xl">
         <form onSubmit={onSubmit} className="space-y-4">
@@ -61,12 +82,17 @@ export function NewGroupPage() {
               {(createGroup.error as Error).message}
             </div>
           )}
+          {parentPath && (
+            <p className="text-sm text-text-secondary">
+              Parent group: <span className="font-mono text-text">{parentPath}</span>
+            </p>
+          )}
           <label className="block text-sm font-semibold text-text">
             Group name
             <input className={`${fieldClass} mt-1.5`} value={name} onChange={(e) => onNameChange(e.target.value)} required />
           </label>
           <label className="block text-sm font-semibold text-text">
-            Group URL
+            URL segment
             <input
               className={`${fieldClass} mt-1.5 font-mono`}
               value={slug}
@@ -76,7 +102,7 @@ export function NewGroupPage() {
               }}
               required
             />
-            <span className="text-xs text-text-secondary mt-1 block font-mono">pertisk-gits/{slug || 'your-group'}</span>
+            <span className="text-xs text-text-secondary mt-1 block font-mono">pertisk-gits/{fullPathPreview}</span>
           </label>
           <label className="block text-sm font-semibold text-text">
             Description (optional)
@@ -89,9 +115,9 @@ export function NewGroupPage() {
           </label>
           <div className="flex gap-2 pt-2">
             <PrimaryButton type="submit" disabled={createGroup.isPending}>
-              {createGroup.isPending ? 'Creating…' : 'Create group'}
+              {createGroup.isPending ? 'Creating…' : parentPath ? 'Create subgroup' : 'Create group'}
             </PrimaryButton>
-            <LinkButton to="/groups">Cancel</LinkButton>
+            <LinkButton to={parentPath ? `/groups/${parentPath}` : '/groups'}>Cancel</LinkButton>
           </div>
         </form>
       </Card>

@@ -16,31 +16,31 @@ use crate::{
 pub fn team_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_slug}/teams",
+            "/organizations/{org_path}/teams",
             get(list_teams).post(create_team),
         )
         .route(
-            "/organizations/{org_slug}/teams/{team_slug}",
+            "/organizations/{org_path}/teams/{team_slug}",
             get(get_team).patch(update_team).delete(delete_team),
         )
         .route(
-            "/organizations/{org_slug}/teams/{team_slug}/members",
+            "/organizations/{org_path}/teams/{team_slug}/members",
             get(list_team_members).post(add_team_member),
         )
         .route(
-            "/organizations/{org_slug}/teams/{team_slug}/members/{user_id}",
+            "/organizations/{org_path}/teams/{team_slug}/members/{user_id}",
             delete(remove_team_member),
         )
         .route(
-            "/organizations/{org_slug}/teams/{team_slug}/repositories",
+            "/organizations/{org_path}/teams/{team_slug}/repositories",
             get(list_team_repositories).post(set_team_repository_access),
         )
         .route(
-            "/organizations/{org_slug}/teams/{team_slug}/repositories/{repo_slug}",
+            "/organizations/{org_path}/teams/{team_slug}/repositories/{repo_slug}",
             delete(remove_team_repository_access),
         )
         .route(
-            "/organizations/{org_slug}/repositories/{repo_slug}/team-access",
+            "/organizations/{org_path}/repositories/{repo_slug}/team-access",
             get(list_repository_team_access),
         )
 }
@@ -93,9 +93,9 @@ struct RepositoryTeamAccessResponse {
 async fn list_teams(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
 ) -> Result<Json<Vec<TeamSummaryResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
 
     let rows = sqlx::query_as::<_, (
         Uuid,
@@ -150,13 +150,13 @@ async fn list_teams(
 async fn create_team(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_slug): Path<String>,
+    Path(org_path): Path<String>,
     Json(body): Json<CreateTeamRequest>,
 ) -> Result<(StatusCode, Json<TeamDetailResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_teams(&state.pool, org.id, auth.user_id).await?;
 
     let slug = body
@@ -188,9 +188,9 @@ async fn create_team(
 async fn get_team(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug)): Path<(String, String)>,
+    Path((org_path, team_slug)): Path<(String, String)>,
 ) -> Result<Json<TeamDetailResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
     Ok(Json(TeamDetailResponse::from(team)))
 }
@@ -198,7 +198,7 @@ async fn get_team(
 async fn update_team(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug)): Path<(String, String)>,
+    Path((org_path, team_slug)): Path<(String, String)>,
     Json(body): Json<UpdateTeamRequest>,
 ) -> Result<Json<TeamDetailResponse>, ApiError> {
     body.validate()
@@ -208,7 +208,7 @@ async fn update_team(
         return Err(DomainError::Validation("no fields to update".into()).into());
     }
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_teams(&state.pool, org.id, auth.user_id).await?;
     let existing = find_team(&state.pool, org.id, &team_slug).await?;
 
@@ -240,9 +240,9 @@ async fn update_team(
 async fn delete_team(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug)): Path<(String, String)>,
+    Path((org_path, team_slug)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_teams(&state.pool, org.id, auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
 
@@ -259,9 +259,9 @@ async fn delete_team(
 async fn list_team_members(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug)): Path<(String, String)>,
+    Path((org_path, team_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<TeamMemberResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
 
     let rows = sqlx::query_as::<_, (Uuid, String, String, Option<String>, chrono::DateTime<chrono::Utc>, chrono::DateTime<chrono::Utc>)>(
@@ -297,13 +297,13 @@ async fn list_team_members(
 async fn add_team_member(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug)): Path<(String, String)>,
+    Path((org_path, team_slug)): Path<(String, String)>,
     Json(body): Json<AddTeamMemberRequest>,
 ) -> Result<(StatusCode, Json<TeamMemberResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_teams(&state.pool, org.id, auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
     let user = permissions::resolve_user_for_add(&state.pool, body.user_id, body.username).await?;
@@ -349,9 +349,9 @@ async fn add_team_member(
 async fn remove_team_member(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug, user_id)): Path<(String, String, Uuid)>,
+    Path((org_path, team_slug, user_id)): Path<(String, String, Uuid)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_teams(&state.pool, org.id, auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
 
@@ -374,9 +374,9 @@ async fn remove_team_member(
 async fn list_team_repositories(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug)): Path<(String, String)>,
+    Path((org_path, team_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<TeamRepositoryAccessResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
 
     let rows = sqlx::query_as::<_, (Uuid, String, String, RepoRole, chrono::DateTime<chrono::Utc>)>(
@@ -411,13 +411,13 @@ async fn list_team_repositories(
 async fn set_team_repository_access(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug)): Path<(String, String)>,
+    Path((org_path, team_slug)): Path<(String, String)>,
     Json(body): Json<SetTeamRepositoryAccessRequest>,
 ) -> Result<(StatusCode, Json<TeamRepositoryAccessResponse>), ApiError> {
     body.validate()
         .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
 
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_teams(&state.pool, org.id, auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
     let repo = permissions::find_repo_in_org(&state.pool, org.id, &body.repo_slug).await?;
@@ -468,9 +468,9 @@ async fn set_team_repository_access(
 async fn remove_team_repository_access(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, team_slug, repo_slug)): Path<(String, String, String)>,
+    Path((org_path, team_slug, repo_slug)): Path<(String, String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     permissions::ensure_can_manage_teams(&state.pool, org.id, auth.user_id).await?;
     let team = find_team(&state.pool, org.id, &team_slug).await?;
     let repo = permissions::find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
@@ -494,9 +494,9 @@ async fn remove_team_repository_access(
 async fn list_repository_team_access(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_slug, repo_slug)): Path<(String, String)>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<Vec<RepositoryTeamAccessResponse>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &org_slug, auth.user_id).await?;
+    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     let repo = permissions::find_repo_in_org(&state.pool, org.id, &repo_slug).await?;
     permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
 

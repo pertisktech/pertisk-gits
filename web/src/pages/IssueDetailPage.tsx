@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleDot, Loader2 } from 'lucide-react'
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useProjectParams } from '../hooks/useProjectParams'
+import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
 import { IssueSidebar } from '../components/IssueSidebar'
 import { LabelBadge } from '../components/LabelBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
@@ -11,7 +13,9 @@ import { Breadcrumbs, PrimaryButton } from '../components/ui'
 import { projectTabPath } from '../lib/projectRoute'
 
 export function IssueDetailPage() {
-  const { slug: orgSlug = '', projectSlug = '', issueNumber = '' } = useParams()
+  const { orgSlug, projectSlug } = useProjectParams()
+  const projectSub = useProjectSubRoute()
+  const issueNumber = projectSub?.kind === 'issue' ? projectSub.issueNumber : ''
   const number = Number(issueNumber)
   const { token } = useAuth()
   const queryClient = useQueryClient()

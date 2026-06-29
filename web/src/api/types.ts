@@ -12,6 +12,8 @@ export interface Organization {
   slug: string
   name: string
   description: string | null
+  parent_id: string | null
+  full_path: string
   created_at: string
   updated_at: string
 }
