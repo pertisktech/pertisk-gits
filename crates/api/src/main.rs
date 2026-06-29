@@ -1453,6 +1453,12 @@ pub(crate) fn map_explorer_error(err: anyhow::Error) -> ApiError {
     }
 }
 
+fn is_missing_git_ref(err: &anyhow::Error) -> bool {
+    let msg = err.to_string().to_lowercase();
+    (msg.contains("branch") || msg.contains("tag") || msg.contains("revision"))
+        && (msg.contains("not found") || msg.contains("unknown") || msg.contains("bad revision"))
+}
+
 async fn get_repo_browser(
     State(state): State<AppState>,
     OptionalAuth(auth): OptionalAuth,
@@ -1592,9 +1598,12 @@ async fn get_repo_commits(
         load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
     let ref_kind = parse_ref_kind(&query.ref_kind)?;
 
-    let commits = explorer::list_commits(&repo_path, &query.r#ref, ref_kind, query.limit.min(100))
-        .await
-        .map_err(map_explorer_error)?;
+    let commits = match explorer::list_commits(&repo_path, &query.r#ref, ref_kind, query.limit.min(100)).await
+    {
+        Ok(commits) => commits,
+        Err(err) if is_missing_git_ref(&err) => Vec::new(),
+        Err(err) => return Err(map_explorer_error(err)),
+    };
 
     Ok(Json(CommitsResponse {
         commits,

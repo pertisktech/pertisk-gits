@@ -23,14 +23,19 @@ function compareText(a: string, b: string) {
   return a.localeCompare(b, undefined, { sensitivity: 'base' })
 }
 
+function projectUpdatedAt(project: DashboardProject): number {
+  const parsed = Date.parse(project.updated_at)
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : 0
+}
+
 function sortProjects(projects: DashboardProject[], sort: SortOption): DashboardProject[] {
   const copy = [...projects]
   copy.sort((a, b) => {
     switch (sort) {
       case 'updated_asc':
-        return (a.lastCommittedAt ?? 0) - (b.lastCommittedAt ?? 0)
+        return projectUpdatedAt(a) - projectUpdatedAt(b)
       case 'updated_desc':
-        return (b.lastCommittedAt ?? 0) - (a.lastCommittedAt ?? 0)
+        return projectUpdatedAt(b) - projectUpdatedAt(a)
       case 'name_desc':
         return compareText(b.name, a.name)
       case 'group_asc':
@@ -58,12 +63,6 @@ function matchesSearch(project: DashboardProject, query: string) {
 }
 
 function lastActivityLabel(project: DashboardProject) {
-  if (project.lastCommitLoading) return '…'
-  if (project.lastCommittedAt) {
-    return formatRelativeTimeFromIso(
-      new Date(project.lastCommittedAt * 1000).toISOString(),
-    )
-  }
   return formatRelativeTimeFromIso(project.updated_at)
 }
 
@@ -212,11 +211,7 @@ export function DashboardPage() {
                     </StatusBadge>
                     <span
                       className={styles.updated}
-                      title={
-                        project.lastCommittedAt
-                          ? new Date(project.lastCommittedAt * 1000).toLocaleString()
-                          : new Date(project.updated_at).toLocaleString()
-                      }
+                      title={new Date(project.updated_at).toLocaleString()}
                     >
                       {lastActivityLabel(project)}
                     </span>

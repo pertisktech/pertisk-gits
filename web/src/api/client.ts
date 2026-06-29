@@ -1674,7 +1674,7 @@ export const api = {
       namespace_kind?: 'personal' | 'organization' | 'group'
     },
   ) =>
-    request<{ account: string; namespaces: RemoteNamespace[]; repos: RemoteRepo[] }>(
+    request<{ account: string; namespaces: RemoteNamespace[]; repos: RemoteRepo[]; max_repos_per_job: number }>(
       `/organizations/${orgApiPath(orgSlug)}/import/discover`,
       { method: 'POST', body: JSON.stringify(payload) },
       token,

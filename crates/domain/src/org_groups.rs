@@ -124,10 +124,19 @@ pub fn import_target_org_path(target_org_full_path: &str, source_full_name: &str
         return namespace.to_string();
     }
     if namespace == target || namespace.starts_with(&format!("{target}/")) {
-        namespace.to_string()
-    } else {
-        join_org_path(&target, namespace)
+        return namespace.to_string();
     }
+
+    // GitLab group import: target `gitlab/mp`, namespace `mp/coupon` → `gitlab/mp/coupon`
+    let mut relative_ns = namespace;
+    let target_slug = org_path_slug(&target);
+    if let Some(rest) = relative_ns.strip_prefix(&format!("{target_slug}/")) {
+        relative_ns = rest;
+    } else if relative_ns == target_slug {
+        return target;
+    }
+
+    join_org_path(&target, relative_ns)
 }
 
 pub fn import_repo_slug(source_full_name: &str) -> String {
@@ -149,5 +158,13 @@ mod tests {
             "a/b/c"
         );
         assert_eq!(import_repo_slug("a/b/c/repo"), "repo");
+        assert_eq!(
+            import_target_org_path("gitlab/mp", "mp/coupon/coupon-api"),
+            "gitlab/mp/coupon"
+        );
+        assert_eq!(
+            import_target_org_path("gitlab", "mp/coupon/coupon-api"),
+            "gitlab/mp/coupon"
+        );
     }
 }

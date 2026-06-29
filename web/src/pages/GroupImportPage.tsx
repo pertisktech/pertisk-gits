@@ -9,6 +9,7 @@ import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { Card } from '../components/Card'
 import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
+import { chunkImportRepos, DEFAULT_IMPORT_MAX_REPOS_PER_JOB } from '../lib/importLimits'
 
 const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
@@ -38,6 +39,7 @@ export function GroupImportPage() {
   const [importIssues, setImportIssues] = useState(false)
   const [importPullRequests, setImportPullRequests] = useState(false)
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
+  const [maxReposPerJob, setMaxReposPerJob] = useState(DEFAULT_IMPORT_MAX_REPOS_PER_JOB)
 
   const { data: members = [] } = useQuery({
     queryKey: ['org-members', orgPath],
@@ -132,6 +134,7 @@ export function GroupImportPage() {
       setAccount(result.account)
       setNamespaces(result.namespaces)
       setRemoteRepos(result.repos)
+      setMaxReposPerJob(result.max_repos_per_job)
       const initial: Record<string, boolean> = {}
       for (const repo of result.repos) {
         initial[repo.id] = false
@@ -148,6 +151,7 @@ export function GroupImportPage() {
     onSuccess: (result) => {
       setNamespaces(result.namespaces)
       setRemoteRepos(result.repos)
+      setMaxReposPerJob(result.max_repos_per_job)
       const initial: Record<string, boolean> = {}
       for (const repo of result.repos) {
         initial[repo.id] = false
@@ -157,7 +161,7 @@ export function GroupImportPage() {
   })
 
   const startImport = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       const id = credentialId
       if (!id) throw new Error('Save credentials before importing')
       const repos = remoteRepos
@@ -171,14 +175,20 @@ export function GroupImportPage() {
           visibility: repo.visibility,
           default_branch: repo.default_branch,
         }))
-      return api.createImportJob(token!, orgPath, {
-        credential_id: id,
-        import_issues: importIssues,
-        import_pull_requests: importPullRequests,
-        repos,
-      })
+      const batches = chunkImportRepos(repos, maxReposPerJob)
+      let lastJob: ImportJobDetail | null = null
+      for (const batch of batches) {
+        lastJob = await api.createImportJob(token!, orgPath, {
+          credential_id: id,
+          import_issues: importIssues,
+          import_pull_requests: importPullRequests,
+          repos: batch,
+        })
+      }
+      if (!lastJob) throw new Error('Select at least one repository')
+      return { job: lastJob, jobCount: batches.length }
     },
-    onSuccess: (job) => {
+    onSuccess: ({ job }) => {
       setActiveJobId(job.id)
       queryClient.invalidateQueries({ queryKey: ['import-jobs', orgPath] })
     },
@@ -191,6 +201,7 @@ export function GroupImportPage() {
   }, [namespacePath])
 
   const selectedCount = Object.values(selected).filter(Boolean).length
+  const importJobCount = Math.max(1, Math.ceil(selectedCount / maxReposPerJob))
 
   if (!canManage && members.length > 0) {
     return <Navigate to={`/groups/${orgPath}`} replace />
@@ -423,9 +434,10 @@ export function GroupImportPage() {
                 >
                   Clear
                 </SecondaryButton>
-                {remoteRepos.length > 200 && (
-                  <span className="text-xs text-dashboard-danger">
-                    This list has {remoteRepos.length} repos; import at most 200 per job.
+                {remoteRepos.length > maxReposPerJob && (
+                  <span className="text-xs text-text-secondary">
+                    {remoteRepos.length} repositories — imports run in batches of up to {maxReposPerJob}{' '}
+                    per job.
                   </span>
                 )}
               </div>
@@ -468,7 +480,11 @@ export function GroupImportPage() {
                 disabled={selectedCount === 0 || startImport.isPending}
                 onClick={() => startImport.mutate()}
               >
-                {startImport.isPending ? 'Starting import…' : `Import ${selectedCount} repositories`}
+                {startImport.isPending
+                  ? 'Starting import…'
+                  : importJobCount > 1
+                    ? `Import ${selectedCount} repositories (${importJobCount} jobs)`
+                    : `Import ${selectedCount} repositories`}
               </PrimaryButton>
             </div>
           )}

@@ -22,6 +22,16 @@ use providers::{
     NamespaceFilter, RemoteNamespace, RemoteRepo,
 };
 
+const DEFAULT_MAX_REPOS_PER_JOB: usize = 500;
+
+fn max_repos_per_job() -> usize {
+    std::env::var("IMPORT_MAX_REPOS_PER_JOB")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_MAX_REPOS_PER_JOB)
+}
+
 pub fn import_routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -78,6 +88,7 @@ struct DiscoverResponse {
     pub account: String,
     pub namespaces: Vec<RemoteNamespace>,
     pub repos: Vec<RemoteRepo>,
+    pub max_repos_per_job: usize,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -282,6 +293,7 @@ async fn discover_repos(
         account,
         namespaces,
         repos,
+        max_repos_per_job: max_repos_per_job(),
     }))
 }
 
@@ -294,8 +306,12 @@ async fn create_import_job(
     if body.repos.is_empty() {
         return Err(DomainError::Validation("select at least one repository".into()).into());
     }
-    if body.repos.len() > 200 {
-        return Err(DomainError::Validation("import at most 200 repositories per job".into()).into());
+    let max_repos = max_repos_per_job();
+    if body.repos.len() > max_repos {
+        return Err(DomainError::Validation(format!(
+            "import at most {max_repos} repositories per job"
+        ))
+        .into());
     }
 
     let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
