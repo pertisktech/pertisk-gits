@@ -40,6 +40,7 @@ mod backup;
 mod branch_protection;
 mod ci_secrets;
 mod collaboration;
+mod compression;
 mod contents;
 mod custom_roles;
 mod cicd;
@@ -298,7 +299,13 @@ async fn main() -> anyhow::Result<()> {
             );
         }
         app = app
-            .nest_service("/assets", ServeDir::new(web_dist.join("assets")))
+            .nest_service(
+                "/assets",
+                ServeDir::new(web_dist.join("assets"))
+                    .precompressed_zstd()
+                    .precompressed_br()
+                    .precompressed_gzip(),
+            )
             .route_service("/favicon.svg", get_service(ServeFile::new(web_dist.join("favicon.svg"))))
             .route_service("/icons.svg", get_service(ServeFile::new(web_dist.join("icons.svg"))))
             .fallback(get(spa_index));
@@ -307,7 +314,7 @@ async fn main() -> anyhow::Result<()> {
         app = app.route("/", get(root));
     }
 
-    let app = app
+    let mut app = app
         .layer(DefaultBodyLimit::max(pertisk_registry::MAX_REGISTRY_BODY_BYTES))
         .layer(
             CorsLayer::new()
@@ -315,8 +322,14 @@ async fn main() -> anyhow::Result<()> {
                 .allow_methods(Any)
                 .allow_headers(Any),
         )
-        .layer(TraceLayer::new_for_http())
-        .with_state(state.clone());
+        .layer(TraceLayer::new_for_http());
+
+    if compression::http_compression_enabled() {
+        app = app.layer(compression::compression_layer());
+        tracing::info!("HTTP response compression enabled (preference: zstd > br > gzip)");
+    }
+
+    let app = app.with_state(state.clone());
 
     let addr = format!("{}:{}", config.host, config.port);
     tracing::info!("pertisk-api listening on {addr}");
