@@ -29,6 +29,7 @@ persistence:
   enabled: true
   size: 50Gi
   storageClass: ""
+  # ReadWriteOnce = single API pod (default). Use ReadWriteMany + NFS/EFS for HA (replicaCount > 1).
   accessMode: ReadWriteOnce
 
 service:

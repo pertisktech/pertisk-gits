@@ -1,0 +1,87 @@
+# HA overrides for Talos Orion (arm64 + NFS RWX).
+#
+# Prerequisites:
+#   1. HA PostgreSQL reachable from the cluster (update secret below).
+#   2. kubectl create secret … database-url + jwt-secret (do not commit secrets).
+#   3. NFS StorageClass `nfs-client` (already on talos-orion).
+#
+# Install:
+#   helm upgrade --install pertisk-gits ./deploy/helm/pertisk-gits \
+#     --namespace pertisk-proxy --create-namespace \
+#     -f deploy/helm/pertisk-gits/values-ha-talos.yaml \
+#     --kubeconfig /Users/nat/.kube/talos-orion-cluster-kubeconfig.yaml
+
+replicaCount: 2
+
+image:
+  repository: harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/pertisk-gits
+  tag: "0.2.65"
+  pullPolicy: IfNotPresent
+
+# Must match runner apiUrl and clone URLs
+publicUrl: "https://gitdev.orion.thaidevops.co"
+
+database:
+  url: ""
+  existingSecret:
+    name: pertisk-gits-secret
+    key: database-url
+
+jwt:
+  secret: ""
+  existingSecret:
+    name: pertisk-gits-secret
+    key: jwt-secret
+
+# Shared bare repos — required for replicaCount > 1
+persistence:
+  enabled: true
+  size: 100Gi
+  storageClass: nfs-client
+  accessMode: ReadWriteMany
+
+service:
+  type: ClusterIP
+  port: 8081
+
+ingress:
+  enabled: true
+  className: pertisk-proxy
+  annotations:
+    # Large registry pushes — tune for your ingress controller
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
+  hosts:
+    - host: gitdev.orion.thaidevops.co
+      paths:
+        - path: /
+          pathType: Prefix
+  #tls: []
+  tls:
+     - secretName: admin-orion-tls
+       hosts:
+         - gitdev.orion.thaidevops.co
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+nodeSelector:
+  kubernetes.io/arch: arm64
+
+# Spread API pods across nodes (same pattern as pertisk-runner)
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: pertisk-gits
+          topologyKey: kubernetes.io/hostname
+
+tolerations: []

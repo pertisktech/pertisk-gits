@@ -58,8 +58,44 @@ make helm-gits-lint
 make helm-gits-template
 ```
 
+Build and push multi-arch platform image (Harbor):
+
+```bash
+docker login harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy
+make pertisk-gits-image-multi VERSION=0.2.65
+```
+
+Image: `harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/pertisk-gits:VERSION` (also `:latest`).
+
 ## Planned (Phase 7)
 
 - HPA on runner queue depth
 - GitOps webhooks (Argo CD / Flux)
 - Optional subchart for PostgreSQL
+
+## High availability (platform)
+
+Default chart values are **single-replica** (`replicaCount: 1`, `ReadWriteOnce` PVC).
+
+For **active/active API** pods, use shared git storage and an HA database:
+
+```bash
+# Example: Talos Orion + NFS (see values-ha-talos.yaml)
+kubectl create secret generic pertisk-gits-secret -n pertisk-proxy \
+  --from-literal=database-url='postgres://USER:PASS@HOST:5432/pertisk_gits' \
+  --from-literal=jwt-secret='LONG_RANDOM_SECRET'
+
+helm upgrade --install pertisk-gits ./deploy/helm/pertisk-gits \
+  --namespace pertisk-proxy \
+  -f deploy/helm/pertisk-gits/values-ha-talos.yaml
+```
+
+| Requirement | HA platform |
+|-------------|-------------|
+| `replicaCount` | 2+ |
+| `persistence.accessMode` | `ReadWriteMany` (NFS, EFS, CephFS) |
+| PostgreSQL | Managed HA cluster (external to chart) |
+| Ingress / LB | `ingress.enabled` or external proxy |
+| CI runners | Separate chart — already supports HPA (`pertisk-runner`) |
+
+**Note:** Git SSH uses a separate TCP listener; HTTP ingress alone does not cover `git@host:port` clones.

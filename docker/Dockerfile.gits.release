@@ -1,0 +1,119 @@
+# syntax=docker/dockerfile:1
+# Multi-arch pertisk-gits platform image — build with:
+#   make pertisk-gits-image-multi VERSION=x.y.z
+# Requires TARGETARCH / TARGETPLATFORM (passed by Makefile or buildx).
+
+ARG TARGETPLATFORM=linux/amd64
+ARG BUILDPLATFORM=linux/amd64
+ARG TARGETARCH=amd64
+ARG BUILDARCH=amd64
+ARG VERSION=0.1.0
+
+FROM --platform=$BUILDPLATFORM rust:1-alpine AS builder
+
+ARG TARGETARCH
+ARG BUILDARCH
+ARG VERSION=0.1.0
+
+RUN apk add --no-cache musl-dev build-base pkgconfig file
+
+COPY docker/alpine-rust-cross.sh /usr/local/sbin/alpine-rust-cross
+RUN chmod +x /usr/local/sbin/alpine-rust-cross \
+    && alpine-rust-cross "$TARGETARCH" "$BUILDARCH"
+
+WORKDIR /app
+
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY migrations ./migrations
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-gits-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETARCH} \
+    cargo fetch --locked
+
+ARG CARGO_BUILD_JOBS=4
+ENV CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS}
+ENV PERTISK_VERSION=${VERSION}
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertisk-gits-registry-${TARGETARCH} \
+    --mount=type=cache,target=/usr/local/cargo/git,sharing=locked,id=pertisk-gits-git-${TARGETARCH} \
+    --mount=type=cache,target=/app/target,sharing=locked,id=pertisk-gits-target-${TARGETARCH} \
+    set -eu; \
+    echo "Building pertisk-gits for TARGETARCH=${TARGETARCH} BUILDARCH=${BUILDARCH}"; \
+    case "${TARGETARCH}" in \
+      amd64) RUST_TARGET=x86_64-unknown-linux-musl; TGZ=x86_64-linux-musl-cross ;; \
+      arm64) RUST_TARGET=aarch64-unknown-linux-musl; TGZ=aarch64-linux-musl-cross ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac; \
+    if [ "${TARGETARCH}" != "${BUILDARCH}" ]; then \
+      export PATH="/opt/${TGZ}/bin:${PATH}"; \
+      case "${TARGETARCH}" in \
+        amd64) \
+          export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=x86_64-linux-musl-gcc; \
+          export CC_x86_64_unknown_linux_musl=x86_64-linux-musl-gcc; \
+          ;; \
+        arm64) \
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=aarch64-linux-musl-gcc; \
+          export CC_aarch64_unknown_linux_musl=aarch64-linux-musl-gcc; \
+          ;; \
+      esac; \
+      BUILD_FLAGS="--release --locked --target ${RUST_TARGET}"; \
+      TARGET_DIR="/app/target/${RUST_TARGET}/release"; \
+    else \
+      BUILD_FLAGS="--release --locked"; \
+      TARGET_DIR="/app/target/release"; \
+    fi; \
+    cargo build ${BUILD_FLAGS} -p pertisk-api; \
+    mkdir -p /app/out; \
+    cp "${TARGET_DIR}/pertisk-api" /app/out/pertisk-gits; \
+    file /app/out/pertisk-gits; \
+    case "${TARGETARCH}" in \
+      amd64) file /app/out/pertisk-gits | grep -Eq 'x86-64' ;; \
+      arm64) file /app/out/pertisk-gits | grep -Eq 'aarch64' ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac
+
+FROM --platform=$TARGETPLATFORM alpine:3.21 AS runtime
+
+ARG TARGETARCH
+ARG VERSION=0.1.0
+LABEL org.opencontainers.image.title="pertisk-gits" \
+      org.opencontainers.image.version="${VERSION}"
+
+RUN apk add --no-cache \
+      ca-certificates \
+      git \
+      curl \
+      file \
+      shadow \
+    && addgroup -S pertisk-gits \
+    && adduser -S -G pertisk-gits -h /var/lib/pertisk-gits -s /sbin/nologin pertisk-gits \
+    && mkdir -p /var/lib/pertisk-gits/repos /usr/share/pertisk-gits/web \
+    && chown -R pertisk-gits:pertisk-gits /var/lib/pertisk-gits
+
+COPY --from=builder /app/out/pertisk-gits /usr/local/bin/pertisk-gits
+COPY web/dist /usr/share/pertisk-gits/web
+
+RUN set -eu; \
+    echo "Runtime verify TARGETARCH=${TARGETARCH}"; \
+    file /usr/local/bin/pertisk-gits; \
+    test -f /usr/share/pertisk-gits/web/index.html; \
+    case "${TARGETARCH}" in \
+      amd64) file /usr/local/bin/pertisk-gits | grep -Eq 'x86-64' ;; \
+      arm64) file /usr/local/bin/pertisk-gits | grep -Eq 'aarch64' ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}"; exit 1 ;; \
+    esac
+
+WORKDIR /var/lib/pertisk-gits
+
+ENV API_HOST=0.0.0.0 \
+    API_PORT=8081 \
+    REPOS_ROOT=/data/repos \
+    WEB_DIST=/usr/share/pertisk-gits/web \
+    RUST_LOG=info,pertisk_api=info
+
+EXPOSE 8081
+
+USER pertisk-gits
+
+ENTRYPOINT ["/usr/local/bin/pertisk-gits"]

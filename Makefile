@@ -7,6 +7,7 @@
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm deploy-rpm-arm64 \
 	install-runner deploy-runner-rpm deploy-runner-rpm-arm64 \
 	runner-image runner-image-push runner-image-arm64 runner-image-multi runner-compose-up runner-compose-down \
+	pertisk-gits-image pertisk-gits-image-push pertisk-gits-image-arm64 pertisk-gits-image-multi \
 	helm-runner-lint helm-runner-template helm-runner-install helm-runner-upgrade \
 	helm-gits-lint helm-gits-template
 
@@ -371,6 +372,75 @@ runner-image-multi:
 	  "$(RUNNER_IMAGE):$(VERSION)-amd64" \
 	  "$(RUNNER_IMAGE):$(VERSION)-arm64"
 	@echo "Verify: docker buildx imagetools inspect $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)"
+
+# --- Platform (pertisk-gits) Docker image ---
+GITS_REGISTRY ?= harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy
+GITS_IMAGE_NAME ?= pertisk-gits
+GITS_IMAGE ?= $(GITS_REGISTRY)/$(GITS_IMAGE_NAME)
+GITS_IMAGE_TAG ?= $(VERSION)
+GITS_IMAGE_BUILDER ?= pertisk-gits-image
+
+pertisk-gits-image: web-dist
+	@echo "Building $(GITS_IMAGE):$(GITS_IMAGE_TAG) (linux/amd64, local)..."
+	export DOCKER_BUILDKIT=1; \
+	docker buildx build --platform linux/amd64 \
+	  -f docker/Dockerfile.gits.release \
+	  --target runtime \
+	  --build-arg VERSION="$(VERSION)" \
+	  -t "$(GITS_IMAGE):$(GITS_IMAGE_TAG)" \
+	  -t "$(GITS_IMAGE):latest" \
+	  --load .
+
+pertisk-gits-image-push: web-dist
+	@echo "Pushing $(GITS_IMAGE):$(GITS_IMAGE_TAG) to $(GITS_REGISTRY) (linux/amd64)..."
+	@echo "Login first if needed: docker login $(GITS_REGISTRY)"
+	$(MAKE) _pertisk-gits-image-push-one PLATFORM=linux/amd64 SUFFIX=amd64 VERSION="$(VERSION)" TAG="$(GITS_IMAGE_TAG)"
+
+pertisk-gits-image-arm64: web-dist
+	@echo "Pushing $(GITS_IMAGE):$(GITS_IMAGE_TAG)-arm64 to $(GITS_REGISTRY) (linux/arm64)..."
+	@echo "Login first if needed: docker login $(GITS_REGISTRY)"
+	$(MAKE) _pertisk-gits-image-push-one PLATFORM=linux/arm64 SUFFIX=arm64 VERSION="$(VERSION)" TAG="$(GITS_IMAGE_TAG)-arm64"
+
+_pertisk-gits-image-push-one: web-dist
+	@test -n "$(PLATFORM)" && test -n "$(SUFFIX)" && test -n "$(VERSION)" && test -n "$(TAG)"
+	@ARCH=$$(echo "$(PLATFORM)" | cut -d/ -f2); \
+	HOST_RAW=$$(uname -m); \
+	case "$$HOST_RAW" in \
+	  x86_64) HOST_ARCH=amd64 ;; \
+	  aarch64|arm64) HOST_ARCH=arm64 ;; \
+	  *) HOST_ARCH=amd64 ;; \
+	esac; \
+	export DOCKER_BUILDKIT=1; \
+	if ! docker buildx inspect "$(GITS_IMAGE_BUILDER)" --bootstrap >/dev/null 2>&1; then \
+	  docker buildx create --name "$(GITS_IMAGE_BUILDER)" --driver docker-container --bootstrap; \
+	fi; \
+	echo "Building $(GITS_IMAGE):$(TAG) platform=$(PLATFORM) host=$$HOST_ARCH target=$$ARCH jobs=$(CARGO_BUILD_JOBS)"; \
+	docker buildx build --builder "$(GITS_IMAGE_BUILDER)" \
+	  --platform "$(PLATFORM)" \
+	  -f docker/Dockerfile.gits.release \
+	  --target runtime \
+	  --build-arg VERSION="$(VERSION)" \
+	  --build-arg TARGETPLATFORM="$(PLATFORM)" \
+	  --build-arg TARGETARCH="$$ARCH" \
+	  --build-arg BUILDPLATFORM="linux/$$HOST_ARCH" \
+	  --build-arg BUILDARCH="$$HOST_ARCH" \
+	  --build-arg CARGO_BUILD_JOBS="$(CARGO_BUILD_JOBS)" \
+	  -t "$(GITS_IMAGE):$(TAG)" \
+	  $(if $(NO_CACHE),--no-cache,) \
+	  --provenance=false \
+	  --push .
+
+pertisk-gits-image-multi: web-dist
+	@echo "Pushing $(GITS_IMAGE):$(GITS_IMAGE_TAG) (amd64 + arm64, separate builds) to $(GITS_REGISTRY)..."
+	@echo "Login first if needed: docker login $(GITS_REGISTRY)"
+	$(MAKE) _pertisk-gits-image-push-one PLATFORM=linux/amd64 SUFFIX=amd64 VERSION="$(VERSION)" TAG="$(VERSION)-amd64" NO_CACHE="$(NO_CACHE)"
+	$(MAKE) _pertisk-gits-image-push-one PLATFORM=linux/arm64 SUFFIX=arm64 VERSION="$(VERSION)" TAG="$(VERSION)-arm64" NO_CACHE="$(NO_CACHE)"
+	docker buildx imagetools create \
+	  -t "$(GITS_IMAGE):$(GITS_IMAGE_TAG)" \
+	  -t "$(GITS_IMAGE):latest" \
+	  "$(GITS_IMAGE):$(VERSION)-amd64" \
+	  "$(GITS_IMAGE):$(VERSION)-arm64"
+	@echo "Verify: docker buildx imagetools inspect $(GITS_IMAGE):$(GITS_IMAGE_TAG)"
 
 runner-compose-up:
 	@test -f deploy/.env.runner || (echo "Copy deploy/.env.runner.example to deploy/.env.runner first" && exit 1)
