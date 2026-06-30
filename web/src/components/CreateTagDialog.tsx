@@ -151,7 +151,7 @@ export function CreateTagDialog({
               onChange={(event) => setMessage(event.target.value)}
             />
             <p className="text-xs text-text-secondary">
-              Leave empty for a lightweight tag, or add a message to create an annotated tag.
+              Optional release notes. When empty, the tag name is used as the tag message.
             </p>
           </div>
 

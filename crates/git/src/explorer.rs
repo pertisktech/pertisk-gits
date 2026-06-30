@@ -1163,6 +1163,79 @@ mod tests {
     use std::path::PathBuf;
 
     #[tokio::test]
+    async fn create_tag_annotated_uses_tag_creation_time_not_commit_time() {
+        use std::process::Command as StdCommand;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let worktree = tmp.path();
+        let repo_path = worktree.join(".git");
+
+        StdCommand::new("git")
+            .current_dir(worktree)
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        StdCommand::new("git")
+            .current_dir(worktree)
+            .args(["config", "user.email", "test@example.com"])
+            .status()
+            .unwrap();
+        StdCommand::new("git")
+            .current_dir(worktree)
+            .args(["config", "user.name", "Test User"])
+            .status()
+            .unwrap();
+        std::fs::write(worktree.join("file.txt"), "content").unwrap();
+        StdCommand::new("git")
+            .current_dir(worktree)
+            .args(["add", "file.txt"])
+            .status()
+            .unwrap();
+        StdCommand::new("git")
+            .current_dir(worktree)
+            .env("GIT_AUTHOR_DATE", "2024-01-01T00:00:00")
+            .env("GIT_COMMITTER_DATE", "2024-01-01T00:00:00")
+            .args(["commit", "-q", "-m", "old commit"])
+            .status()
+            .unwrap();
+
+        let before = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        let tag = create_tag(
+            &repo_path,
+            "v1.0.0",
+            "HEAD",
+            Some("v1.0.0"),
+            Some(TaggerIdentity {
+                name: "Test User",
+                email: "test@example.com",
+            }),
+        )
+        .await
+        .expect("create tag");
+
+        let after = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+
+        assert_eq!(tag.tagger_name, "Test User");
+        assert!(
+            tag.tagged_at >= before && tag.tagged_at <= after,
+            "tagged_at should reflect tag creation time, got {}",
+            tag.tagged_at
+        );
+        assert_ne!(
+            tag.tagged_at, 1_704_042_000,
+            "tagged_at should not use the old commit date"
+        );
+    }
+
+    #[tokio::test]
     async fn list_tag_details_reads_lightweight_and_annotated_tags() {
         let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../data/repos/gitlab/mp/digimall/backend/adaptor-ais-query.git");

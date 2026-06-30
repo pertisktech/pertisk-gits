@@ -57,22 +57,22 @@ async fn create_repo_tag(
         .filter(|value| !value.is_empty())
         .unwrap_or(repo.default_branch.as_str());
 
-    let message = body.message.as_deref().map(str::trim);
-    let annotated = message.is_some_and(|value| !value.is_empty());
-    let tagger = if annotated {
-        Some(fetch_tagger_identity(&state, auth.user_id).await?)
-    } else {
-        None
-    };
+    let tagger = fetch_tagger_identity(&state, auth.user_id).await?;
+    let message = body
+        .message
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(name);
 
     let tag = explorer::create_tag(
         &repo_path,
         name,
         target,
-        if annotated { message } else { None },
-        tagger.as_ref().map(|identity| explorer::TaggerIdentity {
-            name: identity.name.as_str(),
-            email: identity.email.as_str(),
+        Some(message),
+        Some(explorer::TaggerIdentity {
+            name: tagger.name.as_str(),
+            email: tagger.email.as_str(),
         }),
     )
     .await
