@@ -3,7 +3,7 @@ export type GroupTab = 'repositories' | 'registry' | 'members' | 'teams' | 'role
 const GROUP_PATH = /^\/groups\/([^?#]+)/
 
 /** Static routes under /groups that are not organization paths. */
-export const RESERVED_GROUP_SLUGS = new Set(['new'])
+export const RESERVED_GROUP_SLUGS = new Set(['new', 'import'])
 
 const TAB_SUFFIXES: { suffix: string; tab: GroupTab }[] = [
   { suffix: '/registry', tab: 'registry' },

@@ -42,6 +42,21 @@ pub enum ImportJobStatus {
     Metadata,
     Done,
     Failed,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "import_on_conflict", rename_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
+pub enum ImportOnConflict {
+    Skip,
+    Override,
+}
+
+impl Default for ImportOnConflict {
+    fn default() -> Self {
+        Self::Override
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
@@ -870,6 +885,7 @@ pub struct ImportJob {
     pub provider: ImportProvider,
     pub import_issues: bool,
     pub import_pull_requests: bool,
+    pub on_conflict: ImportOnConflict,
     pub status: ImportJobStatus,
     pub error_message: Option<String>,
     pub started_at: Option<DateTime<Utc>>,

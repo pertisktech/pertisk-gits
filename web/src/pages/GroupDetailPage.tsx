@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Settings, Download } from 'lucide-react'
+import { Plus, Settings } from 'lucide-react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { GroupChildrenPanel } from '../components/GroupChildrenPanel'
@@ -70,9 +70,13 @@ export function GroupDetailPage() {
           </LinkButton>
         )}
         {canManage && (
-          <LinkButton to={`${basePath}/import`}>
-            <Download size={14} />
-            Import
+          <LinkButton to={`${basePath}/import?provider=github`}>
+            Import from GitHub
+          </LinkButton>
+        )}
+        {canManage && (
+          <LinkButton to={`${basePath}/import?provider=gitlab`}>
+            Import from GitLab
           </LinkButton>
         )}
         {canManage && (
@@ -98,6 +102,7 @@ export function GroupDetailPage() {
         allGroups={groups}
         getProjectStats={getStats}
         projectStatsLoading={statsLoading}
+        canManage={canManage}
       />
     </>
   )

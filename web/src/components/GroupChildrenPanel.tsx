@@ -46,6 +46,7 @@ export function GroupChildrenPanel({
   allGroups,
   getProjectStats,
   projectStatsLoading,
+  canManage = false,
 }: {
   orgPath: string
   basePath: string
@@ -57,6 +58,7 @@ export function GroupChildrenPanel({
   allGroups: Organization[]
   getProjectStats: (ref: { orgSlug: string; slug: string }) => DashboardProjectStats | undefined
   projectStatsLoading: boolean
+  canManage?: boolean
 }) {
   const [filter, setFilter] = useState<ChildFilter>('all')
   const [search, setSearch] = useState('')
@@ -169,11 +171,29 @@ export function GroupChildrenPanel({
         <EmptyState
           icon={<FolderGit2 size={40} />}
           title="No subgroups or projects"
-          description="Create a subgroup or repository in this group."
+          description={
+            canManage
+              ? 'Create a repository, import from GitHub or GitLab, or add a subgroup.'
+              : 'Create a subgroup or repository in this group.'
+          }
           action={
-            <LinkButton to={`${basePath}/projects/new`} primary>
-              New repository
-            </LinkButton>
+            canManage ? (
+              <div className="flex flex-wrap justify-center gap-2">
+                <LinkButton to={`${basePath}/import?provider=github`}>
+                  Import from GitHub
+                </LinkButton>
+                <LinkButton to={`${basePath}/import?provider=gitlab`}>
+                  Import from GitLab
+                </LinkButton>
+                <LinkButton to={`${basePath}/projects/new`} primary>
+                  New repository
+                </LinkButton>
+              </div>
+            ) : (
+              <LinkButton to={`${basePath}/projects/new`} primary>
+                New repository
+              </LinkButton>
+            )
           }
         />
       )}

@@ -35,10 +35,14 @@ export function GroupsPage() {
             Top-level namespaces; create subgroups inside each group (GitLab-style)
           </p>
         </div>
-        <LinkButton to="/groups/new" primary>
-          <Plus size={14} />
-          New group
-        </LinkButton>
+        <div className="flex flex-wrap gap-2">
+          <LinkButton to="/groups/import?provider=github">Import from GitHub</LinkButton>
+          <LinkButton to="/groups/import?provider=gitlab">Import from GitLab</LinkButton>
+          <LinkButton to="/groups/new" primary>
+            <Plus size={14} />
+            New group
+          </LinkButton>
+        </div>
       </div>
 
       <div className="app-panel">
@@ -60,9 +64,13 @@ export function GroupsPage() {
             title="No groups found"
             description="Groups are the top-level namespace for your repositories."
             action={
-              <LinkButton to="/groups/new" primary>
-                Create your first group
-              </LinkButton>
+              <div className="flex flex-wrap justify-center gap-2">
+                <LinkButton to="/groups/import?provider=github">Import from GitHub</LinkButton>
+                <LinkButton to="/groups/import?provider=gitlab">Import from GitLab</LinkButton>
+                <LinkButton to="/groups/new" primary>
+                  Create your first group
+                </LinkButton>
+              </div>
             }
           />
         )}

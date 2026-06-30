@@ -21,6 +21,10 @@ pub struct RemoteRepo {
     pub visibility: RepoVisibility,
     pub default_branch: String,
     pub clone_url: String,
+    #[serde(default)]
+    pub already_exists: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub existing_path: Option<String>,
 }
 
 pub fn default_base_url(provider: ImportProvider) -> &'static str {
@@ -332,6 +336,8 @@ async fn list_github_repos(
                 },
                 default_branch: repo.default_branch.unwrap_or_else(|| "main".into()),
                 clone_url,
+                already_exists: false,
+                existing_path: None,
             });
         }
 
@@ -393,6 +399,8 @@ async fn list_github_org_repos(
                 },
                 default_branch: repo.default_branch.unwrap_or_else(|| "main".into()),
                 clone_url,
+                already_exists: false,
+                existing_path: None,
             });
         }
 
@@ -460,6 +468,8 @@ async fn list_github_personal_repos(
                 },
                 default_branch: repo.default_branch.unwrap_or_else(|| "main".into()),
                 clone_url,
+                already_exists: false,
+                existing_path: None,
             });
         }
 
@@ -529,6 +539,8 @@ async fn list_gitlab_repos(
                 },
                 default_branch: project.default_branch.unwrap_or_else(|| "main".into()),
                 clone_url: project.http_url_to_repo,
+                already_exists: false,
+                existing_path: None,
             });
         }
 
@@ -591,6 +603,8 @@ async fn list_gitlab_group_projects(
                 },
                 default_branch: project.default_branch.unwrap_or_else(|| "main".into()),
                 clone_url: project.http_url_to_repo,
+                already_exists: false,
+                existing_path: None,
             });
         }
 
@@ -655,6 +669,8 @@ async fn list_gitlab_personal_projects(
                 },
                 default_branch: project.default_branch.unwrap_or_else(|| "main".into()),
                 clone_url: project.http_url_to_repo,
+                already_exists: false,
+                existing_path: None,
             });
         }
 

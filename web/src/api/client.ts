@@ -38,6 +38,7 @@ import type {
   ImportCredential,
   ImportJob,
   ImportJobDetail,
+  ImportOnConflict,
   RemoteNamespace,
   RemoteRepo,
   RegisterRunnerResponse,
@@ -1611,6 +1612,7 @@ export const api = {
       credential_id: string
       import_issues?: boolean
       import_pull_requests?: boolean
+      on_conflict?: ImportOnConflict
       repos: Array<{
         source_id: string
         source_full_name: string

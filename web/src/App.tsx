@@ -11,6 +11,7 @@ import { AdminAuthPage } from './pages/admin/AdminAuthPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { GroupsPage } from './pages/GroupsPage'
 import { LoginPage } from './pages/LoginPage'
+import { GroupImportPage } from './pages/GroupImportPage'
 import { NewGroupPage } from './pages/NewGroupPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -83,6 +84,7 @@ export default function App() {
                   <Route path="/dashboard" element={<DashboardPage />} />
                   <Route path="/groups" element={<GroupsPage />} />
                   <Route path="/groups/new" element={<NewGroupPage />} />
+                  <Route path="/groups/import" element={<GroupImportPage />} />
                   <Route path="/activity" element={<Navigate to="/activity/merge-requests" replace />} />
                   <Route path="/activity/merge-requests" element={<ActivityMergeRequestsPage />} />
                   <Route element={<SuperAdminRoute />}>

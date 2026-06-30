@@ -926,7 +926,9 @@ export interface CiSecret {
 
 export type ImportProvider = 'github' | 'gitlab'
 
-export type ImportJobStatus = 'pending' | 'mirroring' | 'metadata' | 'done' | 'failed'
+export type ImportJobStatus = 'pending' | 'mirroring' | 'metadata' | 'done' | 'failed' | 'skipped'
+
+export type ImportOnConflict = 'skip' | 'override'
 
 export interface ImportCredential {
   id: string
@@ -951,6 +953,8 @@ export interface RemoteRepo {
   visibility: 'public' | 'private'
   default_branch: string
   clone_url: string
+  already_exists?: boolean
+  existing_path?: string | null
 }
 
 export interface ImportJob {
@@ -961,6 +965,7 @@ export interface ImportJob {
   provider: ImportProvider
   import_issues: boolean
   import_pull_requests: boolean
+  on_conflict: ImportOnConflict
   status: ImportJobStatus
   error_message: string | null
   started_at: string | null

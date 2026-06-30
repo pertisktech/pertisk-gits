@@ -6,7 +6,7 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use pertisk_domain::{models::*, DomainError};
+use pertisk_domain::{models::*, org_groups::import_target_org_path, DomainError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
@@ -23,6 +23,11 @@ use providers::{
 };
 
 const DEFAULT_MAX_REPOS_PER_JOB: usize = 500;
+
+const IMPORT_JOB_COLUMNS: &str = r#"
+    id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests,
+    on_conflict, status, error_message, started_at, finished_at, created_at, updated_at
+"#;
 
 fn max_repos_per_job() -> usize {
     std::env::var("IMPORT_MAX_REPOS_PER_JOB")
@@ -111,6 +116,8 @@ struct CreateImportJobRequest {
     pub import_issues: bool,
     #[serde(default)]
     pub import_pull_requests: bool,
+    #[serde(default)]
+    pub on_conflict: ImportOnConflict,
 }
 
 #[derive(Debug, Serialize)]
@@ -289,6 +296,10 @@ async fn discover_repos(
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
+    let repos = annotate_existing_repos(&state.pool, &org.full_path, repos)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
     Ok(Json(DiscoverResponse {
         account,
         namespaces,
@@ -338,21 +349,23 @@ async fn create_import_job(
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    let job = sqlx::query_as::<_, ImportJob>(
+    let job = sqlx::query_as::<_, ImportJob>(&format!(
         r#"
-        INSERT INTO import_jobs (organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status)
-        VALUES ($1, $2, $3, $4, $5, $6, 'pending')
-        RETURNING
-            id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status,
-            error_message, started_at, finished_at, created_at, updated_at
-        "#,
-    )
+        INSERT INTO import_jobs (
+            organization_id, created_by, credential_id, provider, import_issues, import_pull_requests,
+            on_conflict, status
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+        RETURNING {IMPORT_JOB_COLUMNS}
+        "#
+    ))
     .bind(org.id)
     .bind(auth.user_id)
     .bind(body.credential_id)
     .bind(credential.0)
     .bind(body.import_issues)
     .bind(body.import_pull_requests)
+    .bind(body.on_conflict)
     .fetch_one(&mut *tx)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
@@ -458,17 +471,15 @@ async fn list_import_jobs(
     let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
-    let jobs = sqlx::query_as::<_, ImportJob>(
+    let jobs = sqlx::query_as::<_, ImportJob>(&format!(
         r#"
-        SELECT
-            id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status,
-            error_message, started_at, finished_at, created_at, updated_at
+        SELECT {IMPORT_JOB_COLUMNS}
         FROM import_jobs
         WHERE organization_id = $1
         ORDER BY created_at DESC
         LIMIT 50
-        "#,
-    )
+        "#
+    ))
     .bind(org.id)
     .fetch_all(&state.pool)
     .await
@@ -485,15 +496,13 @@ async fn get_import_job(
     let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
 
-    let job = sqlx::query_as::<_, ImportJob>(
+    let job = sqlx::query_as::<_, ImportJob>(&format!(
         r#"
-        SELECT
-            id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests, status,
-            error_message, started_at, finished_at, created_at, updated_at
+        SELECT {IMPORT_JOB_COLUMNS}
         FROM import_jobs
         WHERE id = $1 AND organization_id = $2
-        "#,
-    )
+        "#
+    ))
     .bind(job_id)
     .bind(org.id)
     .fetch_optional(&state.pool)
@@ -568,6 +577,38 @@ fn provider_label(provider: ImportProvider) -> &'static str {
         ImportProvider::Github => "GitHub",
         ImportProvider::Gitlab => "GitLab",
     }
+}
+
+async fn annotate_existing_repos(
+    pool: &sqlx::PgPool,
+    target_org_full_path: &str,
+    repos: Vec<RemoteRepo>,
+) -> Result<Vec<RemoteRepo>, sqlx::Error> {
+    let mut annotated = Vec::with_capacity(repos.len());
+    for mut repo in repos {
+        let target_org = import_target_org_path(target_org_full_path, &repo.full_name);
+        let target_slug = slug_from_name(&repo.name);
+        let existing_path = format!("{target_org}/{target_slug}");
+
+        let exists = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT r.id
+            FROM repositories r
+            INNER JOIN organizations o ON o.id = r.organization_id
+            WHERE o.full_path = $1 AND r.slug = $2
+            "#,
+        )
+        .bind(&target_org)
+        .bind(&target_slug)
+        .fetch_optional(pool)
+        .await?
+        .is_some();
+
+        repo.already_exists = exists;
+        repo.existing_path = exists.then_some(existing_path);
+        annotated.push(repo);
+    }
+    Ok(annotated)
 }
 
 /// Polls `import_jobs` inside pertisk-api so imports work without a separate worker service.

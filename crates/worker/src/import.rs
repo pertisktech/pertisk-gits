@@ -5,7 +5,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
     Aes256Gcm, Nonce,
 };
-use pertisk_domain::models::{ImportProvider, OrgRole, RepoVisibility};
+use pertisk_domain::models::{ImportOnConflict, ImportProvider, OrgRole, RepoVisibility};
 use pertisk_domain::org_groups::{ensure_org_chain, import_target_org_path};
 use pertisk_git::config::repo_disk_path;
 use sha2::{Digest, Sha256};
@@ -53,7 +53,8 @@ impl ImportWorker {
                 FOR UPDATE SKIP LOCKED
             ) picked
             WHERE j.id = picked.id
-            RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text, j.import_issues, j.import_pull_requests
+            RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text,
+                j.import_issues, j.import_pull_requests, j.on_conflict
             "#,
         )
         .bind(IMPORT_STALE_MINUTES)
@@ -190,9 +191,28 @@ impl ImportWorker {
         let target_org_id =
             ensure_org_chain(&self.pool, &target_org_path, job.created_by).await?;
 
-        let repository_id = match repo.repository_id {
-            Some(id) => id,
-            None => {
+        let existing_repo_id = self
+            .find_repository_id(target_org_id, &repo.target_slug)
+            .await?;
+
+        let repository_id = match (repo.repository_id, existing_repo_id) {
+            (Some(id), _) => id,
+            (None, Some(id)) if job.on_conflict == ImportOnConflict::Skip => {
+                sqlx::query(
+                    r#"
+                    UPDATE import_job_repos
+                    SET status = 'skipped', repository_id = $2, updated_at = NOW()
+                    WHERE id = $1
+                    "#,
+                )
+                .bind(repo.id)
+                .bind(id)
+                .execute(&self.pool)
+                .await?;
+                return Ok(());
+            }
+            (None, Some(id)) => id,
+            (None, None) => {
                 self.ensure_repository(
                     target_org_id,
                     job.created_by,
@@ -403,6 +423,23 @@ impl ImportWorker {
 
         tx.commit().await?;
         Ok(repo_id)
+    }
+
+    async fn find_repository_id(
+        &self,
+        org_id: Uuid,
+        slug: &str,
+    ) -> anyhow::Result<Option<Uuid>> {
+        Ok(sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT id FROM repositories
+            WHERE organization_id = $1 AND slug = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(slug)
+        .fetch_optional(&self.pool)
+        .await?)
     }
 
     async fn org_full_path(&self, org_id: Uuid) -> anyhow::Result<String> {
@@ -651,6 +688,7 @@ struct JobRow {
     provider: String,
     import_issues: bool,
     import_pull_requests: bool,
+    on_conflict: ImportOnConflict,
 }
 
 #[derive(sqlx::FromRow)]
