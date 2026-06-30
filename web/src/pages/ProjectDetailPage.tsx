@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
+import { RepoBranches } from '../components/RepoBranches'
 import { RepoBrowser } from '../components/RepoBrowser'
 import { RepoCodeSearch } from '../components/RepoCodeSearch'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
@@ -64,7 +65,7 @@ export function ProjectDetailPage() {
       return
     }
 
-    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'tags', 'pipelines', 'wiki', 'settings']
+    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'branches', 'tags', 'pipelines', 'wiki', 'settings']
     if (!legacyTabs.includes(requested as ProjectTab)) {
       navigate(basePath, { replace: true })
       return
@@ -132,6 +133,10 @@ export function ProjectDetailPage() {
               orgSlug={orgSlug}
               repoSlug={projectSlug}
               defaultBranch={project.default_branch}
+              cloneUrl={cloneUrl}
+              authCloneUrl={authCloneUrl}
+              cloneUrlSsh={cloneUrlSsh}
+              isPrivate={project.visibility === 'private'}
             />
           </div>
         )}
@@ -151,6 +156,15 @@ export function ProjectDetailPage() {
 
         {tab === 'commits' && (
           <RepoCommits
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            defaultBranch={project.default_branch}
+          />
+        )}
+
+        {tab === 'branches' && (
+          <RepoBranches
             token={token}
             orgSlug={orgSlug}
             repoSlug={projectSlug}

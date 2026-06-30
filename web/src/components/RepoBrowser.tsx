@@ -16,6 +16,7 @@ import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
 import { ancestorPathsForFile, RepoFileTree } from './RepoFileTree'
 import { NewFileBar, RepoFileEditor, type OpenFileState } from './RepoFileEditor'
+import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoReadme } from './RepoReadme'
 import { SecondaryButton } from './ui'
 
@@ -24,6 +25,10 @@ interface RepoBrowserProps {
   orgSlug: string
   repoSlug: string
   defaultBranch: string
+  cloneUrl?: string
+  authCloneUrl?: string
+  cloneUrlSsh?: string | null
+  isPrivate?: boolean
 }
 
 export function RepoBrowser({
@@ -31,6 +36,10 @@ export function RepoBrowser({
   orgSlug,
   repoSlug,
   defaultBranch,
+  cloneUrl,
+  authCloneUrl,
+  cloneUrlSsh,
+  isPrivate = false,
 }: RepoBrowserProps) {
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -337,12 +346,21 @@ export function RepoBrowser({
   if (browser?.empty) {
     return (
       <div className="app-panel">
-        <div className="app-panel-body text-center py-12">
-          <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
-          <p className="text-text font-medium">This repository is empty</p>
-          <p className="text-sm text-text-secondary mt-1 max-w-md mx-auto">
-            Push your first commit using the Code dropdown above, then files will appear here.
-          </p>
+        <div className="app-panel-body py-10 px-4 sm:px-6">
+          {cloneUrl && authCloneUrl ? (
+            <RepoClonePushGuide
+              cloneUrl={cloneUrl}
+              authCloneUrl={authCloneUrl}
+              cloneUrlSsh={cloneUrlSsh}
+              defaultBranch={defaultBranch}
+              isPrivate={isPrivate}
+            />
+          ) : (
+            <div className="text-center py-6">
+              <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
+              <p className="text-sm text-text-secondary">Loading clone instructions…</p>
+            </div>
+          )}
         </div>
       </div>
     )

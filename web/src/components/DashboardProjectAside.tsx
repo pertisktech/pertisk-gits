@@ -79,7 +79,7 @@ export function DashboardProjectAside({
           </Link>
         )}
         <StatLink
-          to={basePath}
+          to={projectTabPath(basePath, 'branches')}
           label="Branches"
           icon={<GitBranch size={14} />}
           value={stats?.branch_count ?? 0}

@@ -35,3 +35,11 @@ export function pipelineRunForCommit(index: PipelineRunIndex, commitSha: string)
 export function pipelineRunForTag(index: PipelineRunIndex, tagName: string, commitSha: string) {
   return index.byRef.get(`refs/tags/${tagName}`) ?? index.bySha.get(commitSha)
 }
+
+export function pipelineRunForBranch(
+  index: PipelineRunIndex,
+  branchName: string,
+  commitSha: string,
+) {
+  return index.byRef.get(`refs/heads/${branchName}`) ?? index.bySha.get(commitSha)
+}

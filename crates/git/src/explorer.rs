@@ -44,6 +44,16 @@ pub struct TagInfo {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct BranchInfo {
+    pub name: String,
+    pub sha: String,
+    pub short_sha: String,
+    pub committed_at: i64,
+    pub author_name: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct RepoBrowser {
     pub branches: Vec<String>,
     pub tags: Vec<String>,
@@ -141,6 +151,129 @@ pub async fn list_tag_details(repo_path: &Path) -> anyhow::Result<Vec<TagInfo>> 
     }
 
     Ok(tags)
+}
+
+pub async fn list_branch_details(repo_path: &Path) -> anyhow::Result<Vec<BranchInfo>> {
+    const SEP: char = '\x1f';
+    let pretty = format!(
+        "--format=%(refname:short){SEP}%(objectname){SEP}%(committerdate:unix){SEP}%(authorname){SEP}%(subject)",
+        SEP = SEP,
+    );
+    let output = git(
+        repo_path,
+        &[
+            "for-each-ref",
+            "--sort=-committerdate",
+            "refs/heads/",
+            &pretty,
+        ],
+    )
+    .await?;
+
+    let mut branches = Vec::new();
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split(SEP).collect();
+        if parts.len() < 5 {
+            continue;
+        }
+
+        let sha = parts[1].trim();
+        if sha.is_empty() {
+            continue;
+        }
+
+        branches.push(BranchInfo {
+            name: parts[0].trim().to_string(),
+            short_sha: sha.chars().take(7).collect(),
+            sha: sha.to_string(),
+            committed_at: parts[2].trim().parse().unwrap_or(0),
+            author_name: parts[3].trim().to_string(),
+            message: parts[4].trim().to_string(),
+        });
+    }
+
+    Ok(branches)
+}
+
+pub async fn create_branch(
+    repo_path: &Path,
+    name: &str,
+    source: &str,
+) -> anyhow::Result<BranchInfo> {
+    let name = name.trim();
+    validate_branch_name(name)?;
+
+    if ref_exists(repo_path, name).await? {
+        anyhow::bail!("branch '{name}' already exists");
+    }
+
+    let sha = resolve_commit_target(repo_path, source).await?;
+    let branch_ref = format!("refs/heads/{name}");
+    git(repo_path, &["update-ref", &branch_ref, &sha]).await?;
+
+    list_branch_details(repo_path)
+        .await?
+        .into_iter()
+        .find(|branch| branch.name == name)
+        .ok_or_else(|| anyhow::anyhow!("failed to read created branch '{name}'"))
+}
+
+pub async fn branch_head_sha(repo_path: &Path, name: &str) -> anyhow::Result<String> {
+    let name = name.trim();
+    validate_branch_name(name)?;
+
+    if !ref_exists(repo_path, name).await? {
+        anyhow::bail!("branch '{name}' not found");
+    }
+
+    rev_parse_ref(repo_path, &format!("refs/heads/{name}")).await
+}
+
+pub async fn delete_branch(repo_path: &Path, name: &str) -> anyhow::Result<String> {
+    let old_sha = branch_head_sha(repo_path, name).await?;
+    let branch_ref = format!("refs/heads/{name}");
+    git(repo_path, &["update-ref", "-d", &branch_ref]).await?;
+    Ok(old_sha)
+}
+
+async fn rev_parse_ref(repo_path: &Path, reference: &str) -> anyhow::Result<String> {
+    let output = Command::new("git")
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["rev-parse", reference])
+        .output()
+        .await
+        .context("spawn git rev-parse")?;
+
+    if !output.status.success() {
+        anyhow::bail!("failed to resolve reference '{reference}'");
+    }
+
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn validate_branch_name(name: &str) -> anyhow::Result<()> {
+    if name.is_empty() {
+        anyhow::bail!("branch name is required");
+    }
+    if name.len() > 255 {
+        anyhow::bail!("branch name is too long");
+    }
+    if name.starts_with('.')
+        || name.ends_with('.')
+        || name.ends_with(".lock")
+        || name.contains("..")
+        || name.contains('\\')
+        || name.contains(' ')
+        || name.contains('~')
+        || name.contains('^')
+        || name.contains(':')
+        || name.contains('?')
+        || name.contains('*')
+        || name.contains('[')
+    {
+        anyhow::bail!("invalid branch name");
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]

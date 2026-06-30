@@ -98,6 +98,15 @@ export interface TagInfo {
   tagged_at: number
 }
 
+export interface BranchInfo {
+  name: string
+  sha: string
+  short_sha: string
+  committed_at: number
+  author_name: string
+  message: string
+}
+
 export interface CommitDetail extends CommitInfo {
   body: string
   parents: string[]

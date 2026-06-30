@@ -51,6 +51,7 @@ import type {
   ContainerImageSummary,
   RegistryGcReport,
   TagInfo,
+  BranchInfo,
   TreeEntry,
   User,
   UserSshKey,
@@ -765,6 +766,32 @@ export const api = {
     request<{ tag: TagInfo }>(
       `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/tags`,
       { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  getRepoBranches: (orgSlug: string, repoSlug: string, token?: string | null) =>
+    request<{ branches: BranchInfo[] }>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branches`,
+      {},
+      token,
+    ),
+
+  createRepoBranch: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    payload: { name: string; source_ref?: string },
+  ) =>
+    request<{ branch: BranchInfo }>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branches`,
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteRepoBranch: (token: string, orgSlug: string, repoSlug: string, branchName: string) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branches/${encodeURIComponent(branchName)}`,
+      { method: 'DELETE' },
       token,
     ),
 

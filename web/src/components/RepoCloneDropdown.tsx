@@ -1,6 +1,7 @@
-import { Check, ChevronDown, Copy, Download, GitBranch, Lock } from 'lucide-react'
+import { ChevronDown, Download, GitBranch, Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { CopyField } from './RepoClonePushGuide'
 
 type CloneMode = 'https' | 'ssh' | 'download'
 
@@ -14,40 +15,6 @@ interface RepoCloneDropdownProps {
   repoSlug: string
   token?: string | null
   empty?: boolean
-}
-
-function CopyField({ label, value }: { label: string; value: string }) {
-  const [copied, setCopied] = useState(false)
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(value)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 2000)
-    } catch {
-      // clipboard may be unavailable
-    }
-  }
-
-  return (
-    <div>
-      <div className="text-xs font-semibold text-text-secondary mb-1.5 uppercase tracking-wide">
-        {label}
-      </div>
-      <div className="flex gap-1.5">
-        <input readOnly value={value} className="app-clone-input flex-1" />
-        <button
-          type="button"
-          onClick={copy}
-          className="shrink-0 px-2.5 py-1.5 rounded-md border border-naturals-n4 text-text-secondary hover:bg-hover text-xs"
-          data-no-global-button-hover="true"
-          title={copied ? 'Copied!' : 'Copy'}
-        >
-          {copied ? <Check size={14} className="text-primary" /> : <Copy size={14} />}
-        </button>
-      </div>
-    </div>
-  )
 }
 
 export function RepoCloneDropdown({

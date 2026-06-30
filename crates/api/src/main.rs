@@ -17,7 +17,7 @@ use pertisk_domain::{
 use pertisk_git::{
     access::{self, AuthUser as GitAuthUser, RepoRecord},
     config::repo_disk_path,
-    explorer::{self, CommitDetail, CommitInfo, RefKind, RepoBrowser, TagInfo, TreeEntry},
+    explorer::{self, BranchInfo, CommitDetail, CommitInfo, RefKind, RepoBrowser, TagInfo, TreeEntry},
     http::GitHttpState,
     ssh::{GitSshConfig, GitSshState},
     storage::{ensure_bare_repo, init_bare_repo},
@@ -38,6 +38,7 @@ mod artifacts;
 mod audit;
 mod backup;
 mod branch_protection;
+mod branches;
 mod ci_secrets;
 mod collaboration;
 mod compression;
@@ -171,6 +172,10 @@ async fn main() -> anyhow::Result<()> {
             get(get_repo_tags),
         )
         .route(
+            "/organizations/{org_path}/repositories/{repo_slug}/branches",
+            get(get_repo_branches),
+        )
+        .route(
             "/organizations/{org_path}/repositories/{repo_slug}/commits",
             get(get_repo_commits),
         )
@@ -220,6 +225,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(deploy_keys::deploy_key_routes())
         .merge(contents::contents_routes())
         .merge(tags::tags_write_routes())
+        .merge(branches::branches_write_routes())
         .merge(api_tokens::api_token_routes())
         .merge(gitops::gitops_routes())
         .merge(cicd::cicd_write_routes())
@@ -1396,6 +1402,11 @@ struct TagsResponse {
 }
 
 #[derive(Serialize)]
+struct BranchesResponse {
+    branches: Vec<BranchInfo>,
+}
+
+#[derive(Serialize)]
 struct CommitResponse {
     commit: CommitDetail,
 }
@@ -1627,6 +1638,21 @@ async fn get_repo_tags(
         .map_err(map_explorer_error)?;
 
     Ok(Json(TagsResponse { tags }))
+}
+
+async fn get_repo_branches(
+    State(state): State<AppState>,
+    OptionalAuth(auth): OptionalAuth,
+    Path((org_path, repo_slug)): Path<(String, String)>,
+) -> Result<Json<BranchesResponse>, ApiError> {
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
+
+    let branches = explorer::list_branch_details(&repo_path)
+        .await
+        .map_err(map_explorer_error)?;
+
+    Ok(Json(BranchesResponse { branches }))
 }
 
 async fn get_repo_commits(
