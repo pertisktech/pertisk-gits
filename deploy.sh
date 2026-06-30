@@ -20,13 +20,13 @@ echo "==> Deploying v${VERSION} (PACKAGE_BUILD=${PACKAGE_BUILD})"
 deploy deploy-rpm DEPLOY_HOST=nat@103.117.150.228
 deploy deploy-rpm DEPLOY_HOST=root@135.181.197.40
 #deploy deploy-rpm DEPLOY_HOST=almalinux@10.1.1.13
-deploy deploy-rpm-arm64 DEPLOY_HOST=almalinux@10.1.1.233
+#deploy deploy-rpm-arm64 DEPLOY_HOST=almalinux@10.1.1.233
 
 # --- pertisk-runner (RPM) ---
 deploy install-runner DEPLOY_HOST=nat@103.117.150.228
 # deploy install-runner DEPLOY_HOST=almalinux@10.1.1.14
 #deploy install-runner DEPLOY_HOST=almalinux@10.1.1.13
-deploy install-runner DEPLOY_HOST=almalinux@10.1.1.233
+#deploy install-runner DEPLOY_HOST=almalinux@10.1.1.233
 deploy install-runner DEPLOY_HOST=root@135.181.197.40
 deploy deploy-runner-rpm-arm64 DEPLOY_HOST=almalinux@10.1.1.233
 
