@@ -55,6 +55,20 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
     },
   })
 
+  const pulls = data?.pull_requests ?? []
+  const {
+    items: pagePulls,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total,
+  } = useClientPagination(pulls)
+
+  useEffect(() => {
+    resetPage()
+  }, [stateFilter, resetPage])
+
   if (isLoading) {
     return (
       <div className="app-panel">
@@ -73,20 +87,6 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
       </div>
     )
   }
-
-  const pulls = data?.pull_requests ?? []
-  const {
-    items: pagePulls,
-    page,
-    setPage,
-    resetPage,
-    pageSize,
-    total,
-  } = useClientPagination(pulls)
-
-  useEffect(() => {
-    resetPage()
-  }, [stateFilter, resetPage])
 
   return (
     <div className="space-y-4">

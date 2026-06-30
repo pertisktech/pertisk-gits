@@ -77,6 +77,20 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
     },
   })
 
+  const issues = data?.issues ?? []
+  const {
+    items: pageIssues,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total,
+  } = useClientPagination(issues)
+
+  useEffect(() => {
+    resetPage()
+  }, [stateFilter, labelFilter, search, resetPage])
+
   if (isLoading) {
     return (
       <div className="app-panel">
@@ -95,20 +109,6 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
       </div>
     )
   }
-
-  const issues = data?.issues ?? []
-  const {
-    items: pageIssues,
-    page,
-    setPage,
-    resetPage,
-    pageSize,
-    total,
-  } = useClientPagination(issues)
-
-  useEffect(() => {
-    resetPage()
-  }, [stateFilter, labelFilter, search, resetPage])
 
   return (
     <div className="space-y-4">

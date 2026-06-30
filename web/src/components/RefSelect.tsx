@@ -48,122 +48,8 @@ export function RefSelect({
   'aria-label'?: string
 }) {
   const branchList = branches.length > 0 ? branches : [fallbackRef]
-  const totalCount = branchList.length + tags.length
+  const searchable = branchList.length + tags.length > REF_SEARCH_THRESHOLD
 
-  if (totalCount <= REF_SEARCH_THRESHOLD) {
-    return (
-      <NativeRefSelect
-        id={id}
-        className={className}
-        refKind={refKind}
-        refName={refName}
-        branchList={branchList}
-        tags={tags}
-        disabled={disabled}
-        aria-label={ariaLabel}
-        onChange={onChange}
-      />
-    )
-  }
-
-  return (
-    <SearchableRefSelect
-      id={id}
-      className={className}
-      refKind={refKind}
-      refName={refName}
-      branchList={branchList}
-      tags={tags}
-      disabled={disabled}
-      aria-label={ariaLabel}
-      onChange={onChange}
-    />
-  )
-}
-
-function NativeRefSelect({
-  refKind,
-  refName,
-  branchList,
-  tags,
-  onChange,
-  disabled,
-  className,
-  id,
-  'aria-label': ariaLabel,
-}: {
-  refKind: 'branch' | 'tag'
-  refName: string
-  branchList: string[]
-  tags: string[]
-  onChange: (kind: 'branch' | 'tag', name: string) => void
-  disabled?: boolean
-  className?: string
-  id?: string
-  'aria-label'?: string
-}) {
-  const hasSelected =
-    (refKind === 'branch' && branchList.includes(refName)) ||
-    (refKind === 'tag' && tags.includes(refName))
-  const value = hasSelected
-    ? encodeRef(refKind, refName)
-    : refKind === 'tag' && tags.length > 0
-      ? encodeRef('tag', tags[0])
-      : encodeRef('branch', branchList.includes(refName) ? refName : branchList[0])
-
-  return (
-    <select
-      id={id}
-      className={cn('app-field app-select app-branch-select app-ref-select', className)}
-      value={value}
-      disabled={disabled}
-      aria-label={ariaLabel ?? 'Repository reference'}
-      onChange={(e) => {
-        const next = decodeRef(e.target.value)
-        onChange(next.kind, next.name)
-      }}
-    >
-      <optgroup label="Branches">
-        {branchList.map((branch) => (
-          <option key={encodeRef('branch', branch)} value={encodeRef('branch', branch)}>
-            {branch}
-          </option>
-        ))}
-      </optgroup>
-      {tags.length > 0 && (
-        <optgroup label="Tags">
-          {tags.map((tag) => (
-            <option key={encodeRef('tag', tag)} value={encodeRef('tag', tag)}>
-              {tag}
-            </option>
-          ))}
-        </optgroup>
-      )}
-    </select>
-  )
-}
-
-function SearchableRefSelect({
-  refKind,
-  refName,
-  branchList,
-  tags,
-  onChange,
-  disabled,
-  className,
-  id,
-  'aria-label': ariaLabel,
-}: {
-  refKind: 'branch' | 'tag'
-  refName: string
-  branchList: string[]
-  tags: string[]
-  onChange: (kind: 'branch' | 'tag', name: string) => void
-  disabled?: boolean
-  className?: string
-  id?: string
-  'aria-label'?: string
-}) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -182,6 +68,15 @@ function SearchableRefSelect({
     for (const name of filteredTags) list.push({ kind: 'tag', name })
     return list
   }, [filteredBranches, filteredTags])
+
+  const hasSelected =
+    (refKind === 'branch' && branchList.includes(refName)) ||
+    (refKind === 'tag' && tags.includes(refName))
+  const nativeValue = hasSelected
+    ? encodeRef(refKind, refName)
+    : refKind === 'tag' && tags.length > 0
+      ? encodeRef('tag', tags[0])
+      : encodeRef('branch', branchList.includes(refName) ? refName : branchList[0])
 
   const updateMenuPosition = () => {
     const trigger = triggerRef.current
@@ -225,8 +120,15 @@ function SearchableRefSelect({
     })
   }
 
+  useEffect(() => {
+    if (!searchable) {
+      setOpen(false)
+      setQuery('')
+    }
+  }, [searchable])
+
   useLayoutEffect(() => {
-    if (!open) return
+    if (!searchable || !open) return
     updateMenuPosition()
     const raf = requestAnimationFrame(updateMenuPosition)
     window.addEventListener('resize', updateMenuPosition)
@@ -236,14 +138,14 @@ function SearchableRefSelect({
       window.removeEventListener('resize', updateMenuPosition)
       window.removeEventListener('scroll', updateMenuPosition, true)
     }
-  }, [open, options.length, query])
+  }, [open, options.length, query, searchable])
 
   useEffect(() => {
     setActiveIndex(0)
   }, [query, options.length])
 
   useEffect(() => {
-    if (!open) return
+    if (!searchable || !open) return
     function onDocumentClick(event: MouseEvent) {
       const target = event.target as Node
       if (wrapRef.current?.contains(target)) return
@@ -253,15 +155,16 @@ function SearchableRefSelect({
     }
     document.addEventListener('mousedown', onDocumentClick)
     return () => document.removeEventListener('mousedown', onDocumentClick)
-  }, [open])
+  }, [open, searchable])
 
   useEffect(() => {
+    if (!searchable) return
     if (open) {
       window.requestAnimationFrame(() => searchRef.current?.focus())
     } else {
       setQuery('')
     }
-  }, [open])
+  }, [open, searchable])
 
   function selectOption(option: RefOption) {
     onChange(option.kind, option.name)
@@ -272,6 +175,39 @@ function SearchableRefSelect({
   function toggleOpen() {
     if (disabled) return
     setOpen((value) => !value)
+  }
+
+  if (!searchable) {
+    return (
+      <select
+        id={id}
+        className={cn('app-field app-select app-branch-select app-ref-select', className)}
+        value={nativeValue}
+        disabled={disabled}
+        aria-label={ariaLabel ?? 'Repository reference'}
+        onChange={(e) => {
+          const next = decodeRef(e.target.value)
+          onChange(next.kind, next.name)
+        }}
+      >
+        <optgroup label="Branches">
+          {branchList.map((branch) => (
+            <option key={encodeRef('branch', branch)} value={encodeRef('branch', branch)}>
+              {branch}
+            </option>
+          ))}
+        </optgroup>
+        {tags.length > 0 && (
+          <optgroup label="Tags">
+            {tags.map((tag) => (
+              <option key={encodeRef('tag', tag)} value={encodeRef('tag', tag)}>
+                {tag}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+    )
   }
 
   const KindIcon = refKind === 'tag' ? Tag : GitBranch
