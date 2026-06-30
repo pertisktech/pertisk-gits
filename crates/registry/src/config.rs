@@ -8,6 +8,8 @@ pub struct RegistryConfig {
     pub jwt_secret: String,
     pub public_base_url: String,
     pub service_name: String,
+    /// When true, unauthenticated `docker pull` is allowed for images linked to public git repos.
+    pub allow_anonymous_pull: bool,
 }
 
 impl RegistryConfig {
@@ -31,10 +33,17 @@ impl RegistryConfig {
             public_base_url: public_base_url.trim_end_matches('/').to_string(),
             service_name: std::env::var("REGISTRY_SERVICE_NAME")
                 .unwrap_or_else(|_| "pertisk-registry".into()),
+            allow_anonymous_pull: Self::allow_anonymous_pull(),
         })
     }
 
     pub fn token_url(&self) -> String {
         format!("{}/service/token", self.public_base_url)
+    }
+
+    pub fn allow_anonymous_pull() -> bool {
+        std::env::var("REGISTRY_ALLOW_ANONYMOUS_PULL")
+            .map(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+            .unwrap_or(true)
     }
 }

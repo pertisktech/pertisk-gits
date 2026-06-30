@@ -225,6 +225,7 @@ pub async fn authorize_registry(
     headers: &HeaderMap,
     repo_name: Option<&str>,
     action: Option<&str>,
+    allow_anonymous_pull: bool,
 ) -> Result<RegistryAuth, (StatusCode, HeaderMap, String)> {
     if let Some(token) = parse_bearer(headers) {
         if let Ok(auth) = verify_registry_token(jwt_secret, &token) {
@@ -261,6 +262,23 @@ pub async fn authorize_registry(
             ));
         }
     };
+
+    if allow_anonymous_pull && act == "pull" {
+        let public = crate::access::is_public_container_image(pool, repo)
+            .await
+            .unwrap_or(false);
+        if public {
+            return Ok(RegistryAuth {
+                user_id: Uuid::nil(),
+                access: vec![RegistryAccess {
+                    access_type: "repository".into(),
+                    name: repo.to_string(),
+                    actions: vec!["pull".into()],
+                }],
+            });
+        }
+    }
+
     Err(registry_unauthorized(token_url, service_name, repo, act))
 }
 

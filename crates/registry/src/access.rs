@@ -60,6 +60,27 @@ pub async fn can_pull(pool: &PgPool, org_slug: &str, user_id: Uuid) -> anyhow::R
     is_org_member(pool, org_slug, user_id).await
 }
 
+pub async fn is_public_container_image(pool: &PgPool, repo_name: &str) -> anyhow::Result<bool> {
+    let Some((org, image)) = parse_image_name(repo_name) else {
+        return Ok(false);
+    };
+    let public = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT COALESCE(r.visibility = 'public', false)
+        FROM container_repositories cr
+        INNER JOIN organizations o ON o.id = cr.organization_id
+        LEFT JOIN repositories r ON r.id = cr.repository_id
+        WHERE o.full_path = $1 AND cr.name = $2
+        "#,
+    )
+    .bind(org)
+    .bind(image)
+    .fetch_optional(pool)
+    .await?
+    .unwrap_or(false);
+    Ok(public)
+}
+
 pub async fn get_or_create_repository(
     pool: &PgPool,
     org_slug: &str,

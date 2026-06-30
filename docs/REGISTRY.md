@@ -117,9 +117,21 @@ If localhost returns 401 but HTTPS returns 413, the limit is in **ingress/proxy*
 
 ---
 
+## Anonymous pulls
+
+When `REGISTRY_ALLOW_ANONYMOUS_PULL` is enabled (default `true`; set `0` or `false` to disable), `docker pull` works **without login** for container images **linked to a public git repository** (`repositories.visibility = public`).
+
+```bash
+# No docker login required when image is linked to a public project
+docker pull localhost:8080/my-org/myapp:latest
+```
+
+Private or unlinked images still require authentication.
+
+---
+
 ## Not yet implemented
 
-- Public anonymous pulls
 - Automated GC in standalone worker (runs in embedded API / registry process today)
 
 See `docs/PHASES.md` Phase 5 for the full roadmap.

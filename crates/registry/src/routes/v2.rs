@@ -34,22 +34,10 @@ pub struct RegistryState {
     pub jwt_secret: String,
     pub token_url: String,
     pub service_name: String,
+    pub allow_anonymous_pull: bool,
 }
 
-pub async fn version_check(
-    State(state): State<RegistryState>,
-    headers: HeaderMap,
-) -> RegistryResult<Response> {
-    authorize_registry(
-        &state.pool,
-        &state.jwt_secret,
-        &state.token_url,
-        &state.service_name,
-        &headers,
-        None,
-        None,
-    )
-    .await?;
+pub async fn version_check() -> RegistryResult<Response> {
     Ok(Json(serde_json::json!({})).into_response())
 }
 
@@ -167,6 +155,7 @@ async fn require_catalog(
         headers,
         None,
         None,
+        state.allow_anonymous_pull,
     )
     .await?;
 
@@ -683,6 +672,7 @@ async fn require_scope(
         headers,
         Some(repo_name),
         Some(action),
+        state.allow_anonymous_pull,
     )
     .await
 }

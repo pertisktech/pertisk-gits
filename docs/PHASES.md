@@ -239,7 +239,7 @@ Full guide: [docs/RUNNERS.md](./RUNNERS.md)
 
 ---
 
-## Phase 5 — Container Registry (In progress)
+## Phase 5 — Container Registry (Done — MVP)
 
 **Goal:** OCI registry per org (`registry.host/org/image:tag`).
 
@@ -256,7 +256,9 @@ Full guide: [docs/RUNNERS.md](./RUNNERS.md)
 | Git repo link | `repository_id` on image; `commit_sha` on tags (push header) | Done |
 | Link images to commits UI | Tag commit links when repo linked | Done |
 
-**Deferred:** public anonymous pulls, Helm/K8s chart registry
+**Deferred:** Helm/K8s chart registry
+
+**Anonymous pulls:** enabled when `REGISTRY_ALLOW_ANONYMOUS_PULL` is set and image is linked to a public git repo — see [REGISTRY.md](./REGISTRY.md)
 
 **Gateway route:** `/v2/*` → `registry` service (or embedded API)
 
@@ -285,7 +287,7 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 
 ---
 
-## Phase 6.5 — Import from GitHub & GitLab (Done — MVP; phase 2 in progress)
+## Phase 6.5 — Import from GitHub & GitLab (Done — MVP)
 
 **Goal:** Onboard teams by importing existing projects from GitHub or GitLab without manual `git clone` + push.
 
@@ -368,15 +370,52 @@ See [docs/IMPORT.md](./IMPORT.md)
 
 ---
 
-## Phase 8 — Platform polish (Next)
+## Phase 7.5 — Email notifications & account (Done — MVP)
+
+**Goal:** Instance-wide SMTP for security and workflow alerts; users can edit their own profile.
+
+### Email notifications (SMTP)
+
+| Component | Status |
+|-----------|--------|
+| Admin SMTP settings (`smtp_settings` table, encrypted password) | Done |
+| Admin UI — **Configuration → Email notifications** | Done |
+| Test email endpoint | Done |
+| Login (password, OIDC, SAML, LDAP) | Done |
+| User registration + pending-approval alert to super admins | Done |
+| User approved by admin | Done |
+| Merge request opened / merged | Done |
+| CI/CD pipeline failure | Done |
+
+**Tables:** `smtp_settings` (singleton)
+
+See [docs/NOTIFICATIONS.md](./NOTIFICATIONS.md)
+
+### Account & session
+
+| Component | Status |
+|-----------|--------|
+| Edit profile (`PATCH /me` — email, display name, password) | Done |
+| Profile page UI | Done |
+| Session expiry → auto logout on 401 / expired JWT | Done |
+| SSO-only accounts — password change hidden | Done |
+
+---
+
+## Phase 8 — Platform polish (In progress)
 
 | Component | Status |
 |-----------|--------|
 | Rebase merge on PRs | Done (MVP) |
 | Registry catalog API | Done (MVP — `/v2/_catalog`, org-scoped catalog) |
-| Public anonymous registry pulls | Planned |
+| Shared form controls (`Checkbox`, `Select`, `Radio`, pagination) | Done |
+| Ref picker — searchable branch/tag dropdown | Done |
+| File browser — extension-based icons | Done |
+| Ref head commit summary in Code toolbar | Done |
+| Public anonymous registry pulls | Done (images linked to public git repos; `REGISTRY_ALLOW_ANONYMOUS_PULL`) |
 | Import wiki pages | Planned |
 | Blame / line history in file browser | Planned |
+| HTTP/3 (Quiche) at edge | Planned |
 
 ---
 
@@ -399,6 +438,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 | Import from GitHub / GitLab | 6.5 |
 | Fine-grained Permissions | 7 |
 | Kubernetes Integration | 7 |
+| Email notifications & account | 7.5 |
 | Platform polish | 8 |
 
 ---
@@ -451,5 +491,6 @@ pertisk-gits/
     ├── PHASES.md         # This file
     ├── CICD.md           # CI/CD architecture & API
     ├── CICD_WORKFLOWS.md # GitLab + GitHub Actions style workflows
-    └── CICD_SECRETS.md   # Secrets by environment
+    ├── CICD_SECRETS.md   # Secrets by environment
+    └── NOTIFICATIONS.md  # SMTP email notifications
 ```

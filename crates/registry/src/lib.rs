@@ -59,5 +59,6 @@ pub async fn build_state(config: &config::RegistryConfig, pool: sqlx::PgPool) ->
         jwt_secret: config.jwt_secret.clone(),
         token_url: config.token_url(),
         service_name: config.service_name.clone(),
+        allow_anonymous_pull: config::RegistryConfig::allow_anonymous_pull(),
     })
 }
