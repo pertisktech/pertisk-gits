@@ -66,6 +66,7 @@ import type {
   GitOpsWebhookSummary,
   MachineUserSummary,
 } from './types'
+import { handleUnauthorizedResponse } from '../auth/session'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
@@ -89,16 +90,35 @@ export function orgApiPath(path: string): string {
   return encodeURIComponent(path.replace(/^\/+|\/+$/g, ''))
 }
 
+async function authFetch(
+  path: string,
+  options: RequestInit = {},
+  token?: string | null,
+): Promise<Response> {
+  const hadAuthToken = Boolean(token)
+  const headers = new Headers(options.headers)
+  if (
+    !headers.has('Content-Type')
+    && options.body != null
+    && !(options.body instanceof FormData)
+  ) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+
+  const response = await fetch(`${API_BASE}${path}`, { ...options, headers })
+  if (!response.ok) {
+    handleUnauthorizedResponse(response.status, hadAuthToken)
+  }
+  return response
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
   token?: string | null,
 ): Promise<T> {
-  const headers = new Headers(options.headers)
-  headers.set('Content-Type', 'application/json')
-  if (token) headers.set('Authorization', `Bearer ${token}`)
-
-  const response = await fetch(`${API_BASE}${path}`, { ...options, headers })
+  const response = await authFetch(path, options, token)
   const body = await response.json().catch(() => ({}))
 
   if (!response.ok) {
@@ -145,19 +165,8 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  deleteSshKey: async (token: string, keyId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/me/ssh-keys/${keyId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteSshKey: (token: string, keyId: string) =>
+    request<void>(`/me/ssh-keys/${keyId}`, { method: 'DELETE' }, token),
 
   listApiTokens: (token: string) => request<ApiTokenSummary[]>('/me/tokens', {}, token),
 
@@ -168,19 +177,8 @@ export const api = {
       token,
     ),
 
-  deleteApiToken: async (token: string, tokenId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/me/tokens/${tokenId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteApiToken: (token: string, tokenId: string) =>
+    request<void>(`/me/tokens/${tokenId}`, { method: 'DELETE' }, token),
 
   listMachineUsers: (token: string, orgSlug: string) =>
     request<MachineUserSummary[]>(`/organizations/${orgApiPath(orgSlug)}/machine-users`, {}, token),
@@ -221,24 +219,17 @@ export const api = {
       token,
     ),
 
-  deleteRepoGitOpsWebhook: async (
+  deleteRepoGitOpsWebhook: (
     token: string,
     orgSlug: string,
     repoSlug: string,
     webhookId: string,
-  ) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/gitops-webhooks/${webhookId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  ) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/gitops-webhooks/${webhookId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   listOrganizations: (token: string) =>
     request<Organization[]>('/organizations', {}, token),
@@ -285,19 +276,8 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  removeOrganizationMember: async (token: string, orgSlug: string, userId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/members/${userId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  removeOrganizationMember: (token: string, orgSlug: string, userId: string) =>
+    request<void>(`/organizations/${orgApiPath(orgSlug)}/members/${userId}`, { method: 'DELETE' }, token),
 
   listCustomRoles: (token: string, orgSlug: string) =>
     request<OrganizationCustomRole[]>(`/organizations/${orgApiPath(orgSlug)}/custom-roles`, {}, token),
@@ -332,19 +312,8 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  deleteCustomRole: async (token: string, orgSlug: string, roleSlug: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/custom-roles/${roleSlug}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteCustomRole: (token: string, orgSlug: string, roleSlug: string) =>
+    request<void>(`/organizations/${orgApiPath(orgSlug)}/custom-roles/${roleSlug}`, { method: 'DELETE' }, token),
 
   listTeams: (token: string, orgSlug: string) =>
     request<TeamSummary[]>(`/organizations/${orgApiPath(orgSlug)}/teams`, {}, token),
@@ -373,19 +342,8 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  deleteTeam: async (token: string, orgSlug: string, teamSlug: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteTeam: (token: string, orgSlug: string, teamSlug: string) =>
+    request<void>(`/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}`, { method: 'DELETE' }, token),
 
   listTeamMembers: (token: string, orgSlug: string, teamSlug: string) =>
     request<TeamMemberEntry[]>(`/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/members`, {}, token),
@@ -401,19 +359,12 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  removeTeamMember: async (token: string, orgSlug: string, teamSlug: string, userId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/members/${userId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  removeTeamMember: (token: string, orgSlug: string, teamSlug: string, userId: string) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/members/${userId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   listTeamRepositories: (token: string, orgSlug: string, teamSlug: string) =>
     request<TeamRepositoryAccess[]>(
@@ -434,24 +385,17 @@ export const api = {
       token,
     ),
 
-  removeTeamRepositoryAccess: async (
+  removeTeamRepositoryAccess: (
     token: string,
     orgSlug: string,
     teamSlug: string,
     repoSlug: string,
-  ) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/repositories/${repoSlug}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  ) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/teams/${teamSlug}/repositories/${repoSlug}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   listRepositoryTeamAccess: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepositoryTeamAccess[]>(
@@ -492,24 +436,17 @@ export const api = {
       token,
     ),
 
-  removeRepositoryCollaborator: async (
+  removeRepositoryCollaborator: (
     token: string,
     orgSlug: string,
     repoSlug: string,
     userId: string,
-  ) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/collaborators/${userId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  ) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/collaborators/${userId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   listBranchProtectionRules: (token: string, orgSlug: string, repoSlug: string) =>
     request<BranchProtectionRule[]>(
@@ -557,24 +494,17 @@ export const api = {
       token,
     ),
 
-  removeBranchProtectionRule: async (
+  removeBranchProtectionRule: (
     token: string,
     orgSlug: string,
     repoSlug: string,
     ruleId: string,
-  ) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branch-protection/${ruleId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  ) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branch-protection/${ruleId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   listDeployKeys: (token: string, orgSlug: string, repoSlug: string) =>
     request<RepositoryDeployKey[]>(
@@ -595,19 +525,12 @@ export const api = {
       token,
     ),
 
-  deleteDeployKey: async (token: string, orgSlug: string, repoSlug: string, keyId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/deploy-keys/${keyId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteDeployKey: (token: string, orgSlug: string, repoSlug: string, keyId: string) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/deploy-keys/${keyId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   createOrganization: (
     token: string,
@@ -1260,19 +1183,8 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  deleteRunner: async (token: string, runnerId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/runners/${runnerId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteRunner: (token: string, runnerId: string) =>
+    request<void>(`/runners/${runnerId}`, { method: 'DELETE' }, token),
 
   rotateRunnerToken: (token: string, runnerId: string) =>
     request<RotateRunnerTokenResponse>(`/runners/${runnerId}/rotate-token`, {
@@ -1367,18 +1279,8 @@ export const api = {
       token,
     ),
 
-  deleteAuthProvider: async (token: string, providerId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/admin/auth-providers/${providerId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      throw new Error(typeof body.error === 'string' ? body.error : 'Request failed')
-    }
-  },
+  deleteAuthProvider: (token: string, providerId: string) =>
+    request<void>(`/admin/auth-providers/${providerId}`, { method: 'DELETE' }, token),
 
   createLdapGroupMapping: (
     token: string,
@@ -1391,18 +1293,12 @@ export const api = {
       token,
     ),
 
-  deleteLdapGroupMapping: async (token: string, providerId: string, mappingId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/admin/auth-providers/${providerId}/ldap-mappings/${mappingId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      throw new Error(typeof body.error === 'string' ? body.error : 'Request failed')
-    }
-  },
+  deleteLdapGroupMapping: (token: string, providerId: string, mappingId: string) =>
+    request<void>(
+      `/admin/auth-providers/${providerId}/ldap-mappings/${mappingId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   listAuditEvents: (
     token: string,
@@ -1439,11 +1335,10 @@ export const api = {
     if (params?.from) search.set('from', params.from)
     if (params?.to) search.set('to', params.to)
     const qs = search.toString()
-    const headers = new Headers()
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/audit-events/export${qs ? `?${qs}` : ''}`,
-      { headers },
+    const response = await authFetch(
+      `/organizations/${orgApiPath(orgSlug)}/audit-events/export${qs ? `?${qs}` : ''}`,
+      {},
+      token,
     )
     if (!response.ok) throw new Error('Export failed')
     return response.text()
@@ -1482,19 +1377,8 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  deleteOrgSecret: async (token: string, orgSlug: string, secretId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/organizations/${orgApiPath(orgSlug)}/secrets/${secretId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteOrgSecret: (token: string, orgSlug: string, secretId: string) =>
+    request<void>(`/organizations/${orgApiPath(orgSlug)}/secrets/${secretId}`, { method: 'DELETE' }, token),
 
   listRepoSecrets: (token: string, orgSlug: string, repoSlug: string) =>
     request<import('./types').CiSecret[]>(
@@ -1543,24 +1427,17 @@ export const api = {
       token,
     ),
 
-  deleteRepoSecret: async (
+  deleteRepoSecret: (
     token: string,
     orgSlug: string,
     repoSlug: string,
     secretId: string,
-  ) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/secrets/${secretId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  ) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/secrets/${secretId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   getAdminSystemInfo: (token: string) =>
     request<AdminSystemInfo>('/admin/system', {}, token),
@@ -1608,19 +1485,8 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  deleteAdminUser: async (token: string, userId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteAdminUser: (token: string, userId: string) =>
+    request<void>(`/admin/users/${userId}`, { method: 'DELETE' }, token),
 
   approveAdminUser: (token: string, userId: string) =>
     request<AdminUser>(`/admin/users/${userId}/approve`, { method: 'POST' }, token),
@@ -1643,19 +1509,8 @@ export const api = {
   getBackup: (token: string, backupId: string) =>
     request<BackupJob>(`/admin/backups/${backupId}`, {}, token),
 
-  deleteBackup: async (token: string, backupId: string) => {
-    const headers = new Headers()
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/admin/backups/${backupId}`, {
-      method: 'DELETE',
-      headers,
-    })
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      const message = typeof body.error === 'string' ? body.error : 'Request failed'
-      throw new Error(message)
-    }
-  },
+  deleteBackup: (token: string, backupId: string) =>
+    request<void>(`/admin/backups/${backupId}`, { method: 'DELETE' }, token),
 
   downloadBackup: (token: string, backupId: string) => {
     const url = downloadUrl(`/admin/backups/${backupId}/download`, token)
@@ -1672,13 +1527,7 @@ export const api = {
     form.append('archive', archive)
     form.append('components', JSON.stringify(components))
     form.append('confirm', confirm)
-    const headers = new Headers()
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(`${API_BASE}/admin/backups/restore`, {
-      method: 'POST',
-      headers,
-      body: form,
-    })
+    const response = await authFetch('/admin/backups/restore', { method: 'POST', body: form }, token)
     const body = await response.json().catch(() => ({}))
     if (!response.ok) {
       const message = typeof body.error === 'string' ? body.error : 'Restore failed'
@@ -1705,18 +1554,12 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  deleteImportCredential: async (token: string, orgSlug: string, credentialId: string) => {
-    const headers = new Headers({ 'Content-Type': 'application/json' })
-    headers.set('Authorization', `Bearer ${token}`)
-    const response = await fetch(
-      `${API_BASE}/organizations/${orgApiPath(orgSlug)}/import/credentials/${credentialId}`,
-      { method: 'DELETE', headers },
-    )
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}))
-      throw new Error(typeof body.error === 'string' ? body.error : 'Request failed')
-    }
-  },
+  deleteImportCredential: (token: string, orgSlug: string, credentialId: string) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/import/credentials/${credentialId}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   discoverImportRepos: (
     token: string,

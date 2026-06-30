@@ -1542,7 +1542,91 @@ body,
   gap: 0.5rem;
   min-width: 0;
   max-width: 100%;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
+}
+
+.app-toolbar-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+  min-width: 0;
+  flex: 0 1 auto;
+  margin-left: auto;
+  max-width: min(32rem, 55%);
+}
+
+.app-ref-head-commit {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45rem 0.6rem;
+  min-width: 0;
+  flex: 0 1 auto;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+.app-ref-head-commit-author {
+  flex-shrink: 0;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.app-ref-head-commit-message {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  transition: color var(--transition-fast);
+}
+
+.app-ref-head-commit-message:hover {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+.app-ref-head-commit-time {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--color-muted);
+}
+
+@container (max-width: 48rem) {
+  .app-ref-head-commit-time {
+    display: none;
+  }
+
+  .app-toolbar-right {
+    max-width: min(24rem, 50%);
+  }
+}
+
+@container (max-width: 36rem) {
+  .app-toolbar-right {
+    flex: 1 1 100%;
+    max-width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+    order: 3;
+  }
+
+  .app-ref-head-commit {
+    justify-content: flex-start;
+    text-align: left;
+    flex: 1 1 auto;
+  }
+
+  .app-ref-head-commit-author {
+    display: none;
+  }
 }
 
 @container (max-width: 32rem) {

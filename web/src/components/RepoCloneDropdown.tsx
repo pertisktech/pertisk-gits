@@ -1,6 +1,7 @@
 import { ChevronDown, Download, GitBranch, Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { handleUnauthorizedResponse } from '../auth/session'
 import { CopyField } from './RepoClonePushGuide'
 
 type CloneMode = 'https' | 'ssh' | 'download'
@@ -53,7 +54,10 @@ export function RepoCloneDropdown({
       const response = await fetch(url, {
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       })
-      if (!response.ok) throw new Error('Download failed')
+      if (!response.ok) {
+        if (token) handleUnauthorizedResponse(response.status, true)
+        throw new Error('Download failed')
+      }
       const blob = await response.blob()
       const objectUrl = URL.createObjectURL(blob)
       const link = document.createElement('a')

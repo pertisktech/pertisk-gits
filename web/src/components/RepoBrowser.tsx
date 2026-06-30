@@ -18,6 +18,7 @@ import { NewFileBar, RepoFileEditor, type OpenFileState } from './RepoFileEditor
 import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoEntryIcon } from './RepoEntryIcon'
 import { RepoReadme } from './RepoReadme'
+import { RepoRefHeadSummary } from './RepoRefHeadSummary'
 import { SecondaryButton, RefSelect } from './ui'
 
 interface RepoBrowserProps {
@@ -85,6 +86,15 @@ export function RepoBrowser({
     queryFn: () => api.getRepoTree(orgSlug, repoSlug, { ref: activeRef, path, ref_kind: refKind }, token),
     enabled: canBrowse && !inEditMode,
   })
+
+  const { data: headCommitData } = useQuery({
+    queryKey: ['repo-ref-head', orgSlug, repoSlug, refKind, activeRef, token ?? 'public'],
+    queryFn: () =>
+      api.getRepoCommits(orgSlug, repoSlug, { ref: activeRef, ref_kind: refKind, limit: 1 }, token),
+    enabled: canBrowse,
+  })
+
+  const headCommit = headCommitData?.commits[0]
 
   const readmePath =
     path === '' && !inEditMode && treeData?.entries ? findReadmePath(treeData.entries) : null
@@ -306,9 +316,14 @@ export function RepoBrowser({
         </div>
       )}
 
-      {refKind === 'tag' && (
-        <span className="text-xs text-text-secondary">Tags are read-only</span>
-      )}
+      <div className="app-toolbar-right">
+        {headCommit && (
+          <RepoRefHeadSummary orgSlug={orgSlug} repoSlug={repoSlug} commit={headCommit} />
+        )}
+        {refKind === 'tag' && (
+          <span className="text-xs text-text-secondary whitespace-nowrap">Tags are read-only</span>
+        )}
+      </div>
     </div>
   )
 

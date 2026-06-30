@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Moon, Shield, Sun } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuthProviderPublic } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -15,6 +15,8 @@ export function LoginPage() {
   const { setSession } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
+  const location = useLocation()
+  const sessionExpired = (location.state as { reason?: string } | null)?.reason === 'session_expired'
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -98,6 +100,9 @@ export function LoginPage() {
           <p className={styles.subtitle}>Sign in to your Git platform</p>
         </div>
 
+        {sessionExpired && !error && (
+          <p className={styles.error}>Your session has expired. Please sign in again.</p>
+        )}
         {error && <p className={styles.error}>{error}</p>}
 
         <form onSubmit={onSubmit} className={styles.form}>

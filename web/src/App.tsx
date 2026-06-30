@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthContext'
+import { SessionExpiryHandler } from './auth/SessionExpiryHandler'
 import { AppLayout } from './components/AppLayout'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthCallbackPage } from './pages/AuthCallbackPage'
@@ -71,6 +72,7 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <BrowserRouter>
+            <SessionExpiryHandler />
             <Routes>
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
