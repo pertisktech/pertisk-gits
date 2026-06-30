@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
+import { AdminSmtpPanel } from '../../components/AdminSmtpPanel'
 import { Breadcrumbs, PageHeader } from '../../components/ui'
 
 export function AdminConfigurationPage() {
@@ -25,7 +26,7 @@ export function AdminConfigurationPage() {
       />
       <PageHeader
         title="Configuration"
-        subtitle="Read-only deployment settings. Secrets are never exposed."
+        subtitle="Deployment settings and email notification configuration."
       />
 
       {isLoading && (
@@ -83,6 +84,8 @@ export function AdminConfigurationPage() {
               }
             />
           </InfoPanel>
+
+          <AdminSmtpPanel />
         </div>
       )}
     </>

@@ -7,6 +7,19 @@ export interface User {
   is_super_admin?: boolean
 }
 
+export interface MeResponse {
+  user: User
+  is_super_admin: boolean
+  has_password: boolean
+}
+
+export type UpdateProfilePayload = Partial<{
+  email: string
+  display_name: string
+  current_password: string
+  new_password: string
+}>
+
 export interface Organization {
   id: string
   slug: string
@@ -360,6 +373,38 @@ export interface AdminConfiguration {
   require_registration_approval: boolean
   super_admin_env_override: boolean
 }
+
+export interface SmtpSettings {
+  enabled: boolean
+  host: string
+  port: number
+  username: string | null
+  has_password: boolean
+  from_email: string
+  from_name: string
+  use_tls: boolean
+  notify_login: boolean
+  notify_user_registration: boolean
+  notify_user_approval: boolean
+  notify_merge_request: boolean
+  notify_pipeline_failure: boolean
+}
+
+export type UpdateSmtpSettingsPayload = Partial<{
+  enabled: boolean
+  host: string
+  port: number
+  username: string
+  password: string
+  from_email: string
+  from_name: string
+  use_tls: boolean
+  notify_login: boolean
+  notify_user_registration: boolean
+  notify_user_approval: boolean
+  notify_merge_request: boolean
+  notify_pipeline_failure: boolean
+}>
 
 export type BackupComponentId = 'db' | 'registry' | 'artifacts'
 

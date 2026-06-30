@@ -186,7 +186,7 @@ pub async fn oidc_callback(
     )
     .await?;
 
-    let auth = issue_auth_response(&state, user).await?;
+    let auth = issue_auth_response(&state, user, "oidc").await?;
     Ok(Redirect::temporary(&frontend_callback_url(
         &state,
         &auth.token,

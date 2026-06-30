@@ -52,6 +52,7 @@ mod deploy_keys;
 mod db;
 mod gitops;
 mod import;
+mod notifications;
 mod org;
 mod password;
 mod permissions;
@@ -98,6 +99,7 @@ struct HealthResponse {
 struct MeResponse {
     user: UserPublic,
     is_super_admin: bool,
+    has_password: bool,
 }
 
 #[derive(Serialize)]
@@ -133,6 +135,10 @@ async fn main() -> anyhow::Result<()> {
     );
     let artifact_store = artifacts::ArtifactStore::from_env()?;
     let secrets_crypto = Arc::new(SecretsCrypto::from_env()?);
+    notifications::init_notification_context(notifications::NotificationContext {
+        secrets_crypto: secrets_crypto.clone(),
+        base_url: config.git_public_base_url.clone(),
+    });
 
     let state = AppState {
         pool,
@@ -197,7 +203,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/auth/login", post(login))
         .route("/auth/registration", get(registration_info))
         .merge(sso::sso_routes())
-        .route("/me", get(me))
+        .route("/me", get(me).patch(update_me))
         .route("/users/search", get(search_users))
         .merge(dashboard::dashboard_routes())
         .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
@@ -234,6 +240,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(audit::audit_routes())
         .merge(import::import_routes())
         .merge(admin::admin_routes())
+        .merge(notifications::notification_routes())
         .merge(backup::backup_routes())
         .merge(branch_protection::branch_protection_read_routes())
         .merge(branch_protection::branch_protection_write_routes())
@@ -481,6 +488,14 @@ async fn register(
         other => ApiError::from(DomainError::Internal(other.to_string())),
     })?;
 
+    notifications::notify_user_registered(
+        state.pool.clone(),
+        state.secrets_crypto.clone(),
+        state.config.git_public_base_url.clone(),
+        user.id,
+        requires_approval,
+    );
+
     if requires_approval {
         return Ok(Json(RegisterResponse {
             user: user.into_public(),
@@ -555,6 +570,13 @@ async fn login(
     )
     .await?;
 
+    notifications::notify_login(
+        state.pool.clone(),
+        state.secrets_crypto.clone(),
+        user.id,
+        "password",
+    );
+
     let is_super_admin = admin::is_super_admin(&state.pool, user.id).await?;
 
     Ok(Json(AuthResponse {
@@ -581,9 +603,133 @@ async fn me(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     .ok_or(DomainError::NotFound)?;
 
+    let has_password = sqlx::query_scalar::<_, bool>(
+        "SELECT password_hash IS NOT NULL FROM users WHERE id = $1",
+    )
+    .bind(auth.user_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
     Ok(Json(MeResponse {
         user,
         is_super_admin: admin::is_super_admin(&state.pool, auth.user_id).await?,
+        has_password,
+    }))
+}
+
+async fn update_me(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(body): Json<UpdateProfileRequest>,
+) -> Result<Json<MeResponse>, ApiError> {
+    body.validate()
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    if body.email.is_none()
+        && body.display_name.is_none()
+        && body.new_password.is_none()
+    {
+        return Err(DomainError::Validation("no fields to update".into()).into());
+    }
+
+    if body.new_password.is_some() && body.current_password.is_none() {
+        return Err(DomainError::Validation(
+            "current password is required to set a new password".into(),
+        )
+        .into());
+    }
+
+    let existing = sqlx::query_as::<_, User>(
+        r#"
+        SELECT id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
+               approval_status, approved_at, approved_by, created_at, updated_at
+        FROM users
+        WHERE id = $1
+        "#,
+    )
+    .bind(auth.user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::NotFound)?;
+
+    if existing.is_machine_user {
+        return Err(DomainError::Forbidden.into());
+    }
+
+    let email = body
+        .email
+        .as_ref()
+        .map(|value| value.trim().to_string())
+        .unwrap_or(existing.email);
+
+    let display_name = match &body.display_name {
+        Some(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        None => existing.display_name,
+    };
+
+    let password_hash = if let Some(new_password) = &body.new_password {
+        let current = body
+            .current_password
+            .as_deref()
+            .ok_or(DomainError::Validation(
+                "current password is required to set a new password".into(),
+            ))?;
+        let Some(hash) = &existing.password_hash else {
+            return Err(DomainError::Validation(
+                "password cannot be changed for SSO-only accounts".into(),
+            )
+            .into());
+        };
+        let valid = verify_password(current, hash)
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        if !valid {
+            return Err(DomainError::Unauthorized.into());
+        }
+        Some(
+            hash_password(new_password)
+                .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?,
+        )
+    } else {
+        existing.password_hash
+    };
+
+    let user = sqlx::query_as::<_, UserPublic>(
+        r#"
+        UPDATE users
+        SET email = $1,
+            display_name = $2,
+            password_hash = $3,
+            updated_at = NOW()
+        WHERE id = $4
+        RETURNING id, username, email, display_name, created_at
+        "#,
+    )
+    .bind(&email)
+    .bind(&display_name)
+    .bind(&password_hash)
+    .bind(auth.user_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| match e {
+        sqlx::Error::Database(db) if db.constraint().is_some() => {
+            ApiError::from(DomainError::Conflict("email already in use".into()))
+        }
+        other => ApiError::from(DomainError::Internal(other.to_string())),
+    })?;
+
+    Ok(Json(MeResponse {
+        user,
+        is_super_admin: admin::is_super_admin(&state.pool, auth.user_id).await?,
+        has_password: password_hash.is_some(),
     }))
 }
 

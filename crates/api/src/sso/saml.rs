@@ -126,7 +126,7 @@ pub async fn saml_acs(
     )
     .await?;
 
-    let auth = issue_auth_response(&state, user).await?;
+    let auth = issue_auth_response(&state, user, "saml").await?;
     Ok(Redirect::temporary(&frontend_callback_url(&state, &auth.token)).into_response())
 }
 

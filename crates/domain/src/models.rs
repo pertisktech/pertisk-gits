@@ -335,6 +335,17 @@ pub struct AdminUpdateUserRequest {
     pub is_super_admin: Option<bool>,
 }
 
+#[derive(Debug, Deserialize, Validate)]
+pub struct UpdateProfileRequest {
+    #[validate(email)]
+    pub email: Option<String>,
+    #[validate(length(max = 255))]
+    pub display_name: Option<String>,
+    pub current_password: Option<String>,
+    #[validate(length(min = 8, max = 128))]
+    pub new_password: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct AuthResponse {
     pub token: String,

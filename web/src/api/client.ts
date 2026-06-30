@@ -1,5 +1,7 @@
 import type {
   AdminConfiguration,
+  SmtpSettings,
+  UpdateSmtpSettingsPayload,
   AdminHealth,
   AdminSystemInfo,
   BackupComponentId,
@@ -54,6 +56,8 @@ import type {
   BranchInfo,
   TreeEntry,
   User,
+  MeResponse,
+  UpdateProfilePayload,
   UserSshKey,
   CodeSearchResponse,
   CodeSearchStatus,
@@ -150,7 +154,13 @@ export const api = {
     }),
 
   me: (token: string) =>
-    request<{ user: User; is_super_admin: boolean }>('/me', {}, token),
+    request<MeResponse>('/me', {}, token),
+
+  updateProfile: (token: string, payload: UpdateProfilePayload) =>
+    request<MeResponse>('/me', {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
 
   searchUsers: (token: string, q: string, limit = 20) => {
     const search = new URLSearchParams({ q, limit: String(limit) })
@@ -1446,6 +1456,21 @@ export const api = {
 
   getAdminConfiguration: (token: string) =>
     request<AdminConfiguration>('/admin/configuration', {}, token),
+
+  getSmtpSettings: (token: string) =>
+    request<SmtpSettings>('/admin/notifications/smtp', {}, token),
+
+  updateSmtpSettings: (token: string, payload: UpdateSmtpSettingsPayload) =>
+    request<SmtpSettings>('/admin/notifications/smtp', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }, token),
+
+  testSmtpSettings: (token: string, to?: string) =>
+    request<{ ok: boolean; to: string }>('/admin/notifications/smtp/test', {
+      method: 'POST',
+      body: JSON.stringify(to ? { to } : {}),
+    }, token),
 
   listAdminUsers: (token: string, approvalStatus?: AdminUser['approval_status']) => {
     const query = approvalStatus

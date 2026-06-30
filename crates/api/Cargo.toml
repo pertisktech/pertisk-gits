@@ -33,6 +33,7 @@ validator = { workspace = true }
 bytes = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 ldap3 = { version = "0.11", default-features = false, features = ["tls-rustls", "sync"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "smtp-transport", "builder"] }
 quick-xml = { version = "0.37", features = ["serialize"] }
 flate2 = "1"
 aes-gcm = "0.10"

@@ -252,6 +252,7 @@ pub async fn load_user_by_id(pool: &PgPool, user_id: Uuid) -> Result<User, ApiEr
 pub async fn issue_auth_response(
     state: &AppState,
     user: User,
+    method: &str,
 ) -> Result<pertisk_domain::models::AuthResponse, ApiError> {
     crate::admin::ensure_user_record_approved(&user)?;
 
@@ -264,6 +265,13 @@ pub async fn issue_auth_response(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     let is_super_admin = crate::admin::is_super_admin(&state.pool, user.id).await?;
+
+    crate::notifications::notify_login(
+        state.pool.clone(),
+        state.secrets_crypto.clone(),
+        user.id,
+        method,
+    );
 
     Ok(pertisk_domain::models::AuthResponse {
         token,

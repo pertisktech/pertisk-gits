@@ -560,5 +560,5 @@ async fn ldap_login(
     )
     .await?;
 
-    Ok(Json(issue_auth_response(&state, user).await?))
+    Ok(Json(issue_auth_response(&state, user, "ldap").await?))
 }

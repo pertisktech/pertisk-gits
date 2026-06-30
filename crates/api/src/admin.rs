@@ -713,6 +713,13 @@ async fn approve_admin_user(
         .into());
     }
 
+    crate::notifications::notify_user_approved(
+        state.pool.clone(),
+        state.secrets_crypto.clone(),
+        state.config.git_public_base_url.clone(),
+        user_id,
+    );
+
     fetch_admin_user(&state.pool, user_id).await
 }
 

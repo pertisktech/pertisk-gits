@@ -2899,16 +2899,21 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
     .await?;
 
     if failed > 0 {
-        sqlx::query(
+        let just_failed = sqlx::query_scalar::<_, bool>(
             r#"
             UPDATE pipeline_runs
             SET status = 'failure'::pipeline_run_status, finished_at = NOW()
             WHERE id = $1 AND status IN ('pending', 'queued', 'running')
+            RETURNING true
             "#,
         )
         .bind(pipeline_run_id)
-        .execute(pool)
+        .fetch_optional(pool)
         .await?;
+
+        if just_failed.is_none() {
+            return Ok(());
+        }
 
         let skipped = sqlx::query_as::<_, (Uuid, String)>(
             r#"
@@ -2929,6 +2934,7 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
         }
 
         let _ = release_idle_runners(pool).await;
+        crate::notifications::notify_pipeline_failed(pool.clone(), pipeline_run_id);
         return Ok(());
     }
 

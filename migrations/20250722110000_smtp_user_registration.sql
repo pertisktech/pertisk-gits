@@ -1,0 +1,3 @@
+ALTER TABLE smtp_settings
+    ADD COLUMN IF NOT EXISTS notify_user_registration BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS notify_user_approval BOOLEAN NOT NULL DEFAULT TRUE;

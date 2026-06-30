@@ -969,6 +969,19 @@ async fn create_pull_request(
         }
     }
 
+    let org_path = crate::org::org_path_from_param(&org_path);
+    crate::notifications::notify_pull_request_opened(
+        state.pool.clone(),
+        state.secrets_crypto.clone(),
+        state.config.git_public_base_url.clone(),
+        org_path,
+        repo_slug,
+        number,
+        &body.title,
+        auth.user_id,
+        repo.id,
+    );
+
     Ok((
         StatusCode::CREATED,
         Json(build_pull_detail(&state.pool, &repo_path, pull, true).await?),
@@ -1161,6 +1174,19 @@ async fn merge_pull_request(
         },
     )
     .await;
+
+    let org_path = crate::org::org_path_from_param(&org_path);
+    crate::notifications::notify_pull_request_merged(
+        state.pool.clone(),
+        state.secrets_crypto.clone(),
+        state.config.git_public_base_url.clone(),
+        org_path,
+        repo_slug,
+        existing.number,
+        &existing.title,
+        existing.author_id,
+        auth.user_id,
+    );
 
     Ok(Json(MergePullRequestResponse {
         merge_commit_sha: merge_sha,
