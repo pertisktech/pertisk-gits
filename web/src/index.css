@@ -1640,6 +1640,42 @@ body,
   font-family: var(--font-mono);
 }
 
+.repo-entry-icon--folder {
+  flex-shrink: 0;
+  color: #d4a72c;
+}
+
+.repo-entry-icon--file {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 1.625rem;
+  height: 1.125rem;
+  padding: 0 0.2rem;
+  border-radius: 4px;
+  background: var(--repo-file-icon-bg);
+  color: var(--repo-file-icon-color);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  font-family: var(--font-sans);
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.repo-entry-icon--file.repo-entry-icon--sm {
+  min-width: 1.5rem;
+  height: 1rem;
+  font-size: 0.5rem;
+}
+
+.repo-entry-icon-label {
+  max-width: 2.25rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .app-file-table-commits td:nth-child(2) {
   max-width: 0;
   width: 45%;
@@ -2201,11 +2237,6 @@ body,
   display: inline-block;
   width: 14px;
   flex-shrink: 0;
-}
-
-.repo-explorer-tree-icon {
-  flex-shrink: 0;
-  color: var(--color-text-secondary);
 }
 
 .repo-explorer-tree-name {

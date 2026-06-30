@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
-import { ChevronRight, File, Folder, Loader2 } from 'lucide-react'
+import { ChevronRight, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
+import { RepoEntryIcon } from './RepoEntryIcon'
 import { cn } from '../utils/cn'
 
 interface RepoFileTreeProps {
@@ -90,9 +91,9 @@ function TreeNode({
           <span className="repo-explorer-tree-spacer" />
         )}
         {isDir ? (
-          <Folder size={14} className="repo-explorer-tree-icon" />
+          <RepoEntryIcon name={entry.name} kind="tree" expanded={isExpanded} size="sm" />
         ) : (
-          <File size={14} className="repo-explorer-tree-icon" />
+          <RepoEntryIcon name={entry.name} kind="blob" size="sm" />
         )}
         <span className="repo-explorer-tree-name">{entry.name}</span>
       </button>

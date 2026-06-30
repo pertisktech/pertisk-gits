@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
   ChevronRight,
-  File,
   FilePlus,
   Folder,
   Loader2,
@@ -17,6 +16,7 @@ import { commitUrl } from './RepoCommits'
 import { ancestorPathsForFile, RepoFileTree } from './RepoFileTree'
 import { NewFileBar, RepoFileEditor, type OpenFileState } from './RepoFileEditor'
 import { RepoClonePushGuide } from './RepoClonePushGuide'
+import { RepoEntryIcon } from './RepoEntryIcon'
 import { RepoReadme } from './RepoReadme'
 import { SecondaryButton, RefSelect } from './ui'
 
@@ -443,11 +443,7 @@ export function RepoBrowser({
                     <tr key={entry.path} onClick={() => openEntry(entry)}>
                       <td>
                         <span className="name-cell">
-                          {entry.kind === 'tree' ? (
-                            <Folder size={15} className="text-primary shrink-0" />
-                          ) : (
-                            <File size={15} className="text-muted shrink-0" />
-                          )}
+                          <RepoEntryIcon name={entry.name} kind={entry.kind} />
                           {entry.name}
                         </span>
                         {entry.last_commit && (
