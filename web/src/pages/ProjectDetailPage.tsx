@@ -6,7 +6,6 @@ import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
 import { RepoBranches } from '../components/RepoBranches'
 import { RepoBrowser } from '../components/RepoBrowser'
-import { RepoCodeSearch } from '../components/RepoCodeSearch'
 import { RepoCloneDropdown } from '../components/RepoCloneDropdown'
 import { RepoCommits } from '../components/RepoCommits'
 import { RepoTags } from '../components/RepoTags'
@@ -126,9 +125,7 @@ export function ProjectDetailPage() {
 
       <div className="min-w-0 space-y-4">
         {tab === 'code' && (
-          <div className="space-y-4">
-            <RepoCodeSearch token={token} orgSlug={orgSlug} repoSlug={projectSlug} />
-            <RepoBrowser
+          <RepoBrowser
               token={token}
               orgSlug={orgSlug}
               repoSlug={projectSlug}
@@ -138,7 +135,6 @@ export function ProjectDetailPage() {
               cloneUrlSsh={cloneUrlSsh}
               isPrivate={project.visibility === 'private'}
             />
-          </div>
         )}
 
         {tab === 'issues' && (

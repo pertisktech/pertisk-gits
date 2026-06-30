@@ -1,28 +1,34 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft,
-  ChevronRight,
   FilePlus,
   Folder,
   FolderPlus,
   Loader2,
+  PanelLeft,
+  PanelLeftClose,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { TreeEntry } from '../api/types'
+import type { EntryLastCommit, TreeEntry } from '../api/types'
 import { findReadmePath } from '../lib/readme'
+import { formatBytes } from '../lib/formatBytes'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
 import { CreateRepoEntryDialog, type RepoEntryKind } from './CreateRepoEntryDialog'
 import { mergeTreeEntries } from '../lib/pendingTreeEntries'
 import { ancestorPathsForFile, RepoFileTree } from './RepoFileTree'
 import { RepoFileEditor, type OpenFileState } from './RepoFileEditor'
+import { RepoFilePreview } from './RepoFilePreview'
+import { RepoFindFilePopover } from './RepoFindFilePopover'
 import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoEntryIcon } from './RepoEntryIcon'
+import { RepoPathBreadcrumb } from './RepoPathBreadcrumb'
 import { RepoReadme } from './RepoReadme'
 import { RepoRefHeadSummary } from './RepoRefHeadSummary'
 import { SecondaryButton, RefSelect } from './ui'
+import { cn } from '../utils/cn'
 
 interface RepoBrowserProps {
   token?: string | null
@@ -59,15 +65,20 @@ export function RepoBrowser({
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set())
   const [openFiles, setOpenFiles] = useState<OpenFileState[]>([])
   const [activePath, setActivePath] = useState<string | null>(initialFile)
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [showTree, setShowTree] = useState(false)
+  const [viewingMeta, setViewingMeta] = useState<EntryLastCommit | null | undefined>(undefined)
   const [loadingPath, setLoadingPath] = useState<string | null>(null)
   const [createEntryKind, setCreateEntryKind] = useState<RepoEntryKind | null>(null)
   const [createEntryPending, setCreateEntryPending] = useState(false)
   const [createEntryError, setCreateEntryError] = useState<string | null>(null)
+  const [findFileOpen, setFindFileOpen] = useState(false)
   const localNewPathsRef = useRef(new Set<string>())
   const openFilesRef = useRef(openFiles)
   openFilesRef.current = openFiles
 
-  const inEditMode = activePath !== null
+  const inEditMode = editorOpen
+  const viewingPath = activePath && !editorOpen ? activePath : null
 
   const { data: browserData, isLoading: browserLoading } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
@@ -93,6 +104,18 @@ export function RepoBrowser({
     enabled: canBrowse && !inEditMode,
   })
 
+  const { data: viewBlob, isLoading: viewBlobLoading } = useQuery({
+    queryKey: ['repo-blob', orgSlug, repoSlug, refKind, activeRef, viewingPath],
+    queryFn: () =>
+      api.getRepoBlob(
+        orgSlug,
+        repoSlug,
+        { ref: activeRef, path: viewingPath!, ref_kind: refKind },
+        token,
+      ),
+    enabled: Boolean(viewingPath && canBrowse),
+  })
+
   const { data: headCommitData } = useQuery({
     queryKey: ['repo-ref-head', orgSlug, repoSlug, refKind, activeRef, token ?? 'public'],
     queryFn: () =>
@@ -103,11 +126,9 @@ export function RepoBrowser({
   const headCommit = headCommitData?.commits[0]
 
   const readmePath =
-    path === '' && !inEditMode && treeData?.entries ? findReadmePath(treeData.entries) : null
-
-  const pathParts = path ? path.split('/') : []
-  const branchCount = browser?.branches.length ?? 0
-  const tagCount = browser?.tags.length ?? 0
+    path === '' && !viewingPath && !inEditMode && treeData?.entries
+      ? findReadmePath(treeData.entries)
+      : null
 
   const pendingTreePaths = useMemo(
     () =>
@@ -125,6 +146,19 @@ export function RepoBrowser({
     [treeData?.entries, path, pendingTreePaths],
   )
 
+  const viewingEntry = useMemo(
+    () => (viewingPath ? browseEntries.find((entry) => entry.path === viewingPath) : undefined),
+    [browseEntries, viewingPath],
+  )
+
+  const viewingSizeBytes = useMemo(() => {
+    if (viewingEntry?.size != null) return viewingEntry.size
+    if (viewBlob && !viewBlob.is_binary) {
+      return new TextEncoder().encode(viewBlob.content).length
+    }
+    return null
+  }, [viewBlob, viewingEntry?.size])
+
   const expandPath = useCallback((filePath: string) => {
     setExpandedPaths((prev) => {
       const next = new Set(prev)
@@ -135,15 +169,41 @@ export function RepoBrowser({
     })
   }, [])
 
-  const openFile = useCallback(
+  const syncFileParam = useCallback(
+    (filePath: string | null) => {
+      setSearchParams((prev) => {
+        const next = new URLSearchParams(prev)
+        if (filePath) {
+          next.set('file', filePath)
+        } else {
+          next.delete('file')
+        }
+        return next
+      }, { replace: true })
+    },
+    [setSearchParams],
+  )
+
+  const viewFile = useCallback(
+    (filePath: string, entry?: TreeEntry) => {
+      const slash = filePath.lastIndexOf('/')
+      const parentPath = slash >= 0 ? filePath.slice(0, slash) : ''
+      expandPath(filePath)
+      setPath(parentPath)
+      setActivePath(filePath)
+      setEditorOpen(false)
+      setViewingMeta(entry?.last_commit ?? undefined)
+      syncFileParam(filePath)
+    },
+    [expandPath, syncFileParam],
+  )
+
+  const openFileForEdit = useCallback(
     async (filePath: string, options?: { isNew?: boolean; content?: string }) => {
       expandPath(filePath)
       setActivePath(filePath)
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        next.set('file', filePath)
-        return next
-      }, { replace: true })
+      setEditorOpen(true)
+      syncFileParam(filePath)
 
       if (openFilesRef.current.some((file) => file.path === filePath)) return
 
@@ -154,6 +214,23 @@ export function RepoBrowser({
           ...prev,
           { path: filePath, content, savedContent: content, isBinary: false, isNew: true },
         ])
+        return
+      }
+
+      const cached = viewBlob && viewingPath === filePath ? viewBlob : null
+      if (cached) {
+        setOpenFiles((prev) => {
+          if (prev.some((file) => file.path === filePath)) return prev
+          return [
+            ...prev,
+            {
+              path: filePath,
+              content: cached.content,
+              savedContent: cached.content,
+              isBinary: cached.is_binary,
+            },
+          ]
+        })
         return
       }
 
@@ -181,24 +258,58 @@ export function RepoBrowser({
         setLoadingPath((current) => (current === filePath ? null : current))
       }
     },
-    [activeRef, expandPath, orgSlug, refKind, repoSlug, setSearchParams, token],
+    [activeRef, expandPath, orgSlug, refKind, repoSlug, syncFileParam, token, viewBlob, viewingPath],
   )
 
   useEffect(() => {
     if (!initialFile || !canBrowse) return
     if (localNewPathsRef.current.has(initialFile)) return
-    void openFile(initialFile)
+    viewFile(initialFile)
   }, [initialFile, canBrowse]) // eslint-disable-line react-hooks/exhaustive-deps -- open once on load
+
+  useEffect(() => {
+    if (!viewingPath || viewingMeta !== undefined) return
+    if (viewingEntry?.last_commit) {
+      setViewingMeta(viewingEntry.last_commit)
+    }
+  }, [viewingPath, viewingEntry, viewingMeta])
 
   useEffect(() => {
     if (initialFile) return
     setOpenFiles([])
     setActivePath(null)
+    setEditorOpen(false)
   }, [activeRef, refKind, initialFile])
 
-  const navigateTo = useCallback((newPath: string) => {
-    setPath(newPath)
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== 't' || event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return
+      }
+      event.preventDefault()
+      setFindFileOpen(true)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
+
+  const navigateTo = useCallback(
+    (newPath: string) => {
+      setPath(newPath)
+      setActivePath(null)
+      setEditorOpen(false)
+      setViewingMeta(undefined)
+      syncFileParam(null)
+    },
+    [syncFileParam],
+  )
 
   const openEntry = useCallback(
     (entry: TreeEntry) => {
@@ -206,21 +317,22 @@ export function RepoBrowser({
         navigateTo(entry.path)
         return
       }
-      void openFile(entry.path)
+      viewFile(entry.path, entry)
     },
-    [navigateTo, openFile],
+    [navigateTo, viewFile],
   )
 
   const exitEditMode = useCallback(() => {
+    const editingNewOnly =
+      openFilesRef.current.length > 0 && openFilesRef.current.every((file) => file.isNew)
+    setEditorOpen(false)
     setOpenFiles([])
-    setActivePath(null)
     setCreateEntryKind(null)
-    setSearchParams((params) => {
-      const updated = new URLSearchParams(params)
-      updated.delete('file')
-      return updated
-    }, { replace: true })
-  }, [setSearchParams])
+    if (editingNewOnly) {
+      setActivePath(null)
+      syncFileParam(null)
+    }
+  }, [syncFileParam])
 
   const toggleExpand = useCallback((folderPath: string) => {
     setExpandedPaths((prev) => {
@@ -243,11 +355,7 @@ export function RepoBrowser({
           const fallback = next[closedIndex] ?? next[closedIndex - 1] ?? null
           if (fallback) {
             setActivePath(fallback.path)
-            setSearchParams((params) => {
-              const updated = new URLSearchParams(params)
-              updated.set('file', fallback.path)
-              return updated
-            }, { replace: true })
+            syncFileParam(fallback.path)
           } else {
             exitEditMode()
           }
@@ -255,7 +363,7 @@ export function RepoBrowser({
         return next
       })
     },
-    [activePath, exitEditMode, setSearchParams],
+    [activePath, exitEditMode, syncFileParam],
   )
 
   const handleSaved = useCallback(
@@ -275,22 +383,23 @@ export function RepoBrowser({
       ])
       queryClient.invalidateQueries({ queryKey: ['repo-blob', orgSlug, repoSlug] })
       queryClient.invalidateQueries({ queryKey: ['repo-browser', orgSlug, repoSlug] })
+      setEditorOpen(false)
+      setOpenFiles([])
+      viewFile(filePath)
     },
-    [expandPath, orgSlug, queryClient, repoSlug],
+    [expandPath, orgSlug, queryClient, repoSlug, viewFile],
   )
 
   const resetBrowseState = useCallback(() => {
     setPath('')
     setOpenFiles([])
     setActivePath(null)
+    setEditorOpen(false)
     setExpandedPaths(new Set())
     setCreateEntryKind(null)
-    setSearchParams((params) => {
-      const updated = new URLSearchParams(params)
-      updated.delete('file')
-      return updated
-    }, { replace: true })
-  }, [setSearchParams])
+    setViewingMeta(undefined)
+    syncFileParam(null)
+  }, [syncFileParam])
 
   const handleCreateEntry = useCallback(
     async (filePath: string) => {
@@ -319,7 +428,7 @@ export function RepoBrowser({
         } catch (err) {
           setCreateEntryError((err as Error).message)
           setCreateEntryKind(null)
-          void openFile(filePath, { isNew: true, content: '' })
+          void openFileForEdit(filePath, { isNew: true, content: '' })
         } finally {
           setCreateEntryPending(false)
         }
@@ -327,94 +436,144 @@ export function RepoBrowser({
       }
 
       setCreateEntryKind(null)
-      void openFile(filePath, { isNew: true, content: '' })
+      void openFileForEdit(filePath, { isNew: true, content: '' })
     },
-    [activeRef, expandPath, openFile, orgSlug, queryClient, repoSlug, token],
+    [activeRef, expandPath, openFileForEdit, orgSlug, queryClient, repoSlug, token],
   )
 
   const createEntryButtons = canEdit ? (
     <>
-      <SecondaryButton
+      <button
         type="button"
-        className="!py-1 !px-2 !text-xs shrink-0"
+        className="app-toolbar-btn"
+        title="New file"
         onClick={() => setCreateEntryKind('file')}
       >
         <FilePlus size={14} />
-        New file
-      </SecondaryButton>
-      <SecondaryButton
+        <span className="sr-only">New file</span>
+      </button>
+      <button
         type="button"
-        className="!py-1 !px-2 !text-xs shrink-0"
+        className="app-toolbar-btn"
+        title="New folder"
         onClick={() => setCreateEntryKind('folder')}
       >
         <FolderPlus size={14} />
-        New folder
-      </SecondaryButton>
+        <span className="sr-only">New folder</span>
+      </button>
     </>
   ) : null
 
-  const toolbar = (
-    <div className="app-toolbar">
-      {inEditMode && (
-        <SecondaryButton
-          type="button"
-          className="!py-1 !px-2 !text-xs shrink-0"
-          onClick={exitEditMode}
-        >
-          <ArrowLeft size={14} />
-          Files
-        </SecondaryButton>
-      )}
+  const treeSidebar = canBrowse ? (
+    <aside className="app-repo-files-sidebar">
+      <div className="repo-explorer-sidebar-header">
+        <span>Files</span>
+        {canEdit && inEditMode && (
+          <div className="flex items-center gap-1">
+            <SecondaryButton
+              type="button"
+              className="!py-0.5 !px-2 !text-xs"
+              title="New file"
+              onClick={() => setCreateEntryKind('file')}
+            >
+              <FilePlus size={12} />
+            </SecondaryButton>
+            <SecondaryButton
+              type="button"
+              className="!py-0.5 !px-2 !text-xs"
+              title="New folder"
+              onClick={() => setCreateEntryKind('folder')}
+            >
+              <FolderPlus size={12} />
+            </SecondaryButton>
+          </div>
+        )}
+      </div>
+      <RepoFileTree
+        orgSlug={orgSlug}
+        repoSlug={repoSlug}
+        ref={activeRef}
+        refKind={refKind}
+        token={token}
+        selectedPath={activePath}
+        expandedPaths={expandedPaths}
+        pendingPaths={pendingTreePaths}
+        onToggleExpand={toggleExpand}
+        onSelectFile={(filePath) => viewFile(filePath)}
+      />
+    </aside>
+  ) : null
 
-      <div className="app-ref-toolbar-group">
-        <RefSelect
-          id="repo-ref-select"
-          refKind={refKind}
-          refName={activeRef}
-          branches={browser?.branches ?? []}
-          tags={browser?.tags ?? []}
-          fallbackRef={defaultBranch}
-          disabled={!browser}
-          onChange={(kind, name) => {
-            setRefKind(kind)
-            setRefOverride(name)
-            resetBrowseState()
-          }}
-        />
-        <span className="app-ref-select-meta text-xs text-text-secondary whitespace-nowrap">
-          {branchCount} branch{branchCount === 1 ? '' : 'es'} · {tagCount} tag
-          {tagCount === 1 ? '' : 's'}
-        </span>
+  const toolbar = (
+    <div className="app-toolbar app-toolbar--repo">
+      <div className="app-toolbar-row">
+        {inEditMode && (
+          <button type="button" className="app-toolbar-btn app-toolbar-btn--text" onClick={exitEditMode}>
+            <ArrowLeft size={14} />
+            <span className="hidden sm:inline">Back</span>
+          </button>
+        )}
+
+        {!inEditMode && canBrowse && (
+          <button
+            type="button"
+            className="app-toolbar-btn"
+            title={showTree ? 'Hide file tree' : 'Show file tree'}
+            onClick={() => setShowTree((value) => !value)}
+          >
+            {showTree ? <PanelLeftClose size={14} /> : <PanelLeft size={14} />}
+            <span className="sr-only">Toggle file tree</span>
+          </button>
+        )}
+
+        <div className="app-ref-toolbar-group">
+          <RefSelect
+            id="repo-ref-select"
+            refKind={refKind}
+            refName={activeRef}
+            branches={browser?.branches ?? []}
+            tags={browser?.tags ?? []}
+            fallbackRef={defaultBranch}
+            disabled={!browser}
+            onChange={(kind, name) => {
+              setRefKind(kind)
+              setRefOverride(name)
+              resetBrowseState()
+            }}
+          />
+        </div>
+
+        {!inEditMode && (
+          <RepoPathBreadcrumb
+            folderPath={path}
+            filePath={viewingPath}
+            onNavigateFolder={navigateTo}
+          />
+        )}
+
+        <div className="app-toolbar-right">
+          {!inEditMode && (
+            <RepoFindFilePopover
+              token={token}
+              orgSlug={orgSlug}
+              repoSlug={repoSlug}
+              open={findFileOpen}
+              onOpenChange={setFindFileOpen}
+              onSelectPath={(filePath) => viewFile(filePath)}
+            />
+          )}
+          {createEntryButtons}
+          {refKind === 'tag' && (
+            <span className="text-xs text-text-secondary whitespace-nowrap">Tags are read-only</span>
+          )}
+        </div>
       </div>
 
-      {!inEditMode && pathParts.length > 0 && (
-        <div className="app-path-crumb flex-1 min-w-0">
-          <button type="button" onClick={() => navigateTo('')} aria-label="Repository root">
-            /
-          </button>
-          {pathParts.map((part, i) => {
-            const subPath = pathParts.slice(0, i + 1).join('/')
-            return (
-              <span key={subPath} className="inline-flex items-center gap-1">
-                <ChevronRight size={12} className="text-muted" />
-                <button type="button" onClick={() => navigateTo(subPath)}>
-                  {part}
-                </button>
-              </span>
-            )
-          })}
+      {headCommit && (
+        <div className="app-toolbar-commit-row">
+          <RepoRefHeadSummary orgSlug={orgSlug} repoSlug={repoSlug} commit={headCommit} />
         </div>
       )}
-
-      <div className="app-toolbar-right">
-        {createEntryButtons}
-        {headCommit && (
-          <RepoRefHeadSummary orgSlug={orgSlug} repoSlug={repoSlug} commit={headCommit} />
-        )}
-        {refKind === 'tag' && (
-          <span className="text-xs text-text-secondary whitespace-nowrap">Tags are read-only</span>
-        )}
-      </div>
     </div>
   )
 
@@ -436,48 +595,7 @@ export function RepoBrowser({
 
         {inEditMode ? (
           <div className="repo-explorer">
-            <aside className="repo-explorer-sidebar">
-              <div className="repo-explorer-sidebar-header">
-                <span>Explorer</span>
-                {canEdit && (
-                  <div className="flex items-center gap-1">
-                    <SecondaryButton
-                      type="button"
-                      className="!py-0.5 !px-2 !text-xs"
-                      title="New file"
-                      onClick={() => setCreateEntryKind('file')}
-                    >
-                      <FilePlus size={12} />
-                    </SecondaryButton>
-                    <SecondaryButton
-                      type="button"
-                      className="!py-0.5 !px-2 !text-xs"
-                      title="New folder"
-                      onClick={() => setCreateEntryKind('folder')}
-                    >
-                      <FolderPlus size={12} />
-                    </SecondaryButton>
-                  </div>
-                )}
-              </div>
-              {canBrowse ? (
-                <RepoFileTree
-                  orgSlug={orgSlug}
-                  repoSlug={repoSlug}
-                  ref={activeRef}
-                  refKind={refKind}
-                  token={token}
-                  selectedPath={activePath}
-                  expandedPaths={expandedPaths}
-                  pendingPaths={pendingTreePaths}
-                  onToggleExpand={toggleExpand}
-                  onSelectFile={(filePath) => void openFile(filePath)}
-                />
-              ) : (
-                <p className="px-3 py-2 text-xs text-text-secondary">No refs available</p>
-              )}
-            </aside>
-
+            {treeSidebar}
             <div className="repo-explorer-main">
               <RepoFileEditor
                 token={token}
@@ -491,11 +609,7 @@ export function RepoBrowser({
                 loadingPath={loadingPath}
                 onActivePathChange={(filePath) => {
                   setActivePath(filePath)
-                  setSearchParams((params) => {
-                    const updated = new URLSearchParams(params)
-                    updated.set('file', filePath)
-                    return updated
-                  }, { replace: true })
+                  syncFileParam(filePath)
                 }}
                 onCloseFile={closeFile}
                 onUpdateContent={(filePath, content) => {
@@ -508,82 +622,105 @@ export function RepoBrowser({
             </div>
           </div>
         ) : (
-          <>
-            {treeLoading ? (
-              <div className="flex items-center gap-2 text-text-secondary text-sm p-6">
-                <Loader2 size={16} className="animate-spin" />
-                Loading files…
-              </div>
-            ) : (
-              <table className="app-file-table app-file-table-commits">
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th className="hidden md:table-cell">Last commit message</th>
-                    <th className="w-32 text-right hidden md:table-cell" aria-label="Last edit" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {browseEntries.map((entry) => (
-                    <tr key={entry.path} onClick={() => openEntry(entry)}>
-                      <td>
-                        <span className="name-cell">
-                          <RepoEntryIcon name={entry.name} kind={entry.kind} />
-                          {entry.name}
-                        </span>
-                        {entry.last_commit && (
-                          <div className="md:hidden flex items-start justify-between gap-3 text-xs text-text-secondary mt-0.5 pl-[1.35rem] min-w-0">
-                            <span className="truncate">{entry.last_commit.message}</span>
-                            <span className="shrink-0 whitespace-nowrap">
-                              {formatRelativeTime(entry.last_commit.committed_at)}
-                            </span>
-                          </div>
-                        )}
-                      </td>
-                      <td className="hidden md:table-cell text-text-secondary text-sm">
-                        {entry.last_commit ? (
-                          <Link
-                            to={commitUrl(orgSlug, repoSlug, entry.last_commit.sha)}
-                            className="hover:text-primary hover:underline truncate block max-w-md"
-                            onClick={(e) => e.stopPropagation()}
-                            title={entry.last_commit.message}
-                          >
-                            {entry.last_commit.message}
-                          </Link>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="text-right text-text-secondary text-sm whitespace-nowrap hidden md:table-cell">
-                        {entry.last_commit ? formatRelativeTime(entry.last_commit.committed_at) : '—'}
-                      </td>
-                    </tr>
-                  ))}
-                  {browseEntries.length === 0 && (
+          <div className={cn('app-repo-files-layout', showTree && canBrowse && 'app-repo-files-layout--tree')}>
+            {showTree && treeSidebar}
+            <div className="app-repo-files-main">
+              {viewingPath ? (
+                <RepoFilePreview
+                  token={token}
+                  orgSlug={orgSlug}
+                  repoSlug={repoSlug}
+                  ref={activeRef}
+                  refKind={refKind}
+                  path={viewingPath}
+                  content={viewBlob?.content ?? ''}
+                  isBinary={viewBlob?.is_binary ?? false}
+                  loading={viewBlobLoading}
+                  sizeBytes={viewingSizeBytes}
+                  lastCommit={viewingMeta ?? viewingEntry?.last_commit}
+                  canEdit={canEdit}
+                  onEdit={() => void openFileForEdit(viewingPath)}
+                />
+              ) : treeLoading ? (
+                <div className="flex items-center gap-2 text-text-secondary text-sm p-6">
+                  <Loader2 size={16} className="animate-spin" />
+                  Loading files…
+                </div>
+              ) : (
+                <table className="app-file-table app-file-table-commits">
+                  <thead>
                     <tr>
-                      <td colSpan={3} className="text-center text-text-secondary py-8">
-                        {browser?.empty ? (
-                          <div className="space-y-1">
-                            <p>No files yet — this repository has no commits.</p>
-                            <p className="text-xs">
-                              Use <strong>New file</strong> or <strong>New folder</strong> in the toolbar to
-                              create the first commit, or push from your computer below.
-                            </p>
-                          </div>
-                        ) : (
-                          'This folder is empty.'
-                        )}
-                      </td>
+                      <th>Name</th>
+                      <th className="w-24 text-right hidden lg:table-cell">Size</th>
+                      <th className="hidden md:table-cell">Last commit message</th>
+                      <th className="w-32 text-right hidden md:table-cell" aria-label="Last edit" />
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            )}
-          </>
+                  </thead>
+                  <tbody>
+                    {browseEntries.map((entry) => (
+                      <tr key={entry.path} onClick={() => openEntry(entry)}>
+                        <td>
+                          <span className="name-cell">
+                            <RepoEntryIcon name={entry.name} kind={entry.kind} />
+                            {entry.name}
+                          </span>
+                          {entry.last_commit && (
+                            <div className="md:hidden flex items-start justify-between gap-3 text-xs text-text-secondary mt-0.5 pl-[1.35rem] min-w-0">
+                              <span className="truncate">{entry.last_commit.message}</span>
+                              <span className="shrink-0 whitespace-nowrap">
+                                {formatRelativeTime(entry.last_commit.committed_at)}
+                              </span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="text-right text-text-secondary text-xs font-mono whitespace-nowrap hidden lg:table-cell">
+                          {entry.kind === 'blob' && entry.size != null ? formatBytes(entry.size) : '—'}
+                        </td>
+                        <td className="hidden md:table-cell text-text-secondary text-sm">
+                          {entry.last_commit ? (
+                            <Link
+                              to={commitUrl(orgSlug, repoSlug, entry.last_commit.sha)}
+                              className="hover:text-primary hover:underline truncate block max-w-md"
+                              onClick={(e) => e.stopPropagation()}
+                              title={entry.last_commit.message}
+                            >
+                              {entry.last_commit.message}
+                            </Link>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td className="text-right text-text-secondary text-sm whitespace-nowrap hidden md:table-cell">
+                          {entry.last_commit ? formatRelativeTime(entry.last_commit.committed_at) : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                    {browseEntries.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="text-center text-text-secondary py-8">
+                          {browser?.empty ? (
+                            <div className="space-y-1">
+                              <p>No files yet — this repository has no commits.</p>
+                              <p className="text-xs">
+                                Use <strong>New file</strong> or <strong>New folder</strong> in the toolbar to
+                                create the first commit, or push from your computer below.
+                              </p>
+                            </div>
+                          ) : (
+                            'This folder is empty.'
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
-      {browser?.empty && !inEditMode && (
+      {browser?.empty && !inEditMode && !viewingPath && (
         <div className="app-panel">
           <div className="app-panel-header">Push from your computer</div>
           <div className="app-panel-body py-6 px-4 sm:px-6">
@@ -605,7 +742,7 @@ export function RepoBrowser({
         </div>
       )}
 
-      {readmePath && !inEditMode && (
+      {readmePath && !viewingPath && !inEditMode && (
         <RepoReadme
           token={token}
           orgSlug={orgSlug}
