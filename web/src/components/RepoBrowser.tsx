@@ -54,14 +54,15 @@ export function RepoBrowser({
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialFile = searchParams.get('file')
+  const urlRef = searchParams.get('ref')
+  const refKind: 'branch' | 'tag' =
+    urlRef && searchParams.get('ref_kind') === 'tag' ? 'tag' : 'branch'
 
   const [path, setPath] = useState(() => {
     if (!initialFile) return ''
     const slash = initialFile.lastIndexOf('/')
     return slash >= 0 ? initialFile.slice(0, slash) : ''
   })
-  const [refOverride, setRefOverride] = useState<string | null>(null)
-  const [refKind, setRefKind] = useState<'branch' | 'tag'>('branch')
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(() => new Set())
   const [openFiles, setOpenFiles] = useState<OpenFileState[]>([])
   const [activePath, setActivePath] = useState<string | null>(initialFile)
@@ -87,14 +88,15 @@ export function RepoBrowser({
   })
 
   const browser = browserData?.browser
+  const defaultRef = browser?.default_ref ?? defaultBranch
   const refList =
     refKind === 'tag'
       ? browser?.tags ?? []
       : browser?.branches.length
         ? browser.branches
         : [defaultBranch]
-  const ref = refOverride ?? browser?.default_ref ?? defaultBranch
-  const activeRef = refList.includes(ref) ? ref : (refList[0] ?? ref)
+  const ref = urlRef ?? defaultRef
+  const activeRef = refList.includes(ref) ? ref : (urlRef ?? refList[0] ?? ref)
   const canBrowse = Boolean(browser && (refKind === 'branch' || refList.length > 0))
   const canEdit = Boolean(token && refKind === 'branch')
 
@@ -169,19 +171,28 @@ export function RepoBrowser({
     })
   }, [])
 
-  const syncFileParam = useCallback(
-    (filePath: string | null) => {
+  const patchSearchParams = useCallback(
+    (patch: (next: URLSearchParams) => void) => {
       setSearchParams((prev) => {
         const next = new URLSearchParams(prev)
+        patch(next)
+        return next
+      }, { replace: true })
+    },
+    [setSearchParams],
+  )
+
+  const syncFileParam = useCallback(
+    (filePath: string | null) => {
+      patchSearchParams((next) => {
         if (filePath) {
           next.set('file', filePath)
         } else {
           next.delete('file')
         }
-        return next
-      }, { replace: true })
+      })
     },
-    [setSearchParams],
+    [patchSearchParams],
   )
 
   const viewFile = useCallback(
@@ -398,8 +409,28 @@ export function RepoBrowser({
     setExpandedPaths(new Set())
     setCreateEntryKind(null)
     setViewingMeta(undefined)
-    syncFileParam(null)
-  }, [syncFileParam])
+  }, [])
+
+  const changeRef = useCallback(
+    (kind: 'branch' | 'tag', name: string) => {
+      patchSearchParams((next) => {
+        next.delete('file')
+        if (kind === 'branch' && name === defaultRef) {
+          next.delete('ref')
+          next.delete('ref_kind')
+        } else {
+          next.set('ref', name)
+          if (kind === 'tag') {
+            next.set('ref_kind', 'tag')
+          } else {
+            next.delete('ref_kind')
+          }
+        }
+      })
+      resetBrowseState()
+    },
+    [defaultRef, patchSearchParams, resetBrowseState],
+  )
 
   const handleCreateEntry = useCallback(
     async (filePath: string) => {
@@ -535,11 +566,7 @@ export function RepoBrowser({
             tags={browser?.tags ?? []}
             fallbackRef={defaultBranch}
             disabled={!browser}
-            onChange={(kind, name) => {
-              setRefKind(kind)
-              setRefOverride(name)
-              resetBrowseState()
-            }}
+            onChange={changeRef}
           />
         </div>
 
