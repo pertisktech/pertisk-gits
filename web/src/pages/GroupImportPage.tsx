@@ -13,8 +13,6 @@ import {
   Checkbox,
   PageHeader,
   PrimaryButton,
-  Radio,
-  RadioGroup,
   SecondaryButton,
   Select,
   TablePagination,
@@ -22,7 +20,7 @@ import {
 import { chunkImportRepos, DEFAULT_IMPORT_MAX_REPOS_PER_JOB } from '../lib/importLimits'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
 import { useClientPagination } from '../lib/pagination'
-import { slugify } from '../lib/slugify'
+import { slugify, slugifyPath, remoteNamespaceLabel } from '../lib/slugify'
 
 const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
@@ -40,8 +38,6 @@ function parseImportProvider(value: string | null): ImportProvider {
   return value === 'gitlab' ? 'gitlab' : 'github'
 }
 
-type TargetMode = 'new' | 'existing'
-
 export function GroupImportPage() {
   const { pathname } = useLocation()
   const routeOrgPath = useOrgPathParam()
@@ -53,12 +49,10 @@ export function GroupImportPage() {
   const [provider, setProvider] = useState<ImportProvider>(() =>
     parseImportProvider(searchParams.get('provider')),
   )
-  const [targetMode, setTargetMode] = useState<TargetMode>('new')
-  const [existingTargetPath, setExistingTargetPath] = useState('')
   const [createdOrgPath, setCreatedOrgPath] = useState('')
   const [newGroupName, setNewGroupName] = useState('')
-  const [newGroupSlug, setNewGroupSlug] = useState('')
-  const [slugTouched, setSlugTouched] = useState(false)
+  const [targetGroupPath, setTargetGroupPath] = useState('')
+  const [groupPathTouched, setGroupPathTouched] = useState(false)
   const [pat, setPat] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [credentialId, setCredentialId] = useState<string | null>(null)
@@ -75,9 +69,8 @@ export function GroupImportPage() {
 
   const activeOrgPath = useMemo(() => {
     if (!isGlobalImport) return routeOrgPath
-    if (targetMode === 'existing') return existingTargetPath
     return createdOrgPath
-  }, [isGlobalImport, routeOrgPath, targetMode, existingTargetPath, createdOrgPath])
+  }, [isGlobalImport, routeOrgPath, createdOrgPath])
 
   useEffect(() => {
     setProvider(parseImportProvider(searchParams.get('provider')))
@@ -89,18 +82,24 @@ export function GroupImportPage() {
     enabled: Boolean(token),
   })
 
-  const topLevelGroups = useMemo(
-    () => groups.filter((group) => !group.parent_id),
-    [groups],
-  )
-
   const conflictingGroup = useMemo(() => {
-    const slug = newGroupSlug.trim()
-    if (!slug || !isGlobalImport || targetMode !== 'new') return undefined
-    return topLevelGroups.find(
-      (group) => group.slug === slug || (group.full_path || group.slug) === slug,
+    const path = targetGroupPath.trim()
+    if (!path || !isGlobalImport) return undefined
+    return groups.find(
+      (group) => (group.full_path || group.slug) === path,
     )
-  }, [newGroupSlug, topLevelGroups, isGlobalImport, targetMode])
+  }, [targetGroupPath, groups, isGlobalImport])
+
+  const applyRemoteNamespaceToGroup = useCallback(
+    (path: string) => {
+      if (!path || groupPathTouched) return
+      const ns = namespaces.find((item) => item.path === path)
+      const label = ns?.name ?? path.split('/').pop() ?? path
+      setNewGroupName(label)
+      setTargetGroupPath(slugifyPath(path))
+    },
+    [namespaces, groupPathTouched],
+  )
 
   const existingRepoCount = useMemo(
     () => remoteRepos.filter((repo) => repo.already_exists).length,
@@ -114,10 +113,10 @@ export function GroupImportPage() {
   })
 
   const canManage = useMemo(() => {
-    if (isGlobalImport && targetMode === 'new' && !createdOrgPath) return true
+    if (isGlobalImport && !createdOrgPath) return true
     const role = members.find((member) => member.user.id === user?.id)?.role
     return role === 'owner' || role === 'admin'
-  }, [isGlobalImport, targetMode, createdOrgPath, members, user?.id])
+  }, [isGlobalImport, createdOrgPath, members, user?.id])
 
   const { data: credentials = [] } = useQuery({
     queryKey: ['import-credentials', activeOrgPath],
@@ -160,75 +159,84 @@ export function GroupImportPage() {
   }, [activeJob, queryClient, activeOrgPath])
 
   useEffect(() => {
-    if (!isGlobalImport || slugTouched || !namespacePath) return
-    const ns = namespaces.find((item) => item.path === namespacePath)
-    const segment = namespacePath.split('/').pop() ?? namespacePath
-    const label = ns?.name ?? segment
-    setNewGroupName(label)
-    setNewGroupSlug(slugify(segment))
-  }, [isGlobalImport, namespacePath, namespaces, slugTouched])
+    if (!isGlobalImport || groupPathTouched) return
+    if (namespacePath) {
+      applyRemoteNamespaceToGroup(namespacePath)
+      return
+    }
+    if (account && namespaces.length === 0) {
+      setNewGroupName(account)
+      setTargetGroupPath(slugify(account))
+    }
+  }, [isGlobalImport, namespacePath, namespaces, account, groupPathTouched, applyRemoteNamespaceToGroup])
 
   const ensureTargetOrg = useCallback(async (): Promise<string> => {
     if (!isGlobalImport) {
       if (!routeOrgPath) throw new Error('No target group')
       return routeOrgPath
     }
-    if (targetMode === 'existing') {
-      if (!existingTargetPath) throw new Error('Select a target group')
-      return existingTargetPath
-    }
     if (createdOrgPath) return createdOrgPath
 
+    const path = targetGroupPath.trim()
     const name = newGroupName.trim()
-    const slug = newGroupSlug.trim()
-    if (!name || !slug) {
-      throw new Error('Enter a group name and URL segment before connecting')
+    if (!path) {
+      throw new Error(
+        provider === 'github'
+          ? 'Select a GitHub organization before listing repositories'
+          : 'Select a GitLab group before listing repositories',
+      )
     }
 
-    const existing = topLevelGroups.find(
-      (group) => group.slug === slug || (group.full_path || group.slug) === slug,
-    )
+    const existing = groups.find((group) => (group.full_path || group.slug) === path)
     if (existing) {
-      const path = existing.full_path || existing.slug
-      setCreatedOrgPath(path)
-      return path
+      const fullPath = existing.full_path || existing.slug
+      setCreatedOrgPath(fullPath)
+      return fullPath
     }
 
-    try {
-      const group = await api.createOrganization(token!, {
-        name,
-        slug,
-      })
-      const path = group.full_path || group.slug
-      setCreatedOrgPath(path)
-      queryClient.invalidateQueries({ queryKey: ['organizations'] })
-      return path
-    } catch (err) {
-      const message = (err as Error).message.toLowerCase()
-      if (message.includes('already exists') || message.includes('conflict')) {
-        const fallback = topLevelGroups.find(
-          (group) => group.slug === slug || (group.full_path || group.slug) === slug,
-        )
-        if (fallback) {
-          const path = fallback.full_path || fallback.slug
-          setCreatedOrgPath(path)
-          return path
-        }
-      }
-      throw err
-    }
+    const group = await api.ensureImportGroup(token!, {
+      path,
+    })
+    const fullPath = group.full_path || group.slug
+    setCreatedOrgPath(fullPath)
+    if (!name) setNewGroupName(group.name)
+    queryClient.invalidateQueries({ queryKey: ['organizations'] })
+    return fullPath
   }, [
     isGlobalImport,
     routeOrgPath,
-    targetMode,
-    existingTargetPath,
     createdOrgPath,
     newGroupName,
-    newGroupSlug,
+    targetGroupPath,
+    provider,
     token,
     queryClient,
-    topLevelGroups,
+    groups,
   ])
+
+  const connect = useMutation({
+    mutationFn: async () => {
+      if (!pat.trim()) throw new Error('Enter a personal access token')
+      return api.previewImport(token!, {
+        provider,
+        token: pat,
+        base_url: baseUrl.trim() || undefined,
+      })
+    },
+    onSuccess: (result) => {
+      setAccount(result.account)
+      setNamespaces(result.namespaces)
+      setNamespacePath('')
+      setRemoteRepos([])
+      setSelected({})
+      setCredentialId(null)
+      setCreatedOrgPath('')
+      setGroupPathTouched(false)
+      if (result.namespaces.length === 1) {
+        setNamespacePath(result.namespaces[0].path)
+      }
+    },
+  })
 
   const discoverPayload = useMemo(() => {
     const credId = credentialId ?? undefined
@@ -340,14 +348,14 @@ export function GroupImportPage() {
   useEffect(() => {
     if (!isGlobalImport) return
     setCredentialId(null)
-    setAccount(null)
     setRemoteRepos([])
-    setNamespaces([])
-    setNamespacePath('')
     setSelected({})
     setActiveJobId(null)
     setCreatedOrgPath('')
-  }, [isGlobalImport, targetMode, existingTargetPath])
+    setAccount(null)
+    setNamespaces([])
+    setNamespacePath('')
+  }, [isGlobalImport, provider])
 
   const selectedCount = Object.values(selected).filter(Boolean).length
   const importJobCount = Math.max(1, Math.ceil(selectedCount / maxReposPerJob))
@@ -365,28 +373,25 @@ export function GroupImportPage() {
     resetRepoPage()
   }, [namespacePath, remoteRepos.length, resetRepoPage])
 
-  const connectStep = isGlobalImport ? 2 : 1
-  const selectStep = isGlobalImport ? 3 : 2
+  const connectStep = 1
+  const selectStep = 2
 
   const breadcrumbItems = isGlobalImport
     ? [{ label: 'Groups', to: '/groups' }, { label: 'Import' }]
     : [...groupBreadcrumbItems(routeOrgPath, groups), { label: 'Import' }]
 
-  const targetPreview =
-    isGlobalImport && targetMode === 'new'
-      ? newGroupSlug.trim() || 'your-group'
-      : activeOrgPath || routeOrgPath
+  const targetPreview = isGlobalImport
+    ? targetGroupPath.trim() || 'your-group'
+    : activeOrgPath || routeOrgPath
+
+  const previewReady = isGlobalImport ? Boolean(account) : true
+  const namespaceRequired = isGlobalImport && namespaces.length > 0
+  const canListRepos =
+    previewReady && (!namespaceRequired || Boolean(namespacePath)) && Boolean(targetGroupPath.trim() || !isGlobalImport)
 
   if (!isGlobalImport && !canManage && members.length > 0) {
     return <Navigate to={`/groups/${routeOrgPath}`} replace />
   }
-
-  const existingTargetForbidden =
-    isGlobalImport &&
-    targetMode === 'existing' &&
-    Boolean(existingTargetPath) &&
-    members.length > 0 &&
-    !canManage
 
   return (
     <>
@@ -395,109 +400,10 @@ export function GroupImportPage() {
         title="Import repositories"
         subtitle={
           isGlobalImport
-            ? 'Create a new group and mirror projects from GitHub or GitLab in one step.'
+            ? 'Connect with GitHub or GitLab, pick an organization or group, and import repositories into a matching Pertisk group.'
             : 'Mirror projects from GitHub or GitLab into this group. Git history is preserved; optionally import issues and open pull/merge requests.'
         }
       />
-
-      {isGlobalImport && (
-        <Card className="mb-4">
-          <h2 className="text-sm font-semibold text-text mb-3">1. Target group</h2>
-          <div className="space-y-4">
-            <RadioGroup label="Import into" row>
-              <Radio
-                name="import-target-mode"
-                value="new"
-                label="Create a new group"
-                checked={targetMode === 'new'}
-                onChange={() => setTargetMode('new')}
-              />
-              <Radio
-                name="import-target-mode"
-                value="existing"
-                label="An existing group"
-                checked={targetMode === 'existing'}
-                onChange={() => setTargetMode('existing')}
-              />
-            </RadioGroup>
-
-            {targetMode === 'new' && (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-text">
-                  Group name
-                  <input
-                    className={`${fieldClass} mt-1`}
-                    value={newGroupName}
-                    disabled={Boolean(createdOrgPath)}
-                    placeholder="My team"
-                    onChange={(event) => {
-                      const value = event.target.value
-                      setNewGroupName(value)
-                      if (!slugTouched) setNewGroupSlug(slugify(value))
-                    }}
-                  />
-                </label>
-                <label className="block text-sm font-medium text-text">
-                  URL segment
-                  <input
-                    className={`${fieldClass} mt-1 font-mono`}
-                    value={newGroupSlug}
-                    disabled={Boolean(createdOrgPath)}
-                    placeholder="my-team"
-                    onChange={(event) => {
-                      setSlugTouched(true)
-                      setNewGroupSlug(event.target.value)
-                    }}
-                  />
-                  <span className="text-xs text-text-secondary mt-1 block font-mono">
-                    pertisk-gits/{targetPreview}
-                  </span>
-                </label>
-              </div>
-            )}
-
-            {targetMode === 'existing' && (
-              <>
-                <Select
-                  label="Group"
-                  value={existingTargetPath}
-                  onChange={(event) => setExistingTargetPath(event.target.value)}
-                >
-                  <option value="">Select a group…</option>
-                  {topLevelGroups.map((group) => (
-                    <option key={group.id} value={group.full_path || group.slug}>
-                      {group.name} ({group.full_path || group.slug})
-                    </option>
-                  ))}
-                </Select>
-                {existingTargetForbidden && (
-                  <p className="text-sm text-dashboard-danger">
-                    You must be an owner or admin of this group to import repositories.
-                  </p>
-                )}
-              </>
-            )}
-
-            {conflictingGroup && (
-              <p className="text-sm text-text-secondary">
-                Group{' '}
-                <span className="font-mono text-text">{conflictingGroup.full_path || conflictingGroup.slug}</span>{' '}
-                already exists — import will use that group.
-              </p>
-            )}
-
-            {createdOrgPath && (
-              <p className="text-sm text-text-secondary">
-                Group{' '}
-                <Link to={`/groups/${createdOrgPath}`} className="font-mono text-primary hover:underline">
-                  {createdOrgPath}
-                </Link>{' '}
-                is ready. Continue below to list and import repositories.
-              </p>
-            )}
-          </div>
-        </Card>
-      )}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
@@ -554,7 +460,7 @@ export function GroupImportPage() {
                 </label>
               )}
 
-              {credentials.length > 0 && (
+              {!isGlobalImport && credentials.length > 0 && (
                 <Select
                   label="Saved credential"
                   value={credentialId ?? ''}
@@ -591,26 +497,133 @@ export function GroupImportPage() {
                 </span>
               </label>
 
+              {isGlobalImport && !account && (
+                <>
+                  {connect.error && (
+                    <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+                      {(connect.error as Error).message}
+                    </div>
+                  )}
+                  <PrimaryButton
+                    type="button"
+                    disabled={connect.isPending || !pat.trim()}
+                    onClick={() => connect.mutate()}
+                  >
+                    {connect.isPending ? (
+                      <>
+                        <Loader2 size={14} className="animate-spin" />
+                        Connecting…
+                      </>
+                    ) : (
+                      'Connect'
+                    )}
+                  </PrimaryButton>
+                </>
+              )}
+
+              {isGlobalImport && account && (
+                <p className="text-xs text-text-secondary">
+                  Signed in as <span className="font-mono text-text">{account}</span>
+                </p>
+              )}
+
+              {isGlobalImport && previewReady && namespaces.length > 0 && (
+                <Select
+                  label={remoteNamespaceLabel(provider)}
+                  hint={`Repositories are listed from this ${provider === 'github' ? 'organization' : 'group'} on ${provider === 'github' ? 'GitHub' : 'GitLab'}.`}
+                  value={namespacePath}
+                  onChange={(event) => {
+                    setGroupPathTouched(false)
+                    setNamespacePath(event.target.value)
+                  }}
+                >
+                  <option value="">Select {provider === 'github' ? 'an organization' : 'a group'}…</option>
+                  {namespaces.map((ns) => (
+                    <option key={ns.id} value={ns.path}>
+                      {ns.path}
+                    </option>
+                  ))}
+                </Select>
+              )}
+
+              {isGlobalImport && previewReady && (
+                <div className="space-y-3 rounded-lg border border-naturals-n4 bg-surface-hover/40 p-3">
+                  <p className="text-sm font-medium text-text">Pertisk group</p>
+                  <p className="text-xs text-text-secondary">
+                    Created automatically from the selected{' '}
+                    {provider === 'github' ? 'GitHub organization' : 'GitLab group'}.
+                  </p>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-text">
+                      Group name
+                      <input
+                        className={`${fieldClass} mt-1`}
+                        value={newGroupName}
+                        disabled={Boolean(createdOrgPath)}
+                        placeholder="My team"
+                        onChange={(event) => setNewGroupName(event.target.value)}
+                      />
+                    </label>
+                    <label className="block text-sm font-medium text-text">
+                      Group path
+                      <input
+                        className={`${fieldClass} mt-1 font-mono`}
+                        value={targetGroupPath}
+                        disabled={Boolean(createdOrgPath)}
+                        placeholder="my-team"
+                        onChange={(event) => {
+                          setGroupPathTouched(true)
+                          setTargetGroupPath(event.target.value)
+                        }}
+                      />
+                      <span className="text-xs text-text-secondary mt-1 block font-mono">
+                        pertisk-gits/{targetPreview}
+                      </span>
+                    </label>
+                  </div>
+                  {conflictingGroup && (
+                    <p className="text-xs text-text-secondary">
+                      Group{' '}
+                      <span className="font-mono text-text">
+                        {conflictingGroup.full_path || conflictingGroup.slug}
+                      </span>{' '}
+                      already exists — import will use that group.
+                    </p>
+                  )}
+                  {createdOrgPath && (
+                    <p className="text-xs text-text-secondary">
+                      Group{' '}
+                      <Link to={`/groups/${createdOrgPath}`} className="font-mono text-primary hover:underline">
+                        {createdOrgPath}
+                      </Link>{' '}
+                      is ready.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {discover.error && (
                 <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
                   {(discover.error as Error).message}
                 </div>
               )}
 
-              <PrimaryButton
-                type="button"
-                disabled={discover.isPending || existingTargetForbidden}
-                onClick={() => discover.mutate()}
-              >
-                {discover.isPending ? (
-                  <>
-                    <Loader2 size={14} className="animate-spin" />
-                    Listing repositories…
-                  </>
-                ) : (
-                  'List repositories'
-                )}
-              </PrimaryButton>
+              {(!isGlobalImport || previewReady) && (
+                <PrimaryButton
+                  type="button"
+                  disabled={discover.isPending || !canListRepos || (!isGlobalImport && !pat.trim() && !credentialId)}
+                  onClick={() => discover.mutate()}
+                >
+                  {discover.isPending ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Listing repositories…
+                    </>
+                  ) : (
+                    'List repositories'
+                  )}
+                </PrimaryButton>
+              )}
             </form>
           </div>
         </Card>
@@ -620,7 +633,7 @@ export function GroupImportPage() {
           {remoteRepos.length === 0 && (
             <p className="text-sm text-text-secondary">
               {isGlobalImport
-                ? 'Set a target group and connect with a token to see repositories you can import.'
+                ? 'Connect with a token, pick a GitHub organization or GitLab group, then list repositories.'
                 : 'Connect with a token to see repositories you can import.'}
             </p>
           )}
@@ -642,10 +655,11 @@ export function GroupImportPage() {
               ) : null}
             </p>
           )}
-          {namespaces.length > 0 && (
+          {namespaces.length > 0 && !isGlobalImport && (
             <div className="mb-3">
               <Select
-                label={provider === 'github' ? 'Organization' : 'Group'}
+                label={remoteNamespaceLabel(provider)}
+                hint="Filter repositories on GitHub/GitLab — not your Pertisk group."
                 value={namespacePath}
                 onChange={(event) => setNamespacePath(event.target.value)}
                 disabled={refreshRepos.isPending}

@@ -6,7 +6,7 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use pertisk_domain::{models::*, org_groups::import_target_org_path, DomainError};
+use pertisk_domain::{models::*, org_groups::{ensure_org_chain, import_target_org_path}, DomainError};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use validator::Validate;
@@ -39,6 +39,8 @@ fn max_repos_per_job() -> usize {
 
 pub fn import_routes() -> Router<AppState> {
     Router::new()
+        .route("/import/preview", post(preview_import))
+        .route("/import/ensure-group", post(ensure_import_group))
         .route(
             "/organizations/{org_path}/import/credentials",
             get(list_credentials).post(save_credential),
@@ -125,6 +127,75 @@ struct ImportJobDetail {
     #[serde(flatten)]
     pub job: ImportJob,
     pub repos: Vec<ImportJobRepo>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+struct PreviewImportRequest {
+    pub provider: ImportProvider,
+    #[validate(length(min = 1))]
+    pub token: String,
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct PreviewImportResponse {
+    pub account: String,
+    pub namespaces: Vec<RemoteNamespace>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+struct EnsureImportGroupRequest {
+    #[validate(length(min = 1))]
+    pub path: String,
+}
+
+async fn preview_import(
+    State(_state): State<AppState>,
+    _auth: AuthUser,
+    Json(body): Json<PreviewImportRequest>,
+) -> Result<Json<PreviewImportResponse>, ApiError> {
+    body.validate()
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    let base_url = normalize_base_url(body.provider, body.base_url.as_deref());
+    let token = providers::normalize_token(&body.token);
+    let account = validate_token(body.provider, &token, &base_url)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    let namespaces = list_remote_namespaces(body.provider, &token, &base_url, &account)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(Json(PreviewImportResponse { account, namespaces }))
+}
+
+async fn ensure_import_group(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(body): Json<EnsureImportGroupRequest>,
+) -> Result<(StatusCode, Json<Organization>), ApiError> {
+    body.validate()
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    let path = body.path.trim().trim_matches('/');
+    if path.is_empty() {
+        return Err(DomainError::Validation("group path is required".into()).into());
+    }
+
+    let org_id = ensure_org_chain(&state.pool, path, auth.user_id)
+        .await
+        .map_err(ApiError::from)?;
+
+    let org = sqlx::query_as::<_, Organization>(
+        "SELECT id, slug, name, description, parent_id, full_path, created_at, updated_at FROM organizations WHERE id = $1",
+    )
+    .bind(org_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok((StatusCode::OK, Json(org)))
 }
 
 async fn list_credentials(

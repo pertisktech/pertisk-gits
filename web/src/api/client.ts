@@ -1587,6 +1587,27 @@ export const api = {
       token,
     ),
 
+  previewImport: (
+    token: string,
+    payload: {
+      provider: 'github' | 'gitlab'
+      token: string
+      base_url?: string
+    },
+  ) =>
+    request<{ account: string; namespaces: RemoteNamespace[] }>(
+      '/import/preview',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  ensureImportGroup: (token: string, payload: { path: string }) =>
+    request<Organization>(
+      '/import/ensure-group',
+      { method: 'POST', body: JSON.stringify(payload) },
+      token,
+    ),
+
   discoverImportRepos: (
     token: string,
     orgSlug: string,
