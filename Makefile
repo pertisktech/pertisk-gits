@@ -18,7 +18,7 @@ COMPOSE ?= docker compose -f deploy/docker-compose.yml
 VERSION ?= $(shell git describe --tags --always 2>/dev/null | sed 's/^v//' || echo "0.1.0")
 PACKAGE_TARGET ?= all
 BUILDER_NAME ?= pertisk-gits-package
-CACHE_DIR ?= .buildx-cache/release
+CACHE_DIR ?= .buildx-cache/gits
 
 # Dev
 DEV_API_PORT ?= 8080

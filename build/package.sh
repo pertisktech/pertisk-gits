@@ -7,6 +7,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+cd "$ROOT_DIR"
 # shellcheck source=docker-common.sh
 source "${SCRIPT_DIR}/docker-common.sh"
 
@@ -17,8 +19,12 @@ TARGET="${3:-all}"
 PACKAGE_NAME=pertisk-gits
 CARGO_BIN=pertisk-api
 RELEASE_DIR="release"
-CACHE_DIR="${CACHE_DIR:-.buildx-cache/release}"
+CACHE_DIR="${CACHE_DIR:-.buildx-cache/gits}"
 BUILDER_NAME="${BUILDER_NAME:-pertisk-gits-package}"
+# Never use the artifact output dir as buildx cache (would clobber release/).
+if [ "$CACHE_DIR" = "$RELEASE_DIR" ] || [ "$CACHE_DIR" = "release" ]; then
+  CACHE_DIR=".buildx-cache/gits"
+fi
 mkdir -p "$RELEASE_DIR"
 
 case "$ARCH" in
@@ -132,6 +138,7 @@ if [ -f "$worker_artifact" ] && ! is_valid_linux_binary "$worker_artifact" "$ARC
   command -v file >/dev/null 2>&1 && file "$worker_artifact" >&2 || true
   exit 1
 fi
+mkdir -p "$RELEASE_DIR"
 cp "$artifact" "$RELEASE_DIR/"
 
 cat > build/pertisk-gits.service << 'SVC'

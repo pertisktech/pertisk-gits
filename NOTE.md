@@ -1,11 +1,21 @@
-## Deploy (all hosts)
+## Build (packages + Docker images)
 
 ```sh
 export VERSION=0.1.87
+./build.sh
+```
+
+Builds pertisk-gits and pertisk-runner DEB/RPM (amd64 + arm64) and pushes multi-arch Docker images.
+
+## Deploy (all hosts, uses artifacts from build)
+
+```sh
+export VERSION=0.1.87
+./build.sh   # skip if release/ already has this version
 ./deploy.sh
 ```
 
-Or override: `VERSION=0.1.87 ./deploy.sh`
+Or build and deploy in one step: `VERSION=0.1.87 ./build-deploy.sh`
 
 ## Deploy git server only
 

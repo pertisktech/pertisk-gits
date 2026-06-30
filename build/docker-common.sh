@@ -122,21 +122,39 @@ buildx_export_linux_binaries() {
   local build_success=0
   local attempt
   for attempt in 1 2 3; do
-    # shellcheck disable=SC2046
-    if docker buildx build --builder "$builder_name" --platform "linux/${arch}" \
-      -f "$dockerfile" \
-      --target "$export_target" \
-      "${cache_from[@]}" \
-      --cache-to "type=local,dest=${cache_dir},mode=max" \
-      $(docker_build_platform_args "$arch") \
-      --build-arg "VERSION=${version}" \
-      --build-arg "CARGO_BUILD_JOBS=${cargo_jobs}" \
-      "$@" \
-      --progress=plain \
-      --output "type=local,dest=${out_dir}" \
-      .; then
-      build_success=1
-      break
+    if [ "${#cache_from[@]}" -gt 0 ]; then
+      # shellcheck disable=SC2046
+      if docker buildx build --builder "$builder_name" --platform "linux/${arch}" \
+        -f "$dockerfile" \
+        --target "$export_target" \
+        "${cache_from[@]}" \
+        --cache-to "type=local,dest=${cache_dir},mode=max" \
+        $(docker_build_platform_args "$arch") \
+        --build-arg "VERSION=${version}" \
+        --build-arg "CARGO_BUILD_JOBS=${cargo_jobs}" \
+        "$@" \
+        --progress=plain \
+        --output "type=local,dest=${out_dir}" \
+        .; then
+        build_success=1
+        break
+      fi
+    else
+      # shellcheck disable=SC2046
+      if docker buildx build --builder "$builder_name" --platform "linux/${arch}" \
+        -f "$dockerfile" \
+        --target "$export_target" \
+        --cache-to "type=local,dest=${cache_dir},mode=max" \
+        $(docker_build_platform_args "$arch") \
+        --build-arg "VERSION=${version}" \
+        --build-arg "CARGO_BUILD_JOBS=${cargo_jobs}" \
+        "$@" \
+        --progress=plain \
+        --output "type=local,dest=${out_dir}" \
+        .; then
+        build_success=1
+        break
+      fi
     fi
     if [ "$attempt" -lt 3 ]; then
       echo "docker buildx build failed (attempt ${attempt}/3); recreating builder..."
