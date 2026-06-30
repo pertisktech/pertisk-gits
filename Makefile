@@ -128,19 +128,31 @@ web-dist-docker:
 	rm -rf web/dist 2>/dev/null || $(MAKE) fix-web-dist-owner
 	mkdir -p web/dist
 	docker run --rm pertisk-web-dist tar -C /web/dist -cf - . | tar -xf - -C web/dist
+	@echo "$(VERSION)" > web/dist/.app-version
 	@test -f web/dist/index.html
 
 web-dist:
-	@if [ -d web/dist/assets ] && [ ! -w web/dist/assets ]; then \
-		echo "web/dist is not writable (usually from 'sudo make dev'). Run: sudo make fix-perms"; exit 1; \
-	fi
 	@echo "Checking web UI build cache (version $(VERSION))..."
 	@skip=0; \
-	if [ -d web/dist ] && [ -f "$(WEB_VERSION_FILE)" ] && [ "$$(cat $(WEB_VERSION_FILE))" = "$(VERSION)" ]; then \
+	stored_version=""; \
+	if [ -f "$(WEB_VERSION_FILE)" ]; then stored_version="$$(tr -d '[:space:]' < "$(WEB_VERSION_FILE)")"; fi; \
+	if [ -d web/dist ] && [ -f web/dist/index.html ]; then \
 		if [ -z "$$(find web/src web/public web/index.html web/package.json web/package-lock.json web/vite.config.ts -type f -newer web/dist 2>/dev/null | head -n 1)" ]; then \
-			echo "web/dist is up to date (v$(VERSION)); skipping build."; \
-			skip=1; \
+			if [ "$$stored_version" = "$(VERSION)" ]; then \
+				echo "web/dist is up to date (v$(VERSION)); skipping build."; \
+				skip=1; \
+			elif [ ! -w web/dist ] 2>/dev/null || { [ -d web/dist/assets ] && [ ! -w web/dist/assets ]; }; then \
+				echo "web/dist is up to date (sources unchanged, read-only); skipping build."; \
+				skip=1; \
+			fi; \
 		fi; \
+	fi; \
+	if [ $$skip -eq 1 ]; then exit 0; fi; \
+	if [ -d web/dist/assets ] && [ ! -w web/dist/assets ]; then \
+		$(MAKE) fix-web-dist-owner; \
+	fi; \
+	if [ -d web/dist/assets ] && [ ! -w web/dist/assets ]; then \
+		echo "web/dist is not writable (usually from 'sudo make dev'). Run: sudo make fix-perms"; exit 1; \
 	fi; \
 	if [ $$skip -eq 0 ]; then \
 		if ! command -v npm >/dev/null 2>&1 || [ "$(PERTISK_FORCE_DOCKER_BUILD)" = "1" ]; then \
@@ -433,7 +445,7 @@ pertisk-gits-image-arm64: web-dist
 	@echo "Login first if needed: docker login $(GITS_REGISTRY)"
 	$(MAKE) _pertisk-gits-image-push-one PLATFORM=linux/arm64 SUFFIX=arm64 VERSION="$(VERSION)" TAG="$(GITS_IMAGE_TAG)-arm64"
 
-_pertisk-gits-image-push-one: web-dist
+_pertisk-gits-image-push-one:
 	@test -n "$(PLATFORM)" && test -n "$(SUFFIX)" && test -n "$(VERSION)" && test -n "$(TAG)"
 	@ARCH=$$(echo "$(PLATFORM)" | cut -d/ -f2); \
 	HOST_RAW=$$(uname -m); \
