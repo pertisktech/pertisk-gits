@@ -28,7 +28,7 @@ RUN_AS_USER = $(if $(filter root,$(USER)),sudo -u $(DEV_USER) ,)
 # Remote dev DB (Talos / shared Postgres). Override: make dev DEV_DATABASE_URL=...
 # Or set DATABASE_URL in .env (gitignored).
 -include .env
-DEV_DATABASE_URL ?= postgres://postgres:c2UT3eavGQ7eEykq@10.1.1.233:5432/pertisk_local_gits
+DEV_DATABASE_URL ?= postgres://postgres:c2UT3eavGQ7eEykq@localhost:5432/pertisk_local_gits
 ifneq ($(strip $(DATABASE_URL)),)
 DEV_DATABASE_URL := $(DATABASE_URL)
 endif

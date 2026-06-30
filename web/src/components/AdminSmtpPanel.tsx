@@ -236,33 +236,44 @@ export function AdminSmtpPanel() {
             </label>
           </div>
 
-          <div className="border-t border-border pt-4 space-y-2">
-            <p className="text-sm font-medium text-text-primary">Notify on</p>
-            <Checkbox
-              label="User login (password, SSO, LDAP)"
-              checked={form.notify_login}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_login: e.target.checked })}
-            />
-            <Checkbox
-              label="User registration (welcome email; admins notified when approval required)"
-              checked={form.notify_user_registration}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_user_registration: e.target.checked })}
-            />
-            <Checkbox
-              label="User approved by admin"
-              checked={form.notify_user_approval}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_user_approval: e.target.checked })}
-            />
-            <Checkbox
-              label="Merge requests (opened → collaborators; merged → author)"
-              checked={form.notify_merge_request}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_merge_request: e.target.checked })}
-            />
-            <Checkbox
-              label="CI/CD pipeline failure"
-              checked={form.notify_pipeline_failure}
-              onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_pipeline_failure: e.target.checked })}
-            />
+          <div className="border-t border-border pt-4">
+            <p className="text-sm font-medium text-text-primary mb-3">Notify on</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Checkbox
+                row
+                label="User login"
+                description="Password, SSO, LDAP"
+                checked={form.notify_login}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_login: e.target.checked })}
+              />
+              <Checkbox
+                row
+                label="User registration"
+                description="Welcome email; admins when approval required"
+                checked={form.notify_user_registration}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_user_registration: e.target.checked })}
+              />
+              <Checkbox
+                row
+                label="User approved"
+                description="When admin approves an account"
+                checked={form.notify_user_approval}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_user_approval: e.target.checked })}
+              />
+              <Checkbox
+                row
+                label="Merge requests"
+                description="Opened and merged"
+                checked={form.notify_merge_request}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_merge_request: e.target.checked })}
+              />
+              <Checkbox
+                row
+                label="CI/CD pipeline failure"
+                checked={form.notify_pipeline_failure}
+                onChange={(e: ChangeEvent<HTMLInputElement>) => setForm({ ...form, notify_pipeline_failure: e.target.checked })}
+              />
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-2 pt-2">
