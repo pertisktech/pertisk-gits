@@ -1,13 +1,21 @@
 import { GitPullRequest, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '../../components/StatusBadge'
-import { Breadcrumbs, PageHeader } from '../../components/ui'
+import { Breadcrumbs, PageHeader, TablePagination } from '../../components/ui'
 import { useAllOpenPullRequests } from '../../hooks/useAllOpenPullRequests'
 import { formatDateTime, pullUrl } from '../../lib/collaboration'
+import { useClientPagination } from '../../lib/pagination'
 import { formatRelativeTimeFromIso } from '../../lib/relativeTime'
 
 export function ActivityMergeRequestsPage() {
   const { pullRequests, isLoading, error } = useAllOpenPullRequests()
+  const {
+    items: pagePullRequests,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(pullRequests)
 
   return (
     <>
@@ -31,7 +39,7 @@ export function ActivityMergeRequestsPage() {
       <div className="app-panel">
         <div className="app-panel-header flex items-center justify-between">
           <span>Open merge requests</span>
-          <span className="font-normal text-text-secondary">{pullRequests.length}</span>
+          <span className="font-normal text-text-secondary">{total}</span>
         </div>
 
         {isLoading && (
@@ -49,7 +57,7 @@ export function ActivityMergeRequestsPage() {
 
         {!isLoading && pullRequests.length > 0 && (
           <ul className="divide-y divide-naturals-n4">
-            {pullRequests.map(({ pull_request: pr, author, review_summary: reviewSummary, orgSlug, orgName, repoSlug, repoName }) => (
+            {pagePullRequests.map(({ pull_request: pr, author, review_summary: reviewSummary, orgSlug, orgName, repoSlug, repoName }) => (
               <li key={pr.id}>
                 <Link
                   to={pullUrl(orgSlug, repoSlug, pr.number)}
@@ -85,6 +93,16 @@ export function ActivityMergeRequestsPage() {
               </li>
             ))}
           </ul>
+        )}
+
+        {!isLoading && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="merge requests"
+          />
         )}
       </div>
     </>

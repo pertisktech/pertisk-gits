@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useState } from 'react'
 import type { CiSecret, CiSecretEnvironment, CiSecretKind } from '../api/types'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { PrimaryButton, SecondaryButton, Select } from './ui'
 
 const SECRET_ENV_ORDER: CiSecretEnvironment[] = ['dev', 'qa', 'uat', 'prd', 'all']
 
@@ -219,37 +219,27 @@ prd   HARBOR_URL = harbor.tools.example.com`}
                   required
                 />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text" htmlFor="secret-kind">
-                  Type
-                </label>
-                <select
-                  id="secret-kind"
-                  className="app-field"
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value as CiSecretKind)}
-                >
-                  <option value="variable">Variable</option>
-                  <option value="file">File (PEM, key material)</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text" htmlFor="secret-environment">
-                  Environment
-                </label>
-                <select
-                  id="secret-environment"
-                  className="app-field"
-                  value={environment}
-                  onChange={(e) => setEnvironment(e.target.value as CiSecretEnvironment)}
-                >
-                  <option value="all">All environments</option>
-                  <option value="dev">dev</option>
-                  <option value="qa">qa</option>
-                  <option value="uat">uat</option>
-                  <option value="prd">prd</option>
-                </select>
-              </div>
+              <Select
+                id="secret-kind"
+                label="Type"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as CiSecretKind)}
+              >
+                <option value="variable">Variable</option>
+                <option value="file">File (PEM, key material)</option>
+              </Select>
+              <Select
+                id="secret-environment"
+                label="Environment"
+                value={environment}
+                onChange={(e) => setEnvironment(e.target.value as CiSecretEnvironment)}
+              >
+                <option value="all">All environments</option>
+                <option value="dev">dev</option>
+                <option value="qa">qa</option>
+                <option value="uat">uat</option>
+                <option value="prd">prd</option>
+              </Select>
             </div>
             <div className="space-y-1">
               <label className="text-sm font-medium text-text" htmlFor="secret-value">

@@ -11,7 +11,8 @@ import { ConfirmModal } from './ConfirmModal'
 import { CreateBranchDialog } from './CreateBranchDialog'
 import { PipelineRunStatusLink } from './PipelineRunStatusLink'
 import { commitUrl } from './RepoCommits'
-import { EmptyState, PrimaryButton } from './ui'
+import { EmptyState, PrimaryButton, TablePagination } from './ui'
+import { useClientPagination } from '../lib/pagination'
 
 interface RepoBranchesProps {
   token?: string | null
@@ -75,6 +76,13 @@ export function RepoBranches({ token, orgSlug, repoSlug, defaultBranch }: RepoBr
   })
 
   const branches = data?.branches ?? []
+  const {
+    items: pageBranches,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(branches)
   const { index: pipelineIndex } = useRepoPipelineRunsIndex(orgSlug, repoSlug, token)
   const sourceBranches = browserData?.browser.branches.length
     ? browserData.browser.branches
@@ -151,7 +159,7 @@ export function RepoBranches({ token, orgSlug, repoSlug, defaultBranch }: RepoBr
           />
         ) : (
           <ul className="commit-history-date-body">
-            {branches.map((branch) => (
+            {pageBranches.map((branch) => (
               <BranchRow
                 key={branch.name}
                 branch={branch}
@@ -167,6 +175,15 @@ export function RepoBranches({ token, orgSlug, repoSlug, defaultBranch }: RepoBr
               />
             ))}
           </ul>
+        )}
+        {total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="branches"
+          />
         )}
       </div>
 

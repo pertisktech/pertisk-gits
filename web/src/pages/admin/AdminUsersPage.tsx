@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, Loader2, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../../api/client'
 import type { AdminUser } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { StatusBadge } from '../../components/StatusBadge'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../../components/ui'
+import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton, TablePagination } from '../../components/ui'
 import { formatDateTime } from '../../lib/collaboration'
+import { useClientPagination } from '../../lib/pagination'
 
 const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
@@ -50,6 +51,19 @@ export function AdminUsersPage() {
       ),
     enabled: Boolean(token),
   })
+
+  const {
+    items: pageUsers,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total,
+  } = useClientPagination(users)
+
+  useEffect(() => {
+    resetPage()
+  }, [filter, resetPage])
 
   const createUser = useMutation({
     mutationFn: () =>
@@ -224,16 +238,14 @@ export function AdminUsersPage() {
                 onChange={(e) => setForm((current) => ({ ...current, display_name: e.target.value }))}
               />
             </label>
-            <label className="flex items-center gap-2 text-sm text-text">
-              <input
-                type="checkbox"
-                checked={form.is_super_admin}
-                onChange={(e) =>
-                  setForm((current) => ({ ...current, is_super_admin: e.target.checked }))
-                }
-              />
-              Super admin
-            </label>
+            <Checkbox
+              row
+              label="Super admin"
+              checked={form.is_super_admin}
+              onChange={(e) =>
+                setForm((current) => ({ ...current, is_super_admin: e.target.checked }))
+              }
+            />
             <div className="flex gap-2">
               <PrimaryButton
                 type="submit"
@@ -275,7 +287,7 @@ export function AdminUsersPage() {
                 </button>
               ))}
             </div>
-            <span className="font-normal text-text-secondary">{users.length}</span>
+            <span className="font-normal text-text-secondary">{total}</span>
           </div>
         </div>
 
@@ -299,7 +311,7 @@ export function AdminUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((entry) => (
+              {pageUsers.map((entry) => (
                 <tr key={entry.id}>
                   <td>
                     <div className="font-medium text-text">@{entry.username}</div>
@@ -388,6 +400,16 @@ export function AdminUsersPage() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {!isLoading && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="users"
+          />
         )}
       </div>
     </>

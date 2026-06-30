@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CircleDot, Loader2, MessageSquare, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { issueUrl } from '../lib/collaboration'
 import { RepoLabelsPanel, RepoMilestonesPanel } from './IssueSidebar'
 import { LabelBadge } from './LabelBadge'
-import { EmptyState, PrimaryButton } from './ui'
+import { EmptyState, PrimaryButton, Select, TablePagination } from './ui'
+import { useClientPagination } from '../lib/pagination'
 
 interface RepoIssuesProps {
   token?: string | null
@@ -96,6 +97,18 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
   }
 
   const issues = data?.issues ?? []
+  const {
+    items: pageIssues,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total,
+  } = useClientPagination(issues)
+
+  useEffect(() => {
+    resetPage()
+  }, [stateFilter, labelFilter, search, resetPage])
 
   return (
     <div className="space-y-4">
@@ -167,10 +180,11 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
               className="app-field resize-y"
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <select
+              <Select
                 value={assigneeId}
                 onChange={(e) => setAssigneeId(e.target.value)}
-                className="app-field !py-1.5 !text-sm"
+                className="!py-1.5 !text-sm"
+                aria-label="Assignee"
               >
                 <option value="">No assignee</option>
                 {members.map(({ user }) => (
@@ -178,11 +192,12 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
                     @{user.username}
                   </option>
                 ))}
-              </select>
-              <select
+              </Select>
+              <Select
                 value={milestoneId}
                 onChange={(e) => setMilestoneId(e.target.value)}
-                className="app-field !py-1.5 !text-sm"
+                className="!py-1.5 !text-sm"
+                aria-label="Milestone"
               >
                 <option value="">No milestone</option>
                 {milestones.map((m) => (
@@ -190,7 +205,7 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
                     {m.title}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
             {allLabels.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -247,7 +262,7 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
           />
         ) : (
           <ul className="divide-y divide-naturals-n4">
-            {issues.map(({ issue, author, labels, assignee }) => (
+            {pageIssues.map(({ issue, author, labels, assignee }) => (
               <li key={issue.id}>
                 <Link
                   to={issueUrl(orgSlug, repoSlug, issue.number)}
@@ -277,6 +292,15 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
               </li>
             ))}
           </ul>
+        )}
+        {!isLoading && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="issues"
+          />
         )}
       </div>
     </div>

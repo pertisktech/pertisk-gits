@@ -1,7 +1,7 @@
 import { Loader2, Play, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { CI_ENVIRONMENTS, inferEnvironmentFromRef, viewRefFromKind, type CiEnvironment } from '../lib/pipelineSummary'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { PrimaryButton, Radio, RadioGroup, SecondaryButton, Select } from './ui'
 
 export interface RunPipelineParams {
   refKind: 'branch' | 'tag'
@@ -127,64 +127,59 @@ export function RunPipelineDialog({
         </div>
 
         <div className="space-y-4 px-5 py-4">
+          <RadioGroup label="Ref type" row>
+            <Radio
+              name="run-pipeline-ref-kind"
+              value="branch"
+              label="Branch"
+              checked={refKind === 'branch'}
+              disabled={pending}
+              onChange={() => setRefKind('branch')}
+            />
+            <Radio
+              name="run-pipeline-ref-kind"
+              value="tag"
+              label="Tag"
+              checked={refKind === 'tag'}
+              disabled={pending}
+              onChange={() => setRefKind('tag')}
+            />
+          </RadioGroup>
+
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-text" htmlFor="run-pipeline-ref-kind">
-                Ref type
-              </label>
-              <select
-                id="run-pipeline-ref-kind"
-                className="app-field"
-                value={refKind}
-                disabled={pending}
-                onChange={(event) => setRefKind(event.target.value as 'branch' | 'tag')}
-              >
-                <option value="branch">Branch</option>
-                <option value="tag">Tag</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-text" htmlFor="run-pipeline-ref">
-                {refKind === 'tag' ? 'Tag' : 'Branch'}
-              </label>
-              <select
-                id="run-pipeline-ref"
-                className="app-field font-mono text-sm"
-                value={refName}
-                disabled={pending || refList.length === 0}
-                onChange={(event) => setRefName(event.target.value)}
-              >
-                {refList.length === 0 ? (
-                  <option value={refName}>{refKind === 'tag' ? 'No tags' : refName}</option>
-                ) : (
-                  refList.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))
-                )}
-              </select>
-            </div>
+            <Select
+              id="run-pipeline-ref"
+              label={refKind === 'tag' ? 'Tag' : 'Branch'}
+              className="font-mono text-sm"
+              value={refName}
+              disabled={pending || refList.length === 0}
+              onChange={(event) => setRefName(event.target.value)}
+            >
+              {refList.length === 0 ? (
+                <option value={refName}>{refKind === 'tag' ? 'No tags' : refName}</option>
+              ) : (
+                refList.map((item) => (
+                  <option key={item} value={item}>
+                    {item}
+                  </option>
+                ))
+              )}
+            </Select>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-text" htmlFor="run-pipeline-environment">
-              Environment
-            </label>
-            <select
-              id="run-pipeline-environment"
-              className="app-field"
-              value={environment}
-              disabled={pending}
-              onChange={(event) => setEnvironment(event.target.value as CiEnvironment)}
-            >
-              {CI_ENVIRONMENTS.map((env) => (
-                <option key={env} value={env}>
-                  {env}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select
+            id="run-pipeline-environment"
+            label="Environment"
+            value={environment}
+            disabled={pending}
+            onChange={(event) => setEnvironment(event.target.value as CiEnvironment)}
+          >
+            {CI_ENVIRONMENTS.map((env) => (
+              <option key={env} value={env}>
+                {env}
+              </option>
+            ))}
+          </Select>
 
           <p className="text-xs text-text-secondary">
             {branchCount} branch{branchCount === 1 ? '' : 'es'} · {tagCount} tag

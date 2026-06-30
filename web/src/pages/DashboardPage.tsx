@@ -1,20 +1,17 @@
 import {
-  ChevronLeft,
-  ChevronRight,
   FolderGit2,
   Plus,
   Search,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../auth/AuthContext'
 import { ProjectListRow } from '../components/ProjectListRow'
 import listStyles from '../components/ProjectList.module.css'
-import { EmptyState, LinkButton } from '../components/ui'
+import { EmptyState, LinkButton, Select, TablePagination } from '../components/ui'
 import { useAllProjects, type DashboardProject } from '../hooks/useAllProjects'
 import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
+import { DEFAULT_PAGE_SIZE, useClientPagination } from '../lib/pagination'
 import styles from './DashboardPage.module.css'
-
-const PAGE_SIZE = 20
 
 type SortOption = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc' | 'group_asc'
 
@@ -66,24 +63,26 @@ export function DashboardPage() {
   const { projects, isLoading, error } = useAllProjects()
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortOption>('updated_desc')
-  const [page, setPage] = useState(1)
 
   const filteredProjects = useMemo(() => {
     const filtered = projects.filter((project) => matchesSearch(project, search))
     return sortProjects(filtered, sort)
   }, [projects, search, sort])
 
-  const totalPages = Math.max(1, Math.ceil(filteredProjects.length / PAGE_SIZE))
-  const currentPage = Math.min(page, totalPages)
-  const pageProjects = filteredProjects.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE,
-  )
-  const { getStats, isLoading: statsLoading } = useDashboardProjectStats(pageProjects)
+  const {
+    items: pageProjects,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total,
+  } = useClientPagination(filteredProjects, DEFAULT_PAGE_SIZE)
 
-  const rangeStart =
-    filteredProjects.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
-  const rangeEnd = Math.min(currentPage * PAGE_SIZE, filteredProjects.length)
+  useEffect(() => {
+    resetPage()
+  }, [search, sort, resetPage])
+
+  const { getStats, isLoading: statsLoading } = useDashboardProjectStats(pageProjects)
 
   return (
     <>
@@ -130,17 +129,15 @@ export function DashboardPage() {
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value)
-                  setPage(1)
                 }}
                 aria-label="Filter projects"
               />
             </div>
-            <select
+            <Select
               className={styles.sortSelect}
               value={sort}
               onChange={(e) => {
                 setSort(e.target.value as SortOption)
-                setPage(1)
               }}
               aria-label="Sort projects"
             >
@@ -149,7 +146,7 @@ export function DashboardPage() {
               <option value="name_asc">Name (A–Z)</option>
               <option value="name_desc">Name (Z–A)</option>
               <option value="group_asc">Namespace</option>
-            </select>
+            </Select>
           </div>
         </div>
 
@@ -196,42 +193,13 @@ export function DashboardPage() {
               ))}
             </ul>
 
-            {(totalPages > 1 || filteredProjects.length > 0) && (
-              <div className={styles.pagination}>
-                <p className="text-sm text-text-secondary m-0">
-                  {filteredProjects.length === 0
-                    ? '0 projects'
-                    : `Showing ${rangeStart}–${rangeEnd} of ${filteredProjects.length}`}
-                </p>
-                {totalPages > 1 && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      className="app-table-page-btn"
-                      data-no-global-button-hover="true"
-                      disabled={currentPage <= 1}
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
-                      aria-label="Previous page"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span className="px-2 text-sm text-text-secondary tabular-nums">
-                      {currentPage} / {totalPages}
-                    </span>
-                    <button
-                      type="button"
-                      className="app-table-page-btn"
-                      data-no-global-button-hover="true"
-                      disabled={currentPage >= totalPages}
-                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                      aria-label="Next page"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              itemLabel="projects"
+            />
           </>
         )}
       </div>

@@ -8,7 +8,8 @@ import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { findGroupByPath } from '../lib/groupPath'
 import { StatusBadge } from '../components/StatusBadge'
 import { UserPicker } from '../components/UserPicker'
-import { PrimaryButton, SecondaryButton, Select } from '../components/ui'
+import { PrimaryButton, SecondaryButton, Select, TablePagination } from '../components/ui'
+import { useClientPagination } from '../lib/pagination'
 
 type OrgRole = OrgMember['role']
 
@@ -39,6 +40,14 @@ export function GroupMembersPage() {
     queryFn: () => api.listOrganizationMembers(token!, orgPath),
     enabled: Boolean(token && orgPath),
   })
+
+  const {
+    items: pageMembers,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(members)
 
   const myMembership = useMemo(
     () => members.find((member) => member.user.id === user?.id),
@@ -194,7 +203,7 @@ export function GroupMembersPage() {
       <div className="app-panel max-w-3xl">
         <div className="app-panel-header flex items-center justify-between">
           <span>Members</span>
-          <span className="font-normal text-text-secondary">{members.length}</span>
+          <span className="font-normal text-text-secondary">{total}</span>
         </div>
 
         {isLoading && <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>}
@@ -210,7 +219,7 @@ export function GroupMembersPage() {
               </tr>
             </thead>
             <tbody>
-              {members.map((member) => {
+              {pageMembers.map((member) => {
                 const isSelf = member.user.id === user?.id
                 const canEditTarget =
                   canManage && (isOwner || member.role !== 'owner') && !(member.role === 'owner' && !isOwner)
@@ -297,6 +306,16 @@ export function GroupMembersPage() {
               })}
             </tbody>
           </table>
+        )}
+
+        {!isLoading && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="members"
+          />
         )}
       </div>
 

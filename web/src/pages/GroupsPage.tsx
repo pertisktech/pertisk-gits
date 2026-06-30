@@ -4,8 +4,9 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { GroupListRow } from '../components/GroupListRow'
 import listStyles from '../components/ProjectList.module.css'
-import { EmptyState, LinkButton } from '../components/ui'
+import { EmptyState, LinkButton, TablePagination } from '../components/ui'
 import { useTopLevelGroupStats } from '../hooks/useTopLevelGroupStats'
+import { useClientPagination } from '../lib/pagination'
 
 export function GroupsPage() {
   const { token } = useAuth()
@@ -17,6 +18,13 @@ export function GroupsPage() {
   })
 
   const { topLevelGroups, statsByGroupId, isLoading: statsLoading } = useTopLevelGroupStats(groups)
+  const {
+    items: pageGroups,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(topLevelGroups)
 
   return (
     <>
@@ -61,7 +69,7 @@ export function GroupsPage() {
 
         {!isLoading && topLevelGroups.length > 0 && (
           <ul className={listStyles.list}>
-            {topLevelGroups.map((group) => {
+            {pageGroups.map((group) => {
               const stats = statsByGroupId.get(group.id)
               return (
                 <GroupListRow
@@ -74,6 +82,16 @@ export function GroupsPage() {
               )
             })}
           </ul>
+        )}
+
+        {!isLoading && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="groups"
+          />
         )}
       </div>
     </>

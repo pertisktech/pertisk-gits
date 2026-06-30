@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { paginationMeta } from '../lib/pagination'
 import { cn } from '../utils/cn'
 
 export interface Crumb {
@@ -133,20 +135,17 @@ export function EmptyState({
   )
 }
 
-export function Checkbox({
-  label,
-  description,
-  row,
-  className,
-  ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & {
+type ControlCheckProps = React.InputHTMLAttributes<HTMLInputElement> & {
+  type: 'checkbox' | 'radio'
   label?: ReactNode
   description?: ReactNode
   row?: boolean
-}) {
+}
+
+function ControlCheck({ type, label, description, row, className, ...props }: ControlCheckProps) {
   return (
     <label className={cn('app-control-check', row && 'app-control-check--row', className)}>
-      <input type="checkbox" {...props} />
+      <input type={type} {...props} />
       {(label || description) && (
         <span className="app-control-check-content">
           {label && <span className="app-control-check-label">{label}</span>}
@@ -157,27 +156,27 @@ export function Checkbox({
   )
 }
 
+export function Checkbox({
+  label,
+  description,
+  row,
+  className,
+  ...props
+}: Omit<ControlCheckProps, 'type'>) {
+  return (
+    <ControlCheck type="checkbox" label={label} description={description} row={row} className={className} {...props} />
+  )
+}
+
 export function Radio({
   label,
   description,
   row,
   className,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & {
-  label?: ReactNode
-  description?: ReactNode
-  row?: boolean
-}) {
+}: Omit<ControlCheckProps, 'type'>) {
   return (
-    <label className={cn('app-control-check', row && 'app-control-check--row', className)}>
-      <input type="radio" {...props} />
-      {(label || description) && (
-        <span className="app-control-check-content">
-          {label && <span className="app-control-check-label">{label}</span>}
-          {description && <span className="app-control-check-desc">{description}</span>}
-        </span>
-      )}
-    </label>
+    <ControlCheck type="radio" label={label} description={description} row={row} className={className} {...props} />
   )
 }
 
@@ -231,5 +230,64 @@ export function Select({
       {select}
       {hint && <span className="app-control-field-hint">{hint}</span>}
     </label>
+  )
+}
+
+export { RefSelect } from './RefSelect'
+
+export function TablePagination({
+  page,
+  pageSize,
+  total,
+  onPageChange,
+  className,
+  itemLabel = 'items',
+}: {
+  page: number
+  pageSize: number
+  total: number
+  onPageChange: (page: number) => void
+  className?: string
+  itemLabel?: string
+}) {
+  const { totalPages, currentPage, rangeStart, rangeEnd } = paginationMeta(total, page, pageSize)
+
+  if (total === 0) {
+    return null
+  }
+
+  return (
+    <div className={cn('app-table-pagination', className)}>
+      <p className="text-sm text-text-secondary m-0">
+        Showing {rangeStart}–{rangeEnd} of {total} {itemLabel}
+      </p>
+      {totalPages > 1 && (
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="app-table-page-btn"
+            data-no-global-button-hover="true"
+            disabled={currentPage <= 1}
+            onClick={() => onPageChange(currentPage - 1)}
+            aria-label="Previous page"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <span className="px-2 text-sm text-text-secondary tabular-nums">
+            {currentPage} / {totalPages}
+          </span>
+          <button
+            type="button"
+            className="app-table-page-btn"
+            data-no-global-button-hover="true"
+            disabled={currentPage >= totalPages}
+            onClick={() => onPageChange(currentPage + 1)}
+            aria-label="Next page"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

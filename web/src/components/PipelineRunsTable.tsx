@@ -16,6 +16,8 @@ import {
 } from '../lib/pipelineStatus'
 import { ActionsStatusIcon } from './PipelineStatus'
 import { PipelineRerunMenu } from './PipelineRerunMenu'
+import { TablePagination } from './ui'
+import { useClientPagination } from '../lib/pagination'
 
 export function PipelineRunsTable({
   runs,
@@ -32,6 +34,14 @@ export function PipelineRunsTable({
   onRerun?: (runId: string, scope: RerunScope) => void
   rerunningRunId?: string | null
 }) {
+  const {
+    items: pageRuns,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(runs)
+
   if (runs.length === 0) {
     return (
       <div className="gha-runs-empty">
@@ -42,19 +52,30 @@ export function PipelineRunsTable({
   }
 
   return (
-    <div className="gha-runs-list">
-      {runs.map((run) => (
-        <PipelineRunRow
-          key={run.id}
-          run={run}
-          orgSlug={orgSlug}
-          repoSlug={repoSlug}
-          onOpen={() => onOpenRun(run.id)}
-          onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
-          rerunLoading={rerunningRunId === run.id}
+    <>
+      <div className="gha-runs-list">
+        {pageRuns.map((run) => (
+          <PipelineRunRow
+            key={run.id}
+            run={run}
+            orgSlug={orgSlug}
+            repoSlug={repoSlug}
+            onOpen={() => onOpenRun(run.id)}
+            onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
+            rerunLoading={rerunningRunId === run.id}
+          />
+        ))}
+      </div>
+      {total > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          onPageChange={setPage}
+          itemLabel="runs"
         />
-      ))}
-    </div>
+      )}
+    </>
   )
 }
 

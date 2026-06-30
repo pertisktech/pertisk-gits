@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitPullRequest, Loader2, Plus } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { pullUrl } from '../lib/collaboration'
-import { PrimaryButton, EmptyState } from './ui'
+import { EmptyState, PrimaryButton, Select, TablePagination } from './ui'
+import { useClientPagination } from '../lib/pagination'
 
 interface RepoPullRequestsProps {
   token?: string | null
@@ -74,6 +75,18 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
   }
 
   const pulls = data?.pull_requests ?? []
+  const {
+    items: pagePulls,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total,
+  } = useClientPagination(pulls)
+
+  useEffect(() => {
+    resetPage()
+  }, [stateFilter, resetPage])
 
   return (
     <div className="space-y-4">
@@ -111,18 +124,30 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
             }}
           >
             <div className="flex flex-wrap gap-2 items-center text-sm">
-              <select value={sourceBranch} onChange={(e) => setSourceBranch(e.target.value)} className="app-branch-select" required>
+              <Select
+                value={sourceBranch}
+                onChange={(e) => setSourceBranch(e.target.value)}
+                className="app-branch-select"
+                required
+                aria-label="Source branch"
+              >
                 <option value="">Source branch</option>
                 {branches.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
-              </select>
+              </Select>
               <span className="text-muted">→</span>
-              <select value={targetBranch} onChange={(e) => setTargetBranch(e.target.value)} className="app-branch-select" required>
+              <Select
+                value={targetBranch}
+                onChange={(e) => setTargetBranch(e.target.value)}
+                className="app-branch-select"
+                required
+                aria-label="Target branch"
+              >
                 {branches.map((b) => (
                   <option key={b} value={b}>{b}</option>
                 ))}
-              </select>
+              </Select>
             </div>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" required className="app-field" />
             <textarea
@@ -171,7 +196,7 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
           />
         ) : (
           <ul className="divide-y divide-naturals-n4">
-            {pulls.map(({ pull_request: pr, author, review_summary: reviewSummary }) => (
+            {pagePulls.map(({ pull_request: pr, author, review_summary: reviewSummary }) => (
               <li key={pr.id}>
                 <Link
                   to={pullUrl(orgSlug, repoSlug, pr.number)}
@@ -208,6 +233,15 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
               </li>
             ))}
           </ul>
+        )}
+        {!isLoading && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="pull requests"
+          />
         )}
       </div>
     </div>

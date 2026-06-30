@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { FolderGit2 } from 'lucide-react'
 import type { DashboardProjectStats, Organization, Repository } from '../api/types'
 import { useGroupStats } from '../hooks/useGroupStats'
@@ -6,7 +6,8 @@ import { GroupListRow } from './GroupListRow'
 import { ProjectListRow } from './ProjectListRow'
 import listStyles from './ProjectList.module.css'
 import { AppSegment } from './AppSegment'
-import { EmptyState, LinkButton } from './ui'
+import { EmptyState, LinkButton, TablePagination } from './ui'
+import { useClientPagination } from '../lib/pagination'
 
 type ChildFilter = 'all' | 'subgroups' | 'projects'
 
@@ -90,6 +91,19 @@ export function GroupChildrenPanel({
     })
   }, [children, filter, search])
 
+  const {
+    items: pageChildren,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total: filteredTotal,
+  } = useClientPagination(filteredChildren)
+
+  useEffect(() => {
+    resetPage()
+  }, [filter, search, resetPage])
+
   const isLoading = subgroupsLoading || projectsLoading
   const hasBoth = subgroups.length > 0 && projects.length > 0
   const totalCount = subgroups.length + projects.length
@@ -172,7 +186,7 @@ export function GroupChildrenPanel({
 
       {!isLoading && filteredChildren.length > 0 && (
         <ul className={listStyles.list}>
-          {filteredChildren.map((item) =>
+          {pageChildren.map((item) =>
             item.kind === 'subgroup' ? (
               <GroupListRow
                 key={`subgroup-${item.subgroup.id}`}
@@ -194,6 +208,16 @@ export function GroupChildrenPanel({
             ),
           )}
         </ul>
+      )}
+
+      {!isLoading && filteredTotal > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={pageSize}
+          total={filteredTotal}
+          onPageChange={setPage}
+          itemLabel="items"
+        />
       )}
     </div>
   )

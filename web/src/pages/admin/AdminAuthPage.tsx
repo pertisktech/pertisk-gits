@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { api } from '../../api/client'
 import type { AuthProviderAdmin, AuthProviderType } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../../components/ui'
+import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton, Select } from '../../components/ui'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
@@ -121,20 +121,17 @@ export function AdminAuthPage() {
                   required
                 />
               </label>
-              <label className="text-sm">
-                Type
-                <select
-                  className="app-field mt-1"
-                  value={form.provider_type}
-                  onChange={(e) =>
-                    setForm({ ...form, provider_type: e.target.value as AuthProviderType })
-                  }
-                >
-                  <option value="oidc">OIDC (Google, Azure AD, Okta)</option>
-                  <option value="saml">SAML 2.0</option>
-                  <option value="ldap">LDAP</option>
-                </select>
-              </label>
+              <Select
+                label="Type"
+                value={form.provider_type}
+                onChange={(e) =>
+                  setForm({ ...form, provider_type: e.target.value as AuthProviderType })
+                }
+              >
+                <option value="oidc">OIDC (Google, Azure AD, Okta)</option>
+                <option value="saml">SAML 2.0</option>
+                <option value="ldap">LDAP</option>
+              </Select>
             </div>
 
             {form.provider_type === 'oidc' && (
@@ -270,16 +267,14 @@ export function AdminAuthPage() {
                   <td className="font-medium">{provider.name}</td>
                   <td className="text-sm uppercase">{provider.provider_type}</td>
                   <td>
-                    <label className="text-sm flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={provider.enabled}
-                        onChange={(e) =>
-                          toggleProvider.mutate({ id: provider.id, enabled: e.target.checked })
-                        }
-                      />
-                      {provider.enabled ? 'Enabled' : 'Disabled'}
-                    </label>
+                    <Checkbox
+                      row
+                      label={provider.enabled ? 'Enabled' : 'Disabled'}
+                      checked={provider.enabled}
+                      onChange={(e) =>
+                        toggleProvider.mutate({ id: provider.id, enabled: e.target.checked })
+                      }
+                    />
                   </td>
                   <td className="text-right space-x-2">
                     {loginUrl(provider) && (

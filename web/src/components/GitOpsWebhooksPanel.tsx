@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitBranch, Loader2, Trash2 } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { api } from '../api/client'
-import { PrimaryButton } from './ui'
+import { PrimaryButton, Select } from './ui'
 
 interface GitOpsWebhooksPanelProps {
   token: string
@@ -73,11 +73,11 @@ export function GitOpsWebhooksPanel({
         <form className="space-y-3" onSubmit={onSubmit}>
           <input className="app-field" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" required />
           <input className="app-field" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://argocd.example/hook" required />
-          <select className="app-field" value={provider} onChange={(e) => setProvider(e.target.value)}>
+          <Select value={provider} onChange={(e) => setProvider(e.target.value)} aria-label="Provider">
             <option value="argocd">Argo CD</option>
             <option value="flux">Flux</option>
             <option value="generic">Generic</option>
-          </select>
+          </Select>
           {error && (
             <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
               {error}

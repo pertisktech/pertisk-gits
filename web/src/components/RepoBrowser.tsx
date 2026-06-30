@@ -18,7 +18,7 @@ import { ancestorPathsForFile, RepoFileTree } from './RepoFileTree'
 import { NewFileBar, RepoFileEditor, type OpenFileState } from './RepoFileEditor'
 import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoReadme } from './RepoReadme'
-import { SecondaryButton } from './ui'
+import { SecondaryButton, RefSelect } from './ui'
 
 interface RepoBrowserProps {
   token?: string | null
@@ -266,46 +266,26 @@ export function RepoBrowser({
         </SecondaryButton>
       )}
 
-      <select
-        id="ref-kind-select"
-        value={refKind}
-        onChange={(e) => {
-          const kind = e.target.value as 'branch' | 'tag'
-          setRefKind(kind)
-          setRefOverride(null)
-          resetBrowseState()
-        }}
-        className="app-branch-select"
-        aria-label="Reference type"
-      >
-        <option value="branch">Branch</option>
-        <option value="tag">Tag</option>
-      </select>
-
-      <select
-        id="branch-select"
-        value={activeRef}
-        onChange={(e) => {
-          setRefOverride(e.target.value)
-          resetBrowseState()
-        }}
-        className="app-branch-select min-w-[8rem]"
-        disabled={refList.length === 0}
-      >
-        {refList.length === 0 ? (
-          <option value={activeRef}>{refKind === 'tag' ? 'No tags' : activeRef}</option>
-        ) : (
-          refList.map((item) => (
-            <option key={item} value={item}>
-              {item}
-            </option>
-          ))
-        )}
-      </select>
-
-      <span className="text-sm text-text-secondary whitespace-nowrap">
-        {branchCount} Branch.{`  ${tagCount} Tags`}
-      </span>
+      <div className="app-ref-toolbar-group">
+        <RefSelect
+          id="repo-ref-select"
+          refKind={refKind}
+          refName={activeRef}
+          branches={browser?.branches ?? []}
+          tags={browser?.tags ?? []}
+          fallbackRef={defaultBranch}
+          disabled={!browser || browser.empty}
+          onChange={(kind, name) => {
+            setRefKind(kind)
+            setRefOverride(name)
+            resetBrowseState()
+          }}
+        />
+        <span className="app-ref-select-meta text-xs text-text-secondary whitespace-nowrap">
+          {branchCount} branch{branchCount === 1 ? '' : 'es'} · {tagCount} tag
+          {tagCount === 1 ? '' : 's'}
+        </span>
+      </div>
 
       {!inEditMode && pathParts.length > 0 && (
         <div className="app-path-crumb flex-1 min-w-0">

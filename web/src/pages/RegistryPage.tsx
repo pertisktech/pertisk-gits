@@ -12,7 +12,10 @@ import {
   LinkButton,
   PrimaryButton,
   SecondaryButton,
+  Select,
+  TablePagination,
 } from '../components/ui'
+import { useClientPagination } from '../lib/pagination'
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -38,6 +41,14 @@ export function RegistryPage() {
     queryFn: () => api.listContainerImages(token!, orgPath),
     enabled: Boolean(token && orgPath),
   })
+
+  const {
+    items: pageImages,
+    page,
+    setPage,
+    pageSize,
+    total: imageTotal,
+  } = useClientPagination(images)
 
   const { data: detail, isLoading: detailLoading } = useQuery({
     queryKey: ['registry-image', orgPath, decodedImage],
@@ -130,7 +141,7 @@ export function RegistryPage() {
         <div className="app-panel">
           <div className="app-panel-header flex items-center justify-between">
             <span>Images</span>
-            <span className="font-normal text-text-secondary">{images.length}</span>
+            <span className="font-normal text-text-secondary">{imageTotal}</span>
           </div>
 
           {listLoading && (
@@ -157,7 +168,7 @@ export function RegistryPage() {
                 </tr>
               </thead>
               <tbody>
-                {images.map((image: ContainerImageSummary) => (
+                {pageImages.map((image: ContainerImageSummary) => (
                   <tr key={image.id}>
                     <td>
                       <Link
@@ -195,6 +206,16 @@ export function RegistryPage() {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {!listLoading && imageTotal > 0 && (
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              total={imageTotal}
+              onPageChange={setPage}
+              itemLabel="images"
+            />
           )}
         </div>
       )}
@@ -235,12 +256,10 @@ export function RegistryPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label htmlFor="registry-linked-repo" className="text-sm font-medium text-text">
-                      Linked git repository
-                    </label>
-                    <select
+                    <Select
                       id="registry-linked-repo"
-                      className="app-field mono"
+                      label="Linked git repository"
+                      className="mono"
                       value={detail.linked_repository_id ?? ''}
                       onChange={(e) => {
                         const value = e.target.value || null
@@ -253,7 +272,7 @@ export function RegistryPage() {
                           {p.slug}
                         </option>
                       ))}
-                    </select>
+                    </Select>
                     <p className="text-xs text-text-secondary">
                       Tag commit links use this repository when a commit SHA is set on push.
                     </p>

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { Card } from '../components/Card'
-import { LinkButton, PrimaryButton } from '../components/ui'
+import { LinkButton, PrimaryButton, Select } from '../components/ui'
 import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { findGroupByPath } from '../lib/groupPath'
 
@@ -98,17 +98,14 @@ export function NewProjectPage() {
               {orgPath}/{projectSlug || 'project-slug'}
             </span>
           </label>
-          <label className="block text-sm font-semibold text-text">
-            Visibility
-            <select
-              className={`${fieldClass} mt-1.5`}
-              value={visibility}
-              onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
-            >
-              <option value="private">Private — only group members</option>
-              <option value="public">Public — anyone can read</option>
-            </select>
-          </label>
+          <Select
+            label="Visibility"
+            value={visibility}
+            onChange={(e) => setVisibility(e.target.value as 'public' | 'private')}
+          >
+            <option value="private">Private — only group members</option>
+            <option value="public">Public — anyone can read</option>
+          </Select>
           <label className="block text-sm font-semibold text-text">
             Description (optional)
             <textarea

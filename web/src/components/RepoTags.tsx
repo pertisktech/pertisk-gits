@@ -10,7 +10,8 @@ import { useRepoPipelineRunsIndex } from '../hooks/useRepoPipelineRunsIndex'
 import { CreateTagDialog } from './CreateTagDialog'
 import { PipelineRunStatusLink } from './PipelineRunStatusLink'
 import { commitUrl } from './RepoCommits'
-import { EmptyState, PrimaryButton } from './ui'
+import { EmptyState, PrimaryButton, TablePagination } from './ui'
+import { useClientPagination } from '../lib/pagination'
 
 interface RepoTagsProps {
   token?: string | null
@@ -57,6 +58,13 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
   })
 
   const tags = data?.tags ?? []
+  const {
+    items: pageTags,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(tags)
   const { index: pipelineIndex } = useRepoPipelineRunsIndex(orgSlug, repoSlug, token)
   const branches = browserData?.browser.branches.length
     ? browserData.browser.branches
@@ -128,7 +136,7 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
           />
         ) : (
           <ul className="commit-history-date-body">
-            {tags.map((tag) => (
+            {pageTags.map((tag) => (
               <TagRow
                 key={tag.name}
                 tag={tag}
@@ -138,6 +146,15 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
               />
             ))}
           </ul>
+        )}
+        {total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="tags"
+          />
         )}
       </div>
 

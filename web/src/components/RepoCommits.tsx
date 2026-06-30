@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Check, ChevronDown, ChevronRight, Copy, GitCommit, Loader2 } from 'lucide-react'
-import { useState, type MouseEvent } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CommitInfo, PipelineRun } from '../api/types'
@@ -15,7 +15,8 @@ import { pipelineRunForCommit } from '../lib/pipelineRunIndex'
 import { cn } from '../utils/cn'
 import { useRepoPipelineRunsIndex } from '../hooks/useRepoPipelineRunsIndex'
 import { PipelineRunStatusLink } from './PipelineRunStatusLink'
-import { EmptyState } from './ui'
+import { EmptyState, RefSelect, TablePagination } from './ui'
+import { useClientPagination } from '../lib/pagination'
 
 export function commitUrl(orgSlug: string, repoSlug: string, sha: string) {
   return `/groups/${orgSlug}/projects/${repoSlug}/commit/${sha}`
@@ -50,6 +51,18 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
   const { index: pipelineIndex } = useRepoPipelineRunsIndex(orgSlug, repoSlug, token)
 
   const dateGroups = groupCommitsByDate(data?.commits ?? [])
+  const {
+    items: pageDateGroups,
+    page,
+    setPage,
+    resetPage,
+    pageSize,
+    total: groupTotal,
+  } = useClientPagination(dateGroups)
+
+  useEffect(() => {
+    resetPage()
+  }, [ref, resetPage])
 
   if (browserLoading) {
     return (
@@ -77,28 +90,29 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
   return (
     <div className="app-panel">
       <div className="app-toolbar">
-        <select
-          id="commits-branch-select"
-          value={ref}
-          onChange={(e) => setRefOverride(e.target.value)}
-          className="app-branch-select"
-          aria-label="Branch"
-        >
-          {branches.map((branch) => (
-            <option key={branch} value={branch}>
-              {branch}
-            </option>
-          ))}
-        </select>
-        <span className="text-xs text-text-secondary">
-          {data?.commits.length ?? 0} commit{(data?.commits.length ?? 0) === 1 ? '' : 's'}
-          {dateGroups.length > 0 && (
-            <>
-              {' '}
-              · {dateGroups.length} day{dateGroups.length === 1 ? '' : 's'}
-            </>
-          )}
-        </span>
+        <div className="app-ref-toolbar-group">
+          <RefSelect
+            id="commits-branch-select"
+            refKind="branch"
+            refName={ref}
+            branches={branches}
+            tags={[]}
+            fallbackRef={defaultBranch}
+            onChange={(kind, name) => {
+              if (kind === 'branch') setRefOverride(name)
+            }}
+            aria-label="Branch"
+          />
+          <span className="app-ref-select-meta text-xs text-text-secondary whitespace-nowrap">
+            {data?.commits.length ?? 0} commit{(data?.commits.length ?? 0) === 1 ? '' : 's'}
+            {dateGroups.length > 0 && (
+              <>
+                {' '}
+                · {dateGroups.length} day{dateGroups.length === 1 ? '' : 's'}
+              </>
+            )}
+          </span>
+        </div>
       </div>
 
       {error && (
@@ -120,7 +134,7 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
         />
       ) : (
         <div className="commit-history-groups">
-          {dateGroups.map((group, index) => (
+          {pageDateGroups.map((group, index) => (
             <CommitDateGroup
               key={group.key}
               group={group}
@@ -131,6 +145,16 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
             />
           ))}
         </div>
+      )}
+
+      {!isLoading && groupTotal > 0 && (
+        <TablePagination
+          page={page}
+          pageSize={pageSize}
+          total={groupTotal}
+          onPageChange={setPage}
+          itemLabel="days"
+        />
       )}
     </div>
   )

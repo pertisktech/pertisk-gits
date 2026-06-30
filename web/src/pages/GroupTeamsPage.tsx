@@ -6,7 +6,8 @@ import type { TeamSummary, User } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { UserPicker } from '../components/UserPicker'
-import { PrimaryButton, SecondaryButton, Select } from '../components/ui'
+import { PrimaryButton, SecondaryButton, Select, TablePagination } from '../components/ui'
+import { useClientPagination } from '../lib/pagination'
 
 type RepoRole = 'admin' | 'write' | 'read'
 
@@ -28,6 +29,14 @@ export function GroupTeamsPage() {
     queryFn: () => api.listTeams(token!, orgPath),
     enabled: Boolean(token && orgPath),
   })
+
+  const {
+    items: pageTeams,
+    page: teamsPage,
+    setPage: setTeamsPage,
+    pageSize: teamsPageSize,
+    total: teamsTotal,
+  } = useClientPagination(teams)
 
   const { data: repositories = [] } = useQuery({
     queryKey: ['repositories', orgPath],
@@ -191,7 +200,7 @@ export function GroupTeamsPage() {
                 <p className="text-sm text-text-secondary">No teams yet.</p>
               ) : (
                 <ul className="divide-y divide-naturals-n4 border border-naturals-n4 rounded-lg overflow-hidden">
-                  {teams.map((team: TeamSummary) => (
+                  {pageTeams.map((team: TeamSummary) => (
                     <li key={team.id}>
                       <button
                         type="button"
@@ -208,6 +217,16 @@ export function GroupTeamsPage() {
                     </li>
                   ))}
                 </ul>
+              )}
+
+              {!isLoading && teamsTotal > 0 && (
+                <TablePagination
+                  page={teamsPage}
+                  pageSize={teamsPageSize}
+                  total={teamsTotal}
+                  onPageChange={setTeamsPage}
+                  itemLabel="teams"
+                />
               )}
             </div>
           </div>

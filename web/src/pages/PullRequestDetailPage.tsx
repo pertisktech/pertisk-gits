@@ -11,7 +11,7 @@ import { PullRequestDiff } from '../components/PullRequestDiff'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
 import { MarkdownBody, formatDateTime } from '../lib/collaboration'
-import { Breadcrumbs, PrimaryButton, SecondaryButton } from '../components/ui'
+import { Breadcrumbs, PrimaryButton, SecondaryButton, Select } from '../components/ui'
 import { projectBreadcrumbItems } from '../lib/groupRoute'
 import { displayRepoName } from '../lib/projectInitial'
 import { projectTabPath } from '../lib/projectRoute'
@@ -338,16 +338,17 @@ export function PullRequestDetailPage() {
               <div className="flex flex-wrap items-center gap-2">
                 {pr.state === 'open' && canMerge && (
                   <>
-                    <select
-                      className="app-field !py-1.5 !text-sm"
+                    <Select
+                      className="!py-1.5 !text-sm"
                       value={mergeStrategy}
                       onChange={(e) => setMergeStrategy(e.target.value as 'merge' | 'squash' | 'rebase')}
                       disabled={mergeMutation.isPending}
+                      aria-label="Merge strategy"
                     >
                       <option value="merge">Create merge commit</option>
                       <option value="squash">Squash and merge</option>
                       <option value="rebase">Rebase and merge</option>
-                    </select>
+                    </Select>
                     <PrimaryButton
                       type="button"
                       onClick={() => mergeMutation.mutate()}

@@ -7,7 +7,7 @@ import { useAuth } from '../../auth/AuthContext'
 import { DeleteBackupConfirm, RestoreBackupConfirm } from '../../components/ConfirmModal'
 import { InfoPanel, InfoRow } from '../../components/AdminInfoPanel'
 import { StatusBadge } from '../../components/StatusBadge'
-import { Breadcrumbs, PageHeader, PrimaryButton, SecondaryButton } from '../../components/ui'
+import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton } from '../../components/ui'
 import { formatDateTime } from '../../lib/collaboration'
 import { formatBytes } from '../../lib/formatBytes'
 
@@ -225,22 +225,21 @@ export function AdminBackupPage() {
             </p>
             <div className="space-y-3">
               {COMPONENT_OPTIONS.map(({ id, label, description, icon: Icon }) => (
-                <label
+                <Checkbox
                   key={id}
-                  className="flex items-start gap-3 p-3 rounded-lg border border-naturals-n4 cursor-pointer hover:bg-hover"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(id)}
-                    onChange={(e) => toggleComponent(id, e.target.checked, 'backup')}
-                    className="mt-1"
-                  />
-                  <Icon size={16} className="text-primary shrink-0 mt-0.5" />
-                  <span>
-                    <span className="block text-sm font-semibold text-text">{label}</span>
-                    <span className="block text-xs text-text-secondary mt-0.5">{description}</span>
-                  </span>
-                </label>
+                  className="items-start gap-3 p-3 rounded-lg border border-naturals-n4 hover:bg-hover w-full"
+                  checked={selected.includes(id)}
+                  onChange={(e) => toggleComponent(id, e.target.checked, 'backup')}
+                  label={
+                    <span className="flex items-start gap-3 min-w-0">
+                      <Icon size={16} className="text-primary shrink-0 mt-0.5" />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-text">{label}</span>
+                        <span className="block text-xs text-text-secondary mt-0.5">{description}</span>
+                      </span>
+                    </span>
+                  }
+                />
               ))}
             </div>
             <PrimaryButton type="submit" disabled={createBackup.isPending || Boolean(pollingId)}>
@@ -275,14 +274,13 @@ export function AdminBackupPage() {
             </label>
             <div className="space-y-2">
               {COMPONENT_OPTIONS.map(({ id, label }) => (
-                <label key={id} className="flex items-center gap-2 text-sm text-text">
-                  <input
-                    type="checkbox"
-                    checked={restoreSelected.includes(id)}
-                    onChange={(e) => toggleComponent(id, e.target.checked, 'restore')}
-                  />
-                  {label}
-                </label>
+                <Checkbox
+                  key={id}
+                  row
+                  label={label}
+                  checked={restoreSelected.includes(id)}
+                  onChange={(e) => toggleComponent(id, e.target.checked, 'restore')}
+                />
               ))}
             </div>
             <label className="block text-sm font-semibold text-text">

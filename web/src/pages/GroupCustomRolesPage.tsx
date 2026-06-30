@@ -5,7 +5,8 @@ import { api } from '../api/client'
 import type { CustomRolePermissions, OrganizationCustomRole } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { useOrgPathParam } from '../hooks/useOrgPathParam'
-import { Checkbox, PrimaryButton, SecondaryButton, Select } from '../components/ui'
+import { Checkbox, PrimaryButton, SecondaryButton, Select, TablePagination } from '../components/ui'
+import { useClientPagination } from '../lib/pagination'
 
 const EMPTY_PERMISSIONS: CustomRolePermissions = {
   manage_members: false,
@@ -88,6 +89,14 @@ export function GroupCustomRolesPage() {
     queryFn: () => api.listCustomRoles(token!, orgPath),
     enabled: Boolean(token && orgPath),
   })
+
+  const {
+    items: pageRoles,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(roles)
 
   const createRole = useMutation({
     mutationFn: () =>
@@ -236,7 +245,7 @@ export function GroupCustomRolesPage() {
             <p className="text-sm text-text-secondary">No custom roles yet.</p>
           ) : (
             <ul className="divide-y divide-naturals-n4 border border-naturals-n4 rounded-lg overflow-hidden">
-              {roles.map((role) => (
+              {pageRoles.map((role) => (
                 <li key={role.id} className="px-4 py-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-text">{role.name}</div>
@@ -262,6 +271,16 @@ export function GroupCustomRolesPage() {
                 </li>
               ))}
             </ul>
+          )}
+
+          {!isLoading && total > 0 && (
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              total={total}
+              onPageChange={setPage}
+              itemLabel="roles"
+            />
           )}
         </div>
       </div>

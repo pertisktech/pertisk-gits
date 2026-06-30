@@ -1,6 +1,6 @@
 import { GitBranch, Loader2, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { PrimaryButton, SecondaryButton, Select } from './ui'
 
 export interface CreateBranchParams {
   name: string
@@ -118,24 +118,20 @@ export function CreateBranchDialog({
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-text" htmlFor="create-branch-source">
-              Create from
-            </label>
-            <select
-              id="create-branch-source"
-              className="app-field font-mono text-sm"
-              value={sourceRef}
-              disabled={pending || branchList.length === 0}
-              onChange={(event) => setSourceRef(event.target.value)}
-            >
-              {branchList.map((branch) => (
-                <option key={branch} value={branch}>
-                  {branch}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Select
+            id="create-branch-source"
+            label="Create from"
+            className="font-mono text-sm"
+            value={sourceRef}
+            disabled={pending || branchList.length === 0}
+            onChange={(event) => setSourceRef(event.target.value)}
+          >
+            {branchList.map((branch) => (
+              <option key={branch} value={branch}>
+                {branch}
+              </option>
+            ))}
+          </Select>
 
           {error && <p className="text-sm text-dashboard-danger">{error}</p>}
 

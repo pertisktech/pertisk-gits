@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { Download, ScrollText } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
 import type { AuditEventType } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { findGroupByPath } from '../lib/groupPath'
 import { StatusBadge } from '../components/StatusBadge'
-import { SecondaryButton } from '../components/ui'
+import { SecondaryButton, Select, TablePagination } from '../components/ui'
 
 const EVENT_TYPES: { value: '' | AuditEventType; label: string }[] = [
   { value: '', label: 'All events' },
@@ -27,11 +27,18 @@ function eventVariant(type: AuditEventType) {
   return 'gray' as const
 }
 
+const AUDIT_PAGE_SIZE = 25
+
 export function GroupAuditPage() {
   const orgPath = useOrgPathParam()
   const { token } = useAuth()
   const [eventType, setEventType] = useState<'' | AuditEventType>('')
   const [exporting, setExporting] = useState(false)
+  const [page, setPage] = useState(1)
+
+  useEffect(() => {
+    setPage(1)
+  }, [eventType])
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -41,11 +48,12 @@ export function GroupAuditPage() {
   const group = findGroupByPath(groups, orgPath)
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['audit-events', orgPath, eventType],
+    queryKey: ['audit-events', orgPath, eventType, page],
     queryFn: () =>
       api.listAuditEvents(token!, orgPath, {
         event_type: eventType || undefined,
-        limit: 100,
+        limit: AUDIT_PAGE_SIZE,
+        offset: (page - 1) * AUDIT_PAGE_SIZE,
       }),
     enabled: Boolean(token && orgPath),
   })
@@ -94,21 +102,21 @@ export function GroupAuditPage() {
 
       <div className="app-panel mb-4 max-w-5xl">
         <div className="app-panel-body flex flex-wrap gap-3 items-center">
-          <label className="text-sm text-text-secondary flex items-center gap-2">
+          <div className="text-sm text-text-secondary flex items-center gap-2">
             <ScrollText size={15} />
             Filter
-            <select
-              className="app-field"
+            <Select
               value={eventType}
               onChange={(e) => setEventType(e.target.value as '' | AuditEventType)}
+              aria-label="Filter events"
             >
               {EVENT_TYPES.map((opt) => (
                 <option key={opt.value || 'all'} value={opt.value}>
                   {opt.label}
                 </option>
               ))}
-            </select>
-          </label>
+            </Select>
+          </div>
           <span className="text-sm text-text-secondary ml-auto">{total} event(s)</span>
         </div>
       </div>
@@ -161,6 +169,16 @@ export function GroupAuditPage() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {!isLoading && !isError && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={AUDIT_PAGE_SIZE}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="events"
+          />
         )}
       </div>
     </>

@@ -8,8 +8,9 @@ import type { ImportJobDetail, ImportProvider, RemoteNamespace, RemoteRepo } fro
 import { useAuth } from '../auth/AuthContext'
 import { StatusBadge } from '../components/StatusBadge'
 import { Card } from '../components/Card'
-import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton } from '../components/ui'
+import { Breadcrumbs, Checkbox, PageHeader, PrimaryButton, SecondaryButton, Select, TablePagination } from '../components/ui'
 import { chunkImportRepos, DEFAULT_IMPORT_MAX_REPOS_PER_JOB } from '../lib/importLimits'
+import { useClientPagination } from '../lib/pagination'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
 
 const fieldClass =
@@ -71,6 +72,14 @@ export function GroupImportPage() {
     enabled: Boolean(token && orgPath && canManage),
     refetchInterval: activeJobId ? 3000 : false,
   })
+
+  const {
+    items: pageJobs,
+    page: jobsPage,
+    setPage: setJobsPage,
+    pageSize: jobsPageSize,
+    total: jobsTotal,
+  } = useClientPagination(jobs)
 
   const { data: activeJob } = useQuery({
     queryKey: ['import-job', orgPath, activeJobId],
@@ -210,6 +219,19 @@ export function GroupImportPage() {
   const selectedCount = Object.values(selected).filter(Boolean).length
   const importJobCount = Math.max(1, Math.ceil(selectedCount / maxReposPerJob))
 
+  const {
+    items: pageRemoteRepos,
+    page: repoPage,
+    setPage: setRepoPage,
+    resetPage: resetRepoPage,
+    pageSize: repoPageSize,
+    total: remoteRepoTotal,
+  } = useClientPagination(remoteRepos)
+
+  useEffect(() => {
+    resetRepoPage()
+  }, [namespacePath, remoteRepos.length, resetRepoPage])
+
   if (!canManage && members.length > 0) {
     return <Navigate to={`/groups/${orgPath}`} replace />
   }
@@ -233,18 +255,15 @@ export function GroupImportPage() {
               onSubmit={(e) => e.preventDefault()}
               className="space-y-3"
             >
-            <label className="block text-sm font-medium text-text">
-              Source
-              <select
-                className={`${fieldClass} mt-1`}
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as ImportProvider)}
-                autoComplete="off"
-              >
-                <option value="github">GitHub</option>
-                <option value="gitlab">GitLab</option>
-              </select>
-            </label>
+            <Select
+              label="Source"
+              value={provider}
+              onChange={(e) => setProvider(e.target.value as ImportProvider)}
+              autoComplete="off"
+            >
+              <option value="github">GitHub</option>
+              <option value="gitlab">GitLab</option>
+            </Select>
 
             {provider === 'gitlab' && (
               <label className="block text-sm font-medium text-text">
@@ -283,21 +302,18 @@ export function GroupImportPage() {
             )}
 
             {credentials.length > 0 && (
-              <label className="block text-sm font-medium text-text">
-                Saved credential
-                <select
-                  className={`${fieldClass} mt-1`}
-                  value={credentialId ?? ''}
-                  onChange={(e) => setCredentialId(e.target.value || null)}
-                >
-                  <option value="">Use new token below</option>
-                  {credentials.map((cred) => (
-                    <option key={cred.id} value={cred.id}>
-                      {cred.label ?? cred.provider}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <Select
+                label="Saved credential"
+                value={credentialId ?? ''}
+                onChange={(e) => setCredentialId(e.target.value || null)}
+              >
+                <option value="">Use new token below</option>
+                {credentials.map((cred) => (
+                  <option key={cred.id} value={cred.id}>
+                    {cred.label ?? cred.provider}
+                  </option>
+                ))}
+              </Select>
             )}
 
             <label className="block text-sm font-medium text-text">
@@ -366,10 +382,9 @@ export function GroupImportPage() {
             </p>
           )}
           {namespaces.length > 0 && (
-            <label className="block text-sm font-medium text-text mb-3">
-              {provider === 'github' ? 'Organization' : 'Group'}
-              <select
-                className={`${fieldClass} mt-1`}
+            <div className="mb-3">
+              <Select
+                label={provider === 'github' ? 'Organization' : 'Group'}
                 value={namespacePath}
                 onChange={(e) => setNamespacePath(e.target.value)}
                 disabled={refreshRepos.isPending}
@@ -380,7 +395,7 @@ export function GroupImportPage() {
                     {ns.name}
                   </option>
                 ))}
-              </select>
+              </Select>
               {credentialId && (
                 <SecondaryButton
                   type="button"
@@ -391,7 +406,7 @@ export function GroupImportPage() {
                   {refreshRepos.isPending ? 'Refreshing…' : 'Refresh list'}
                 </SecondaryButton>
               )}
-            </label>
+            </div>
           )}
           {refreshRepos.error && (
             <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm mb-3">
@@ -444,33 +459,40 @@ export function GroupImportPage() {
                   </span>
                 )}
               </div>
-              <div className="max-h-72 overflow-y-auto border border-naturals-n4 rounded-lg divide-y divide-naturals-n4">
-                {remoteRepos.map((repo) => (
-                  <label
+              <div className="border border-naturals-n4 rounded-lg divide-y divide-naturals-n4">
+                {pageRemoteRepos.map((repo) => (
+                  <Checkbox
                     key={repo.id}
-                    className="flex items-start gap-3 px-3 py-2 hover:bg-surface-hover cursor-pointer"
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-1"
-                      checked={Boolean(selected[repo.id])}
-                      onChange={(e) =>
-                        setSelected((prev) => ({ ...prev, [repo.id]: e.target.checked }))
-                      }
-                    />
-                    <span className="min-w-0">
-                      <span className="font-mono text-sm text-text block truncate">
-                        {repo.full_name}
-                      </span>
-                      {repo.description && (
-                        <span className="text-xs text-text-secondary line-clamp-2">
-                          {repo.description}
+                    className="items-start gap-3 px-3 py-2 hover:bg-surface-hover w-full rounded-none"
+                    checked={Boolean(selected[repo.id])}
+                    onChange={(e) =>
+                      setSelected((prev) => ({ ...prev, [repo.id]: e.target.checked }))
+                    }
+                    label={
+                      <span className="min-w-0">
+                        <span className="font-mono text-sm text-text block truncate">
+                          {repo.full_name}
                         </span>
-                      )}
-                    </span>
-                  </label>
+                        {repo.description && (
+                          <span className="text-xs text-text-secondary line-clamp-2">
+                            {repo.description}
+                          </span>
+                        )}
+                      </span>
+                    }
+                  />
                 ))}
               </div>
+
+              {remoteRepoTotal > 0 && (
+                <TablePagination
+                  page={repoPage}
+                  pageSize={repoPageSize}
+                  total={remoteRepoTotal}
+                  onPageChange={setRepoPage}
+                  itemLabel="repositories"
+                />
+              )}
 
               {startImport.error && (
                 <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
@@ -564,7 +586,7 @@ export function GroupImportPage() {
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {pageJobs.map((job) => (
                   <tr key={job.id}>
                     <td>{new Date(job.created_at).toLocaleString()}</td>
                     <td className="capitalize">{job.provider}</td>
@@ -580,6 +602,16 @@ export function GroupImportPage() {
                 ))}
               </tbody>
             </table>
+          )}
+
+          {jobsTotal > 0 && (
+            <TablePagination
+              page={jobsPage}
+              pageSize={jobsPageSize}
+              total={jobsTotal}
+              onPageChange={setJobsPage}
+              itemLabel="jobs"
+            />
           )}
         </Card>
       )}

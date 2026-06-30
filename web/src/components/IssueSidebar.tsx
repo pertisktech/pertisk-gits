@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { api } from '../api/client'
 import type { IssueDetail, Milestone } from '../api/types'
 import { LabelBadge } from './LabelBadge'
-import { PrimaryButton } from './ui'
+import { PrimaryButton, Select } from './ui'
 
 interface IssueSidebarProps {
   token: string
@@ -62,15 +62,16 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
       <div className="app-panel">
         <div className="app-panel-header">Assignees</div>
         <div className="app-panel-body">
-          <select
+          <Select
             value={assignee?.id ?? ''}
             onChange={(e) =>
               updateMutation.mutate({
                 assignee_id: e.target.value || null,
               })
             }
-            className="app-field !py-1.5 !text-sm"
+            className="!py-1.5 !text-sm"
             disabled={updateMutation.isPending}
+            aria-label="Assignee"
           >
             <option value="">No assignee</option>
             {members.map(({ user }) => (
@@ -78,7 +79,7 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
                 @{user.username}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -116,15 +117,16 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
       <div className="app-panel">
         <div className="app-panel-header">Milestone</div>
         <div className="app-panel-body">
-          <select
+          <Select
             value={milestone?.id ?? ''}
             onChange={(e) =>
               updateMutation.mutate({
                 milestone_id: e.target.value || null,
               })
             }
-            className="app-field !py-1.5 !text-sm"
+            className="!py-1.5 !text-sm"
             disabled={updateMutation.isPending}
+            aria-label="Milestone"
           >
             <option value="">No milestone</option>
             {milestones.map((m: Milestone) => (
@@ -133,7 +135,7 @@ export function IssueSidebar({ token, orgSlug, repoSlug, issueNumber, data }: Is
                 {m.due_on ? ` · due ${m.due_on}` : ''}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 

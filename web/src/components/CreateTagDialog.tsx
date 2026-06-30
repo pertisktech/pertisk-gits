@@ -1,6 +1,6 @@
 import { Loader2, Tag, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { PrimaryButton, SecondaryButton, Select } from './ui'
 
 export interface CreateTagParams {
   name: string
@@ -122,27 +122,21 @@ export function CreateTagDialog({
             />
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm font-medium text-text" htmlFor="create-tag-target">
-              Create from
-            </label>
-            <select
-              id="create-tag-target"
-              className="app-field font-mono text-sm"
-              value={targetRef}
-              disabled={pending || branchList.length === 0}
-              onChange={(event) => setTargetRef(event.target.value)}
-            >
-              {branchList.map((branch) => (
-                <option key={branch} value={branch}>
-                  {branch}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-text-secondary">
-              Tags the current tip of the selected branch.
-            </p>
-          </div>
+          <Select
+            id="create-tag-target"
+            label="Create from"
+            hint="Tags the current tip of the selected branch."
+            className="font-mono text-sm"
+            value={targetRef}
+            disabled={pending || branchList.length === 0}
+            onChange={(event) => setTargetRef(event.target.value)}
+          >
+            {branchList.map((branch) => (
+              <option key={branch} value={branch}>
+                {branch}
+              </option>
+            ))}
+          </Select>
 
           <div className="space-y-1">
             <label className="text-sm font-medium text-text" htmlFor="create-tag-message">

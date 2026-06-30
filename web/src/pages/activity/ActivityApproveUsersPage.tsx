@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { api } from '../../api/client'
 import { useAuth } from '../../auth/AuthContext'
 import { StatusBadge } from '../../components/StatusBadge'
-import { Breadcrumbs, PageHeader } from '../../components/ui'
+import { Breadcrumbs, PageHeader, TablePagination } from '../../components/ui'
 import { formatDateTime } from '../../lib/collaboration'
+import { useClientPagination } from '../../lib/pagination'
 
 export function ActivityApproveUsersPage() {
   const { token } = useAuth()
@@ -17,6 +18,14 @@ export function ActivityApproveUsersPage() {
     queryFn: () => api.listAdminUsers(token!, 'pending'),
     enabled: Boolean(token),
   })
+
+  const {
+    items: pageUsers,
+    page,
+    setPage,
+    pageSize,
+    total,
+  } = useClientPagination(users)
 
   const approveUser = useMutation({
     mutationFn: (userId: string) => api.approveAdminUser(token!, userId),
@@ -88,7 +97,7 @@ export function ActivityApproveUsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((entry) => (
+              {pageUsers.map((entry) => (
                 <tr key={entry.id}>
                   <td>
                     <div className="font-medium text-text">@{entry.username}</div>
@@ -131,6 +140,16 @@ export function ActivityApproveUsersPage() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {!isLoading && total > 0 && (
+          <TablePagination
+            page={page}
+            pageSize={pageSize}
+            total={total}
+            onPageChange={setPage}
+            itemLabel="users"
+          />
         )}
       </div>
     </>
