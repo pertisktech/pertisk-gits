@@ -5,7 +5,7 @@ import { useTheme } from '../context/ThemeContext'
 import { languageFromPath } from '../lib/fileLanguage'
 
 const EDITOR_PADDING = 12
-const EDITOR_FONT_SIZE = 12
+const EDITOR_FONT_SIZE = 'var(--text-code)'
 const EDITOR_LINE_HEIGHT = 1.5
 
 interface CodeFileViewProps {

@@ -44,7 +44,7 @@
 }
 
 .iconLetter {
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1;
   text-transform: uppercase;
@@ -57,7 +57,7 @@
 
 .pathLink {
   display: block;
-  font-size: 0.9375rem;
+  font-size: var(--text-md);
   font-weight: 600;
   color: var(--color-text);
   text-decoration: none;
@@ -116,7 +116,7 @@
   height: auto;
   gap: 0.3rem;
   padding: 0.25rem 0.45rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-code);
   font-weight: 500;
 }
 
@@ -142,7 +142,7 @@
 }
 
 .updated {
-  font-size: 0.8125rem;
+  font-size: var(--text-code);
   color: var(--color-text-secondary);
   white-space: nowrap;
 }

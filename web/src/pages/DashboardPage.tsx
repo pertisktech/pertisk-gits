@@ -134,6 +134,7 @@ export function DashboardPage() {
               />
             </div>
             <Select
+              inline
               className={styles.sortSelect}
               value={sort}
               onChange={(e) => {

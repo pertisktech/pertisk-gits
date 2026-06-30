@@ -171,7 +171,7 @@ export function RepoCloneDropdown({
                 <div className="text-xs font-semibold text-text-secondary uppercase tracking-wide">
                   Push an existing project
                 </div>
-                <pre className="m-0 p-2.5 rounded-md bg-bg border border-naturals-n4 font-mono text-[10px] text-text overflow-x-auto leading-relaxed whitespace-pre-wrap">{`git remote add origin ${authCloneUrl}
+                <pre className="m-0 p-2.5 rounded-md bg-bg border border-naturals-n4 font-mono text-2xs text-text overflow-x-auto leading-relaxed whitespace-pre-wrap">{`git remote add origin ${authCloneUrl}
 git push -u origin ${defaultBranch}`}</pre>
               </div>
             )}

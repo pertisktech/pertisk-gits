@@ -85,6 +85,17 @@ export default {
         sans: "var(--font-sans)",
         mono: "var(--font-mono)",
       },
+      fontSize: {
+        "2xs": "var(--text-2xs)",
+        xs: "var(--text-xs)",
+        sm: "var(--text-sm)",
+        md: "var(--text-md)",
+        base: "var(--text-base)",
+        lg: "var(--text-lg)",
+        xl: "var(--text-xl)",
+        "2xl": "var(--text-2xl)",
+        code: "var(--text-code)",
+      },
       spacing: {
         "safe": "var(--radius-md)",
       },

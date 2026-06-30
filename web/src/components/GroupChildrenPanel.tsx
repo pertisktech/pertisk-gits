@@ -135,7 +135,7 @@ export function GroupChildrenPanel({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Filter by name"
-                className="app-field max-w-[14rem] !py-1.5 !text-sm"
+                className="app-field app-field--inline w-[14rem] max-w-full !py-1.5 !text-sm"
                 aria-label="Filter subgroups and projects"
               />
             }

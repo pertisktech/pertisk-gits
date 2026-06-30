@@ -73,7 +73,7 @@ export function CommitStatuses({
               <span className="text-text-secondary">{statusIcon(status.state)}</span>
               <span className="font-medium text-text truncate">{status.context}</span>
               {!status.required && (
-                <span className="text-[10px] font-mono text-text-secondary uppercase">optional</span>
+                <span className="text-2xs font-mono text-text-secondary uppercase">optional</span>
               )}
             </div>
             <div className="text-right shrink-0">

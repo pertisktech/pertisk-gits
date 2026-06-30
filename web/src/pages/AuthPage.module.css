@@ -29,7 +29,7 @@
   align-items: center;
   gap: 0.4rem;
   padding: 0.4rem 0.75rem;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   background: transparent;
   border: 1px solid var(--color-border);
@@ -57,7 +57,7 @@
 }
 
 .brandName {
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   font-weight: 700;
   letter-spacing: -0.02em;
   color: var(--color-text);
@@ -80,7 +80,7 @@
 
 .title {
   margin: 0 0 0.35rem;
-  font-size: 1.5rem;
+  font-size: var(--text-2xl);
   font-weight: 700;
   color: var(--color-text);
   display: flex;
@@ -95,7 +95,7 @@
 
 .subtitle {
   margin: 0;
-  font-size: 0.9rem;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 
@@ -109,14 +109,14 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text);
 }
 
 .input {
   padding: 0.5rem 0.75rem;
-  font-size: 1rem;
+  font-size: var(--text-base);
   font-family: inherit;
   color: var(--color-text);
   background: var(--color-surface);
@@ -137,7 +137,7 @@
 .button {
   margin-top: 0.25rem;
   padding: 0.65rem 1.25rem;
-  font-size: 1rem;
+  font-size: var(--text-base);
   font-weight: 600;
   font-family: inherit;
   color: white;
@@ -161,14 +161,14 @@
 
 .error {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--error);
   text-align: center;
 }
 
 .success {
   margin: 0;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--color-primary);
   text-align: center;
   line-height: 1.5;
@@ -191,7 +191,7 @@
 
 .version {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
   font-weight: 500;
   letter-spacing: 0.5px;
@@ -200,7 +200,7 @@
 .linkRow {
   margin: 0;
   text-align: center;
-  font-size: 0.875rem;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
 }
 

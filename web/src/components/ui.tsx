@@ -207,15 +207,21 @@ export function RadioGroup({
 export function Select({
   label,
   hint,
+  inline,
   className,
   children,
   ...props
 }: React.SelectHTMLAttributes<HTMLSelectElement> & {
   label?: ReactNode
   hint?: ReactNode
+  /** Toolbar / inline layout — do not stretch to full width */
+  inline?: boolean
 }) {
   const select = (
-    <select className={cn('app-field app-select', className)} {...props}>
+    <select
+      className={cn('app-field app-select', inline && 'app-field--inline', className)}
+      {...props}
+    >
       {children}
     </select>
   )
