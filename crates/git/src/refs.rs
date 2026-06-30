@@ -69,7 +69,8 @@ pub async fn is_ancestor(
     }
 
     let output = Command::new("git")
-        .current_dir(repo_path)
+        .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["-c", "safe.directory=*"])
         .args(["merge-base", "--is-ancestor", ancestor, descendant])
         .output()
         .await

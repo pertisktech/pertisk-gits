@@ -2318,6 +2318,14 @@ body,
   color: var(--color-primary);
 }
 
+.repo-explorer-tree-item--pending {
+  color: var(--color-primary-p2);
+}
+
+.repo-explorer-tree-item--pending .repo-explorer-tree-name {
+  font-style: italic;
+}
+
 .repo-explorer-tree-chevron {
   flex-shrink: 0;
   color: var(--color-text-secondary);

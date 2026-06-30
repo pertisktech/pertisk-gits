@@ -3,6 +3,7 @@ import { ChevronRight, Loader2 } from 'lucide-react'
 import { useMemo } from 'react'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
+import { isPendingTreePath, mergeTreeEntries } from '../lib/pendingTreeEntries'
 import { RepoEntryIcon } from './RepoEntryIcon'
 import { cn } from '../utils/cn'
 
@@ -14,6 +15,7 @@ interface RepoFileTreeProps {
   token?: string | null
   selectedPath: string | null
   expandedPaths: Set<string>
+  pendingPaths?: string[]
   onToggleExpand: (path: string) => void
   onSelectFile: (path: string) => void
 }
@@ -42,6 +44,7 @@ function TreeNode({
   token,
   selectedPath,
   expandedPaths,
+  pendingPaths = [],
   onToggleExpand,
   onSelectFile,
 }: {
@@ -54,12 +57,14 @@ function TreeNode({
   token?: string | null
   selectedPath: string | null
   expandedPaths: Set<string>
+  pendingPaths: string[]
   onToggleExpand: (path: string) => void
   onSelectFile: (path: string) => void
 }) {
   const isDir = entry.kind === 'tree'
   const isExpanded = isDir && expandedPaths.has(entry.path)
   const isSelected = !isDir && selectedPath === entry.path
+  const isPending = isPendingTreePath(entry.path, pendingPaths)
 
   const { data, isLoading } = useQuery({
     queryKey: ['repo-tree', orgSlug, repoSlug, refKind, ref, entry.path, token ?? 'public'],
@@ -68,11 +73,20 @@ function TreeNode({
     enabled: isDir && isExpanded,
   })
 
+  const childEntries = useMemo(() => {
+    const merged = mergeTreeEntries(data?.entries ?? [], entry.path, pendingPaths)
+    return merged.filter((child) => child.name !== '.gitkeep')
+  }, [data?.entries, entry.path, pendingPaths])
+
   return (
     <>
       <button
         type="button"
-        className={cn('repo-explorer-tree-item', isSelected && 'repo-explorer-tree-item--active')}
+        className={cn(
+          'repo-explorer-tree-item',
+          isSelected && 'repo-explorer-tree-item--active',
+          isPending && 'repo-explorer-tree-item--pending',
+        )}
         style={{ paddingLeft: `${0.75 + depth * 0.85}rem` }}
         onClick={() => {
           if (isDir) {
@@ -99,7 +113,7 @@ function TreeNode({
       </button>
       {isDir && isExpanded && (
         <>
-          {isLoading ? (
+          {isLoading && childEntries.length === 0 ? (
             <div
               className="repo-explorer-tree-loading"
               style={{ paddingLeft: `${0.75 + (depth + 1) * 0.85}rem` }}
@@ -107,7 +121,7 @@ function TreeNode({
               <Loader2 size={12} className="animate-spin" />
             </div>
           ) : (
-            (data?.entries ?? []).map((child) => (
+            childEntries.map((child) => (
               <TreeNode
                 key={child.path}
                 entry={child}
@@ -119,6 +133,7 @@ function TreeNode({
                 token={token}
                 selectedPath={selectedPath}
                 expandedPaths={expandedPaths}
+                pendingPaths={pendingPaths}
                 onToggleExpand={onToggleExpand}
                 onSelectFile={onSelectFile}
               />
@@ -138,6 +153,7 @@ export function RepoFileTree({
   token,
   selectedPath,
   expandedPaths,
+  pendingPaths = [],
   onToggleExpand,
   onSelectFile,
 }: RepoFileTreeProps) {
@@ -147,11 +163,14 @@ export function RepoFileTree({
     enabled: Boolean(orgSlug && repoSlug && ref),
   })
 
-  const entries = useMemo(() => data?.entries ?? [], [data?.entries])
+  const entries = useMemo(() => {
+    const merged = mergeTreeEntries(data?.entries ?? [], '', pendingPaths)
+    return merged.filter((entry) => entry.name !== '.gitkeep')
+  }, [data?.entries, pendingPaths])
 
   return (
     <nav className="repo-explorer-tree" aria-label="Repository files">
-      {isLoading ? (
+      {isLoading && entries.length === 0 ? (
         <div className="repo-explorer-tree-loading px-3 py-2">
           <Loader2 size={14} className="animate-spin text-text-secondary" />
         </div>
@@ -170,6 +189,7 @@ export function RepoFileTree({
             token={token}
             selectedPath={selectedPath}
             expandedPaths={expandedPaths}
+            pendingPaths={pendingPaths}
             onToggleExpand={onToggleExpand}
             onSelectFile={onSelectFile}
           />

@@ -1624,15 +1624,24 @@ pub(crate) async fn ensure_can_read_repo(
 }
 
 pub(crate) fn map_explorer_error(err: anyhow::Error) -> ApiError {
-    let msg = err.to_string().to_lowercase();
-    if msg.contains("not found") || msg.contains("unknown revision") || msg.contains("bad revision") {
+    let msg = err.to_string();
+    let lower = msg.to_lowercase();
+    if lower.contains("not found") || lower.contains("unknown revision") || lower.contains("bad revision") {
         ApiError::from(DomainError::NotFound)
-    } else if msg.contains("merge conflict") {
+    } else if lower.contains("merge conflict") {
         ApiError::from(DomainError::Validation(
             "merge conflict: update the source branch with the latest target branch, resolve conflicts, then try again".into(),
         ))
+    } else if lower.contains("invalid path")
+        || lower.contains("binary content is not supported")
+        || lower.contains("no file changes provided")
+        || (lower.contains("branch '") && lower.contains("not found"))
+    {
+        ApiError::from(DomainError::Validation(msg))
+    } else if lower.contains("git ") && lower.contains("failed") {
+        ApiError::from(DomainError::Validation(msg))
     } else {
-        ApiError::from(DomainError::Internal(err.to_string()))
+        ApiError::from(DomainError::Internal(msg))
     }
 }
 

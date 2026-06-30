@@ -31,10 +31,6 @@ pub async fn commit_files(
         anyhow::bail!("no file changes provided");
     }
 
-    if !explorer::ref_exists(repo_path, branch).await? {
-        anyhow::bail!("branch '{branch}' not found");
-    }
-
     for change in changes {
         validate_path(&change.path)?;
         if let Some(content) = &change.content {
@@ -45,17 +41,31 @@ pub async fn commit_files(
     }
 
     let branch_ref = format!("refs/heads/{branch}");
-    let parent_sha = git(repo_path, None, &["rev-parse", &branch_ref]).await?;
+    let branch_exists = explorer::ref_exists(repo_path, branch).await?;
+    let parent_sha = if branch_exists {
+        Some(git(repo_path, None, &["rev-parse", &branch_ref]).await?)
+    } else {
+        None
+    };
 
     let temp_dir = tempfile::tempdir().context("create temp dir for git index")?;
     let index_file = temp_dir.path().join("index");
 
-    git(
-        repo_path,
-        Some(&index_file),
-        &["read-tree", &parent_sha],
-    )
-    .await?;
+    if let Some(parent) = &parent_sha {
+        git(
+            repo_path,
+            Some(&index_file),
+            &["read-tree", parent],
+        )
+        .await?;
+    } else {
+        git(
+            repo_path,
+            Some(&index_file),
+            &["read-tree", "--empty"],
+        )
+        .await?;
+    }
 
     for change in changes {
         if let Some(content) = &change.content {
@@ -67,9 +77,7 @@ pub async fn commit_files(
                     "update-index",
                     "--add",
                     "--cacheinfo",
-                    "100644",
-                    &blob_sha,
-                    &change.path,
+                    &format!("100644,{blob_sha},{}", change.path),
                 ],
             )
             .await?;
@@ -86,7 +94,8 @@ pub async fn commit_files(
     let tree_sha = git(repo_path, Some(&index_file), &["write-tree"]).await?;
 
     let commit_sha = {
-        let output = Command::new("git")
+        let mut command = Command::new("git");
+        command
             .arg(format!("--git-dir={}", repo_path.display()))
             .args([
                 "-c",
@@ -94,7 +103,15 @@ pub async fn commit_files(
                 "-c",
                 &format!("user.email={}", author.email),
             ])
-            .args(["commit-tree", &tree_sha, "-p", &parent_sha, "-m", message])
+            .arg("commit-tree")
+            .arg(&tree_sha)
+            .arg("-m")
+            .arg(message);
+        if let Some(parent) = &parent_sha {
+            command.arg("-p").arg(parent);
+        }
+
+        let output = command
             .output()
             .await
             .context("spawn git commit-tree")?;
@@ -113,12 +130,21 @@ pub async fn commit_files(
         anyhow::bail!("git commit-tree returned empty SHA");
     }
 
-    git(
-        repo_path,
-        None,
-        &["update-ref", &branch_ref, &commit_sha, &parent_sha],
-    )
-    .await?;
+    if let Some(parent) = &parent_sha {
+        git(
+            repo_path,
+            None,
+            &["update-ref", &branch_ref, &commit_sha, parent],
+        )
+        .await?;
+    } else {
+        git(
+            repo_path,
+            None,
+            &["update-ref", &branch_ref, &commit_sha],
+        )
+        .await?;
+    }
 
     Ok(commit_sha)
 }
@@ -140,14 +166,24 @@ fn validate_path(path: &str) -> Result<()> {
 async fn hash_object(repo_path: &Path, content: &[u8]) -> Result<String> {
     let mut child = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
+        .args(["-c", "safe.directory=*"])
         .args(["hash-object", "-w", "--stdin"])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
         .spawn()
         .context("spawn git hash-object")?;
 
-    if let Some(mut stdin) = child.stdin.take() {
-        stdin.write_all(content).await.context("write blob stdin")?;
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .context("git hash-object stdin unavailable")?;
+        stdin
+            .write_all(content)
+            .await
+            .context("write blob stdin")?;
+        stdin.shutdown().await.context("close blob stdin")?;
     }
 
     let output = child.wait_with_output().await.context("git hash-object")?;
@@ -209,5 +245,109 @@ mod tests {
     fn validate_path_accepts_normal_paths() {
         assert!(validate_path("README.md").is_ok());
         assert!(validate_path("src/main.rs").is_ok());
+        assert!(validate_path("docs/.gitkeep").is_ok());
+    }
+
+    #[tokio::test]
+    async fn commit_files_creates_nested_gitkeep_folder() {
+        use std::process::Command;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path().join("repo.git");
+        Command::new("git")
+            .args(["init", "--bare", repo_path.to_str().unwrap()])
+            .output()
+            .unwrap();
+        let wt = tmp.path().join("wt");
+        Command::new("git")
+            .args(["clone", repo_path.to_str().unwrap(), wt.to_str().unwrap()])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&wt)
+            .args(["config", "user.email", "t@t.com"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&wt)
+            .args(["config", "user.name", "T"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&wt)
+            .args(["commit", "--allow-empty", "-m", "init"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&wt)
+            .args(["push", "origin", "main"])
+            .output()
+            .unwrap();
+
+        let author = CommitAuthor {
+            name: "T".into(),
+            email: "t@t.com".into(),
+        };
+        let sha = commit_files(
+            &repo_path,
+            "main",
+            &author,
+            "Create folder docs",
+            &[FileChange {
+                path: "docs/.gitkeep".into(),
+                content: Some(String::new()),
+            }],
+        )
+        .await
+        .expect("commit should succeed");
+
+        assert!(!sha.is_empty());
+        let tree = Command::new("git")
+            .arg(format!("--git-dir={}", repo_path.display()))
+            .args(["ls-tree", "-r", "refs/heads/main"])
+            .output()
+            .unwrap();
+        let out = String::from_utf8_lossy(&tree.stdout);
+        assert!(out.contains("docs/.gitkeep"), "output: {out}");
+    }
+
+    #[tokio::test]
+    async fn commit_files_creates_initial_commit_on_empty_repo() {
+        use std::process::Command;
+        use tempfile::TempDir;
+
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path().join("repo.git");
+        Command::new("git")
+            .args(["init", "--bare", repo_path.to_str().unwrap()])
+            .output()
+            .unwrap();
+
+        let author = CommitAuthor {
+            name: "T".into(),
+            email: "t@t.com".into(),
+        };
+        let sha = commit_files(
+            &repo_path,
+            "main",
+            &author,
+            "Create README.md",
+            &[FileChange {
+                path: "README.md".into(),
+                content: Some("# Hello".into()),
+            }],
+        )
+        .await
+        .expect("initial commit should succeed");
+
+        assert!(!sha.is_empty());
+        let out = Command::new("git")
+            .arg(format!("--git-dir={}", repo_path.display()))
+            .args(["ls-tree", "-r", "refs/heads/main"])
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(stdout.contains("README.md"), "output: {stdout}");
     }
 }

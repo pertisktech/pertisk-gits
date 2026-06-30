@@ -3,7 +3,7 @@ import { Download, Loader2, Save, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { api } from '../api/client'
 import { CodeFileView } from './CodeFileView'
-import { PrimaryButton, SecondaryButton } from './ui'
+import { PrimaryButton } from './ui'
 import { cn } from '../utils/cn'
 
 export interface OpenFileState {
@@ -46,13 +46,22 @@ export function RepoFileEditor({
   loadingPath,
 }: RepoFileEditorProps) {
   const activeFile = openFiles.find((file) => file.path === activePath) ?? null
-  const isDirty = activeFile ? activeFile.content !== activeFile.savedContent : false
+  const isDirty = activeFile
+    ? activeFile.isNew || activeFile.content !== activeFile.savedContent
+    : false
   const [commitMessage, setCommitMessage] = useState('')
   const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!activeFile) return
     const name = activeFile.path.split('/').pop() ?? activeFile.path
+    if (activeFile.isNew && name === '.gitkeep') {
+      const folder = activeFile.path.replace(/\/\.gitkeep$/, '') || 'folder'
+      const folderName = folder.split('/').pop() ?? folder
+      setCommitMessage(`Create folder ${folderName}`)
+      setSaveError(null)
+      return
+    }
     setCommitMessage(activeFile.isNew ? `Create ${name}` : `Update ${name}`)
     setSaveError(null)
   }, [activeFile?.path, activeFile?.isNew])
@@ -87,7 +96,7 @@ export function RepoFileEditor({
     <div className="repo-explorer-editor">
       <div className="repo-explorer-tabs" role="tablist">
         {openFiles.map((file) => {
-          const dirty = file.content !== file.savedContent
+          const dirty = file.isNew || file.content !== file.savedContent
           const name = file.path.split('/').pop() ?? file.path
           const isActive = file.path === activePath
           return (
@@ -207,39 +216,6 @@ export function RepoFileEditor({
           </div>
         </>
       )}
-    </div>
-  )
-}
-
-export function NewFileBar({
-  onCreate,
-  onCancel,
-}: {
-  onCreate: (path: string) => void
-  onCancel: () => void
-}) {
-  const [path, setPath] = useState('')
-
-  return (
-    <div className="repo-explorer-new-file">
-      <input
-        type="text"
-        value={path}
-        onChange={(e) => setPath(e.target.value)}
-        placeholder="path/to/file.txt"
-        className="repo-explorer-commit-input flex-1"
-        aria-label="New file path"
-      />
-      <PrimaryButton
-        type="button"
-        disabled={!path.trim()}
-        onClick={() => onCreate(path.trim())}
-      >
-        Create
-      </PrimaryButton>
-      <SecondaryButton type="button" onClick={onCancel}>
-        Cancel
-      </SecondaryButton>
     </div>
   )
 }

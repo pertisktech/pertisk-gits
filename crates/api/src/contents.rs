@@ -64,18 +64,20 @@ async fn commit_contents(
     }
 
     let branch_ref = format!("refs/heads/{branch}");
-    let old_sha = rev_parse(&repo_path, &branch_ref).await?;
+    let old_sha = rev_parse_optional(&repo_path, &branch_ref).await?;
 
-    // Web commits are always fast-forward; validate protection rules before writing.
-    branch_protection::validate_push_updates(
-        &state.pool,
-        repo.id,
-        auth.user_id,
-        &repo_path,
-        &[(old_sha.clone(), old_sha.clone(), branch_ref.clone())],
-    )
-    .await
-    .map_err(|msg| ApiError::from(DomainError::Validation(msg)))?;
+    if let Some(ref sha) = old_sha {
+        // Web commits are always fast-forward; validate protection rules before writing.
+        branch_protection::validate_push_updates(
+            &state.pool,
+            repo.id,
+            auth.user_id,
+            &repo_path,
+            &[(sha.clone(), sha.clone(), branch_ref.clone())],
+        )
+        .await
+        .map_err(|msg| ApiError::from(DomainError::Validation(msg)))?;
+    }
 
     let author = fetch_commit_author(&state, auth.user_id).await?;
 
@@ -88,7 +90,7 @@ async fn commit_contents(
         })
         .collect();
 
-    let commit_sha = editor::commit_files(
+    let commit_sha = match editor::commit_files(
         &repo_path,
         branch,
         &author,
@@ -96,11 +98,17 @@ async fn commit_contents(
         &changes,
     )
     .await
-    .map_err(map_explorer_error)?;
+    {
+        Ok(sha) => sha,
+        Err(err) => {
+            tracing::error!(error = %err, branch, repo = %repo.slug, "commit_contents failed");
+            return Err(map_explorer_error(err));
+        }
+    };
 
     let updates = vec![RefUpdate {
         ref_name: branch_ref,
-        old_sha: Some(old_sha),
+        old_sha,
         new_sha: commit_sha.clone(),
     }];
 
@@ -120,7 +128,10 @@ async fn commit_contents(
     ))
 }
 
-async fn rev_parse(repo_path: &std::path::Path, reference: &str) -> Result<String, ApiError> {
+async fn rev_parse_optional(
+    repo_path: &std::path::Path,
+    reference: &str,
+) -> Result<Option<String>, ApiError> {
     let output = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
         .args(["rev-parse", reference])
@@ -129,13 +140,12 @@ async fn rev_parse(repo_path: &std::path::Path, reference: &str) -> Result<Strin
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     if !output.status.success() {
-        return Err(DomainError::Validation(format!(
-            "reference '{reference}' not found"
-        ))
-        .into());
+        return Ok(None);
     }
 
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    Ok(Some(
+        String::from_utf8_lossy(&output.stdout).trim().to_string(),
+    ))
 }
 
 async fn fetch_commit_author(

@@ -4,17 +4,20 @@ import {
   ChevronRight,
   FilePlus,
   Folder,
+  FolderPlus,
   Loader2,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { TreeEntry } from '../api/types'
 import { findReadmePath } from '../lib/readme'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
+import { CreateRepoEntryDialog, type RepoEntryKind } from './CreateRepoEntryDialog'
+import { mergeTreeEntries } from '../lib/pendingTreeEntries'
 import { ancestorPathsForFile, RepoFileTree } from './RepoFileTree'
-import { NewFileBar, RepoFileEditor, type OpenFileState } from './RepoFileEditor'
+import { RepoFileEditor, type OpenFileState } from './RepoFileEditor'
 import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoEntryIcon } from './RepoEntryIcon'
 import { RepoReadme } from './RepoReadme'
@@ -57,7 +60,10 @@ export function RepoBrowser({
   const [openFiles, setOpenFiles] = useState<OpenFileState[]>([])
   const [activePath, setActivePath] = useState<string | null>(initialFile)
   const [loadingPath, setLoadingPath] = useState<string | null>(null)
-  const [showNewFile, setShowNewFile] = useState(false)
+  const [createEntryKind, setCreateEntryKind] = useState<RepoEntryKind | null>(null)
+  const [createEntryPending, setCreateEntryPending] = useState(false)
+  const [createEntryError, setCreateEntryError] = useState<string | null>(null)
+  const localNewPathsRef = useRef(new Set<string>())
   const openFilesRef = useRef(openFiles)
   openFilesRef.current = openFiles
 
@@ -78,7 +84,7 @@ export function RepoBrowser({
         : [defaultBranch]
   const ref = refOverride ?? browser?.default_ref ?? defaultBranch
   const activeRef = refList.includes(ref) ? ref : (refList[0] ?? ref)
-  const canBrowse = Boolean(browser && !browser.empty && (refKind === 'branch' || refList.length > 0))
+  const canBrowse = Boolean(browser && (refKind === 'branch' || refList.length > 0))
   const canEdit = Boolean(token && refKind === 'branch')
 
   const { data: treeData, isLoading: treeLoading } = useQuery({
@@ -102,6 +108,22 @@ export function RepoBrowser({
   const pathParts = path ? path.split('/') : []
   const branchCount = browser?.branches.length ?? 0
   const tagCount = browser?.tags.length ?? 0
+
+  const pendingTreePaths = useMemo(
+    () =>
+      openFiles
+        .filter((file) => file.isNew || file.content !== file.savedContent)
+        .map((file) => file.path),
+    [openFiles],
+  )
+
+  const browseEntries = useMemo(
+    () =>
+      mergeTreeEntries(treeData?.entries ?? [], path, pendingTreePaths).filter(
+        (entry) => entry.name !== '.gitkeep',
+      ),
+    [treeData?.entries, path, pendingTreePaths],
+  )
 
   const expandPath = useCallback((filePath: string) => {
     setExpandedPaths((prev) => {
@@ -127,6 +149,7 @@ export function RepoBrowser({
 
       if (options?.isNew) {
         const content = options.content ?? ''
+        localNewPathsRef.current.add(filePath)
         setOpenFiles((prev) => [
           ...prev,
           { path: filePath, content, savedContent: content, isBinary: false, isNew: true },
@@ -163,6 +186,7 @@ export function RepoBrowser({
 
   useEffect(() => {
     if (!initialFile || !canBrowse) return
+    if (localNewPathsRef.current.has(initialFile)) return
     void openFile(initialFile)
   }, [initialFile, canBrowse]) // eslint-disable-line react-hooks/exhaustive-deps -- open once on load
 
@@ -190,7 +214,7 @@ export function RepoBrowser({
   const exitEditMode = useCallback(() => {
     setOpenFiles([])
     setActivePath(null)
-    setShowNewFile(false)
+    setCreateEntryKind(null)
     setSearchParams((params) => {
       const updated = new URLSearchParams(params)
       updated.delete('file')
@@ -235,7 +259,8 @@ export function RepoBrowser({
   )
 
   const handleSaved = useCallback(
-    (filePath: string, content: string) => {
+    async (filePath: string, content: string) => {
+      localNewPathsRef.current.delete(filePath)
       setOpenFiles((prev) =>
         prev.map((file) =>
           file.path === filePath
@@ -243,11 +268,15 @@ export function RepoBrowser({
             : file,
         ),
       )
-      queryClient.invalidateQueries({ queryKey: ['repo-tree', orgSlug, repoSlug] })
+      expandPath(filePath)
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['repo-tree', orgSlug, repoSlug] }),
+        queryClient.refetchQueries({ queryKey: ['repo-ref-head', orgSlug, repoSlug] }),
+      ])
       queryClient.invalidateQueries({ queryKey: ['repo-blob', orgSlug, repoSlug] })
       queryClient.invalidateQueries({ queryKey: ['repo-browser', orgSlug, repoSlug] })
     },
-    [orgSlug, queryClient, repoSlug],
+    [expandPath, orgSlug, queryClient, repoSlug],
   )
 
   const resetBrowseState = useCallback(() => {
@@ -255,13 +284,74 @@ export function RepoBrowser({
     setOpenFiles([])
     setActivePath(null)
     setExpandedPaths(new Set())
-    setShowNewFile(false)
+    setCreateEntryKind(null)
     setSearchParams((params) => {
       const updated = new URLSearchParams(params)
       updated.delete('file')
       return updated
     }, { replace: true })
   }, [setSearchParams])
+
+  const handleCreateEntry = useCallback(
+    async (filePath: string) => {
+      setCreateEntryError(null)
+      const isFolder = filePath.endsWith('/.gitkeep')
+
+      if (isFolder && token) {
+        setCreateEntryPending(true)
+        try {
+          const folderPath = filePath.replace(/\/\.gitkeep$/, '')
+          const folderName = folderPath.split('/').pop() ?? folderPath
+          await api.commitRepoContents(token, orgSlug, repoSlug, {
+            branch: activeRef,
+            message: `Create folder ${folderName}`,
+            changes: [{ path: filePath, content: '' }],
+          })
+          const parentPath = folderPath.includes('/')
+            ? folderPath.slice(0, folderPath.lastIndexOf('/'))
+            : ''
+          setPath(parentPath)
+          expandPath(filePath)
+          await queryClient.refetchQueries({ queryKey: ['repo-tree', orgSlug, repoSlug] })
+          queryClient.invalidateQueries({ queryKey: ['repo-ref-head', orgSlug, repoSlug] })
+          queryClient.invalidateQueries({ queryKey: ['repo-browser', orgSlug, repoSlug] })
+          setCreateEntryKind(null)
+        } catch (err) {
+          setCreateEntryError((err as Error).message)
+          setCreateEntryKind(null)
+          void openFile(filePath, { isNew: true, content: '' })
+        } finally {
+          setCreateEntryPending(false)
+        }
+        return
+      }
+
+      setCreateEntryKind(null)
+      void openFile(filePath, { isNew: true, content: '' })
+    },
+    [activeRef, expandPath, openFile, orgSlug, queryClient, repoSlug, token],
+  )
+
+  const createEntryButtons = canEdit ? (
+    <>
+      <SecondaryButton
+        type="button"
+        className="!py-1 !px-2 !text-xs shrink-0"
+        onClick={() => setCreateEntryKind('file')}
+      >
+        <FilePlus size={14} />
+        New file
+      </SecondaryButton>
+      <SecondaryButton
+        type="button"
+        className="!py-1 !px-2 !text-xs shrink-0"
+        onClick={() => setCreateEntryKind('folder')}
+      >
+        <FolderPlus size={14} />
+        New folder
+      </SecondaryButton>
+    </>
+  ) : null
 
   const toolbar = (
     <div className="app-toolbar">
@@ -284,7 +374,7 @@ export function RepoBrowser({
           branches={browser?.branches ?? []}
           tags={browser?.tags ?? []}
           fallbackRef={defaultBranch}
-          disabled={!browser || browser.empty}
+          disabled={!browser}
           onChange={(kind, name) => {
             setRefKind(kind)
             setRefOverride(name)
@@ -317,6 +407,7 @@ export function RepoBrowser({
       )}
 
       <div className="app-toolbar-right">
+        {createEntryButtons}
         {headCommit && (
           <RepoRefHeadSummary orgSlug={orgSlug} repoSlug={repoSlug} commit={headCommit} />
         )}
@@ -338,29 +429,6 @@ export function RepoBrowser({
     )
   }
 
-  if (browser?.empty) {
-    return (
-      <div className="app-panel">
-        <div className="app-panel-body py-10 px-4 sm:px-6">
-          {cloneUrl && authCloneUrl ? (
-            <RepoClonePushGuide
-              cloneUrl={cloneUrl}
-              authCloneUrl={authCloneUrl}
-              cloneUrlSsh={cloneUrlSsh}
-              defaultBranch={defaultBranch}
-              isPrivate={isPrivate}
-            />
-          ) : (
-            <div className="text-center py-6">
-              <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
-              <p className="text-sm text-text-secondary">Loading clone instructions…</p>
-            </div>
-          )}
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-4 min-w-0">
       <div className="app-panel">
@@ -372,25 +440,26 @@ export function RepoBrowser({
               <div className="repo-explorer-sidebar-header">
                 <span>Explorer</span>
                 {canEdit && (
-                  <SecondaryButton
-                    type="button"
-                    className="!py-0.5 !px-2 !text-xs"
-                    onClick={() => setShowNewFile(true)}
-                  >
-                    <FilePlus size={12} />
-                    New
-                  </SecondaryButton>
+                  <div className="flex items-center gap-1">
+                    <SecondaryButton
+                      type="button"
+                      className="!py-0.5 !px-2 !text-xs"
+                      title="New file"
+                      onClick={() => setCreateEntryKind('file')}
+                    >
+                      <FilePlus size={12} />
+                    </SecondaryButton>
+                    <SecondaryButton
+                      type="button"
+                      className="!py-0.5 !px-2 !text-xs"
+                      title="New folder"
+                      onClick={() => setCreateEntryKind('folder')}
+                    >
+                      <FolderPlus size={12} />
+                    </SecondaryButton>
+                  </div>
                 )}
               </div>
-              {showNewFile && (
-                <NewFileBar
-                  onCancel={() => setShowNewFile(false)}
-                  onCreate={(filePath) => {
-                    setShowNewFile(false)
-                    void openFile(filePath, { isNew: true, content: '' })
-                  }}
-                />
-              )}
               {canBrowse ? (
                 <RepoFileTree
                   orgSlug={orgSlug}
@@ -400,6 +469,7 @@ export function RepoBrowser({
                   token={token}
                   selectedPath={activePath}
                   expandedPaths={expandedPaths}
+                  pendingPaths={pendingTreePaths}
                   onToggleExpand={toggleExpand}
                   onSelectFile={(filePath) => void openFile(filePath)}
                 />
@@ -454,7 +524,7 @@ export function RepoBrowser({
                   </tr>
                 </thead>
                 <tbody>
-                  {(treeData?.entries ?? []).map((entry) => (
+                  {browseEntries.map((entry) => (
                     <tr key={entry.path} onClick={() => openEntry(entry)}>
                       <td>
                         <span className="name-cell">
@@ -489,10 +559,20 @@ export function RepoBrowser({
                       </td>
                     </tr>
                   ))}
-                  {(treeData?.entries ?? []).length === 0 && (
+                  {browseEntries.length === 0 && (
                     <tr>
                       <td colSpan={3} className="text-center text-text-secondary py-8">
-                        This folder is empty.
+                        {browser?.empty ? (
+                          <div className="space-y-1">
+                            <p>No files yet — this repository has no commits.</p>
+                            <p className="text-xs">
+                              Use <strong>New file</strong> or <strong>New folder</strong> in the toolbar to
+                              create the first commit, or push from your computer below.
+                            </p>
+                          </div>
+                        ) : (
+                          'This folder is empty.'
+                        )}
                       </td>
                     </tr>
                   )}
@@ -502,6 +582,28 @@ export function RepoBrowser({
           </>
         )}
       </div>
+
+      {browser?.empty && !inEditMode && (
+        <div className="app-panel">
+          <div className="app-panel-header">Push from your computer</div>
+          <div className="app-panel-body py-6 px-4 sm:px-6">
+            {cloneUrl && authCloneUrl ? (
+              <RepoClonePushGuide
+                cloneUrl={cloneUrl}
+                authCloneUrl={authCloneUrl}
+                cloneUrlSsh={cloneUrlSsh}
+                defaultBranch={defaultBranch}
+                isPrivate={isPrivate}
+              />
+            ) : (
+              <div className="text-center py-4">
+                <Folder size={40} className="mx-auto text-muted opacity-50 mb-3" />
+                <p className="text-sm text-text-secondary">Loading clone instructions…</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {readmePath && !inEditMode && (
         <RepoReadme
@@ -513,6 +615,20 @@ export function RepoBrowser({
           readmePath={readmePath}
         />
       )}
+
+      <CreateRepoEntryDialog
+        open={createEntryKind !== null}
+        kind={createEntryKind ?? 'file'}
+        basePath={path}
+        pending={createEntryPending}
+        error={createEntryError}
+        onClose={() => {
+          if (createEntryPending) return
+          setCreateEntryKind(null)
+          setCreateEntryError(null)
+        }}
+        onCreate={handleCreateEntry}
+      />
     </div>
   )
 }

@@ -460,6 +460,9 @@ pub async fn list_tree(
     path: &str,
 ) -> anyhow::Result<Vec<TreeEntry>> {
     if !ref_exists_kind(repo_path, ref_name, kind).await? {
+        if path.is_empty() {
+            return Ok(Vec::new());
+        }
         let label = match kind {
             RefKind::Branch => "branch",
             RefKind::Tag => "tag",
@@ -581,11 +584,7 @@ pub async fn list_commits(
     limit: u32,
 ) -> anyhow::Result<Vec<CommitInfo>> {
     if !ref_exists_kind(repo_path, ref_name, kind).await? {
-        let label = match kind {
-            RefKind::Branch => "branch",
-            RefKind::Tag => "tag",
-        };
-        anyhow::bail!("{label} '{ref_name}' not found");
+        return Ok(Vec::new());
     }
 
     let refspec = match kind {
