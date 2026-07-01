@@ -9,7 +9,7 @@ import {
   displayRunStatusIcon,
   failureSummary,
   formatRunDuration,
-  isRunInProgress,
+  blocksPipelineRerun,
   refLabel,
   shortSha,
   type RerunScope,
@@ -160,7 +160,7 @@ function PipelineRunRow({
         <div className="gha-run-row-actions" onClick={(e) => e.stopPropagation()}>
           <PipelineRerunMenu
             compact
-            disabled={isRunInProgress(run)}
+            disabled={blocksPipelineRerun(run)}
             loading={rerunLoading}
             canRerunFailed={canRerunFailed(run)}
             failedCount={countRerunnableFailedJobs(run)}

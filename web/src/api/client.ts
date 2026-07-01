@@ -1210,6 +1210,19 @@ export const api = {
       token,
     ),
 
+  rerunJob: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    runId: string,
+    jobId: string,
+  ) =>
+    request<PipelineRun>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines/${runId}/jobs/${jobId}/rerun`,
+      { method: 'POST' },
+      token,
+    ),
+
   deletePipeline: async (
     token: string,
     orgSlug: string,

@@ -17,6 +17,9 @@ export interface PipelineGraphNodeData extends Record<string, unknown> {
   onSelect?: (name: string) => void
   onPlay?: (name: string) => void
   canPlay?: boolean
+  onRerun?: (name: string) => void
+  canRerun?: boolean
+  rerunPending?: boolean
 }
 
 const NODE_WIDTH = 176

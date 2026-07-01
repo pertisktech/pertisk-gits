@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -356,6 +356,10 @@ pub fn cicd_write_routes() -> Router<AppState> {
         .route(
             "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/play",
             post(play_manual_job),
+        )
+        .route(
+            "/organizations/{org_path}/repositories/{repo_slug}/pipelines/{run_id}/jobs/{job_id}/rerun",
+            post(rerun_job),
         )
         .route("/runners/register", post(register_runner))
         .route("/runners/{runner_id}", delete(delete_runner))
@@ -965,11 +969,13 @@ async fn trigger_pipeline(
     Ok(Json(run.into_response(jobs)))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum MaterializeMode {
     Fresh,
     RerunAll,
     RerunFailed,
+    /// Reset only the named jobs (typically one job plus downstream dependents).
+    RerunJobs(HashSet<String>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
@@ -1127,6 +1133,80 @@ async fn cancel_job_step(
         .ok_or(DomainError::NotFound)?;
     let jobs = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
     Ok(Json(run.into_response(jobs)))
+}
+
+async fn rerun_job(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_path, repo_slug, run_id, job_id)): Path<(String, String, Uuid, Uuid)>,
+) -> Result<Json<PipelineRunResponse>, ApiError> {
+    let org_path = crate::org::org_path_from_param(&org_path);
+    let (_org, repo, _path) =
+        load_repo_for_read(&state, &org_path, &repo_slug, Some(&auth)).await?;
+    ensure_can_write_repo(&state, &org_path, &repo, &auth).await?;
+
+    ensure_pipeline_idle(&state.pool, repo.id, run_id).await?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+
+    let repo_path =
+        pertisk_git::config::repo_disk_path(&state.config.repos_root, &org_path, &repo_slug);
+    let Some((config_yaml, _config_path)) = read_pipeline_config(&repo_path, &run.commit_sha).await
+    else {
+        return Err(DomainError::Validation(
+            "no pipeline config (.pertisk-ci.yaml) at this commit".into(),
+        )
+        .into());
+    };
+
+    let config = parse_pipeline_yaml(&config_yaml).map_err(|e| {
+        DomainError::Validation(format!("invalid pipeline config: {e}"))
+    })?;
+
+    let run_ctx = RunContext::from_trigger_with_environment(
+        &run.event_type,
+        &run.ref_name,
+        run.target_environment.clone(),
+    );
+    let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
+        DomainError::Validation(format!("schedule failed: {e}"))
+    })?;
+
+    rerun_job_run(
+        &state.pool,
+        &state.artifacts,
+        repo.id,
+        run_id,
+        &run.commit_sha,
+        job_id,
+        &jobs,
+        run.target_environment.as_deref(),
+    )
+    .await
+    .map_err(|e| -> ApiError {
+        match e {
+            RerunJobError::NotFound => DomainError::NotFound.into(),
+            RerunJobError::NotRerunnable => DomainError::Validation(
+                "job is still running or queued — wait for it to finish or cancel the pipeline"
+                    .into(),
+            )
+            .into(),
+        }
+    })?;
+
+    sync_pipeline_run_state(&state.pool, run_id)
+        .await
+        .map_err(sqlx_error)?;
+
+    let run = fetch_pipeline_run(&state.pool, repo.id, run_id)
+        .await
+        .map_err(sqlx_error)?
+        .ok_or(DomainError::NotFound)?;
+    let job_rows = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
+    Ok(Json(run.into_response(job_rows)))
 }
 
 async fn play_manual_job(
@@ -2393,7 +2473,7 @@ async fn fetch_job_status_map(
     Ok(rows.into_iter().collect())
 }
 
-fn job_should_reset(mode: MaterializeMode, existing_status: Option<&str>) -> bool {
+fn job_should_reset(mode: &MaterializeMode, existing_status: Option<&str>, job_name: &str) -> bool {
     match mode {
         MaterializeMode::Fresh | MaterializeMode::RerunAll => true,
         MaterializeMode::RerunFailed => match existing_status {
@@ -2401,7 +2481,28 @@ fn job_should_reset(mode: MaterializeMode, existing_status: Option<&str>) -> boo
             Some("success") | Some("skipped") | Some("manual") => false,
             Some(_) => true,
         },
+        MaterializeMode::RerunJobs(names) => names.contains(job_name),
     }
+}
+
+/// Jobs that depend on `root` (directly or transitively via `needs`) are included.
+fn downstream_job_names(jobs: &[ScheduledJob], root: &str) -> HashSet<String> {
+    let mut result = HashSet::from([root.to_string()]);
+    loop {
+        let before = result.len();
+        for job in jobs {
+            if result.contains(&job.name) {
+                continue;
+            }
+            if job.job.needs.iter().any(|need| result.contains(need)) {
+                result.insert(job.name.clone());
+            }
+        }
+        if result.len() == before {
+            break;
+        }
+    }
+    result
 }
 
 async fn delete_pipeline_artifact_files(
@@ -2481,7 +2582,8 @@ async fn materialize_jobs_for_run(
     let mut reset_job_names: Vec<String> = Vec::new();
 
     for job in jobs {
-        let should_reset = job_should_reset(mode, existing_statuses.get(&job.name).map(String::as_str));
+        let should_reset =
+            job_should_reset(&mode, existing_statuses.get(&job.name).map(String::as_str), &job.name);
         if !should_reset {
             continue;
         }
@@ -2570,8 +2672,8 @@ async fn materialize_jobs_for_run(
             .execute(pool)
             .await?;
     } else {
-        match mode {
-            MaterializeMode::RerunFailed => {
+        match &mode {
+            MaterializeMode::RerunFailed | MaterializeMode::RerunJobs(_) => {
                 delete_artifact_files_for_job_names(pool, store, run_id, &reset_job_names).await?;
             }
             MaterializeMode::Fresh | MaterializeMode::RerunAll => {
@@ -3197,7 +3299,7 @@ async fn ensure_pipeline_idle(
     .await
     .map_err(|e| DomainError::Internal(e.to_string()))?;
 
-    if active_jobs > 0 || matches!(status.as_str(), "pending" | "queued" | "running") {
+    if active_jobs > 0 || matches!(status.as_str(), "pending" | "queued") {
         return Err(DomainError::Validation(
             "pipeline is still running — cancel it first or wait for jobs to finish".into(),
         ));
@@ -3633,6 +3735,73 @@ enum PlayManualError {
     Blocked,
 }
 
+enum RerunJobError {
+    NotFound,
+    NotRerunnable,
+}
+
+async fn rerun_job_run(
+    pool: &PgPool,
+    store: &ArtifactStore,
+    repo_id: Uuid,
+    run_id: Uuid,
+    commit_sha: &str,
+    job_id: Uuid,
+    jobs: &[ScheduledJob],
+    run_environment: Option<&str>,
+) -> Result<(), RerunJobError> {
+    let row = sqlx::query_as::<_, (String, String)>(
+        r#"
+        SELECT j.status::text, j.job_name
+        FROM job_runs j
+        INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+        WHERE j.id = $1 AND j.pipeline_run_id = $2 AND p.repository_id = $3
+        "#,
+    )
+    .bind(job_id)
+    .bind(run_id)
+    .bind(repo_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|_| RerunJobError::NotFound)?
+    .ok_or(RerunJobError::NotFound)?;
+
+    match row.0.as_str() {
+        "queued" | "running" => return Err(RerunJobError::NotRerunnable),
+        _ => {}
+    }
+
+    let reset_names = downstream_job_names(jobs, &row.1);
+
+    materialize_jobs_for_run(
+        pool,
+        store,
+        repo_id,
+        commit_sha,
+        run_id,
+        jobs,
+        MaterializeMode::RerunJobs(reset_names),
+        run_environment,
+    )
+    .await
+    .map_err(|_| RerunJobError::NotFound)?;
+
+    sqlx::query(
+        r#"
+        UPDATE pipeline_runs
+        SET status = 'running'::pipeline_run_status,
+            finished_at = NULL
+        WHERE id = $1
+        "#,
+    )
+    .bind(run_id)
+    .execute(pool)
+    .await
+    .map_err(|_| RerunJobError::NotFound)?;
+
+    Ok(())
+}
+
 #[derive(Serialize)]
 struct RunnerJobControlResponse {
     pipeline_cancelled: bool,
@@ -3959,6 +4128,55 @@ mod runner_instance_tests {
             Some("86d4dbc796")
         );
         assert_eq!(k8s_replicaset_hash("my-laptop"), None);
+    }
+
+    #[test]
+    fn downstream_job_names_includes_transitive_dependents() {
+        use pertisk_cicd::{Job, JobScheduleMode};
+
+        fn job(needs: Vec<&str>) -> Job {
+            Job {
+                runs_on: "linux".into(),
+                image: None,
+                environment: None,
+                dind: false,
+                needs: needs.into_iter().map(str::to_string).collect(),
+                r#if: None,
+                required: true,
+                steps: vec![],
+                timeout_minutes: None,
+                artifacts: vec![],
+            }
+        }
+
+        let jobs = vec![
+            ScheduledJob {
+                name: "build".into(),
+                job: job(vec![]),
+                mode: JobScheduleMode::Queued,
+            },
+            ScheduledJob {
+                name: "test".into(),
+                job: job(vec!["build"]),
+                mode: JobScheduleMode::Queued,
+            },
+            ScheduledJob {
+                name: "deploy".into(),
+                job: job(vec!["test"]),
+                mode: JobScheduleMode::Queued,
+            },
+        ];
+
+        let names = downstream_job_names(&jobs, "build");
+        assert!(names.contains("build"));
+        assert!(names.contains("test"));
+        assert!(names.contains("deploy"));
+        assert_eq!(names.len(), 3);
+
+        let test_only = downstream_job_names(&jobs, "test");
+        assert!(!test_only.contains("build"));
+        assert!(test_only.contains("test"));
+        assert!(test_only.contains("deploy"));
     }
 
     #[test]

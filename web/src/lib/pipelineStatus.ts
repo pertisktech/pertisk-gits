@@ -73,6 +73,17 @@ export function displayJobStatus(
   return job.status
 }
 
+/** Jobs actively queued or executing on a runner. Manual-only waits do not count. */
+export function hasExecutingJobs(run: PipelineRun): boolean {
+  return hasActiveJobs(run)
+}
+
+/** Whether pipeline / job re-run actions should be disabled. */
+export function blocksPipelineRerun(run: PipelineRun): boolean {
+  if (hasExecutingJobs(run)) return true
+  return run.status === 'pending' || run.status === 'queued'
+}
+
 export function isRunInProgress(run: PipelineRun): boolean {
   if (run.status === 'cancelled' || run.status === 'skipped') return false
   if (hasActiveJobs(run)) return true
@@ -155,4 +166,9 @@ export function countRerunnableFailedJobs(run: PipelineRun): number {
 
 export function canRerunFailed(run: PipelineRun): boolean {
   return countRerunnableFailedJobs(run) > 0
+}
+
+export function canRerunJob(job: JobRun, run: PipelineRun): boolean {
+  if (blocksPipelineRerun(run)) return false
+  return job.status !== 'queued' && job.status !== 'running'
 }

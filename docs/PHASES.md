@@ -120,7 +120,7 @@ See [docs/WIKI.md](./WIKI.md), [docs/CODE_SEARCH.md](./CODE_SEARCH.md)
 | PR triggers | Auto-run on PR open + branch push | Done |
 | Cancel pipeline / step | API + runner control poll; kills active step | Done |
 | Delete pipeline run | DB cascade + artifact files on disk removed | Done |
-| Re-run | Same run ID; **all jobs** or **failed only** (`scope: failed`) | Done |
+| Re-run | Same run ID; **all jobs**, **failed only** (`scope: failed`), or **single job** (+ downstream) | Done |
 | Fail-fast | On first job failure, skip remaining jobs; runner returns online | Done |
 | UI — run list | Table: status, commit, branch, jobs, duration, actions | Done |
 | UI — run detail | Pipeline graph, step logs, artifacts, cancel/rerun/delete | Done |

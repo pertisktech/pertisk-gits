@@ -4669,6 +4669,14 @@ select.app-field:disabled,
   background: color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
+.gha-job-item-rerun {
+  color: var(--color-text-secondary);
+}
+
+.gha-job-item-rerun:hover {
+  background: color-mix(in srgb, var(--color-text-secondary) 12%, transparent);
+}
+
 .gha-job-header-play {
   display: inline-flex;
   align-items: center;
@@ -4684,6 +4692,30 @@ select.app-field:disabled,
 }
 
 .gha-job-header-play:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.gha-job-header-rerun {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.gha-job-header-rerun:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.gha-job-header-rerun:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
@@ -5187,6 +5219,41 @@ select.app-field:disabled,
 
 .pipeline-graph-node-play:hover {
   background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface));
+}
+
+.pipeline-graph-node-rerun {
+  position: absolute;
+  top: -0.45rem;
+  right: -0.45rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 9999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  box-shadow: 0 1px 3px color-mix(in srgb, #000 15%, transparent);
+  cursor: pointer;
+}
+
+.pipeline-graph-node-rerun:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.pipeline-graph-node-rerun:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pipeline-graph-node-wrap--dual-action .pipeline-graph-node-play {
+  right: 1.35rem;
+}
+
+.pipeline-graph-node-wrap--dual-action .pipeline-graph-node-rerun {
+  right: -0.45rem;
 }
 
 .ci-status-dot-manual {

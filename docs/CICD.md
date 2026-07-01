@@ -220,6 +220,7 @@ curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/trigge
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}` | User JWT |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/trigger` | User JWT (write); body may include `environment` |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/jobs/{job_id}/play` | User JWT (write); start a **manual** job |
+| POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/jobs/{job_id}/rerun` | User JWT (write); re-run one job (+ downstream `needs`) |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/config` | User JWT |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/cancel` | User JWT (write) |
 | POST | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/cancel-step` | User JWT (write) |
@@ -303,6 +304,17 @@ Requires migration `20250720100000_job_run_manual.sql`.
 Re-run resets the **same** pipeline run (same run ID and job rows) instead of creating a duplicate entry in the pipeline list. Previous artifact files on disk are removed when the run is reset.
 
 POST body `{ "scope": "failed" }` re-queues only jobs that are not `success` (failed, cancelled, queued downstream, etc.). Successful jobs keep their logs and artifacts.
+
+**Re-run a single job** from the pipeline detail page (**Re-run job** on a finished job in the sidebar or job header), or:
+
+```bash
+curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/$RUN_ID/jobs/$JOB_ID/rerun" \
+  -H "Authorization: Bearer $JWT"
+```
+
+The selected job and any downstream jobs (via `needs`) are reset. Upstream jobs that already succeeded are left unchanged. Works for **manual**, **success**, **failed**, **cancelled**, and **skipped** jobs — only **queued** / **running** jobs cannot be re-run until they finish.
+
+**UI:** Each job in the pipeline graph, sidebar, job header, and log panel shows **Re-run job** (↻). Manual jobs also keep **Run job** (▶) to start without resetting.
 
 ### Delete pipeline run
 
