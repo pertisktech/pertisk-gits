@@ -26,7 +26,7 @@ const DEFAULT_MAX_REPOS_PER_JOB: usize = 500;
 
 const IMPORT_JOB_COLUMNS: &str = r#"
     id, organization_id, created_by, credential_id, provider, import_issues, import_pull_requests,
-    on_conflict, status, error_message, started_at, finished_at, created_at, updated_at
+    import_wiki, on_conflict, status, error_message, started_at, finished_at, created_at, updated_at
 "#;
 
 fn max_repos_per_job() -> usize {
@@ -118,6 +118,8 @@ struct CreateImportJobRequest {
     pub import_issues: bool,
     #[serde(default)]
     pub import_pull_requests: bool,
+    #[serde(default)]
+    pub import_wiki: bool,
     #[serde(default)]
     pub on_conflict: ImportOnConflict,
 }
@@ -424,9 +426,9 @@ async fn create_import_job(
         r#"
         INSERT INTO import_jobs (
             organization_id, created_by, credential_id, provider, import_issues, import_pull_requests,
-            on_conflict, status
+            import_wiki, on_conflict, status
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'pending')
         RETURNING {IMPORT_JOB_COLUMNS}
         "#
     ))
@@ -436,6 +438,7 @@ async fn create_import_job(
     .bind(credential.0)
     .bind(body.import_issues)
     .bind(body.import_pull_requests)
+    .bind(body.import_wiki)
     .bind(body.on_conflict)
     .fetch_one(&mut *tx)
     .await

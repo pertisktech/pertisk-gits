@@ -2,7 +2,7 @@
 
 Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React**, and **PostgreSQL**.
 
-**Stack:** [Pingora](https://github.com/cloudflare/pingora) (edge gateway), [Quiche](https://github.com/cloudflare/quiche) (HTTP/3, later), axum (API), PostgreSQL, Redis, object storage.
+**Stack:** [Pingora](https://github.com/cloudflare/pingora) (edge gateway), [Quiche](https://github.com/cloudflare/quiche) / [tokio-quiche](https://github.com/cloudflare/quiche/tree/master/tokio-quiche) (HTTP/3 edge), axum (API), PostgreSQL, Redis, object storage.
 
 ---
 
@@ -40,7 +40,7 @@ Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React*
 | Web file editor | Done (browse table → edit mode, tree explorer, commit on branch) |
 | Line numbers in code view | Done |
 | Raw file download | Done |
-| Commits UI | Done (blame later) |
+| Commits UI | Done |
 
 **Gateway routes:** `/*.git/*` → `git-http` service
 
@@ -95,9 +95,10 @@ Git platform (GitHub / GitLab / Gitea alternative) built with **Rust**, **React*
 | Tantivy full-text index | Done (MVP) |
 | Global + repo-scoped search UI | Done (MVP) |
 
-### HTTP/3 (optional)
-- [Quiche](https://github.com/cloudflare/quiche) listener for web UI + API
-- `tokio-quiche` integration at edge
+### HTTP/3 (optional — Done MVP)
+
+- **`pertisk-h3-gateway`** — UDP QUIC listener via [tokio-quiche](https://github.com/cloudflare/quiche/tree/master/tokio-quiche); proxies to HTTP/1.1 upstream
+- See [docs/HTTP3.md](./HTTP3.md)
 
 **Tables:** `wiki_pages`, `wiki_page_revisions`, `code_index_jobs`, `code_search_index_meta`
 
@@ -308,7 +309,7 @@ See [docs/SSO_AUDIT.md](./SSO_AUDIT.md)
 |-----------|-------|--------|
 | Issues + labels + milestones | Map via GitHub/GitLab REST API into Pertisk tables; optional checkbox on import | Done (MVP) |
 | Pull/merge requests | Import open MRs/PRs (title, body, branches); closed history later | Done (MVP) |
-| Wiki pages | Export wiki repo or API → Pertisk wiki (Phase 3) | Deferred |
+| Wiki pages | Export wiki repo or API → Pertisk wiki (Phase 3) | Done (MVP — optional checkbox on import) |
 | CI config | Detect `.gitlab-ci.yml` / GitHub Actions; suggest `.pertisk-ci.yaml` conversion | Done (MVP) |
 | Bulk import | Entire GitHub org or GitLab group in one job | Done (MVP) |
 | Registry images | Optional mirror of container images to Pertisk registry | Deferred |
@@ -364,7 +365,7 @@ See [docs/IMPORT.md](./IMPORT.md)
 | HPA / queue-depth autoscale for runners | Done (MVP — metrics endpoint + Helm external metric) |
 | Optional GitOps webhooks (Argo CD / Flux) | Done (MVP) |
 
-**Deferred:** rebase merge, catalog API, public registry pulls, Helm/K8s chart registry
+**Deferred:** Helm/K8s chart registry
 
 **Tables (new):** `branch_protection_rules`, `repository_deploy_keys`, `organization_custom_roles`, `teams`, `team_members`, `team_repository_permissions`, extended `api_tokens`, `gitops_webhooks`
 
@@ -402,7 +403,7 @@ See [docs/NOTIFICATIONS.md](./NOTIFICATIONS.md)
 
 ---
 
-## Phase 8 — Platform polish (In progress)
+## Phase 8 — Platform polish (Done — MVP)
 
 | Component | Status |
 |-----------|--------|
@@ -413,9 +414,13 @@ See [docs/NOTIFICATIONS.md](./NOTIFICATIONS.md)
 | File browser — extension-based icons | Done |
 | Ref head commit summary in Code toolbar | Done |
 | Public anonymous registry pulls | Done (images linked to public git repos; `REGISTRY_ALLOW_ANONYMOUS_PULL`) |
-| Import wiki pages | Planned |
-| Blame / line history in file browser | Planned |
-| HTTP/3 (Quiche) at edge | Planned |
+| GitLab-style file preview (browse → view → edit) | Done |
+| Find file in toolbar (`t` shortcut) | Done |
+| Delete group/repo — copy confirm text | Done |
+| Rust unit test coverage 80%+ (`make test-coverage`) | Done (enforced crates) |
+| Blame / line history in file browser | Done (MVP — `GET .../blame`, Blame tab in preview) |
+| Import wiki pages | Done (MVP — GitHub `.wiki.git` clone, GitLab wiki API) |
+| HTTP/3 (Quiche) at edge | Done (MVP — `pertisk-h3-gateway`, tokio-quiche reverse proxy) |
 
 ---
 
@@ -474,7 +479,8 @@ pertisk-gits/
 ├── crates/
 │   ├── domain/           # Shared models
 │   ├── api/              # axum REST API
-│   ├── gateway/          # Pingora reverse proxy
+│   ├── gateway/          # Pingora reverse proxy (HTTP/1.1)
+│   ├── h3-gateway/       # HTTP/3 QUIC edge (tokio-quiche)
 │   ├── git/              # Phase 1 (git-http, git-ssh)
 │   ├── cicd/             # Phase 4 pipeline engine
 │   ├── runner/           # Phase 4 CI runner
@@ -489,6 +495,7 @@ pertisk-gits/
 │       └── pertisk-runner/   # CI runner chart
 └── docs/
     ├── PHASES.md         # This file
+    ├── HTTP3.md          # HTTP/3 edge gateway (tokio-quiche)
     ├── CICD.md           # CI/CD architecture & API
     ├── CICD_WORKFLOWS.md # GitLab + GitHub Actions style workflows
     ├── CICD_SECRETS.md   # Secrets by environment

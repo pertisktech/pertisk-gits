@@ -63,6 +63,7 @@ export function GroupImportPage() {
   const [selected, setSelected] = useState<Record<string, boolean>>({})
   const [importIssues, setImportIssues] = useState(false)
   const [importPullRequests, setImportPullRequests] = useState(false)
+  const [importWiki, setImportWiki] = useState(false)
   const [onConflict, setOnConflict] = useState<ImportOnConflict>('override')
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [maxReposPerJob, setMaxReposPerJob] = useState(DEFAULT_IMPORT_MAX_REPOS_PER_JOB)
@@ -326,6 +327,7 @@ export function GroupImportPage() {
           credential_id: id,
           import_issues: importIssues,
           import_pull_requests: importPullRequests,
+          import_wiki: importWiki,
           on_conflict: onConflict,
           repos: batch,
         })
@@ -717,6 +719,12 @@ export function GroupImportPage() {
                 label="Import open pull/merge requests (title, body, branches)"
                 checked={importPullRequests}
                 onChange={(event) => setImportPullRequests(event.target.checked)}
+              />
+              <Checkbox
+                row
+                label="Import wiki pages (GitHub wiki git repo or GitLab wiki API)"
+                checked={importWiki}
+                onChange={(event) => setImportWiki(event.target.checked)}
               />
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <SecondaryButton

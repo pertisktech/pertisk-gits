@@ -119,4 +119,4 @@ See [docs/PHASES.md](docs/PHASES.md) for the full roadmap.
 - **Gateway:** [Pingora](https://github.com/cloudflare/pingora)
 - **API:** axum + sqlx + PostgreSQL
 - **Frontend:** React + TypeScript + Vite
-- **HTTP/3 (later):** [Quiche](https://github.com/cloudflare/quiche)
+- **HTTP/3 (optional):** `pertisk-h3-gateway` — see [docs/HTTP3.md](docs/HTTP3.md)

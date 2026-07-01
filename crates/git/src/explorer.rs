@@ -577,6 +577,102 @@ pub async fn read_blob_bytes(
     git_bytes(repo_path, &["show", &object]).await
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct BlameLine {
+    pub line_number: u32,
+    pub commit_sha: String,
+    pub short_sha: String,
+    pub author_name: String,
+    pub author_email: String,
+    pub committed_at: i64,
+    pub content: String,
+}
+
+pub async fn file_blame(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+    path: &str,
+) -> anyhow::Result<Vec<BlameLine>> {
+    if !ref_exists_kind(repo_path, ref_name, kind).await? {
+        let label = match kind {
+            RefKind::Branch => "branch",
+            RefKind::Tag => "tag",
+        };
+        anyhow::bail!("{label} '{ref_name}' not found");
+    }
+
+    let refspec = match kind {
+        RefKind::Branch => format!("refs/heads/{ref_name}"),
+        RefKind::Tag => format!("refs/tags/{ref_name}"),
+    };
+
+    let output = git(
+        repo_path,
+        &["blame", "--line-porcelain", &refspec, "--", path],
+    )
+    .await?;
+
+    Ok(parse_blame_porcelain(&output))
+}
+
+fn parse_blame_porcelain(output: &str) -> Vec<BlameLine> {
+    let mut lines = Vec::new();
+    let mut commit_sha = String::new();
+    let mut author_name = String::new();
+    let mut author_email = String::new();
+    let mut author_time: i64 = 0;
+    let mut group_start_line: u32 = 0;
+    let mut line_in_group: u32 = 0;
+
+    for line in output.lines() {
+        if let Some(header) = parse_blame_header(line) {
+            commit_sha = header.0;
+            group_start_line = header.1;
+            line_in_group = 0;
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("author ") {
+            author_name = rest.to_string();
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("author-mail ") {
+            author_email = rest.trim_matches(|c| c == '<' || c == '>').to_string();
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("author-time ") {
+            author_time = rest.parse().unwrap_or(0);
+            continue;
+        }
+        if let Some(content) = line.strip_prefix('\t') {
+            line_in_group += 1;
+            let line_number = group_start_line + line_in_group - 1;
+            lines.push(BlameLine {
+                line_number,
+                short_sha: commit_sha.chars().take(7).collect(),
+                commit_sha: commit_sha.clone(),
+                author_name: author_name.clone(),
+                author_email: author_email.clone(),
+                committed_at: author_time,
+                content: content.to_string(),
+            });
+        }
+    }
+
+    lines
+}
+
+fn parse_blame_header(line: &str) -> Option<(String, u32)> {
+    let mut parts = line.split_whitespace();
+    let sha = parts.next()?;
+    if sha.len() != 40 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let _orig = parts.next()?;
+    let result_line: u32 = parts.next()?.parse().ok()?;
+    Some((sha.to_string(), result_line))
+}
+
 pub async fn list_commits(
     repo_path: &Path,
     ref_name: &str,
@@ -1287,6 +1383,46 @@ mod tests {
             .await
             .unwrap();
         assert!(content.contains("hello"));
+    }
+
+    #[test]
+    fn parse_blame_porcelain_groups_lines() {
+        let output = "\
+aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa 1 1 2
+author Alice
+author-mail <alice@example.com>
+author-time 1000
+filename README.md
+	# hello
+	## world
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb 1 3 1
+author Bob
+author-mail <bob@example.com>
+author-time 2000
+filename README.md
+	footer
+";
+        let lines = parse_blame_porcelain(output);
+        assert_eq!(lines.len(), 3);
+        assert_eq!(lines[0].line_number, 1);
+        assert_eq!(lines[0].short_sha, "aaaaaaa");
+        assert_eq!(lines[0].author_name, "Alice");
+        assert_eq!(lines[0].content, "# hello");
+        assert_eq!(lines[1].line_number, 2);
+        assert_eq!(lines[1].content, "## world");
+        assert_eq!(lines[2].line_number, 3);
+        assert_eq!(lines[2].author_name, "Bob");
+    }
+
+    #[tokio::test]
+    async fn file_blame_returns_lines_for_text_file() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let lines = file_blame(&repo_path, "main", RefKind::Branch, "README.md")
+            .await
+            .unwrap();
+        assert!(!lines.is_empty());
+        assert!(lines[0].commit_sha.len() == 40);
+        assert!(lines.iter().any(|line| line.content.contains("hello")));
     }
 
     #[tokio::test]

@@ -19,6 +19,7 @@ import { commitUrl } from './RepoCommits'
 import { CreateRepoEntryDialog, type RepoEntryKind } from './CreateRepoEntryDialog'
 import { mergeTreeEntries } from '../lib/pendingTreeEntries'
 import { ancestorPathsForFile, RepoFileTree } from './RepoFileTree'
+import { RepoFileBlame } from './RepoFileBlame'
 import { RepoFileEditor, type OpenFileState } from './RepoFileEditor'
 import { RepoFilePreview } from './RepoFilePreview'
 import { RepoFindFilePopover } from './RepoFindFilePopover'
@@ -74,6 +75,7 @@ export function RepoBrowser({
   const [createEntryPending, setCreateEntryPending] = useState(false)
   const [createEntryError, setCreateEntryError] = useState<string | null>(null)
   const [findFileOpen, setFindFileOpen] = useState(false)
+  const [fileViewMode, setFileViewMode] = useState<'preview' | 'blame'>('preview')
   const localNewPathsRef = useRef(new Set<string>())
   const openFilesRef = useRef(openFiles)
   openFilesRef.current = openFiles
@@ -115,7 +117,19 @@ export function RepoBrowser({
         { ref: activeRef, path: viewingPath!, ref_kind: refKind },
         token,
       ),
-    enabled: Boolean(viewingPath && canBrowse),
+    enabled: Boolean(viewingPath && canBrowse && fileViewMode === 'preview'),
+  })
+
+  const { data: blameData, isLoading: blameLoading } = useQuery({
+    queryKey: ['repo-blame', orgSlug, repoSlug, refKind, activeRef, viewingPath],
+    queryFn: () =>
+      api.getRepoBlame(
+        orgSlug,
+        repoSlug,
+        { ref: activeRef, path: viewingPath!, ref_kind: refKind },
+        token,
+      ),
+    enabled: Boolean(viewingPath && canBrowse && fileViewMode === 'blame'),
   })
 
   const { data: headCommitData } = useQuery({
@@ -197,6 +211,7 @@ export function RepoBrowser({
 
   const viewFile = useCallback(
     (filePath: string, entry?: TreeEntry) => {
+      setFileViewMode('preview')
       const slash = filePath.lastIndexOf('/')
       const parentPath = slash >= 0 ? filePath.slice(0, slash) : ''
       expandPath(filePath)
@@ -316,6 +331,7 @@ export function RepoBrowser({
       setPath(newPath)
       setActivePath(null)
       setEditorOpen(false)
+      setFileViewMode('preview')
       setViewingMeta(undefined)
       syncFileParam(null)
     },
@@ -638,21 +654,39 @@ export function RepoBrowser({
             {showTree && treeSidebar}
             <div className="app-repo-files-main">
               {viewingPath ? (
-                <RepoFilePreview
-                  token={token}
-                  orgSlug={orgSlug}
-                  repoSlug={repoSlug}
-                  ref={activeRef}
-                  refKind={refKind}
-                  path={viewingPath}
-                  content={viewBlob?.content ?? ''}
-                  isBinary={viewBlob?.is_binary ?? false}
-                  loading={viewBlobLoading}
-                  sizeBytes={viewingSizeBytes}
-                  lastCommit={viewingMeta ?? viewingEntry?.last_commit}
-                  canEdit={canEdit}
-                  onEdit={() => void openFileForEdit(viewingPath)}
-                />
+                fileViewMode === 'blame' ? (
+                  <RepoFileBlame
+                    token={token}
+                    orgSlug={orgSlug}
+                    repoSlug={repoSlug}
+                    ref={activeRef}
+                    refKind={refKind}
+                    path={viewingPath}
+                    lines={blameData?.lines ?? []}
+                    loading={blameLoading}
+                    sizeBytes={viewingSizeBytes}
+                    canEdit={canEdit}
+                    onView={() => setFileViewMode('preview')}
+                    onEdit={() => void openFileForEdit(viewingPath)}
+                  />
+                ) : (
+                  <RepoFilePreview
+                    token={token}
+                    orgSlug={orgSlug}
+                    repoSlug={repoSlug}
+                    ref={activeRef}
+                    refKind={refKind}
+                    path={viewingPath}
+                    content={viewBlob?.content ?? ''}
+                    isBinary={viewBlob?.is_binary ?? false}
+                    loading={viewBlobLoading}
+                    sizeBytes={viewingSizeBytes}
+                    lastCommit={viewingMeta ?? viewingEntry?.last_commit}
+                    canEdit={canEdit}
+                    onEdit={() => void openFileForEdit(viewingPath)}
+                    onBlame={() => setFileViewMode('blame')}
+                  />
+                )
               ) : treeLoading ? (
                 <div className="flex items-center gap-2 text-text-secondary text-sm p-6">
                   <Loader2 size={16} className="animate-spin" />

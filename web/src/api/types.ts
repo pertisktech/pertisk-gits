@@ -93,6 +93,16 @@ export interface EntryLastCommit {
   committed_at: number
 }
 
+export interface BlameLine {
+  line_number: number
+  commit_sha: string
+  short_sha: string
+  author_name: string
+  author_email: string
+  committed_at: number
+  content: string
+}
+
 export interface CommitInfo {
   sha: string
   short_sha: string
@@ -981,6 +991,7 @@ export interface ImportJob {
   provider: ImportProvider
   import_issues: boolean
   import_pull_requests: boolean
+  import_wiki: boolean
   on_conflict: ImportOnConflict
   status: ImportJobStatus
   error_message: string | null

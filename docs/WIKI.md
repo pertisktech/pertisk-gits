@@ -41,7 +41,15 @@ Migration: `migrations/20250713100000_phase3_wiki.sql`
 
 ## Not in MVP
 
-- Git-backed wiki export/import
-- Wiki import from GitHub/GitLab (Phase 6.5)
+- Git-backed wiki export
 - Page move/rename (slug changes)
 - Diff between revisions
+
+## Import from GitHub / GitLab
+
+When importing a repository (Group → Import), enable **Import wiki pages**:
+
+- **GitHub** — shallow-clones `{owner}/{repo}.wiki.git` and imports `.md` / `.markdown` files as Pertisk wiki pages
+- **GitLab** — lists wiki pages via REST API (`/projects/:id/wikis`) and imports markdown content
+
+Re-import upserts pages by slug and appends a revision. Repos without a wiki are skipped silently.

@@ -13,12 +13,13 @@ MVP scope:
 - `git clone --mirror` into bare repos under `REPOS_ROOT`
 - Repository metadata: name, description, default branch, visibility
 - Optional **issues, labels, milestones** and **open pull/merge requests** (checkboxes when starting import)
+- Optional **wiki pages** — GitHub wiki git mirror (`.wiki.git`) or GitLab wiki REST API
 - **Bulk import** — filter by GitHub org or GitLab group, select all; up to 500 repos per job by default (configurable via `IMPORT_MAX_REPOS_PER_JOB`; the UI splits larger selections into multiple jobs)
 - **CI config migration** — Pipelines tab detects `.gitlab-ci.yml` / `.github/workflows/*` and suggests `.pertisk-ci.yaml`
 - Background job with progress in the UI
 - Audit log entries for import start and completion
 
-Not included yet: issue comments, closed/merged PR history, wiki, registry image mirror.
+Not included yet: issue comments, closed/merged PR history, registry image mirror.
 
 ## CI config migration
 
@@ -60,7 +61,7 @@ For self-hosted GitLab, enter the instance URL (e.g. `https://git.example.com`) 
 | `POST` | `/organizations/{org}/import/credentials` | Save or update encrypted PAT |
 | `DELETE` | `/organizations/{org}/import/credentials/{id}` | Remove saved credential |
 | `POST` | `/organizations/{org}/import/discover` | List remote repos and orgs/groups (`credential_id`; optional `namespace` + `namespace_kind`) |
-| `POST` | `/organizations/{org}/import/jobs` | Start import job (`import_issues`, `import_pull_requests` optional; up to `IMPORT_MAX_REPOS_PER_JOB` repos, default 500) |
+| `POST` | `/organizations/{org}/import/jobs` | Start import job (`import_issues`, `import_pull_requests`, `import_wiki` optional; up to `IMPORT_MAX_REPOS_PER_JOB` repos, default 500) |
 | `GET` | `/organizations/{org}/import/jobs` | List recent jobs |
 | `GET` | `/organizations/{org}/import/jobs/{id}` | Job detail with per-repo status |
 

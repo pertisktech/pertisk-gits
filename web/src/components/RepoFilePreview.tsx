@@ -1,4 +1,4 @@
-import { Download, Edit3, History, Loader2 } from 'lucide-react'
+import { Download, Edit3, History, Loader2, ScanLine } from 'lucide-react'
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
@@ -23,6 +23,7 @@ interface RepoFilePreviewProps {
   lastCommit?: EntryLastCommit | null
   canEdit: boolean
   onEdit: () => void
+  onBlame?: () => void
 }
 
 export function RepoFilePreview({
@@ -39,6 +40,7 @@ export function RepoFilePreview({
   lastCommit,
   canEdit,
   onEdit,
+  onBlame,
 }: RepoFilePreviewProps) {
   const [copied, setCopied] = useState(false)
   const fileName = path.split('/').pop() ?? path
@@ -97,6 +99,12 @@ export function RepoFilePreview({
               <History size={14} />
               History
             </Link>
+          )}
+          {onBlame && !isBinary && (
+            <SecondaryButton type="button" className="!py-1 !px-2 !text-xs" onClick={onBlame}>
+              <ScanLine size={14} />
+              Blame
+            </SecondaryButton>
           )}
           <a
             href={rawUrl}

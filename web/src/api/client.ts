@@ -58,6 +58,7 @@ import type {
   TagInfo,
   BranchInfo,
   TreeEntry,
+  BlameLine,
   User,
   MeResponse,
   UpdateProfilePayload,
@@ -656,6 +657,21 @@ export const api = {
     if (params.ref_kind) search.set('ref_kind', params.ref_kind)
     return request<{ path: string; ref: string; content: string; is_binary: boolean }>(
       `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/blob?${search}`,
+      {},
+      token,
+    )
+  },
+
+  getRepoBlame: (
+    orgSlug: string,
+    repoSlug: string,
+    params: { ref: string; path: string; ref_kind?: 'branch' | 'tag' },
+    token?: string | null,
+  ) => {
+    const search = new URLSearchParams({ ref: params.ref, path: params.path })
+    if (params.ref_kind) search.set('ref_kind', params.ref_kind)
+    return request<{ path: string; ref: string; lines: BlameLine[] }>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/blame?${search}`,
       {},
       token,
     )
@@ -1708,6 +1724,7 @@ export const api = {
       credential_id: string
       import_issues?: boolean
       import_pull_requests?: boolean
+      import_wiki?: boolean
       on_conflict?: ImportOnConflict
       repos: Array<{
         source_id: string

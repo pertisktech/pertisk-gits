@@ -891,6 +891,7 @@ pub struct ImportJob {
     pub provider: ImportProvider,
     pub import_issues: bool,
     pub import_pull_requests: bool,
+    pub import_wiki: bool,
     pub on_conflict: ImportOnConflict,
     pub status: ImportJobStatus,
     pub error_message: Option<String>,

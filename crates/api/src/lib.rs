@@ -17,7 +17,7 @@ use pertisk_domain::{
 use pertisk_git::{
     access::{self, AuthUser as GitAuthUser, RepoRecord},
     config::repo_disk_path,
-    explorer::{self, BranchInfo, CommitDetail, CommitInfo, RefKind, RepoBrowser, TagInfo, TreeEntry},
+    explorer::{self, BlameLine, BranchInfo, CommitDetail, CommitInfo, RefKind, RepoBrowser, TagInfo, TreeEntry},
     http::GitHttpState,
     ssh::{GitSshConfig, GitSshState},
     storage::{ensure_bare_repo, init_bare_repo},
@@ -164,6 +164,10 @@ pub async fn run() -> anyhow::Result<()> {
         .route(
             "/organizations/{org_path}/repositories/{repo_slug}/blob",
             get(get_repo_blob),
+        )
+        .route(
+            "/organizations/{org_path}/repositories/{repo_slug}/blame",
+            get(get_repo_blame),
         )
         .route(
             "/organizations/{org_path}/repositories/{repo_slug}/raw",
@@ -1759,6 +1763,13 @@ struct BlobResponse {
 }
 
 #[derive(Serialize)]
+struct BlameResponse {
+    path: String,
+    r#ref: String,
+    lines: Vec<BlameLine>,
+}
+
+#[derive(Serialize)]
 struct CommitsResponse {
     commits: Vec<CommitInfo>,
     r#ref: String,
@@ -1906,6 +1917,31 @@ async fn get_repo_tree(
         entries,
         path: query.path,
         r#ref: query.r#ref,
+    }))
+}
+
+async fn get_repo_blame(
+    State(state): State<AppState>,
+    OptionalAuth(auth): OptionalAuth,
+    Path((org_path, repo_slug)): Path<(String, String)>,
+    Query(query): Query<BlobQuery>,
+) -> Result<Json<BlameResponse>, ApiError> {
+    if query.path.is_empty() {
+        return Err(DomainError::Validation("path is required".into()).into());
+    }
+
+    let (_org, _repo, repo_path) =
+        load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
+    let ref_kind = parse_ref_kind(&query.ref_kind)?;
+
+    let lines = explorer::file_blame(&repo_path, &query.r#ref, ref_kind, &query.path)
+        .await
+        .map_err(map_explorer_error)?;
+
+    Ok(Json(BlameResponse {
+        path: query.path,
+        r#ref: query.r#ref,
+        lines,
     }))
 }
 

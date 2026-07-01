@@ -54,7 +54,7 @@ impl ImportWorker {
             ) picked
             WHERE j.id = picked.id
             RETURNING j.id, j.organization_id, j.created_by, j.credential_id, j.provider::text,
-                j.import_issues, j.import_pull_requests, j.on_conflict
+                j.import_issues, j.import_pull_requests, j.import_wiki, j.on_conflict
             "#,
         )
         .bind(IMPORT_STALE_MINUTES)
@@ -269,7 +269,7 @@ impl ImportWorker {
             .await?;
         }
 
-        if job.import_issues || job.import_pull_requests {
+        if job.import_issues || job.import_pull_requests || job.import_wiki {
             if repo.status != "metadata" {
                 sqlx::query(
                     r#"
@@ -283,33 +283,60 @@ impl ImportWorker {
                 .await?;
             }
 
-            match crate::metadata::import_repo_metadata(
-                &self.pool,
-                provider,
-                token,
-                base_url,
-                &repo.source_full_name,
-                repository_id,
-                job.created_by,
-                crate::metadata::MetadataImportOptions {
-                    import_issues: job.import_issues,
-                    import_pull_requests: job.import_pull_requests,
-                },
-            )
-            .await
-            {
-                Ok(stats) => tracing::info!(
-                    repo = %repo.source_full_name,
-                    labels = stats.labels,
-                    milestones = stats.milestones,
-                    issues = stats.issues,
-                    pull_requests = stats.pull_requests,
-                    "imported repository metadata"
-                ),
-                Err(err) => tracing::warn!(
-                    repo = %repo.source_full_name,
-                    "metadata import failed: {err:#}"
-                ),
+            if job.import_issues || job.import_pull_requests {
+                match crate::metadata::import_repo_metadata(
+                    &self.pool,
+                    provider,
+                    token,
+                    base_url,
+                    &repo.source_full_name,
+                    repository_id,
+                    job.created_by,
+                    crate::metadata::MetadataImportOptions {
+                        import_issues: job.import_issues,
+                        import_pull_requests: job.import_pull_requests,
+                    },
+                )
+                .await
+                {
+                    Ok(stats) => tracing::info!(
+                        repo = %repo.source_full_name,
+                        labels = stats.labels,
+                        milestones = stats.milestones,
+                        issues = stats.issues,
+                        pull_requests = stats.pull_requests,
+                        "imported repository metadata"
+                    ),
+                    Err(err) => tracing::warn!(
+                        repo = %repo.source_full_name,
+                        "metadata import failed: {err:#}"
+                    ),
+                }
+            }
+
+            if job.import_wiki {
+                match crate::wiki_import::import_repo_wiki(
+                    &self.pool,
+                    provider,
+                    token,
+                    base_url,
+                    &repo.source_full_name,
+                    &repo.source_clone_url,
+                    repository_id,
+                    job.created_by,
+                )
+                .await
+                {
+                    Ok(pages) => tracing::info!(
+                        repo = %repo.source_full_name,
+                        pages,
+                        "imported wiki pages"
+                    ),
+                    Err(err) => tracing::warn!(
+                        repo = %repo.source_full_name,
+                        "wiki import failed: {err:#}"
+                    ),
+                }
             }
         }
 
@@ -698,6 +725,7 @@ struct JobRow {
     provider: String,
     import_issues: bool,
     import_pull_requests: bool,
+    import_wiki: bool,
     on_conflict: ImportOnConflict,
 }
 

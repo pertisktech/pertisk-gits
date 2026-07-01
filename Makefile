@@ -1,4 +1,4 @@
-.PHONY: build build-local build-package check test test-api run run-release \
+.PHONY: build build-local build-package check test test-api run run-h3-gateway h3-dev-certs run-release \
 	infra infra-down dev-infra install-web web-dist web-dist-docker fix-perms fix-web-dist-owner \
 	dev dev-vite dev-local dev-serve dev-web dev-stop \
 	package package-clean package-amd64 package-arm64 package-deb package-rpm \
@@ -79,6 +79,23 @@ test-coverage:
 
 run:
 	$(CARGO) run -p pertisk-api
+
+run-h3-gateway: h3-dev-certs
+	GATEWAY_H3_CERT=$(H3_CERT) GATEWAY_H3_KEY=$(H3_KEY) \
+	GATEWAY_HTTP_UPSTREAM=$${GATEWAY_HTTP_UPSTREAM:-http://127.0.0.1:8080} \
+	$(CARGO) run -p pertisk-h3-gateway
+
+h3-dev-certs:
+	@mkdir -p deploy/certs
+	@if [ ! -f deploy/certs/h3.crt ] || [ ! -f deploy/certs/h3.key ]; then \
+		echo "Generating self-signed dev cert in deploy/certs/ ..."; \
+		openssl req -x509 -newkey rsa:2048 -nodes \
+			-keyout deploy/certs/h3.key -out deploy/certs/h3.crt -days 365 \
+			-subj '/CN=localhost'; \
+	fi
+
+H3_CERT ?= deploy/certs/h3.crt
+H3_KEY ?= deploy/certs/h3.key
 
 run-release: web-dist
 	$(CARGO) run --release -p pertisk-api

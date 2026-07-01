@@ -4,6 +4,7 @@ members = [
     "crates/domain",
     "crates/api",
     "crates/gateway",
+    "crates/h3-gateway",
     "crates/git",
     "crates/cicd",
     "crates/runner",

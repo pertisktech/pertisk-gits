@@ -2532,6 +2532,78 @@ body,
   border: none;
 }
 
+.repo-blame-view {
+  overflow: auto;
+  max-height: min(70vh, 48rem);
+  font-family: var(--font-mono);
+  font-size: var(--text-code);
+}
+
+.repo-blame-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.repo-blame-table tr:hover {
+  background: color-mix(in srgb, var(--color-hover) 60%, transparent);
+}
+
+.repo-blame-marker {
+  width: 4px;
+  padding: 0;
+  border-left: 3px solid transparent;
+}
+
+.repo-blame-commit {
+  padding: 0 0.5rem 0 0.25rem;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  vertical-align: top;
+}
+
+.repo-blame-author {
+  padding: 0 0.75rem 0 0;
+  max-width: 8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-size: 0.75rem;
+  vertical-align: top;
+}
+
+.repo-blame-time {
+  padding: 0 0.75rem 0 0;
+  white-space: nowrap;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  vertical-align: top;
+}
+
+.repo-blame-line-num {
+  padding: 0 0.75rem 0 0;
+  width: 2.5rem;
+  text-align: right;
+  color: var(--color-muted);
+  user-select: none;
+  vertical-align: top;
+}
+
+.repo-blame-content {
+  padding: 0 0.75rem 0 0;
+  width: 100%;
+  white-space: pre;
+  vertical-align: top;
+}
+
+.repo-blame-content code {
+  font-family: inherit;
+  font-size: inherit;
+  background: none;
+  padding: 0;
+}
+
 .repo-explorer {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
