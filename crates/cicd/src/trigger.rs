@@ -265,4 +265,69 @@ mod tests {
             jobs: HashMap::new(),
         }
     }
+
+    #[test]
+    fn pull_request_branch_match() {
+        let cfg = sample_config();
+        assert!(TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::PullRequest {
+                target_branch: "main".into(),
+            }
+        ));
+        assert!(!TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::PullRequest {
+                target_branch: "dev".into(),
+            }
+        ));
+    }
+
+    #[test]
+    fn push_without_config_returns_false() {
+        let cfg = PipelineConfig {
+            on: Triggers::default(),
+            jobs: HashMap::new(),
+        };
+        assert!(!TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::Push {
+                branch: "main".into(),
+                tag: None,
+            }
+        ));
+    }
+
+    #[test]
+    fn trigger_filter_applies_only_for_manual() {
+        assert!(!trigger_filter_applies("manual"));
+        assert!(trigger_filter_applies("push"));
+    }
+
+    #[test]
+    fn matches_pipeline_trigger_push_ref() {
+        let cfg = sample_config();
+        assert!(matches_pipeline_trigger(&cfg, "push", "refs/heads/main"));
+        assert!(!matches_pipeline_trigger(&cfg, "push", "refs/heads/dev"));
+    }
+
+    #[test]
+    fn pull_request_without_config_returns_false() {
+        let cfg = PipelineConfig {
+            on: Triggers {
+                push: Some(PushTrigger {
+                    branches: Some(vec!["main".into()]),
+                    tags: None,
+                }),
+                pull_request: None,
+            },
+            jobs: HashMap::new(),
+        };
+        assert!(!TriggerMatcher::matches(
+            &cfg,
+            &PipelineEvent::PullRequest {
+                target_branch: "main".into(),
+            }
+        ));
+    }
 }

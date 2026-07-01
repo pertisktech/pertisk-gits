@@ -84,6 +84,7 @@ pub fn mask_secrets_in_text(text: &str, secret_values: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Step;
 
     #[test]
     fn resolves_secret_syntax() {
@@ -112,5 +113,50 @@ mod tests {
     fn masks_secret_values() {
         let masked = mask_secrets_in_text("token=supersecret123 done", &["supersecret123".into()]);
         assert_eq!(masked, "token=*** done");
+    }
+
+    #[test]
+    fn ignores_invalid_secret_refs() {
+        let secrets = HashMap::new();
+        assert_eq!(
+            resolve_secret_refs("no secret ${{ secrets.bad_name }} here", &secrets),
+            "no secret ${{ secrets.bad_name }} here"
+        );
+        assert_eq!(
+            resolve_secret_refs("missing close ${{ secrets.API_TOKEN", &secrets),
+            "missing close ${{ secrets.API_TOKEN"
+        );
+    }
+
+    #[test]
+    fn apply_secrets_to_step_rewrites_run_and_env() {
+        let mut secrets = HashMap::new();
+        secrets.insert("TOKEN".into(), "abc".into());
+        let step = Step {
+            name: None,
+            run: "echo ${{ secrets.TOKEN }}".into(),
+            uses: None,
+            working_directory: None,
+            env: HashMap::from([("AUTH".into(), "${{ secrets.TOKEN }}".into())]),
+            with: HashMap::new(),
+        };
+        let out = apply_secrets_to_step(&step, &secrets);
+        assert_eq!(out.run, "echo abc");
+        assert_eq!(out.env.get("AUTH").map(String::as_str), Some("abc"));
+    }
+
+    #[test]
+    fn mask_ignores_short_secrets() {
+        let masked = mask_secrets_in_text("key=abc", &["abc".into()]);
+        assert_eq!(masked, "key=abc");
+    }
+
+    #[test]
+    fn unknown_secret_placeholder_is_removed() {
+        let secrets = HashMap::from([("KNOWN".into(), "value".into())]);
+        assert_eq!(
+            resolve_secret_refs("x=${{ secrets.MISSING }}", &secrets),
+            "x="
+        );
     }
 }

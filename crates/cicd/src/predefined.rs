@@ -300,5 +300,41 @@ mod tests {
     fn slugify_replaces_special_chars() {
         assert_eq!(slugify("Feature/Branch_Name"), "feature-branch-name");
         assert_eq!(slugify("release/1.0.0"), "release-1-0-0");
+        assert_eq!(slugify("--already--"), "already");
+    }
+
+    #[test]
+    fn tag_ref_and_manual_job_vars() {
+        let mut ctx = sample_context();
+        ctx.ref_name = "refs/tags/v1.0.0".into();
+        ctx.pipeline_event = "manual".into();
+        let vars = build_predefined_vars(&ctx);
+        assert_eq!(vars["CI_COMMIT_TAG"], "v1.0.0");
+        assert!(!vars.contains_key("CI_COMMIT_BRANCH"));
+        assert_eq!(vars["CI_JOB_MANUAL"], "true");
+        assert_eq!(vars["CI_PIPELINE_SOURCE"], "web");
+    }
+
+    #[test]
+    fn url_encode_escapes_spaces() {
+        assert_eq!(url_encode("a b"), "a%20b");
+        assert_eq!(url_encode("plain-token"), "plain-token");
+    }
+
+    #[test]
+    fn server_host_strips_scheme_and_port() {
+        assert_eq!(server_host("https://git.example.com:8443/path"), "git.example.com");
+    }
+
+    #[test]
+    fn omits_optional_vars_when_not_set() {
+        let mut ctx = sample_context();
+        ctx.config_path = None;
+        ctx.runner_id = None;
+        ctx.job_image = None;
+        let vars = build_predefined_vars(&ctx);
+        assert!(!vars.contains_key("CI_CONFIG_PATH"));
+        assert!(!vars.contains_key("CI_RUNNER_ID"));
+        assert!(!vars.contains_key("CI_JOB_IMAGE"));
     }
 }

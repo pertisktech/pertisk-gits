@@ -306,7 +306,11 @@ fn apply_gitlab_only(value: &Value, condition: &mut JobIfCondition, warnings: &m
                 warnings.push("GitLab `only.variables` / `only.kubernetes` not converted.".into());
             }
         }
-        Value::String(entry) => apply_gitlab_only(&Value::String(entry.clone()), condition, warnings),
+        Value::String(entry) => apply_gitlab_only(
+            &Value::Sequence(vec![Value::String(entry.clone())]),
+            condition,
+            warnings,
+        ),
         _ => warnings.push("GitLab `only` format not recognized.".into()),
     }
 }
@@ -761,5 +765,308 @@ jobs:
         assert!(result.converted_yaml.contains("runs-on: linux"));
         assert!(result.converted_yaml.contains("npm test"));
         assert!(result.warnings.iter().any(|w| w.contains("checkout")));
+    }
+
+    #[test]
+    fn convert_errors_on_invalid_yaml() {
+        let err = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", "[unclosed").unwrap_err();
+        assert!(matches!(err, ConvertError::Yaml(_)));
+    }
+
+    #[test]
+    fn convert_gitlab_no_jobs() {
+        let raw = "stages: [test]\nvariables:\n  FOO: bar\n";
+        let err = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap_err();
+        assert!(matches!(err, ConvertError::NoJobs));
+    }
+
+    #[test]
+    fn converts_gitlab_stages_and_artifacts() {
+        let raw = r#"
+stages:
+  - build
+  - test
+build:
+  stage: build
+  tags: [docker, linux]
+  script: npm run build
+  artifacts:
+    paths:
+      - dist/app
+  timeout: 30 minutes
+test:
+  stage: test
+  script: npm test
+  allow_failure: true
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("needs:"));
+        assert!(result.converted_yaml.contains("dist/app"));
+        assert!(result.converted_yaml.contains("timeout_minutes: 30"));
+        assert!(result.converted_yaml.contains("required: false"));
+    }
+
+    #[test]
+    fn converts_gitlab_rules_and_parallel_warnings() {
+        let raw = r#"
+job:
+  script: echo ok
+  rules:
+    - if: $CI
+  parallel: 2
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.warnings.iter().any(|w| w.contains("rules")));
+        assert!(result.warnings.iter().any(|w| w.contains("parallel")));
+    }
+
+    #[test]
+    fn converts_github_matrix_and_action_only_step() {
+        let raw = r#"
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      matrix:
+        node: [18, 20]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v4
+      - run: npm test
+"#;
+        let result =
+            convert_legacy_ci(LegacyCiKind::GithubActions, ".github/workflows/ci.yml", raw).unwrap();
+        assert!(result.warnings.iter().any(|w| w.contains("matrix")));
+        assert!(result.warnings.iter().any(|w| w.contains("GitHub Action")));
+        assert!(result.converted_yaml.contains("npm test"));
+    }
+
+    #[test]
+    fn converts_github_runs_on_labels() {
+        let raw = r#"
+on: push
+jobs:
+  k8s:
+    runs-on: [ubuntu-latest, self-hosted-k8s]
+    steps:
+      - run: echo ok
+  docker:
+    runs-on: docker-hosted
+    steps:
+      - run: docker info
+"#;
+        let result =
+            convert_legacy_ci(LegacyCiKind::GithubActions, ".github/workflows/ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("runs-on: linux"));
+        assert!(result.converted_yaml.contains("runs-on: docker"));
+        assert!(result.converted_yaml.contains("k8s"));
+    }
+
+    #[test]
+    fn detect_legacy_ci_ignores_non_workflow_files() {
+        let found = detect_legacy_ci(&["README.md"], &["ci.yml", "notes.txt"]);
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].path, ".github/workflows/ci.yml");
+    }
+
+    #[test]
+    fn converts_gitlab_only_tags_and_except_warning() {
+        let raw = r#"
+deploy:
+  script: echo deploy
+  only:
+    - tags
+  except:
+    - branches
+  when: delayed
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("event:") || result.converted_yaml.contains("tag"));
+        assert!(result.warnings.iter().any(|w| w.contains("except")));
+    }
+
+    #[test]
+    fn converts_gitlab_only_mapping_refs() {
+        let raw = r#"
+build:
+  script: echo ok
+  only:
+    refs:
+      - main
+      - release/*
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("main") || result.converted_yaml.contains("release"));
+    }
+
+    #[test]
+    fn converts_github_workflow_dispatch_only() {
+        let raw = r#"
+on: workflow_dispatch
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+"#;
+        let result =
+            convert_legacy_ci(LegacyCiKind::GithubActions, ".github/workflows/ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("echo ok"));
+    }
+
+    #[test]
+    fn converts_gitlab_timeout_hours_and_image_scalar() {
+        let raw = r#"
+build:
+  image: node:20
+  script: npm test
+  timeout: 2 hours
+  tags: docker
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("timeout_minutes: 120"));
+        assert!(result.converted_yaml.contains("image: node:20"));
+    }
+
+    #[test]
+    fn converts_gitlab_only_variables_warning() {
+        let raw = r#"
+build:
+  script: echo ok
+  only:
+    variables:
+      - FOO
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result
+            .warnings
+            .iter()
+            .any(|w| w.contains("only.variables")));
+    }
+
+    #[test]
+    fn converts_github_push_with_branch_and_tag_filters() {
+        let raw = r#"
+on:
+  push:
+    branches: [main]
+    tags: [v*]
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./release.sh
+"#;
+        let result =
+            convert_legacy_ci(LegacyCiKind::GithubActions, ".github/workflows/release.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("branches:"));
+        assert!(result.converted_yaml.contains("tags:"));
+    }
+
+    #[test]
+    fn github_step_name_truncates_long_run() {
+        let raw = r#"
+on: push
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - run: this-is-a-very-long-run-command-that-should-be-truncated-for-step-name-purposes
+"#;
+        let result =
+            convert_legacy_ci(LegacyCiKind::GithubActions, ".github/workflows/ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("step-1") || result.converted_yaml.contains("…"));
+    }
+
+    #[test]
+    fn converts_gitlab_needs_and_only_string() {
+        let raw = r#"
+build:
+  stage: build
+  script: echo build
+deploy:
+  stage: deploy
+  script: echo deploy
+  needs: [build]
+  only: main
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("needs:"));
+        assert!(result.converted_yaml.contains("main"));
+    }
+
+    #[test]
+    fn converts_gitlab_needs_and_only_list() {
+        let raw = r#"
+build:
+  stage: build
+  script: echo build
+deploy:
+  stage: deploy
+  script: echo deploy
+  needs: [build]
+  only:
+    - main
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("needs:"));
+        assert!(result.converted_yaml.contains("main"));
+    }
+
+    #[test]
+    fn converts_github_needs_job_mapping() {
+        let raw = r#"
+on: push
+jobs:
+  deploy:
+    needs:
+      - job: build
+    runs-on: linux
+    steps:
+      - run: echo deploy
+  build:
+    runs-on: linux
+    steps:
+      - run: echo build
+"#;
+        let result =
+            convert_legacy_ci(LegacyCiKind::GithubActions, ".github/workflows/ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("needs:"));
+        assert!(result.converted_yaml.contains("build"));
+    }
+
+    #[test]
+    fn converts_gitlab_before_and_after_script() {
+        let raw = r#"
+job:
+  before_script: echo before
+  script:
+    - echo run
+  after_script: echo after
+"#;
+        let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("before_script"));
+        assert!(result.converted_yaml.contains("after_script"));
+        assert!(result.converted_yaml.contains("echo run"));
+    }
+
+    #[test]
+    fn converts_github_step_env_and_working_directory() {
+        let raw = r#"
+on: push
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - name: Build
+        working-directory: ./pkg
+        env:
+          MODE: release
+        run: make build
+"#;
+        let result =
+            convert_legacy_ci(LegacyCiKind::GithubActions, ".github/workflows/ci.yml", raw).unwrap();
+        assert!(result.converted_yaml.contains("working-directory: ./pkg"));
+        assert!(result.converted_yaml.contains("MODE: release"));
     }
 }

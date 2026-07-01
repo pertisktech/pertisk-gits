@@ -450,4 +450,66 @@ jobs:
         assert!(cfg.jobs["deploy-qa"].r#if.is_some());
         assert!(cfg.jobs["deploy-prd"].r#if.is_some());
     }
+
+    #[test]
+    fn rejects_invalid_pipeline_shapes() {
+        assert!(parse_pipeline_yaml("not-a-mapping").is_err());
+        assert!(parse_pipeline_yaml("jobs: not-a-map\non: push").is_err());
+        assert!(parse_pipeline_yaml("on: push").is_err());
+        assert!(parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  test:
+    runs-on: []
+    steps:
+      - run: echo ok
+"#
+        )
+        .is_err());
+        assert!(parse_pipeline_yaml(
+            r#"
+on: 123
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - run: echo ok
+"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn parses_pipeline_without_on_block() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+jobs:
+  test:
+    runs-on: linux
+    steps:
+      - run: echo ok
+"#,
+        )
+        .unwrap();
+        assert!(cfg.on.push.is_none());
+        assert!(cfg.on.pull_request.is_none());
+    }
+
+    #[test]
+    fn collects_stray_jobs_from_root_when_jobs_missing() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on:
+  push:
+    branches: [main]
+lint:
+  runs-on: linux
+  steps:
+    - run: echo lint
+"#,
+        )
+        .unwrap();
+        assert!(cfg.jobs.contains_key("lint"));
+    }
 }

@@ -398,4 +398,192 @@ mod tests {
         assert!(outputs[0].stdout.contains("hello"));
         assert_eq!(metrics.job_name, "job");
     }
+
+    #[tokio::test]
+    async fn execute_steps_skips_empty_run() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let step = Step {
+            name: Some("noop".into()),
+            run: "   ".into(),
+            uses: Some("actions/cache@v4".into()),
+            working_directory: None,
+            env: Default::default(),
+            with: Default::default(),
+        };
+        let (_, outputs) = executor
+            .execute_steps("job", tmp.path(), &[step], Duration::ZERO, &[])
+            .await;
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].exit_code, 0);
+        assert!(outputs[0].stdout.contains("skipped"));
+    }
+
+    #[tokio::test]
+    async fn execute_steps_stops_on_failure() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let steps = [
+            Step {
+                name: Some("fail".into()),
+                run: "exit 42".into(),
+                uses: None,
+                working_directory: None,
+                env: Default::default(),
+                with: Default::default(),
+            },
+            Step {
+                name: Some("never".into()),
+                run: "echo should-not-run".into(),
+                uses: None,
+                working_directory: None,
+                env: Default::default(),
+                with: Default::default(),
+            },
+        ];
+        let (_, outputs) = executor
+            .execute_steps("job", tmp.path(), &steps, Duration::ZERO, &[])
+            .await;
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].exit_code, 42);
+    }
+
+    #[tokio::test]
+    async fn run_step_honors_working_directory_and_env() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        std::fs::create_dir_all(tmp.path().join("sub")).unwrap();
+        let mut env = std::collections::HashMap::new();
+        env.insert("GREETING".into(), "hi".into());
+        let step = Step {
+            name: Some("cwd".into()),
+            run: "pwd && echo $GREETING".into(),
+            uses: None,
+            working_directory: Some("sub".into()),
+            env,
+            with: Default::default(),
+        };
+        let output = executor
+            .run_step(tmp.path(), 0, &step, &[("CI_JOB_NAME", "cwd".into())])
+            .await;
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.contains("sub"));
+        assert!(output.stdout.contains("hi"));
+    }
+
+    #[tokio::test]
+    async fn run_step_streaming_forwards_output() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let step = Step {
+            name: Some("stream".into()),
+            run: "echo streamed".into(),
+            uses: None,
+            working_directory: None,
+            env: Default::default(),
+            with: Default::default(),
+        };
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let output = executor
+            .run_step_streaming(tmp.path(), 0, &step, &[], Some(tx))
+            .await;
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.contains("streamed"));
+        assert!(rx.recv().await.unwrap().contains("streamed"));
+    }
+
+    #[tokio::test]
+    async fn run_step_streaming_cancellable() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let step = Step {
+            name: Some("sleep".into()),
+            run: "sleep 30".into(),
+            uses: None,
+            working_directory: None,
+            env: Default::default(),
+            with: Default::default(),
+        };
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let handle = tokio::spawn({
+            let executor = executor.clone();
+            async move {
+                executor
+                    .run_step_streaming_cancellable(tmp.path(), 0, &step, &[], None, cancel_rx)
+                    .await
+            }
+        });
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let _ = cancel_tx.send(true);
+        let output = handle.await.unwrap();
+        assert_eq!(output.exit_code, 130);
+        assert!(output.stderr.contains("cancelled"));
+    }
+
+    #[tokio::test]
+    async fn run_step_streaming_without_log_sink() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let step = Step {
+            name: Some("stream".into()),
+            run: "echo quiet".into(),
+            uses: None,
+            working_directory: None,
+            env: Default::default(),
+            with: Default::default(),
+        };
+        let output = executor
+            .run_step_streaming(tmp.path(), 0, &step, &[], None)
+            .await;
+        assert_eq!(output.exit_code, 0);
+        assert!(output.stdout.contains("quiet"));
+    }
+
+    #[tokio::test]
+    async fn execute_steps_records_step_timings() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let step = Step {
+            name: Some("timed".into()),
+            run: "echo timed".into(),
+            uses: None,
+            working_directory: None,
+            env: Default::default(),
+            with: Default::default(),
+        };
+        let (metrics, _) = executor
+            .execute_steps("timed-job", tmp.path(), &[step], Duration::from_millis(5), &[])
+            .await;
+        assert_eq!(metrics.job_name, "timed-job");
+        assert_eq!(metrics.steps.len(), 1);
+        assert_eq!(metrics.steps[0].name, "timed");
+    }
+
+    #[tokio::test]
+    async fn bench_noop_steps_collects_metrics() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let report = bench_noop_steps(&executor, tmp.path(), 3).await;
+        assert_eq!(report.iterations, 3);
+        assert!(report.noop_step_ms_p50 > 0);
+    }
+
+    #[tokio::test]
+    async fn run_step_spawn_failure_uses_exit_127() {
+        let executor = ShellExecutor {
+            shell: "/definitely/missing/shell".into(),
+        };
+        let tmp = TempDir::new().unwrap();
+        let step = Step {
+            name: Some("bad".into()),
+            run: "echo nope".into(),
+            uses: None,
+            working_directory: None,
+            env: Default::default(),
+            with: Default::default(),
+        };
+        let output = executor.run_step(tmp.path(), 0, &step, &[]).await;
+        assert_eq!(output.exit_code, 127);
+        assert!(output.stderr.contains("failed to spawn"));
+    }
 }

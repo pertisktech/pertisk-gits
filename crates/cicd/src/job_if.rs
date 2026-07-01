@@ -450,4 +450,110 @@ mod tests {
             &ctx("manual", Some("main"), None, Some("dev"))
         ));
     }
+
+    #[test]
+    fn schedule_mode_skipped_when_if_not_met() {
+        let condition = parse_if_expression("branch == qa").unwrap();
+        assert_eq!(
+            JobIfMatcher::schedule_mode(Some(&condition), &ctx("push", Some("main"), None, None)),
+            JobScheduleMode::Skipped
+        );
+    }
+
+    #[test]
+    fn structured_branch_list_and_event_combo() {
+        let condition: JobIfCondition = serde_yaml::from_str(
+            r#"
+branch: [qa, uat]
+event: manual
+"#,
+        )
+        .unwrap();
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("manual", Some("uat"), None, None)
+        ));
+        assert!(!JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("manual", Some("main"), None, None)
+        ));
+    }
+
+    #[test]
+    fn invalid_if_expression_returns_error() {
+        assert!(parse_if_expression("").is_err());
+    }
+
+    #[test]
+    fn parses_tag_shorthand_expression() {
+        let condition = parse_if_expression("tag").unwrap();
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("push", None, Some("v1.0.0"), None)
+        ));
+    }
+
+    #[test]
+    fn parses_quoted_branch_values() {
+        let condition = parse_if_expression("branch == 'release/1.0'").unwrap();
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("push", Some("release/1.0"), None, None)
+        ));
+    }
+
+    #[test]
+    fn structured_event_and_environment_together() {
+        let condition: JobIfCondition = serde_yaml::from_str(
+            r#"
+event: manual
+environment: qa
+"#,
+        )
+        .unwrap();
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("manual", Some("main"), None, Some("qa"))
+        ));
+        assert!(!JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("manual", Some("main"), None, Some("dev"))
+        ));
+    }
+
+    #[test]
+    fn structured_many_branches() {
+        let condition: JobIfCondition = serde_yaml::from_str(
+            r#"
+branch:
+  - qa
+  - uat
+"#,
+        )
+        .unwrap();
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("push", Some("uat"), None, None)
+        ));
+    }
+
+    #[test]
+    fn tag_patterns_list() {
+        let condition: JobIfCondition = serde_yaml::from_str(
+            r#"
+tag:
+  - v*
+  - release/*
+"#,
+        )
+        .unwrap();
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("push", None, Some("v1.2.3"), None)
+        ));
+        assert!(JobIfMatcher::matches(
+            Some(&condition),
+            &ctx("push", None, Some("release/1"), None)
+        ));
+    }
 }

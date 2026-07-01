@@ -81,4 +81,16 @@ mod tests {
         // idempotent open
         let _ = open_index(tmp.path()).unwrap();
     }
+
+    #[test]
+    fn stored_text_reads_string_fields() {
+        let schema = CodeSearchSchema::build();
+        let mut doc = tantivy::TantivyDocument::default();
+        doc.add_text(schema.path, "src/main.rs");
+        assert_eq!(
+            stored_text(&doc, schema.path).as_deref(),
+            Some("src/main.rs")
+        );
+        assert!(stored_text(&doc, schema.content).is_none());
+    }
 }

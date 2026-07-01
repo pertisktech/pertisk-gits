@@ -135,6 +135,7 @@ fn make_snippet(content: &str, query: &str) -> String {
 mod tests {
     use super::*;
     use crate::indexer::{index_repository, IndexRepositoryInput};
+    use std::collections::HashSet;
     use std::process::Command;
     use tempfile::TempDir;
     use uuid::Uuid;
@@ -194,5 +195,61 @@ mod tests {
         })
         .unwrap();
         assert!(hits.is_empty());
+    }
+
+    #[test]
+    fn make_snippet_finds_match_and_truncates() {
+        let content = "prefix line\nneedle appears here in the content\nsuffix";
+        let snippet = make_snippet(content, "needle");
+        assert!(snippet.contains("needle"));
+        assert!(snippet.starts_with('…') || snippet.contains("needle"));
+
+        let long = "x".repeat(300);
+        let fallback = make_snippet(&long, "missing");
+        assert!(!fallback.is_empty());
+        assert!(fallback.len() <= 181);
+    }
+
+    #[tokio::test]
+    async fn search_respects_allowed_repository_ids() {
+        let repo = TempDir::new().unwrap();
+        let index = TempDir::new().unwrap();
+        let sha = init_repo(repo.path());
+        let allowed_id = Uuid::new_v4();
+        let blocked_id = Uuid::new_v4();
+        index_repository(IndexRepositoryInput {
+            index_root: index.path(),
+            repo_path: repo.path(),
+            repository_id: allowed_id,
+            org_slug: "acme",
+            repo_slug: "allowed",
+            commit_sha: &sha,
+            ref_name: "main",
+        })
+        .await
+        .unwrap();
+        index_repository(IndexRepositoryInput {
+            index_root: index.path(),
+            repo_path: repo.path(),
+            repository_id: blocked_id,
+            org_slug: "acme",
+            repo_slug: "blocked",
+            commit_sha: &sha,
+            ref_name: "main",
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let allowed = HashSet::from([allowed_id]);
+        let hits = search_code(CodeSearchOptions {
+            index_root: index.path(),
+            query: "unique_token_xyz",
+            repository_id: None,
+            allowed_repository_ids: Some(&allowed),
+            limit: 10,
+        })
+        .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].repository_id, allowed_id);
     }
 }

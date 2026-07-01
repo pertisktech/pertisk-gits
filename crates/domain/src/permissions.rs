@@ -117,11 +117,24 @@ mod tests {
             manage_members: true,
             manage_settings: false,
             view_audit: true,
-            ..Default::default()
+            manage_teams: true,
+            manage_custom_roles: true,
+            create_repositories: true,
+            manage_org_secrets: true,
+            default_repo_access: Some(Write),
         };
         assert!(perms.can_manage_members());
         assert!(!perms.can_manage_settings());
         assert!(perms.can_view_audit());
+        assert!(perms.can_manage_teams());
+        assert!(perms.can_manage_custom_roles());
+        assert!(perms.can_create_repositories());
+        assert!(perms.can_manage_org_secrets());
+    }
+
+    #[test]
+    fn max_repo_role_pair_write_write() {
+        assert_eq!(max_repo_role_pair(Write, Write), Write);
     }
 
     #[test]

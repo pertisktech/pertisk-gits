@@ -99,5 +99,10 @@ mod tests {
             effective_job_environment(None, None, "build-dev").as_deref(),
             Some("dev")
         );
+        assert_eq!(
+            effective_job_environment(None, None, "deploy-prod").as_deref(),
+            Some("prd")
+        );
+        assert!(infer_environment_from_ref(None, Some("v1.0.0")).is_none());
     }
 }

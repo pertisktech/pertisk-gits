@@ -466,4 +466,196 @@ mod tests {
             JobScheduleMode::Skipped
         );
     }
+
+    #[test]
+    fn scheduled_job_metadata() {
+        let job = ScheduledJob {
+            name: "deploy".into(),
+            job: Job {
+                runs_on: "linux".into(),
+                image: None,
+                environment: None,
+                dind: false,
+                needs: vec![],
+                r#if: None,
+                required: true,
+                steps: vec![],
+                timeout_minutes: None,
+                artifacts: vec![],
+            },
+            mode: JobScheduleMode::Manual,
+        };
+        assert!(!job.skipped());
+        assert_eq!(job.db_status(), "manual");
+        assert!(job.initial_log().contains("manual trigger"));
+        assert!(!job.finishes_immediately());
+        assert_eq!(job.commit_status(), ("pending", "Manual"));
+
+        let skipped = ScheduledJob {
+            name: "deploy".into(),
+            job: job.job.clone(),
+            mode: JobScheduleMode::Skipped,
+        };
+        assert!(skipped.skipped());
+        assert!(skipped.finishes_immediately());
+        assert_eq!(skipped.commit_status(), ("success", "Skipped"));
+    }
+
+    #[test]
+    fn unknown_dependency_errors() {
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: HashMap::from([(
+                "build".into(),
+                Job {
+                    runs_on: "linux".into(),
+                    image: None,
+                    environment: None,
+                    dind: false,
+                    needs: vec!["missing".into()],
+                    r#if: None,
+                    required: true,
+                    steps: vec![Step {
+                        name: None,
+                        run: "true".into(),
+                        uses: None,
+                        working_directory: None,
+                        env: HashMap::new(),
+                        with: HashMap::new(),
+                    }],
+                    timeout_minutes: None,
+                    artifacts: vec![],
+                },
+            )]),
+        };
+        assert!(matches!(
+            Scheduler::schedule(&config),
+            Err(ScheduleError::UnknownDependency(dep)) if dep == "missing"
+        ));
+    }
+
+    #[test]
+    fn cycle_detection_errors() {
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: HashMap::from([
+                (
+                    "a".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec!["b".into()],
+                        r#if: None,
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+                (
+                    "b".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec!["a".into()],
+                        r#if: None,
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+            ]),
+        };
+        assert!(matches!(
+            Scheduler::schedule(&config),
+            Err(ScheduleError::Cycle(_))
+        ));
+    }
+
+    #[test]
+    fn skips_downstream_when_needed_job_skipped() {
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: HashMap::from([
+                (
+                    "build".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("qa".into())),
+                            tag: None,
+                            event: None,
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+                (
+                    "deploy".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec!["build".into()],
+                        r#if: None,
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+            ]),
+        };
+        let ctx = RunContext::from_trigger("push", "refs/heads/main");
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "build").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+    }
 }

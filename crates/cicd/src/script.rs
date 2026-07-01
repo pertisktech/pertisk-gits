@@ -195,4 +195,40 @@ mod tests {
         let script = render_job_script("/workspace", &steps, &artifacts, &HashMap::new());
         assert!(script.contains("target/*.tar.gz"));
     }
+
+    #[test]
+    fn renders_upload_artifact_uses_step() {
+        let mut with = HashMap::new();
+        with.insert("name".into(), "report".into());
+        with.insert("path".into(), "out/report.xml".into());
+        let steps = vec![Step {
+            name: Some("upload".into()),
+            run: String::new(),
+            uses: Some("upload-artifact".into()),
+            working_directory: None,
+            env: HashMap::new(),
+            with,
+        }];
+        let script = render_job_script("/workspace", &steps, &[], &HashMap::new());
+        assert!(script.contains("upload_artifact 'report' 'out/report.xml'"));
+    }
+
+    #[test]
+    fn renders_step_with_subdirectory_and_extra_env() {
+        let mut step_env = HashMap::new();
+        step_env.insert("FOO".into(), "bar".into());
+        let steps = vec![Step {
+            name: Some("build".into()),
+            run: "make".into(),
+            uses: None,
+            working_directory: Some("pkg".into()),
+            env: step_env,
+            with: HashMap::new(),
+        }];
+        let extra = HashMap::from([("GLOBAL".into(), "1".into())]);
+        let script = render_job_script("/workspace", &steps, &[], &extra);
+        assert!(script.contains("cd $CI_PROJECT_DIR/pkg"));
+        assert!(script.contains("export FOO='bar'"));
+        assert!(script.contains("export GLOBAL='1'"));
+    }
 }

@@ -112,5 +112,55 @@ mod tests {
         assert!(!is_indexable_path("dist/bundle.js"));
         assert!(!is_indexable_path("Cargo.lock"));
         assert!(is_indexable_path("package-lock.json"));
+        assert!(!is_indexable_path("noextension"));
+    }
+
+    #[tokio::test]
+    async fn list_indexable_paths_from_git_repo() {
+        use std::process::Command;
+        let dir = tempfile::TempDir::new().unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["config", "user.email", "t@e.com"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["config", "user.name", "T"])
+            .status()
+            .unwrap();
+        std::fs::write(dir.path().join("src.rs"), "fn main() {}").unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["add", "."])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["commit", "-q", "-m", "init"])
+            .status()
+            .unwrap();
+        let sha = String::from_utf8(
+            Command::new("git")
+                .current_dir(dir.path())
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap();
+        let sha = sha.trim();
+        let paths = list_indexable_paths(dir.path(), sha).await.unwrap();
+        assert!(paths.iter().any(|p| p == "src.rs"));
+        let content = read_blob_at_commit(dir.path(), sha, "src.rs")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(content.contains("fn main"));
     }
 }

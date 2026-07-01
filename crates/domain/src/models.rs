@@ -1061,5 +1061,25 @@ mod tests {
         };
         assert!(req.validate().is_err());
     }
+
+    #[test]
+    fn gitops_defaults() {
+        let req: CreateGitOpsWebhookRequest = serde_json::from_str(
+            r#"{"name":"hook","url":"https://example.com/hook","provider":"generic"}"#,
+        )
+        .unwrap();
+        assert!(req.enabled);
+        assert_eq!(req.events, vec!["push"]);
+        assert_eq!(req.provider.as_deref(), Some("generic"));
+    }
+
+    #[test]
+    fn deploy_key_defaults_read_only() {
+        let req: CreateDeployKeyRequest = serde_json::from_str(
+            r#"{"title":"ci","public_key":"ssh-ed25519 AAAA"}"#,
+        )
+        .unwrap();
+        assert!(req.read_only);
+    }
 }
 
