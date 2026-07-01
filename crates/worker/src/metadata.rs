@@ -935,10 +935,15 @@ mod tests {
     #[test]
     fn import_tls_insecure_reads_env() {
         let prev = std::env::var("IMPORT_TLS_INSECURE").ok();
-        std::env::set_var("IMPORT_TLS_INSECURE", "true");
-        assert!(import_tls_insecure());
+
+        for value in ["true", "1", "yes", "TRUE", "YES"] {
+            std::env::set_var("IMPORT_TLS_INSECURE", value);
+            assert!(import_tls_insecure(), "expected true for {value}");
+        }
+
         std::env::remove_var("IMPORT_TLS_INSECURE");
         assert!(!import_tls_insecure());
+
         if let Some(value) = prev {
             std::env::set_var("IMPORT_TLS_INSECURE", value);
         }
@@ -950,19 +955,6 @@ mod tests {
             github_api_base("http://github.com"),
             "https://api.github.com"
         );
-    }
-
-    #[test]
-    fn import_tls_insecure_accepts_common_truthy_values() {
-        let prev = std::env::var("IMPORT_TLS_INSECURE").ok();
-        for value in ["1", "yes", "TRUE", "YES"] {
-            std::env::set_var("IMPORT_TLS_INSECURE", value);
-            assert!(import_tls_insecure(), "expected true for {value}");
-        }
-        std::env::remove_var("IMPORT_TLS_INSECURE");
-        if let Some(value) = prev {
-            std::env::set_var("IMPORT_TLS_INSECURE", value);
-        }
     }
 
     #[test]

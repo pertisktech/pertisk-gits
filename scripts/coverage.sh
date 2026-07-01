@@ -22,17 +22,18 @@ echo "Enforcing ${THRESHOLD}% line coverage on unit-testable library crates..."
 for pkg in pertisk-cicd pertisk-search pertisk-domain pertisk-worker; do
   crate="${pkg#pertisk-}"
   threshold="${THRESHOLD}"
-  extra_args=()
   if [ "$pkg" = "pertisk-worker" ]; then
     threshold="${WORKER_COVERAGE_THRESHOLD:-10}"
   fi
-  if [ "$pkg" = "pertisk-domain" ]; then
-    # org_groups.rs is async DB-only; pure helpers are covered in org_path.rs tests.
-    extra_args=(--exclude-files "crates/domain/src/org_groups.rs")
-  fi
   echo "  checking ${pkg} (lib, crates/${crate}/src, threshold=${threshold}%)..."
-  cargo tarpaulin --ignore-config -p "$pkg" --lib \
-    --include-files "crates/${crate}/src/*" \
-    "${extra_args[@]}" \
-    --fail-under "$threshold"
+  if [ "$pkg" = "pertisk-domain" ]; then
+    cargo tarpaulin --ignore-config -p "$pkg" --lib \
+      --include-files "crates/${crate}/src/*" \
+      --exclude-files "crates/domain/src/org_groups.rs" \
+      --fail-under "$threshold"
+  else
+    cargo tarpaulin --ignore-config -p "$pkg" --lib \
+      --include-files "crates/${crate}/src/*" \
+      --fail-under "$threshold"
+  fi
 done

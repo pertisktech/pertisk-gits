@@ -203,20 +203,15 @@ mod tests {
     }
 
     #[test]
-    fn default_index_root_falls_back_to_data_search() {
+    fn default_index_root_respects_env_and_fallback() {
         let prev = std::env::var("SEARCH_INDEX_ROOT").ok();
-        std::env::remove_var("SEARCH_INDEX_ROOT");
-        assert_eq!(default_index_root(), PathBuf::from("data/search"));
-        if let Some(value) = prev {
-            std::env::set_var("SEARCH_INDEX_ROOT", value);
-        }
-    }
 
-    #[test]
-    fn default_index_root_reads_env_override() {
-        let prev = std::env::var("SEARCH_INDEX_ROOT").ok();
         std::env::set_var("SEARCH_INDEX_ROOT", "/tmp/custom-index");
         assert_eq!(default_index_root(), PathBuf::from("/tmp/custom-index"));
+
+        std::env::remove_var("SEARCH_INDEX_ROOT");
+        assert_eq!(default_index_root(), PathBuf::from("data/search"));
+
         if let Some(value) = prev {
             std::env::set_var("SEARCH_INDEX_ROOT", value);
         } else {
