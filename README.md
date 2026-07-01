@@ -73,6 +73,8 @@ Private projects require authentication for clone and push.
 
 ## Packaging & deploy
 
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for reverse proxy, gateway, and HTTP/3 setup.
+
 Like [pertisk-proxy](https://github.com/pertisktech/pertisk-proxy), packages are built with Docker cross-compile + fpm (DEB/RPM).
 
 ```bash

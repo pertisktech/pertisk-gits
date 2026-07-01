@@ -1,5 +1,7 @@
 # Reverse proxy for Pertisk Gits (single domain)
 
+Overview and gateway options: [docs/DEPLOYMENT.md](../docs/DEPLOYMENT.md).
+
 `pertisk-gits` serves **everything** on one port (default `8080`):
 
 | Path | Handler |
