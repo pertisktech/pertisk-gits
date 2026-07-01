@@ -52,6 +52,7 @@ mod deploy_keys;
 mod db;
 mod gitops;
 mod import;
+mod email_templates;
 mod notifications;
 mod org;
 mod password;

@@ -1504,6 +1504,23 @@ export const api = {
       body: JSON.stringify(to ? { to } : {}),
     }, token),
 
+  previewSmtpTemplate: async (token: string, template: string) => {
+    const query = `?template=${encodeURIComponent(template)}`
+    const response = await authFetch(`/admin/notifications/smtp/preview${query}`, {}, token)
+    const body = await response.text().catch(() => '')
+    if (!response.ok) {
+      let message = 'Failed to load email preview'
+      try {
+        const json = JSON.parse(body) as { error?: string }
+        if (typeof json.error === 'string') message = json.error
+      } catch {
+        // non-JSON error body
+      }
+      throw new Error(message)
+    }
+    return body
+  },
+
   listAdminUsers: (token: string, approvalStatus?: AdminUser['approval_status']) => {
     const query = approvalStatus
       ? `?approval_status=${encodeURIComponent(approvalStatus)}`

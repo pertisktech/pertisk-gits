@@ -6,6 +6,20 @@ import type { SmtpSettings } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { Checkbox, PrimaryButton, SecondaryButton } from './ui'
 
+const EMAIL_TEMPLATES = [
+  { id: 'test', label: 'SMTP test' },
+  { id: 'login', label: 'Login' },
+  { id: 'registration', label: 'Registration' },
+  { id: 'registration_pending', label: 'Registration (pending)' },
+  { id: 'admin_registration', label: 'Admin: new user' },
+  { id: 'approval', label: 'Account approved' },
+  { id: 'merge_request_opened', label: 'Pull request opened' },
+  { id: 'merge_request_merged', label: 'Pull request merged' },
+  { id: 'pipeline_failed', label: 'Pipeline failed' },
+] as const
+
+type EmailTemplateId = (typeof EMAIL_TEMPLATES)[number]['id']
+
 type FormState = {
   enabled: boolean
   host: string
@@ -46,10 +60,17 @@ export function AdminSmtpPanel() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [form, setForm] = useState<FormState | null>(null)
+  const [previewTemplate, setPreviewTemplate] = useState<EmailTemplateId>('test')
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-smtp-settings'],
     queryFn: () => api.getSmtpSettings(token!),
+    enabled: Boolean(token),
+  })
+
+  const preview = useQuery({
+    queryKey: ['admin-smtp-preview', previewTemplate],
+    queryFn: () => api.previewSmtpTemplate(token!, previewTemplate),
     enabled: Boolean(token),
   })
 
@@ -290,6 +311,53 @@ export function AdminSmtpPanel() {
           </div>
         </form>
       )}
+
+      <div className="app-panel-body border-t border-border">
+        <p className="text-sm font-medium text-text-primary mb-1">Email template previews</p>
+        <p className="text-xs text-text-secondary mb-3">
+          All notification emails include your instance logo and URL in the header and footer.
+        </p>
+
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {EMAIL_TEMPLATES.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              className={`px-2.5 py-1 rounded-md text-xs font-medium border transition-colors ${
+                previewTemplate === template.id
+                  ? 'bg-accent text-accent-fg border-accent'
+                  : 'bg-surface-secondary text-text-secondary border-border hover:text-text-primary'
+              }`}
+              onClick={() => setPreviewTemplate(template.id)}
+            >
+              {template.label}
+            </button>
+          ))}
+        </div>
+
+        {preview.isLoading && (
+          <div className="flex items-center gap-2 text-text-secondary text-sm py-8 justify-center">
+            <Loader2 size={16} className="animate-spin" />
+            Loading preview…
+          </div>
+        )}
+
+        {preview.isError && (
+          <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+            {(preview.error as Error).message}
+          </div>
+        )}
+
+        {preview.data && (
+          <iframe
+            title={`Email preview: ${previewTemplate}`}
+            srcDoc={preview.data}
+            className="w-full rounded-lg border border-border bg-white"
+            style={{ height: '520px' }}
+            sandbox=""
+          />
+        )}
+      </div>
     </div>
   )
 }

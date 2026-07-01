@@ -1,12 +1,12 @@
 use std::sync::{Arc, OnceLock};
 
 use axum::{
-    extract::State,
+    extract::{Query, State},
     routing::{get, post},
     Json, Router,
 };
 use lettre::message::header::ContentType;
-use lettre::message::Mailbox;
+use lettre::message::{Mailbox, MultiPart, SinglePart};
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::{AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor};
 use pertisk_domain::DomainError;
@@ -15,6 +15,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
 
+use crate::email_templates::{self, EmailContent};
 use crate::secrets_crypto::SecretsCrypto;
 use crate::{admin, ApiError, AppState, AuthUser};
 
@@ -42,6 +43,10 @@ pub fn notification_routes() -> Router<AppState> {
         .route(
             "/admin/notifications/smtp/test",
             post(test_smtp_settings),
+        )
+        .route(
+            "/admin/notifications/smtp/preview",
+            get(preview_smtp_template),
         )
 }
 
@@ -105,6 +110,16 @@ pub struct UpdateSmtpSettingsRequest {
 struct TestSmtpRequest {
     #[serde(default)]
     to: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct PreviewSmtpQuery {
+    #[serde(default = "default_preview_template")]
+    template: String,
+}
+
+fn default_preview_template() -> String {
+    "test".into()
 }
 
 async fn get_smtp_settings(
@@ -224,6 +239,27 @@ async fn update_smtp_settings(
     Ok(Json(row_to_response(&row)))
 }
 
+async fn preview_smtp_template(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Query(query): Query<PreviewSmtpQuery>,
+) -> Result<axum::response::Html<String>, ApiError> {
+    admin::ensure_super_admin(&state.pool, auth.user_id).await?;
+    let row = load_smtp_row(&state.pool).await?;
+    let base_url = notification_context()
+        .map(|ctx| ctx.base_url.clone())
+        .unwrap_or_else(|| state.config.git_public_base_url.clone());
+    let from_name = if row.from_name.trim().is_empty() {
+        "Pertisk Gits".to_string()
+    } else {
+        row.from_name.clone()
+    };
+    let (_subject, content) = email_templates::sample_content(&query.template, &base_url);
+    Ok(axum::response::Html(email_templates::render_html(
+        &base_url, &from_name, &content,
+    )))
+}
+
 async fn test_smtp_settings(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -246,7 +282,17 @@ async fn test_smtp_settings(
         &state.secrets_crypto,
         &to,
         "Pertisk Gits SMTP test",
-        "This is a test email from your Pertisk Gits instance. SMTP is configured correctly.",
+        EmailContent::with_action(
+            "SMTP is configured",
+            vec![
+                "This is a test email from your Pertisk Gits instance.".into(),
+                "If you received this message, SMTP delivery is working.".into(),
+            ],
+            "Open Pertisk Gits",
+            notification_context()
+                .map(|ctx| ctx.base_url.clone())
+                .unwrap_or_else(|| state.config.git_public_base_url.clone()),
+        ),
         false,
     )
     .await
@@ -299,7 +345,7 @@ async fn send_email(
     crypto: &SecretsCrypto,
     to: &str,
     subject: &str,
-    body: &str,
+    content: EmailContent,
     require_enabled: bool,
 ) -> Result<(), anyhow::Error> {
     let settings = load_smtp_row_internal(pool).await?;
@@ -312,6 +358,17 @@ async fn send_email(
     if settings.from_email.trim().is_empty() {
         anyhow::bail!("From email is not configured");
     }
+
+    let base_url = notification_context()
+        .map(|ctx| ctx.base_url.clone())
+        .unwrap_or_default();
+    let from_name = if settings.from_name.trim().is_empty() {
+        "Pertisk Gits".to_string()
+    } else {
+        settings.from_name.clone()
+    };
+    let plain = email_templates::render_plain(&base_url, &from_name, &content);
+    let html = email_templates::render_html(&base_url, &from_name, &content);
 
     let from_mailbox = Mailbox::new(
         if settings.from_name.trim().is_empty() {
@@ -329,8 +386,11 @@ async fn send_email(
         .from(from_mailbox)
         .to(to_mailbox)
         .subject(subject)
-        .header(ContentType::TEXT_PLAIN)
-        .body(body.to_string())?;
+        .multipart(
+            MultiPart::alternative()
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_PLAIN).body(plain))
+                .singlepart(SinglePart::builder().header(ContentType::TEXT_HTML).body(html)),
+        )?;
 
     let password = if let Some(blob) = &settings.password_encrypted {
         Some(crypto.decrypt(blob)?)
@@ -418,10 +478,14 @@ pub fn notify_login(pool: PgPool, crypto: Arc<SecretsCrypto>, user_id: Uuid, met
             return;
         };
         let subject = "New sign-in to Pertisk Gits";
-        let body = format!(
-            "Your account was used to sign in via {method}.\n\nIf this was not you, change your password immediately."
+        let content = EmailContent::simple(
+            "New sign-in detected",
+            vec![
+                format!("Your account was used to sign in via {method}."),
+                "If this was not you, change your password immediately.".into(),
+            ],
         );
-        if let Err(err) = send_email(&pool, &crypto, &email, subject, &body, true).await {
+        if let Err(err) = send_email(&pool, &crypto, &email, subject, content, true).await {
             tracing::warn!("login notification email to {email} failed: {err:#}");
         }
     });
@@ -450,23 +514,35 @@ pub fn notify_user_registered(
         };
 
         let login_url = format!("{base_url}/login");
-        let (subject, body) = if pending_approval {
+        let (subject, content) = if pending_approval {
             (
                 "Pertisk Gits registration received",
-                format!(
-                    "Hi @{username},\n\nYour account was created and is awaiting administrator approval.\nYou will receive another email when your account is approved.\n\nSign in after approval: {login_url}"
+                EmailContent::with_action(
+                    "Registration received",
+                    vec![
+                        format!("Hi @{username},"),
+                        "Your account was created and is awaiting administrator approval. You will receive another email when your account is approved.".into(),
+                    ],
+                    "Sign in",
+                    login_url,
                 ),
             )
         } else {
             (
                 "Welcome to Pertisk Gits",
-                format!(
-                    "Hi @{username},\n\nYour account was created successfully.\n\nSign in: {login_url}"
+                EmailContent::with_action(
+                    "Welcome to Pertisk Gits",
+                    vec![
+                        format!("Hi @{username},"),
+                        "Your account was created successfully.".into(),
+                    ],
+                    "Sign in",
+                    login_url,
                 ),
             )
         };
 
-        if let Err(err) = send_email(&pool, &crypto, &email, subject, &body, true).await {
+        if let Err(err) = send_email(&pool, &crypto, &email, subject, content, true).await {
             tracing::warn!("registration email to {email} failed: {err:#}");
         }
 
@@ -476,14 +552,21 @@ pub fn notify_user_registered(
 
         let admin_url = format!("{base_url}/admin/users");
         let admin_subject = "New user registration pending approval";
-        let admin_body = format!(
-            "User @{username} ({email}) registered and is awaiting approval.\n\nReview: {admin_url}"
+        let admin_content = EmailContent::with_action(
+            "New registration pending",
+            vec![format!(
+                "User @{username} ({email}) registered and is awaiting approval."
+            )],
+            "Review users",
+            admin_url,
         );
         for admin_email in super_admin_emails(&pool).await {
             if admin_email == email {
                 continue;
             }
-            if let Err(err) = send_email(&pool, &crypto, &admin_email, admin_subject, &admin_body, true).await
+            if let Err(err) =
+                send_email(&pool, &crypto, &admin_email, admin_subject, admin_content.clone(), true)
+                    .await
             {
                 tracing::warn!("registration admin email to {admin_email} failed: {err:#}");
             }
@@ -514,10 +597,16 @@ pub fn notify_user_approved(
 
         let login_url = format!("{base_url}/login");
         let subject = "Your Pertisk Gits account was approved";
-        let body = format!(
-            "Hi @{username},\n\nYour account has been approved. You can now sign in.\n\nSign in: {login_url}"
+        let content = EmailContent::with_action(
+            "Account approved",
+            vec![
+                format!("Hi @{username},"),
+                "Your account has been approved. You can now sign in.".into(),
+            ],
+            "Sign in",
+            login_url,
         );
-        if let Err(err) = send_email(&pool, &crypto, &email, subject, &body, true).await {
+        if let Err(err) = send_email(&pool, &crypto, &email, subject, content, true).await {
             tracing::warn!("approval email to {email} failed: {err:#}");
         }
     });
@@ -546,9 +635,14 @@ pub fn notify_pull_request_opened(
         }
         let url = format!("{base_url}/groups/{org_path}/projects/{repo_slug}/pulls/{pull_number}");
         let subject = format!("[{repo_slug}] New pull request #{pull_number}");
-        let body = format!("Pull request #{pull_number} opened: {title}\n\nView: {url}");
+        let content = EmailContent::with_action(
+            format!("New pull request #{pull_number}"),
+            vec![format!("Pull request #{pull_number} opened: {title}")],
+            "View pull request",
+            url,
+        );
         for email in recipients {
-            if let Err(err) = send_email(&pool, &crypto, &email, &subject, &body, true).await {
+            if let Err(err) = send_email(&pool, &crypto, &email, &subject, content.clone(), true).await {
                 tracing::warn!("pull request opened email to {email} failed: {err:#}");
             }
         }
@@ -589,10 +683,15 @@ pub fn notify_pull_request_merged(
 
         let url = format!("{base_url}/groups/{org_path}/projects/{repo_slug}/pulls/{pull_number}");
         let subject = format!("[{repo_slug}] Pull request #{pull_number} merged");
-        let body = format!(
-            "Pull request #{pull_number} was merged by @{merger}: {title}\n\nView: {url}"
+        let content = EmailContent::with_action(
+            format!("Pull request #{pull_number} merged"),
+            vec![format!(
+                "Pull request #{pull_number} was merged by @{merger}: {title}"
+            )],
+            "View pull request",
+            url,
         );
-        if let Err(err) = send_email(&pool, &crypto, &author_email, &subject, &body, true).await {
+        if let Err(err) = send_email(&pool, &crypto, &author_email, &subject, content, true).await {
             tracing::warn!("pull request merged email to {author_email} failed: {err:#}");
         }
     });
@@ -700,12 +799,18 @@ pub fn notify_pipeline_failed(pool: PgPool, pipeline_run_id: Uuid) {
             failed_jobs.join(", ")
         };
         let subject = format!("[{repo_slug}] Pipeline failed on {ref_name}");
-        let body = format!(
-            "Pipeline failed for commit {short_sha} on {ref_name}.\nFailed jobs: {jobs}\n\nView run: {run_url}"
+        let content = EmailContent::with_action(
+            format!("Pipeline failed on {ref_name}"),
+            vec![
+                format!("Pipeline failed for commit {short_sha} on {ref_name}."),
+                format!("Failed jobs: {jobs}"),
+            ],
+            "View pipeline run",
+            run_url,
         );
 
         for email in recipients {
-            if let Err(err) = send_email(&pool, &crypto, &email, &subject, &body, true).await {
+            if let Err(err) = send_email(&pool, &crypto, &email, &subject, content.clone(), true).await {
                 tracing::warn!("pipeline failure email to {email} failed: {err:#}");
             }
         }
