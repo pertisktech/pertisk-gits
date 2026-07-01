@@ -20,7 +20,9 @@ export function GroupDangerZone({ token, orgPath, group, allGroups }: GroupDange
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [deleteOpen, setDeleteOpen] = useState(false)
-  const [confirmSlug, setConfirmSlug] = useState('')
+  const [confirmPath, setConfirmPath] = useState('')
+
+  const groupPath = groupUrlPath(group)
 
   const { data: repos = [] } = useQuery({
     queryKey: ['repositories', orgPath],
@@ -32,12 +34,22 @@ export function GroupDangerZone({ token, orgPath, group, allGroups }: GroupDange
     () => allGroups.filter((item) => item.parent_id === group.id).length,
     [allGroups, group.id],
   )
+  const nestedSubgroupCount = useMemo(
+    () =>
+      allGroups.filter(
+        (item) =>
+          item.id !== group.id &&
+          (item.full_path === group.full_path ||
+            item.full_path.startsWith(`${group.full_path}/`)),
+      ).length,
+    [allGroups, group.full_path, group.id],
+  )
   const repoCount = repos.length
-  const canDelete = subgroupCount === 0 && repoCount === 0
-  const slugOk = confirmSlug === group.slug
+  const hasContents = repoCount > 0 || subgroupCount > 0
+  const pathOk = confirmPath === groupPath
 
   const deleteMutation = useMutation({
-    mutationFn: () => api.deleteOrganization(token, orgPath),
+    mutationFn: () => api.deleteOrganization(token, orgPath, hasContents),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['organizations'] })
       const parentPath = group.parent_id
@@ -47,13 +59,16 @@ export function GroupDangerZone({ token, orgPath, group, allGroups }: GroupDange
     },
   })
 
-  const blockers: string[] = []
-  if (subgroupCount > 0) {
-    blockers.push(`${subgroupCount} subgroup${subgroupCount === 1 ? '' : 's'}`)
-  }
-  if (repoCount > 0) {
-    blockers.push(`${repoCount} repositor${repoCount === 1 ? 'y' : 'ies'}`)
-  }
+  const contentSummary = useMemo(() => {
+    const parts: string[] = []
+    if (repoCount > 0) {
+      parts.push(`${repoCount} repositor${repoCount === 1 ? 'y' : 'ies'}`)
+    }
+    if (nestedSubgroupCount > 0) {
+      parts.push(`${nestedSubgroupCount} subgroup${nestedSubgroupCount === 1 ? '' : 's'}`)
+    }
+    return parts.join(' and ')
+  }, [nestedSubgroupCount, repoCount])
 
   return (
     <>
@@ -64,27 +79,29 @@ export function GroupDangerZone({ token, orgPath, group, allGroups }: GroupDange
         className="border-dashboard-danger/30"
       >
         <div className="space-y-4">
-          {!canDelete && (
+          {hasContents && (
             <p className="text-sm text-text-secondary">
-              This group cannot be deleted while it still contains{' '}
-              {blockers.join(' and ')}. Move or delete them first.
+              This group contains {contentSummary}. You can delete everything in one step — all
+              repositories, subgroups, issues, pipelines, and Git data will be permanently removed.
             </p>
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-dashboard-danger/25 bg-dashboard-danger-bg/40 px-4 py-3">
             <div className="min-w-0">
-              <p className="text-sm font-medium text-text">Delete this group</p>
+              <p className="text-sm font-medium text-text">
+                {hasContents ? 'Delete group and all contents' : 'Delete this group'}
+              </p>
               <p className="text-xs text-text-secondary mt-0.5">
-                Permanently remove <span className="font-mono">{groupUrlPath(group)}</span> and its
-                settings. This cannot be undone.
+                Permanently remove <span className="font-mono">{groupPath}</span>
+                {hasContents ? ' and everything inside it' : ' and its settings'}. This cannot be
+                undone.
               </p>
             </div>
             <SecondaryButton
               type="button"
               className="!border-dashboard-danger/40 !text-dashboard-danger hover:!bg-dashboard-danger-bg"
-              disabled={!canDelete}
               onClick={() => {
-                setConfirmSlug('')
+                setConfirmPath('')
                 setDeleteOpen(true)
               }}
             >
@@ -103,29 +120,37 @@ export function GroupDangerZone({ token, orgPath, group, allGroups }: GroupDange
 
       <ConfirmModal
         open={deleteOpen}
-        title="Delete group?"
+        title={hasContents ? 'Delete group and all contents?' : 'Delete group?'}
         description={
           <div className="space-y-3 text-sm">
-            <p>
-              This will permanently delete <strong className="font-mono">{groupUrlPath(group)}</strong>.
-            </p>
+            {hasContents ? (
+              <p>
+                This will permanently delete <strong className="font-mono">{groupPath}</strong>,
+                including {contentSummary || 'all nested content'}. This cannot be undone.
+              </p>
+            ) : (
+              <p>
+                This will permanently delete <strong className="font-mono">{groupPath}</strong>.
+              </p>
+            )}
             <label className="block">
               <span className="text-text-secondary">
-                Type <span className="font-mono text-text">{group.slug}</span> to confirm
+                Type <span className="font-mono text-text">{groupPath}</span> to confirm
               </span>
               <input
                 className="app-field mt-1.5 font-mono"
-                value={confirmSlug}
-                onChange={(e) => setConfirmSlug(e.target.value)}
+                value={confirmPath}
+                onChange={(e) => setConfirmPath(e.target.value)}
                 autoComplete="off"
+                placeholder={groupPath}
               />
             </label>
           </div>
         }
-        confirmLabel="Delete group"
+        confirmLabel={hasContents ? 'Delete everything' : 'Delete group'}
         variant="danger"
         loading={deleteMutation.isPending}
-        confirmDisabled={!slugOk}
+        confirmDisabled={!pathOk}
         onConfirm={() => deleteMutation.mutate()}
         onCancel={() => {
           if (!deleteMutation.isPending) setDeleteOpen(false)

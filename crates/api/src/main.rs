@@ -1427,39 +1427,44 @@ async fn delete_organization(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(org_path): Path<String>,
+    Query(query): Query<DeleteOrganizationQuery>,
 ) -> Result<StatusCode, ApiError> {
     let org_path = crate::org::org_path_from_param(&org_path);
     let org = find_org_for_member(&state.pool, &org_path, auth.user_id).await?;
     permissions::ensure_org_owner(&state.pool, org.id, auth.user_id).await?;
 
-    let child_orgs: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)::bigint FROM organizations WHERE parent_id = $1",
-    )
-    .bind(org.id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
-
-    if child_orgs > 0 {
-        return Err(DomainError::Validation(
-            "cannot delete group: move or delete subgroups first".into(),
+    if !query.cascade {
+        let child_orgs: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)::bigint FROM organizations WHERE parent_id = $1",
         )
-        .into());
-    }
+        .bind(org.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    let repo_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)::bigint FROM repositories WHERE organization_id = $1",
-    )
-    .bind(org.id)
-    .fetch_one(&state.pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        if child_orgs > 0 {
+            return Err(DomainError::Validation(
+                "cannot delete group: move or delete subgroups first, or use ?cascade=true"
+                    .into(),
+            )
+            .into());
+        }
 
-    if repo_count > 0 {
-        return Err(DomainError::Validation(
-            "cannot delete group: move or delete repositories first".into(),
+        let repo_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*)::bigint FROM repositories WHERE organization_id = $1",
         )
-        .into());
+        .bind(org.id)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+        if repo_count > 0 {
+            return Err(DomainError::Validation(
+                "cannot delete group: move or delete repositories first, or use ?cascade=true"
+                    .into(),
+            )
+            .into());
+        }
     }
 
     sqlx::query("DELETE FROM organizations WHERE id = $1")
@@ -1660,6 +1665,12 @@ pub(crate) async fn ensure_can_write_repo(
     }
 
     Ok(())
+}
+
+#[derive(Deserialize)]
+struct DeleteOrganizationQuery {
+    #[serde(default)]
+    cascade: bool,
 }
 
 #[derive(Deserialize)]

@@ -614,8 +614,12 @@ export const api = {
       token,
     ),
 
-  deleteOrganization: (token: string, orgSlug: string) =>
-    request<void>(`/organizations/${orgApiPath(orgSlug)}`, { method: 'DELETE' }, token),
+  deleteOrganization: (token: string, orgSlug: string, cascade = false) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}${cascade ? '?cascade=true' : ''}`,
+      { method: 'DELETE' },
+      token,
+    ),
 
   getRepoBrowser: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<{ browser: RepoBrowser }>(
