@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { groupUrlPath } from '../lib/groupPath'
 import { ConfirmModal } from './ConfirmModal'
+import { TypeToConfirmField } from './TypeToConfirmField'
 import { SettingsPanel } from './settings/SettingsPanel'
 import { PrimaryButton, SecondaryButton, Select } from './ui'
 
@@ -151,17 +152,11 @@ export function RepoDangerZone({ token, orgSlug, repoSlug }: RepoDangerZoneProps
               </strong>
               .
             </p>
-            <label className="block">
-              <span className="text-text-secondary">
-                Type <span className="font-mono text-text">{repoSlug}</span> to confirm
-              </span>
-              <input
-                className="app-field mt-1.5 font-mono"
-                value={confirmSlug}
-                onChange={(e) => setConfirmSlug(e.target.value)}
-                autoComplete="off"
-              />
-            </label>
+            <TypeToConfirmField
+              confirmText={repoSlug}
+              value={confirmSlug}
+              onChange={setConfirmSlug}
+            />
           </div>
         }
         confirmLabel="Delete repository"
