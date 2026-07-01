@@ -312,6 +312,7 @@ async fn authenticate(pool: &PgPool, headers: &HeaderMap) -> Result<Option<AuthU
         .map_err(|e| GitHttpError::Internal(e.to_string()))
 }
 
+#[derive(Debug)]
 enum GitHttpError {
     NotFound,
     Unauthorized,
@@ -352,5 +353,22 @@ mod tests {
         assert!(is_smart_http_path("org/repo.git/git-receive-pack"));
         assert!(!is_smart_http_path("acme/repo"));
         assert!(!is_smart_http_path("/api/health"));
+    }
+
+    #[test]
+    fn parse_git_http_path_splits_org_and_service() {
+        let (org, repo, service) =
+            parse_git_http_path("acme/widget.git/info/refs").unwrap();
+        assert_eq!(org, "acme");
+        assert_eq!(repo, "widget");
+        assert!(matches!(service, GitHttpService::InfoRefs));
+
+        let (org, repo, service) =
+            parse_git_http_path("a/b/c/repo.git/git-upload-pack").unwrap();
+        assert_eq!(org, "a/b/c");
+        assert_eq!(repo, "repo");
+        assert!(matches!(service, GitHttpService::UploadPack));
+
+        assert!(parse_git_http_path("acme/repo/unknown").is_err());
     }
 }

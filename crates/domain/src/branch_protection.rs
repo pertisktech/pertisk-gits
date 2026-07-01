@@ -97,4 +97,22 @@ mod tests {
         assert!(branch_matches_pattern("release-1.0", "release-1.0"));
         assert!(!branch_matches_pattern("release-1.0-extra", "release-1.0"));
     }
+
+    #[test]
+    fn multiple_wildcards() {
+        assert!(branch_matches_pattern(
+            "release/1.0/hotfix",
+            "release/*/hotfix"
+        ));
+        assert!(!branch_matches_pattern(
+            "release/1.0/feature",
+            "release/*/hotfix"
+        ));
+    }
+
+    #[test]
+    fn leading_and_trailing_wildcard() {
+        assert!(branch_matches_pattern("feature-main-fix", "*main*"));
+        assert!(!branch_matches_pattern("feature-fix", "*main*"));
+    }
 }

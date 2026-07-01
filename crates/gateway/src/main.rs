@@ -114,3 +114,21 @@ fn main() {
     );
     server.run_forever();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::parse_upstream;
+
+    #[test]
+    fn parse_upstream_host_and_port() {
+        assert_eq!(parse_upstream("127.0.0.1:8081", 8081), ("127.0.0.1".into(), 8081));
+        assert_eq!(
+            parse_upstream("http://api:9000", 8081),
+            ("api".into(), 9000)
+        );
+        assert_eq!(
+            parse_upstream("https://registry.local", 8083),
+            ("registry.local".into(), 8083)
+        );
+    }
+}

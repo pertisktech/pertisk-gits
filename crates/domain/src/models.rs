@@ -1081,5 +1081,206 @@ mod tests {
         .unwrap();
         assert!(req.read_only);
     }
+
+    #[test]
+    fn register_request_valid_when_fields_ok() {
+        let req = RegisterRequest {
+            username: "alice".into(),
+            email: "alice@example.com".into(),
+            password: "password1".into(),
+            display_name: None,
+        };
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn admin_create_user_validates_email_and_password() {
+        let req = AdminCreateUserRequest {
+            username: "bob".into(),
+            email: "not-email".into(),
+            password: "short".into(),
+            display_name: None,
+            is_super_admin: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_organization_requires_name_and_slug() {
+        let req = CreateOrganizationRequest {
+            name: "".into(),
+            slug: "".into(),
+            description: None,
+            parent_path: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_repository_requires_slug() {
+        let req = CreateRepositoryRequest {
+            name: "Widget".into(),
+            slug: "".into(),
+            description: None,
+            visibility: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_api_token_requires_name() {
+        let req = CreateApiTokenRequest {
+            name: "".into(),
+            scopes: vec![],
+            organization_id: None,
+            repository_id: None,
+            expires_at: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_ssh_key_requires_public_key() {
+        let req = CreateSshKeyRequest {
+            title: "laptop".into(),
+            public_key: "".into(),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn gitops_webhook_rejects_invalid_url() {
+        let req = CreateGitOpsWebhookRequest {
+            name: "hook".into(),
+            url: "not-a-url".into(),
+            provider: Some("generic".into()),
+            secret: None,
+            events: vec!["push".into()],
+            enabled: true,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn update_gitops_webhook_validates_optional_url() {
+        let req = UpdateGitOpsWebhookRequest {
+            name: None,
+            url: Some("bad".into()),
+            secret: None,
+            events: None,
+            enabled: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_branch_protection_requires_pattern() {
+        let req = CreateBranchProtectionRequest {
+            branch_pattern: "".into(),
+            require_pull_request: None,
+            required_approvals: None,
+            require_status_checks: None,
+            allow_force_push: None,
+            allow_admin_bypass: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_pull_request_requires_branches() {
+        let req = CreatePullRequestRequest {
+            title: "Fix".into(),
+            body: None,
+            source_branch: "".into(),
+            target_branch: "main".into(),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_issue_requires_title() {
+        let req = CreateIssueRequest {
+            title: "".into(),
+            body: None,
+            assignee_id: None,
+            milestone_id: None,
+            label_ids: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_label_validates_color_length() {
+        let req = CreateLabelRequest {
+            name: "bug".into(),
+            color: Some("ff".into()),
+            description: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn transfer_repository_requires_target_path() {
+        let req = TransferRepositoryRequest {
+            target_org_path: "".into(),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn create_wiki_page_requires_title() {
+        let req = CreateWikiPageRequest {
+            title: "".into(),
+            slug: None,
+            body: None,
+            parent_slug: None,
+            position: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn ldap_login_requires_credentials() {
+        let req = LdapLoginRequest {
+            username: "".into(),
+            password: "".into(),
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn repo_visibility_serializes_snake_case() {
+        let json = serde_json::to_string(&RepoVisibility::Private).unwrap();
+        assert_eq!(json, "\"private\"");
+        let back: RepoVisibility = serde_json::from_str("\"public\"").unwrap();
+        assert_eq!(back, RepoVisibility::Public);
+    }
+
+    #[test]
+    fn import_provider_and_status_serialize() {
+        let provider = serde_json::to_string(&ImportProvider::Github).unwrap();
+        assert_eq!(provider, "\"github\"");
+        let status = serde_json::to_string(&ImportJobStatus::Mirroring).unwrap();
+        assert_eq!(status, "\"mirroring\"");
+    }
+
+    #[test]
+    fn issue_and_pr_state_round_trip() {
+        let issue: IssueState = serde_json::from_str("\"closed\"").unwrap();
+        assert_eq!(issue, IssueState::Closed);
+        let pr: PullRequestState = serde_json::from_str("\"merged\"").unwrap();
+        assert_eq!(pr, PullRequestState::Merged);
+        let review = serde_json::to_string(&ReviewState::ChangesRequested).unwrap();
+        assert_eq!(review, "\"changes_requested\"");
+    }
+
+    #[test]
+    fn deploy_key_read_only_false_when_set() {
+        let req: CreateDeployKeyRequest = serde_json::from_str(
+            r#"{"title":"ci","public_key":"ssh-ed25519 AAAA","read_only":false}"#,
+        )
+        .unwrap();
+        assert!(!req.read_only);
+    }
 }
 

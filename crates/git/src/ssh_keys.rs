@@ -62,3 +62,29 @@ pub async fn deploy_key_fingerprint_exists(
 
     Ok(exists)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const TEST_ED25519: &str = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJQWX8KFzA1MEVN0MBf95pgmMz5a2wfhHLAnPJwRhrUD test@example.com";
+
+    #[test]
+    fn parse_public_key_accepts_openssh_format() {
+        let parsed = parse_public_key(TEST_ED25519).unwrap();
+        assert!(parsed.public_key.starts_with("ssh-ed25519 "));
+        assert!(!parsed.fingerprint.is_empty());
+    }
+
+    #[test]
+    fn parse_public_key_rejects_garbage() {
+        assert!(parse_public_key("not a key").is_err());
+    }
+
+    #[test]
+    fn fingerprint_of_key_is_stable() {
+        let first = parse_public_key(TEST_ED25519).unwrap();
+        let key = PublicKey::from_openssh(TEST_ED25519).unwrap();
+        assert_eq!(fingerprint_of_key(&key), first.fingerprint);
+    }
+}

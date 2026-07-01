@@ -32,5 +32,10 @@ mod tests {
             DomainError::Validation("bad".into()).to_string(),
             "validation error: bad"
         );
+        assert_eq!(DomainError::Forbidden.to_string(), "forbidden");
+        assert_eq!(
+            DomainError::Internal("oops".into()).to_string(),
+            "internal error: oops"
+        );
     }
 }

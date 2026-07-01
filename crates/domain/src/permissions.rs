@@ -133,6 +133,13 @@ mod tests {
     }
 
     #[test]
+    fn max_repo_role_merges_two_roles() {
+        use RepoRole::*;
+        assert_eq!(max_repo_role(Some(Write), Some(Read)), Some(Write));
+        assert_eq!(max_repo_role(Some(Read), Some(Admin)), Some(Admin));
+    }
+
+    #[test]
     fn max_repo_role_pair_write_write() {
         assert_eq!(max_repo_role_pair(Write, Write), Write);
     }

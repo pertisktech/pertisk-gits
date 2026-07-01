@@ -1335,4 +1335,66 @@ mod tests {
         let detail = get_commit(&repo_path, &branches[0].sha).await.unwrap();
         assert_eq!(detail.message, "init");
     }
+
+    #[test]
+    fn validate_branch_name_rejects_invalid() {
+        assert!(validate_branch_name("").is_err());
+        assert!(validate_branch_name("bad name").is_err());
+        assert!(validate_branch_name("bad..name").is_err());
+        assert!(validate_branch_name("feature/foo").is_ok());
+    }
+
+    #[test]
+    fn validate_tag_name_rejects_slashes() {
+        assert!(validate_tag_name("v1/0").is_err());
+        assert!(validate_tag_name("v1.0.0").is_ok());
+    }
+
+    #[test]
+    fn parse_shortstat_extracts_counts() {
+        let stat = " README.md | 1 +\n 1 file changed, 1 insertion(+), 0 deletions(-)";
+        assert_eq!(parse_shortstat(stat), (1, 1, 0));
+    }
+
+    #[test]
+    fn parse_ls_tree_line_parses_blob() {
+        let line = "100644 blob deadbeef 42\tREADME.md";
+        let entry = parse_ls_tree_line(line, "src/").unwrap();
+        assert_eq!(entry.name, "README.md");
+        assert_eq!(entry.path, "src/README.md");
+        assert_eq!(entry.size, Some(42));
+    }
+
+    #[test]
+    fn format_git_failure_prefers_stderr() {
+        use std::process::Output;
+        let output = Output {
+            status: std::process::Command::new("false")
+                .status()
+                .unwrap(),
+            stdout: b"stdout".to_vec(),
+            stderr: b"stderr".to_vec(),
+        };
+        assert_eq!(
+            format_git_failure(&output, "merge failed"),
+            "merge failed: stderr; stdout"
+        );
+    }
+
+    #[test]
+    fn git_output_indicates_conflict_detects_markers() {
+        use std::process::Output;
+        let conflict = Output {
+            status: std::process::Command::new("true").status().unwrap(),
+            stdout: Vec::new(),
+            stderr: b"CONFLICT (content): Merge conflict in file".to_vec(),
+        };
+        assert!(git_output_indicates_conflict(&conflict));
+        let clean = Output {
+            status: std::process::Command::new("true").status().unwrap(),
+            stdout: Vec::new(),
+            stderr: b"Already up to date.".to_vec(),
+        };
+        assert!(!git_output_indicates_conflict(&clean));
+    }
 }

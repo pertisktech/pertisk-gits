@@ -91,6 +91,7 @@ mod tests {
         assert_eq!(split_git_repo_path("repo"), None);
         assert_eq!(split_git_repo_path("/a/b"), Some(("a", "b")));
         assert_eq!(split_git_repo_path("a.git"), None);
+        assert_eq!(split_git_repo_path("acme/"), None);
         assert_eq!(parent_org_path("a/b/"), Some("a".into()));
         assert_eq!(org_path_slug("a"), "a");
         assert_eq!(org_path_slug("/a/b/"), "b");

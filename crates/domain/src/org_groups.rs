@@ -175,5 +175,13 @@ mod tests {
             "gitlab/other"
         );
         assert_eq!(import_target_org_path("x", "x"), "x");
+        assert_eq!(
+            import_target_org_path("gitlab/mp", "mp/repo"),
+            "gitlab/mp"
+        );
+        assert_eq!(
+            import_target_org_path("a", "a/b/c/repo"),
+            "a/b/c"
+        );
     }
 }
