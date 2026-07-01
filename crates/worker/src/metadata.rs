@@ -777,10 +777,18 @@ fn gitlab_api_base(base_url: &str) -> String {
 }
 
 fn http_client() -> anyhow::Result<reqwest::Client> {
-    reqwest::Client::builder()
-        .user_agent("pertisk-gits-import")
-        .build()
-        .context("build http client")
+    let mut builder = reqwest::Client::builder().user_agent("pertisk-gits-import");
+    if import_tls_insecure() {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+    builder.build().context("build http client")
+}
+
+fn import_tls_insecure() -> bool {
+    matches!(
+        std::env::var("IMPORT_TLS_INSECURE").ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
+    )
 }
 
 #[derive(Debug, Deserialize)]

@@ -39,7 +39,15 @@ pub fn normalize_base_url(provider: ImportProvider, base_url: Option<&str>) -> S
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| default_base_url(provider));
-    raw.trim_end_matches('/').to_string()
+    ensure_url_scheme(raw.trim_end_matches('/'))
+}
+
+fn ensure_url_scheme(url: &str) -> String {
+    if url.starts_with("http://") || url.starts_with("https://") {
+        url.to_string()
+    } else {
+        format!("https://{url}")
+    }
 }
 
 pub fn normalize_token(token: &str) -> String {
@@ -135,10 +143,11 @@ pub async fn list_remote_repos(
 async fn validate_github_token(token: &str, base_url: &str) -> anyhow::Result<String> {
     let client = http_client()?;
     let api = api_base(ImportProvider::Github, base_url);
-    let response = github_get(&client, &format!("{api}/user"), token)
+    let url = format!("{api}/user");
+    let response = github_get(&client, &url, token)
         .send()
         .await
-        .context("github user request failed")?;
+        .with_context(|| format_import_request_error("GitHub", &url))?;
 
     if !response.status().is_success() {
         return Err(github_auth_error(response).await);
@@ -694,11 +703,65 @@ fn is_gitlab_personal_project(path_with_namespace: &str, username: &str) -> bool
     !path_with_namespace[prefix.len()..].contains('/')
 }
 
+fn import_tls_insecure() -> bool {
+    matches!(
+        std::env::var("IMPORT_TLS_INSECURE").ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
+    )
+}
+
+fn format_import_request_error(provider: &str, url: &str) -> String {
+    let mut hint = format!("{provider} API request to {url} failed");
+    if import_tls_insecure() {
+        hint.push_str(" (IMPORT_TLS_INSECURE is enabled)");
+    } else {
+        hint.push_str(
+            ". Check network egress from the server, the instance URL (include https://), and set IMPORT_TLS_INSECURE=true for self-hosted instances with a private CA",
+        );
+    }
+    hint
+}
+
 fn http_client() -> anyhow::Result<reqwest::Client> {
-    reqwest::Client::builder()
-        .user_agent("pertisk-gits-import")
-        .build()
-        .context("build http client")
+    let mut builder = reqwest::Client::builder().user_agent("pertisk-gits-import");
+    if import_tls_insecure() {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+    builder.build().context("build http client")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pertisk_domain::models::ImportProvider;
+
+    #[test]
+    fn normalize_base_url_adds_https_scheme() {
+        assert_eq!(
+            normalize_base_url(ImportProvider::Github, Some("github.com")),
+            "https://github.com"
+        );
+        assert_eq!(
+            normalize_base_url(ImportProvider::Gitlab, Some("git.example.com")),
+            "https://git.example.com"
+        );
+    }
+
+    #[test]
+    fn github_api_base_maps_public_host_to_api() {
+        assert_eq!(
+            github_api_base("https://github.com"),
+            "https://api.github.com"
+        );
+        assert_eq!(
+            github_api_base("https://github.com/"),
+            "https://api.github.com"
+        );
+        assert_eq!(
+            github_api_base("https://git.example.com"),
+            "https://git.example.com/api/v3"
+        );
+    }
 }
 
 fn github_get<'a>(

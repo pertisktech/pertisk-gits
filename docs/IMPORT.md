@@ -102,4 +102,5 @@ Migration: `migrations/20250709100000_phase65_import.sql`, `migrations/202507101
 | Job stays `pending` | Restart `pertisk-gits` after upgrade (API runs the import processor). Also check `sudo systemctl status pertisk-worker` if you use the separate worker service. |
 | `git clone --mirror failed` | Token scopes, network egress, private repo access |
 | `invalid GitHub/GitLab token` | Token expired or wrong instance URL for GitLab |
+| `GitHub API request to … failed` | Server cannot reach GitHub (firewall/proxy), bad instance URL, or TLS trust issue on self-hosted GitHub — set `IMPORT_TLS_INSECURE=true` only for dev/GHE with a private CA |
 | Slug conflict | Target slug already exists in the group — pick a different name or delete the existing repo |
