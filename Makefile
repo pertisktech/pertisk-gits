@@ -1,4 +1,4 @@
-.PHONY: build build-local build-package check test run run-release \
+.PHONY: build build-local build-package check test test-api run run-release \
 	infra infra-down dev-infra install-web web-dist web-dist-docker fix-perms fix-web-dist-owner \
 	dev dev-vite dev-local dev-serve dev-web dev-stop \
 	package package-clean package-amd64 package-arm64 package-deb package-rpm \
@@ -70,6 +70,9 @@ check:
 
 test:
 	$(CARGO) test --workspace
+
+test-api:
+	$(CARGO) test -p pertisk-api --lib
 
 test-coverage:
 	./scripts/coverage.sh 

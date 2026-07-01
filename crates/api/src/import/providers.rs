@@ -762,6 +762,22 @@ mod tests {
             "https://git.example.com/api/v3"
         );
     }
+
+    #[test]
+    fn slug_from_name_normalizes() {
+        assert_eq!(slug_from_name("My Project"), "my-project");
+        assert_eq!(slug_from_name("  Foo.Bar  "), "foo-bar");
+    }
+
+    #[test]
+    fn api_base_per_provider() {
+        use pertisk_domain::models::ImportProvider;
+        assert!(api_base(ImportProvider::Github, "https://github.com").contains("api.github.com"));
+        assert_eq!(
+            api_base(ImportProvider::Gitlab, "https://gitlab.com"),
+            "https://gitlab.com/api/v4"
+        );
+    }
 }
 
 fn github_get<'a>(

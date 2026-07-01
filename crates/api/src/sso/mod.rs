@@ -118,6 +118,50 @@ pub fn random_token(bytes: usize) -> String {
     base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, buf)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use pertisk_domain::models::AuthProviderType;
+
+    #[test]
+    fn random_token_has_expected_length() {
+        let token = random_token(32);
+        assert!(!token.is_empty());
+        assert_ne!(random_token(32), random_token(32));
+    }
+
+    #[test]
+    fn ensure_enabled_provider_rejects_disabled() {
+        let provider = AuthProvider {
+            id: Uuid::new_v4(),
+            name: "oidc".into(),
+            provider_type: AuthProviderType::Oidc,
+            enabled: false,
+            issuer_url: None,
+            client_id: None,
+            client_secret: None,
+            scopes: "openid".into(),
+            idp_entity_id: None,
+            idp_sso_url: None,
+            idp_certificate: None,
+            sp_entity_id: None,
+            ldap_url: None,
+            ldap_bind_dn: None,
+            ldap_bind_password: None,
+            ldap_base_dn: None,
+            ldap_user_filter: String::new(),
+            ldap_email_attr: "mail".into(),
+            ldap_display_name_attr: "cn".into(),
+            ldap_username_attr: "uid".into(),
+            ldap_group_filter: String::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        assert!(ensure_enabled_provider(&provider).is_err());
+    }
+}
+
 pub struct ExternalUser {
     pub subject: String,
     pub email: String,

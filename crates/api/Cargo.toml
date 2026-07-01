@@ -3,6 +3,10 @@ name = "pertisk-api"
 version.workspace = true
 edition.workspace = true
 
+[lib]
+name = "pertisk_api"
+path = "src/lib.rs"
+
 [[bin]]
 name = "pertisk-api"
 path = "src/main.rs"
@@ -45,3 +49,6 @@ sysinfo = "0.33"
 prometheus = { workspace = true }
 tar = "0.4"
 tokio-util = { version = "0.7", features = ["io"] }
+
+[dev-dependencies]
+tempfile = "3"

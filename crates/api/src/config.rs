@@ -79,7 +79,54 @@ impl Config {
 
         Some(match port {
             22 => format!("git@{host}:{path}"),
-            _ => format!("ssh://git@{host}:{port}/{path}"),
+            _ =>         format!("ssh://git@{host}:{port}/{path}"),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clone_url_http_format() {
+        let cfg = Config {
+            host: "0.0.0.0".into(),
+            port: 8081,
+            database_url: "postgres://localhost/test".into(),
+            jwt_secret: "secret".into(),
+            repos_root: PathBuf::from("data/repos"),
+            git_public_base_url: "https://git.example.com".into(),
+            git_ssh_public_host: None,
+            git_ssh_port: None,
+            git_ssh_host_key_path: PathBuf::from("data/ssh_host_key"),
+            search_index_root: PathBuf::from("data/search"),
+            web_dist: None,
+        };
+        assert_eq!(
+            cfg.clone_url_http("acme", "widget"),
+            "https://git.example.com/acme/widget.git"
+        );
+    }
+
+    #[test]
+    fn clone_url_ssh_custom_port() {
+        let cfg = Config {
+            host: "0.0.0.0".into(),
+            port: 8081,
+            database_url: "postgres://localhost/test".into(),
+            jwt_secret: "secret".into(),
+            repos_root: PathBuf::from("data/repos"),
+            git_public_base_url: "https://git.example.com".into(),
+            git_ssh_public_host: Some("git.example.com".into()),
+            git_ssh_port: Some(2222),
+            git_ssh_host_key_path: PathBuf::from("data/ssh_host_key"),
+            search_index_root: PathBuf::from("data/search"),
+            web_dist: None,
+        };
+        assert_eq!(
+            cfg.clone_url_ssh("acme", "widget").as_deref(),
+            Some("ssh://git@git.example.com:2222/acme/widget.git")
+        );
     }
 }

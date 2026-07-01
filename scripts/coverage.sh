@@ -23,4 +23,8 @@ for pkg in pertisk-cicd pertisk-search; do
 done
 
 echo ""
-echo "Note: pertisk-domain (~73%), pertisk-git (~52%), pertisk-registry (~29%), and pertisk-api (~3%) need more integration tests for 80%+."
+echo "pertisk-api lib coverage (unit tests; handlers need integration tests):"
+cargo llvm-cov -p pertisk-api --lib --summary-only 2>&1 | rg "^TOTAL" || true
+
+echo ""
+echo "Note: pertisk-domain (~73%), pertisk-git (~52%), pertisk-registry (~29%) need more integration tests for 80%+."
