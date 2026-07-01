@@ -304,8 +304,7 @@ pub async fn run() -> anyhow::Result<()> {
     let mut app = Router::new()
         .route("/health", get(health))
         .route("/health/live", get(health_live))
-        .nest("/api/v1", api_routes)
-        .layer(from_fn_with_state(git_state, git_smart_http_middleware));
+        .nest("/api/v1", api_routes);
 
     if std::env::var("REGISTRY_EMBEDDED").unwrap_or_else(|_| "1".into()) != "0" {
         let registry_config = pertisk_registry::config::RegistryConfig::from_env()?;
@@ -357,6 +356,11 @@ pub async fn run() -> anyhow::Result<()> {
         app = app.layer(compression::compression_layer());
         tracing::info!("HTTP response compression enabled (preference: zstd > br > gzip)");
     }
+
+    // Git smart HTTP paths (`/{org}/{repo}.git/info/refs`, etc.) must be handled before the
+    // SPA fallback; when the layer only wrapped `/health` + `/api/v1`, clone URLs returned
+    // `index.html` and git reported "not valid: is this a git repository?".
+    app = app.layer(from_fn_with_state(git_state, git_smart_http_middleware));
 
     let app = app.with_state(state.clone());
 
