@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { forwardRef } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { paginationMeta } from '../lib/pagination'
@@ -240,6 +241,78 @@ export function Select({
 }
 
 export { RefSelect } from './RefSelect'
+
+export function Toolbar({
+  variant = 'panel',
+  children,
+  className,
+}: {
+  variant?: 'panel' | 'repo'
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={cn('app-toolbar', variant === 'repo' && 'app-toolbar--repo', className)}>
+      {children}
+    </div>
+  )
+}
+
+export function ToolbarRow({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('app-toolbar-row', className)}>{children}</div>
+}
+
+export function ToolbarCommitRow({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('app-toolbar-commit-row', className)}>{children}</div>
+}
+
+export function ToolbarGroup({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('app-ref-toolbar-group', className)}>{children}</div>
+}
+
+export function ToolbarActions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('app-toolbar-right', className)}>{children}</div>
+}
+
+export function ToolbarDivider({ className }: { className?: string }) {
+  return <div className={cn('app-toolbar-divider', className)} aria-hidden />
+}
+
+export function ToolbarButtonGroup({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn('app-toolbar-btn-group', className)}>{children}</div>
+}
+
+export function ToolbarIconButton({
+  children,
+  label,
+  className,
+  ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  /** Visible label beside the icon (responsive layouts may hide it). */
+  label?: string
+}) {
+  return (
+    <button
+      type="button"
+      className={cn('app-toolbar-btn', label && 'app-toolbar-btn--text', className)}
+      data-no-global-button-hover="true"
+      {...props}
+    >
+      {children}
+      {label && <span className="hidden sm:inline">{label}</span>}
+    </button>
+  )
+}
+
+export const ToolbarPopover = forwardRef<HTMLDivElement, { children: ReactNode; className?: string }>(
+  function ToolbarPopover({ children, className }, ref) {
+    return (
+      <div ref={ref} className={cn('app-toolbar-popover', className)}>
+        {children}
+      </div>
+    )
+  },
+)
 
 export function TablePagination({
   page,

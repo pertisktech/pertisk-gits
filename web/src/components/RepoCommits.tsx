@@ -15,7 +15,7 @@ import { pipelineRunForCommit } from '../lib/pipelineRunIndex'
 import { cn } from '../utils/cn'
 import { useRepoPipelineRunsIndex } from '../hooks/useRepoPipelineRunsIndex'
 import { PipelineRunStatusLink } from './PipelineRunStatusLink'
-import { EmptyState, RefSelect, TablePagination } from './ui'
+import { EmptyState, RefSelect, TablePagination, Toolbar, ToolbarGroup } from './ui'
 import { useClientPagination } from '../lib/pagination'
 
 export function commitUrl(orgSlug: string, repoSlug: string, sha: string) {
@@ -89,8 +89,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
 
   return (
     <div className="app-panel">
-      <div className="app-toolbar">
-        <div className="app-ref-toolbar-group">
+      <Toolbar>
+        <ToolbarGroup>
           <RefSelect
             id="commits-branch-select"
             refKind="branch"
@@ -112,8 +112,8 @@ export function RepoCommits({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
               </>
             )}
           </span>
-        </div>
-      </div>
+        </ToolbarGroup>
+      </Toolbar>
 
       {error && (
         <div className="app-panel-body p-4 text-sm text-dashboard-danger">

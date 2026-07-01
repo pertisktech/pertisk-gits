@@ -10,7 +10,7 @@ import { useRepoPipelineRunsIndex } from '../hooks/useRepoPipelineRunsIndex'
 import { CreateTagDialog } from './CreateTagDialog'
 import { PipelineRunStatusLink } from './PipelineRunStatusLink'
 import { commitUrl } from './RepoCommits'
-import { EmptyState, PrimaryButton, TablePagination } from './ui'
+import { EmptyState, PrimaryButton, TablePagination, Toolbar, ToolbarActions } from './ui'
 import { useClientPagination } from '../lib/pagination'
 
 interface RepoTagsProps {
@@ -95,24 +95,25 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
   return (
     <>
       <div className="app-panel">
-        <div className="app-toolbar flex-wrap gap-2">
+        <Toolbar>
           <span className="text-xs text-text-secondary">
             {tags.length} tag{tags.length === 1 ? '' : 's'}
           </span>
           {canCreate && (
-            <PrimaryButton
-              type="button"
-              className="ml-auto"
-              onClick={() => {
-                setCreateError(null)
-                setShowCreate(true)
-              }}
-            >
-              <Plus size={14} />
-              New tag
-            </PrimaryButton>
+            <ToolbarActions>
+              <PrimaryButton
+                type="button"
+                onClick={() => {
+                  setCreateError(null)
+                  setShowCreate(true)
+                }}
+              >
+                <Plus size={14} />
+                New tag
+              </PrimaryButton>
+            </ToolbarActions>
           )}
-        </div>
+        </Toolbar>
 
         {tags.length === 0 ? (
           <EmptyState

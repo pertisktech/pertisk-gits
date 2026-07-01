@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { FileCode2, Loader2, Search } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../api/client'
+import { ToolbarIconButton, ToolbarPopover } from './ui'
 
 interface RepoFindFilePopoverProps {
   token?: string | null
@@ -67,18 +68,15 @@ export function RepoFindFilePopover({
   }
 
   return (
-    <div className="app-find-file" ref={rootRef}>
-      <button
-        type="button"
-        className="app-code-dropdown-trigger"
-        data-no-global-button-hover="true"
+    <ToolbarPopover ref={rootRef}>
+      <ToolbarIconButton
         aria-expanded={open}
         title="Find file (t)"
+        aria-label="Find file"
         onClick={() => onOpenChange(!open)}
       >
         <Search size={14} />
-        <span className="sr-only">Find file</span>
-      </button>
+      </ToolbarIconButton>
 
       {open && (
         <div className="app-find-file-panel" role="dialog" aria-label="Find file">
@@ -128,6 +126,6 @@ export function RepoFindFilePopover({
           )}
         </div>
       )}
-    </div>
+    </ToolbarPopover>
   )
 }

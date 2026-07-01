@@ -17,7 +17,7 @@ import { PipelineGraph } from './PipelineGraph'
 import { PipelineRunsTable } from './PipelineRunsTable'
 import { PipelineSummary } from './PipelineSummary'
 import { RunPipelineDialog, type RunPipelineParams } from './RunPipelineDialog'
-import { EmptyState, PrimaryButton, SecondaryButton } from './ui'
+import { EmptyState, PrimaryButton, SecondaryButton, Toolbar, ToolbarActions } from './ui'
 
 function PipelineMigratePanel({
   suggestions,
@@ -145,6 +145,7 @@ export function RepoPipelines({
   const branches = browser?.branches ?? []
   const tags = browser?.tags ?? []
   const repoEmpty = browserData?.browser.empty ?? false
+  const configRefExists = branches.includes(configRef)
 
   const { data: hasPipelineConfig = false, isLoading: configLoading } = useQuery({
     queryKey: ['pipeline-config', orgSlug, repoSlug, configRef],
@@ -159,15 +160,25 @@ export function RepoPipelines({
         (entry) => PIPELINE_CONFIG_FILES.has(entry.name) && entry.kind === 'blob',
       )
     },
-    enabled: Boolean(token && orgSlug && repoSlug && configRef && browserData && !repoEmpty),
+    enabled: Boolean(
+      token && orgSlug && repoSlug && configRef && browserData && !repoEmpty && configRefExists,
+    ),
   })
 
   const { data: migrateData, isLoading: migrateLoading } = useQuery({
     queryKey: ['pipeline-migrate', orgSlug, repoSlug, configRef],
     queryFn: () => api.getPipelineMigrate(token, orgSlug, repoSlug, configRef),
     enabled: Boolean(
-      token && orgSlug && repoSlug && configRef && browserData && !repoEmpty && !hasPipelineConfig,
+      token &&
+        orgSlug &&
+        repoSlug &&
+        configRef &&
+        browserData &&
+        !repoEmpty &&
+        configRefExists &&
+        !hasPipelineConfig,
     ),
+    retry: false,
   })
 
   const migrationSuggestions = useMemo(
@@ -341,22 +352,24 @@ jobs:
   return (
     <div className="space-y-4 min-w-0">
       <div className="app-panel">
-        <div className="app-toolbar flex-wrap justify-end gap-2">
+        <Toolbar>
           {!contentLoading && hasPipelineConfig && (
-            <PrimaryButton
-              type="button"
-              disabled={toolbarDisabled || triggerMutation.isPending}
-              onClick={() => openRunDialog()}
-            >
-              {triggerMutation.isPending ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Play size={14} />
-              )}
-              Run pipeline
-            </PrimaryButton>
+            <ToolbarActions>
+              <PrimaryButton
+                type="button"
+                disabled={toolbarDisabled || triggerMutation.isPending}
+                onClick={() => openRunDialog()}
+              >
+                {triggerMutation.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Play size={14} />
+                )}
+                Run pipeline
+              </PrimaryButton>
+            </ToolbarActions>
           )}
-        </div>
+        </Toolbar>
 
         <div className="app-panel-body flush space-y-0">
           <div className="px-4 pt-4 pb-2 border-b border-naturals-n4">

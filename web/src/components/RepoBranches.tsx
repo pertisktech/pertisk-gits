@@ -11,7 +11,7 @@ import { ConfirmModal } from './ConfirmModal'
 import { CreateBranchDialog } from './CreateBranchDialog'
 import { PipelineRunStatusLink } from './PipelineRunStatusLink'
 import { commitUrl } from './RepoCommits'
-import { EmptyState, PrimaryButton, TablePagination } from './ui'
+import { EmptyState, PrimaryButton, TablePagination, Toolbar, ToolbarActions } from './ui'
 import { useClientPagination } from '../lib/pagination'
 
 interface RepoBranchesProps {
@@ -114,24 +114,25 @@ export function RepoBranches({ token, orgSlug, repoSlug, defaultBranch }: RepoBr
   return (
     <>
       <div className="app-panel">
-        <div className="app-toolbar flex-wrap gap-2">
+        <Toolbar>
           <span className="text-xs text-text-secondary">
             {branches.length} branch{branches.length === 1 ? '' : 'es'}
           </span>
           {canManage && (
-            <PrimaryButton
-              type="button"
-              className="ml-auto"
-              onClick={() => {
-                setCreateError(null)
-                setShowCreate(true)
-              }}
-            >
-              <Plus size={14} />
-              New branch
-            </PrimaryButton>
+            <ToolbarActions>
+              <PrimaryButton
+                type="button"
+                onClick={() => {
+                  setCreateError(null)
+                  setShowCreate(true)
+                }}
+              >
+                <Plus size={14} />
+                New branch
+              </PrimaryButton>
+            </ToolbarActions>
           )}
-        </div>
+        </Toolbar>
 
         {branches.length === 0 ? (
           <EmptyState

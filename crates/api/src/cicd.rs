@@ -702,7 +702,16 @@ async fn get_pipeline_migrate(
         .filter(|r| !r.trim().is_empty())
         .unwrap_or_else(|| repo.default_branch.clone());
     let ref_kind = parse_pipeline_ref_kind(&query.ref_kind)?;
-    let commit_sha = resolve_git_ref(&repo_path, &ref_name, ref_kind).await?;
+
+    let Some(commit_sha) =
+        resolve_pipeline_commit_sha(&repo_path, &ref_name, ref_kind, &repo.default_branch).await
+    else {
+        return Ok(Json(PipelineMigrateResponse {
+            has_pertisk_config: false,
+            detected: Vec::new(),
+            suggestions: Vec::new(),
+        }));
+    };
 
     let has_pertisk_config = read_pipeline_config(&repo_path, &commit_sha)
         .await
@@ -2633,6 +2642,25 @@ async fn resolve_git_ref(
     }
 
     Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+async fn resolve_pipeline_commit_sha(
+    repo_path: &FsPath,
+    ref_name: &str,
+    kind: RefKind,
+    fallback_branch: &str,
+) -> Option<String> {
+    if let Ok(sha) = resolve_git_ref(repo_path, ref_name, kind).await {
+        return Some(sha);
+    }
+
+    if matches!(kind, RefKind::Branch) && ref_name != fallback_branch {
+        if let Ok(sha) = resolve_git_ref(repo_path, fallback_branch, RefKind::Branch).await {
+            return Some(sha);
+        }
+    }
+
+    None
 }
 
 fn normalize_git_ref(ref_name: &str, kind: RefKind) -> String {

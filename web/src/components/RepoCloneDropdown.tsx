@@ -2,6 +2,7 @@ import { ChevronDown, Download, GitBranch, Lock } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import { handleUnauthorizedResponse } from '../auth/session'
+import { PrimaryButton } from './ui'
 import { CopyField } from './RepoClonePushGuide'
 
 type CloneMode = 'https' | 'ssh' | 'download'
@@ -83,17 +84,16 @@ export function RepoCloneDropdown({
 
   return (
     <div className="app-clone-dropdown" ref={ref}>
-      <button
+      <PrimaryButton
         type="button"
-        className="app-code-dropdown-trigger"
-        data-no-global-button-hover="true"
         aria-expanded={open}
+        aria-haspopup="dialog"
         onClick={() => setOpen((v) => !v)}
       >
         <GitBranch size={15} />
-        <span>Code</span>
+        Code
         <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
-      </button>
+      </PrimaryButton>
 
       {open && (
         <div className="app-code-dropdown">

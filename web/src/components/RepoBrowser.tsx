@@ -27,7 +27,7 @@ import { RepoEntryIcon } from './RepoEntryIcon'
 import { RepoPathBreadcrumb } from './RepoPathBreadcrumb'
 import { RepoReadme } from './RepoReadme'
 import { RepoRefHeadSummary } from './RepoRefHeadSummary'
-import { SecondaryButton, RefSelect } from './ui'
+import { SecondaryButton, RefSelect, Toolbar, ToolbarActions, ToolbarButtonGroup, ToolbarCommitRow, ToolbarGroup, ToolbarIconButton, ToolbarRow } from './ui'
 import { cn } from '../utils/cn'
 
 interface RepoBrowserProps {
@@ -473,26 +473,14 @@ export function RepoBrowser({
   )
 
   const createEntryButtons = canEdit ? (
-    <>
-      <button
-        type="button"
-        className="app-toolbar-btn"
-        title="New file"
-        onClick={() => setCreateEntryKind('file')}
-      >
+    <ToolbarButtonGroup>
+      <ToolbarIconButton title="New file" aria-label="New file" onClick={() => setCreateEntryKind('file')}>
         <FilePlus size={14} />
-        <span className="sr-only">New file</span>
-      </button>
-      <button
-        type="button"
-        className="app-toolbar-btn"
-        title="New folder"
-        onClick={() => setCreateEntryKind('folder')}
-      >
+      </ToolbarIconButton>
+      <ToolbarIconButton title="New folder" aria-label="New folder" onClick={() => setCreateEntryKind('folder')}>
         <FolderPlus size={14} />
-        <span className="sr-only">New folder</span>
-      </button>
-    </>
+      </ToolbarIconButton>
+    </ToolbarButtonGroup>
   ) : null
 
   const treeSidebar = canBrowse ? (
@@ -536,28 +524,25 @@ export function RepoBrowser({
   ) : null
 
   const toolbar = (
-    <div className="app-toolbar app-toolbar--repo">
-      <div className="app-toolbar-row">
+    <Toolbar variant="repo">
+      <ToolbarRow>
         {inEditMode && (
-          <button type="button" className="app-toolbar-btn app-toolbar-btn--text" onClick={exitEditMode}>
+          <ToolbarIconButton label="Back" onClick={exitEditMode}>
             <ArrowLeft size={14} />
-            <span className="hidden sm:inline">Back</span>
-          </button>
+          </ToolbarIconButton>
         )}
 
         {!inEditMode && canBrowse && (
-          <button
-            type="button"
-            className="app-toolbar-btn"
+          <ToolbarIconButton
             title={showTree ? 'Hide file tree' : 'Show file tree'}
+            aria-label={showTree ? 'Hide file tree' : 'Show file tree'}
             onClick={() => setShowTree((value) => !value)}
           >
             {showTree ? <PanelLeftClose size={14} /> : <PanelLeft size={14} />}
-            <span className="sr-only">Toggle file tree</span>
-          </button>
+          </ToolbarIconButton>
         )}
 
-        <div className="app-ref-toolbar-group">
+        <ToolbarGroup>
           <RefSelect
             id="repo-ref-select"
             refKind={refKind}
@@ -568,7 +553,7 @@ export function RepoBrowser({
             disabled={!browser}
             onChange={changeRef}
           />
-        </div>
+        </ToolbarGroup>
 
         {!inEditMode && (
           <RepoPathBreadcrumb
@@ -578,7 +563,7 @@ export function RepoBrowser({
           />
         )}
 
-        <div className="app-toolbar-right">
+        <ToolbarActions>
           {!inEditMode && (
             <RepoFindFilePopover
               token={token}
@@ -593,15 +578,15 @@ export function RepoBrowser({
           {refKind === 'tag' && (
             <span className="text-xs text-text-secondary whitespace-nowrap">Tags are read-only</span>
           )}
-        </div>
-      </div>
+        </ToolbarActions>
+      </ToolbarRow>
 
       {headCommit && (
-        <div className="app-toolbar-commit-row">
+        <ToolbarCommitRow>
           <RepoRefHeadSummary orgSlug={orgSlug} repoSlug={repoSlug} commit={headCommit} />
-        </div>
+        </ToolbarCommitRow>
       )}
-    </div>
+    </Toolbar>
   )
 
   if (browserLoading) {

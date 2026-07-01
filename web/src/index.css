@@ -1376,9 +1376,9 @@ body,
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.65rem 1rem;
+  padding: 0.45rem 0.75rem;
   border-bottom: 1px solid var(--color-naturals-n4);
-  background: var(--color-naturals-n3);
+  background: var(--color-surface);
   container-type: inline-size;
 }
 
@@ -1391,11 +1391,12 @@ body,
 
 .app-toolbar--repo .app-toolbar-row {
   gap: 0.35rem;
-  height: 2.125rem;
+  height: 2.85rem;
   min-height: 0;
   padding: 0 0.65rem;
   flex-wrap: nowrap;
   align-items: center;
+  background: var(--color-surface);
 }
 
 .app-toolbar--repo .app-toolbar-commit-row {
@@ -1468,7 +1469,48 @@ body,
   flex-shrink: 0;
 }
 
+.app-toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  min-height: 1.25rem;
+  margin: 0 0.1rem;
+  background: var(--color-naturals-n4);
+  flex-shrink: 0;
+}
+
+.app-toolbar-btn-group {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 1.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-naturals-n4);
+  background: var(--color-naturals-n3);
+  overflow: hidden;
+}
+
+.app-toolbar-btn-group .app-toolbar-btn {
+  border: none;
+  border-radius: 0;
+  border-right: 1px solid var(--color-naturals-n4);
+  background: transparent;
+}
+
+.app-toolbar-btn-group .app-toolbar-btn:last-child {
+  border-right: none;
+}
+
+.app-toolbar-btn-group .app-toolbar-btn:hover {
+  background: var(--color-naturals-n4);
+}
+
+.app-toolbar-popover {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .app-toolbar--repo .app-toolbar-btn,
+.app-toolbar--repo .app-toolbar-row .app-toolbar-popover .app-toolbar-btn,
 .app-toolbar--repo .app-toolbar-row .app-code-dropdown-trigger {
   display: inline-flex;
   align-items: center;
@@ -1530,9 +1572,9 @@ body,
 }
 
 .app-toolbar-commit-row {
-  padding: 0.45rem 1rem;
+  padding: 0.35rem 0.75rem;
   border-top: 1px solid var(--color-naturals-n4);
-  background: var(--color-surface);
+  background: var(--color-naturals-n3);
   min-width: 0;
 }
 
@@ -2682,7 +2724,7 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
+  padding: 0.35rem 0.75rem;
   border-bottom: 1px solid var(--color-naturals-n4);
   background: var(--color-surface);
 }
