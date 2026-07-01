@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Build pertisk-gits and pertisk-runner packages (DEB + RPM) and Docker images (amd64 + arm64).
 set -euo pipefail
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
@@ -22,5 +21,4 @@ make package-runner VERSION="$VERSION"
 
 #echo "==> Building pertisk-gits Docker image (amd64 + arm64) v${VERSION}"
 #make pertisk-gits-image-multi VERSION="$VERSION"
-
 echo "==> Build complete. Artifacts in release/ and container registry."

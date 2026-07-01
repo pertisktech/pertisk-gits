@@ -1,0 +1,13 @@
+# Workspace-wide Rust coverage (all crates: lib, bin, integration tests).
+# Run: make test-coverage  (or: cargo tarpaulin workspace)
+
+[report]
+out = ["Stdout", "Html"]
+output-dir = "target/coverage"
+
+[workspace]
+workspace = true
+run-types = ["Lib", "Bins", "Tests"]
+exclude-files = ["*/benches/*"]
+timeout = "600s"
+count = true

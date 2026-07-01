@@ -75,7 +75,7 @@ test-api:
 	$(CARGO) test -p pertisk-api --lib
 
 test-coverage:
-	./scripts/coverage.sh 
+	./scripts/coverage.sh
 
 run:
 	$(CARGO) run -p pertisk-api
