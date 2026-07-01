@@ -132,10 +132,7 @@ pub async fn enqueue_index_jobs(
     updates: &[pertisk_git::RefUpdate],
 ) -> anyhow::Result<()> {
     for update in updates {
-        if update.new_sha.chars().all(|c| c == '0') {
-            continue;
-        }
-        if !update.ref_name.starts_with("refs/heads/") {
+        if !should_enqueue_index_update(update) {
             continue;
         }
 
@@ -165,6 +162,11 @@ pub fn ensure_index_root(path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Whether a post-receive ref update should enqueue a code search index job.
+pub(crate) fn should_enqueue_index_update(update: &pertisk_git::RefUpdate) -> bool {
+    !update.new_sha.chars().all(|c| c == '0') && update.ref_name.starts_with("refs/heads/")
+}
+
 #[derive(sqlx::FromRow)]
 struct IndexJobRow {
     id: Uuid,
@@ -173,4 +175,60 @@ struct IndexJobRow {
     ref_name: String,
     org_slug: String,
     repo_slug: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pertisk_git::RefUpdate;
+    use tempfile::TempDir;
+
+    #[test]
+    fn should_enqueue_index_update_filters_deletes_and_tags() {
+        assert!(!should_enqueue_index_update(&RefUpdate {
+            ref_name: "refs/heads/main".into(),
+            old_sha: Some("abc".into()),
+            new_sha: "0".repeat(40),
+        }));
+        assert!(!should_enqueue_index_update(&RefUpdate {
+            ref_name: "refs/tags/v1".into(),
+            old_sha: None,
+            new_sha: "abc123".into(),
+        }));
+        assert!(should_enqueue_index_update(&RefUpdate {
+            ref_name: "refs/heads/main".into(),
+            old_sha: Some("old".into()),
+            new_sha: "deadbeef".into(),
+        }));
+    }
+
+    #[test]
+    fn default_index_root_falls_back_to_data_search() {
+        let prev = std::env::var("SEARCH_INDEX_ROOT").ok();
+        std::env::remove_var("SEARCH_INDEX_ROOT");
+        assert_eq!(default_index_root(), PathBuf::from("data/search"));
+        if let Some(value) = prev {
+            std::env::set_var("SEARCH_INDEX_ROOT", value);
+        }
+    }
+
+    #[test]
+    fn default_index_root_reads_env_override() {
+        let prev = std::env::var("SEARCH_INDEX_ROOT").ok();
+        std::env::set_var("SEARCH_INDEX_ROOT", "/tmp/custom-index");
+        assert_eq!(default_index_root(), PathBuf::from("/tmp/custom-index"));
+        if let Some(value) = prev {
+            std::env::set_var("SEARCH_INDEX_ROOT", value);
+        } else {
+            std::env::remove_var("SEARCH_INDEX_ROOT");
+        }
+    }
+
+    #[test]
+    fn ensure_index_root_creates_directory() {
+        let tmp = TempDir::new().unwrap();
+        let nested = tmp.path().join("indexes").join("code");
+        ensure_index_root(&nested).unwrap();
+        assert!(nested.is_dir());
+    }
 }

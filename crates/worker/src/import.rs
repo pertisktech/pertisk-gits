@@ -124,13 +124,7 @@ impl ImportWorker {
             }
         }
 
-        let final_status = if failures > 0 && failures == repo_count {
-            "failed"
-        } else if failures > 0 {
-            "done"
-        } else {
-            "done"
-        };
+        let final_status = import_job_final_status(failures, repo_count);
 
         sqlx::query(
             r#"
@@ -605,11 +599,27 @@ async fn read_default_branch(repo_path: &Path) -> Option<String> {
         return None;
     }
 
-    let value = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let value = String::from_utf8_lossy(&output.stdout);
+    parse_default_branch(&value)
+}
+
+fn parse_default_branch(stdout: &str) -> Option<String> {
+    let value = stdout.trim().to_string();
+    if value.is_empty() {
+        return None;
+    }
     value
         .strip_prefix("refs/heads/")
         .map(str::to_string)
         .or(Some(value))
+}
+
+fn import_job_final_status(failures: usize, repo_count: usize) -> &'static str {
+    if failures > 0 && failures == repo_count {
+        "failed"
+    } else {
+        "done"
+    }
 }
 
 fn authenticated_clone_url(
@@ -703,4 +713,129 @@ struct RepoRow {
     default_branch: Option<String>,
     repository_id: Option<Uuid>,
     status: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aes_gcm::{
+        aead::{Aead, AeadCore, KeyInit, OsRng},
+        Aes256Gcm,
+    };
+    use base64::Engine;
+
+    #[test]
+    fn import_job_final_status_marks_total_failure() {
+        assert_eq!(import_job_final_status(0, 3), "done");
+        assert_eq!(import_job_final_status(1, 3), "done");
+        assert_eq!(import_job_final_status(3, 3), "failed");
+    }
+
+    #[test]
+    fn parse_default_branch_normalizes_ref() {
+        assert_eq!(
+            parse_default_branch("refs/heads/main\n"),
+            Some("main".to_string())
+        );
+        assert_eq!(parse_default_branch("develop"), Some("develop".to_string()));
+        assert_eq!(parse_default_branch("  \n"), None);
+    }
+
+    #[test]
+    fn authenticated_clone_url_injects_token() {
+        let url = authenticated_clone_url(
+            ImportProvider::Github,
+            "https://github.com/acme/widget.git",
+            "tok",
+        )
+        .unwrap();
+        assert_eq!(
+            url,
+            "https://x-access-token:tok@github.com/acme/widget.git"
+        );
+
+        let gitlab = authenticated_clone_url(
+            ImportProvider::Gitlab,
+            "https://gitlab.com/acme/widget.git",
+            "tok",
+        )
+        .unwrap();
+        assert!(gitlab.contains("oauth2:tok@"));
+    }
+
+    #[test]
+    fn authenticated_clone_url_rejects_existing_credentials() {
+        let err = authenticated_clone_url(
+            ImportProvider::Github,
+            "https://user:pass@github.com/acme/widget.git",
+            "tok",
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("already contains credentials"));
+    }
+
+    #[test]
+    fn decode_key_accepts_base64_and_hex() {
+        let raw = [7u8; 32];
+        let b64 = base64::engine::general_purpose::STANDARD.encode(raw);
+        assert_eq!(decode_key(&b64).unwrap(), raw);
+
+        let hex = "aa".repeat(32);
+        let from_hex = decode_key(&hex).unwrap();
+        assert_eq!(from_hex, [0xaa; 32]);
+    }
+
+    #[test]
+    fn authenticated_clone_url_rejects_invalid_url() {
+        let err = authenticated_clone_url(ImportProvider::Github, "not-a-url", "tok")
+            .unwrap_err();
+        assert!(err.to_string().contains("invalid clone URL"));
+    }
+
+    #[test]
+    fn decode_key_rejects_invalid_values() {
+        assert!(decode_key("too-short").is_err());
+        assert!(decode_key(&"zz".repeat(32)).is_err());
+    }
+
+    #[test]
+    fn load_secrets_key_derives_from_jwt_secret() {
+        let prev_secrets = std::env::var("SECRETS_ENCRYPTION_KEY").ok();
+        let prev_jwt = std::env::var("JWT_SECRET").ok();
+        std::env::remove_var("SECRETS_ENCRYPTION_KEY");
+        std::env::set_var("JWT_SECRET", "test-jwt-for-import");
+        let key = load_secrets_key().unwrap();
+        let expected: [u8; 32] = Sha256::digest(b"test-jwt-for-import").into();
+        assert_eq!(key, expected);
+        if let Some(value) = prev_secrets {
+            std::env::set_var("SECRETS_ENCRYPTION_KEY", value);
+        } else {
+            std::env::remove_var("SECRETS_ENCRYPTION_KEY");
+        }
+        if let Some(value) = prev_jwt {
+            std::env::set_var("JWT_SECRET", value);
+        } else {
+            std::env::remove_var("JWT_SECRET");
+        }
+    }
+
+    #[test]
+    fn decrypt_secret_rejects_short_blob() {
+        let key = [1u8; 32];
+        let err = decrypt_secret(&key, &[0u8; 8]).unwrap_err();
+        assert!(err.to_string().contains("invalid encrypted secret blob"));
+    }
+
+    #[test]
+    fn decrypt_secret_round_trip() {
+        let key = [9u8; 32];
+        let cipher = Aes256Gcm::new((&key).into());
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+        let ciphertext = cipher.encrypt(&nonce, b"import-token".as_ref()).unwrap();
+        let mut blob = nonce.to_vec();
+        blob.extend_from_slice(&ciphertext);
+
+        let plain = decrypt_secret(&key, &blob).unwrap();
+        assert_eq!(plain, "import-token");
+    }
 }

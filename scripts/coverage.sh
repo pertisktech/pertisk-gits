@@ -19,10 +19,14 @@ echo "HTML report: target/coverage/tarpaulin-report.html"
 echo ""
 echo "Enforcing ${THRESHOLD}% line coverage on unit-testable library crates..."
 
-for pkg in pertisk-cicd pertisk-search; do
+for pkg in pertisk-cicd pertisk-search pertisk-worker; do
   crate="${pkg#pertisk-}"
-  echo "  checking ${pkg} (lib, crates/${crate}/src)..."
+  threshold="${THRESHOLD}"
+  if [ "$pkg" = "pertisk-worker" ]; then
+    threshold="${WORKER_COVERAGE_THRESHOLD:-10}"
+  fi
+  echo "  checking ${pkg} (lib, crates/${crate}/src, threshold=${threshold}%)..."
   cargo tarpaulin --ignore-config -p "$pkg" --lib \
     --include-files "crates/${crate}/src/*" \
-    --fail-under "$THRESHOLD"
+    --fail-under "$threshold"
 done

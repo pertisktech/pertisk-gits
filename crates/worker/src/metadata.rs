@@ -891,3 +891,82 @@ struct GitlabMergeRequest {
     target_branch: String,
     created_at: DateTime<Utc>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_full_name_parses_owner_repo() {
+        assert_eq!(split_full_name("acme/widget").unwrap(), ("acme", "widget"));
+        assert!(split_full_name("widget").is_err());
+    }
+
+    #[test]
+    fn normalize_color_adds_hash_prefix() {
+        assert_eq!(normalize_color("ff00aa"), "#ff00aa");
+        assert_eq!(normalize_color("#abc"), "#abc");
+    }
+
+    #[test]
+    fn github_api_base_maps_public_github() {
+        assert_eq!(
+            github_api_base("https://github.com"),
+            "https://api.github.com"
+        );
+        assert_eq!(
+            github_api_base("https://git.example.com"),
+            "https://git.example.com/api/v3"
+        );
+        assert_eq!(
+            github_api_base("https://api.github.com"),
+            "https://api.github.com"
+        );
+    }
+
+    #[test]
+    fn gitlab_api_base_appends_v4_path() {
+        assert_eq!(
+            gitlab_api_base("https://gitlab.com/"),
+            "https://gitlab.com/api/v4"
+        );
+    }
+
+    #[test]
+    fn import_tls_insecure_reads_env() {
+        let prev = std::env::var("IMPORT_TLS_INSECURE").ok();
+        std::env::set_var("IMPORT_TLS_INSECURE", "true");
+        assert!(import_tls_insecure());
+        std::env::remove_var("IMPORT_TLS_INSECURE");
+        assert!(!import_tls_insecure());
+        if let Some(value) = prev {
+            std::env::set_var("IMPORT_TLS_INSECURE", value);
+        }
+    }
+
+    #[test]
+    fn github_api_base_maps_http_github() {
+        assert_eq!(
+            github_api_base("http://github.com"),
+            "https://api.github.com"
+        );
+    }
+
+    #[test]
+    fn import_tls_insecure_accepts_common_truthy_values() {
+        let prev = std::env::var("IMPORT_TLS_INSECURE").ok();
+        for value in ["1", "yes", "TRUE", "YES"] {
+            std::env::set_var("IMPORT_TLS_INSECURE", value);
+            assert!(import_tls_insecure(), "expected true for {value}");
+        }
+        std::env::remove_var("IMPORT_TLS_INSECURE");
+        if let Some(value) = prev {
+            std::env::set_var("IMPORT_TLS_INSECURE", value);
+        }
+    }
+
+    #[test]
+    fn http_client_builds() {
+        http_client().unwrap();
+    }
+}
