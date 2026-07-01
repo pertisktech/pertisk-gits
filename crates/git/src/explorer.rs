@@ -1382,6 +1382,43 @@ mod tests {
     }
 
     #[test]
+    fn format_git_failure_stdout_only_and_status_only() {
+        use std::process::Output;
+        let stdout_only = Output {
+            status: std::process::Command::new("false").status().unwrap(),
+            stdout: b"stdout".to_vec(),
+            stderr: Vec::new(),
+        };
+        assert_eq!(
+            format_git_failure(&stdout_only, "failed"),
+            "failed: stdout"
+        );
+        let silent = Output {
+            status: std::process::Command::new("false").status().unwrap(),
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        };
+        assert!(format_git_failure(&silent, "failed").contains("git exited"));
+    }
+
+    #[test]
+    fn validate_branch_name_rejects_too_long() {
+        assert!(validate_branch_name(&"a".repeat(256)).is_err());
+    }
+
+    #[test]
+    fn validate_tag_name_rejects_too_long() {
+        assert!(validate_tag_name(&"v".repeat(256)).is_err());
+    }
+
+    #[tokio::test]
+    async fn list_tree_with_subdirectory_path() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let entries = list_tree(&repo_path, "main", RefKind::Branch, "").await.unwrap();
+        assert!(!entries.is_empty());
+    }
+
+    #[test]
     fn git_output_indicates_conflict_detects_markers() {
         use std::process::Output;
         let conflict = Output {

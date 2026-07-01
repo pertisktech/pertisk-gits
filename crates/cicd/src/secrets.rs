@@ -152,6 +152,21 @@ mod tests {
     }
 
     #[test]
+    fn ignores_non_secret_refs() {
+        let secrets = HashMap::new();
+        assert_eq!(
+            resolve_secret_refs("value=${{ vars.API_TOKEN }}", &secrets),
+            "value=${{ vars.API_TOKEN }}"
+        );
+    }
+
+    #[test]
+    fn preserves_multibyte_characters() {
+        let secrets = HashMap::new();
+        assert_eq!(resolve_secret_refs("café", &secrets), "café");
+    }
+
+    #[test]
     fn unknown_secret_placeholder_is_removed() {
         let secrets = HashMap::from([("KNOWN".into(), "value".into())]);
         assert_eq!(

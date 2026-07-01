@@ -96,4 +96,9 @@ mod tests {
         assert_eq!(org_path_slug("a"), "a");
         assert_eq!(org_path_slug("/a/b/"), "b");
     }
+
+    #[test]
+    fn parent_org_path_rejects_empty_parent_segment() {
+        assert_eq!(parent_org_path("//child"), None);
+    }
 }

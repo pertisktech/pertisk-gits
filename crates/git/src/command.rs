@@ -93,4 +93,15 @@ mod tests {
         assert!(parse_ssh_command("git-fetch").is_none());
         assert!(parse_ssh_command("").is_none());
     }
+
+    #[test]
+    fn parses_space_separated_commands() {
+        let cmd = parse_ssh_command("git upload-pack 'acme/widget.git'").unwrap();
+        assert_eq!(cmd.service, GitService::UploadPack);
+        assert_eq!(cmd.org_path, "acme");
+        assert_eq!(cmd.repo_slug, "widget");
+
+        let cmd = parse_ssh_command("git receive-pack acme/widget.git").unwrap();
+        assert_eq!(cmd.service, GitService::ReceivePack);
+    }
 }

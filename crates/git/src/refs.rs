@@ -117,4 +117,64 @@ mod tests {
         refs.insert("refs/heads/main".into(), "aaa".into());
         assert!(diff_refs(&refs, &refs).is_empty());
     }
+
+    #[tokio::test]
+    async fn snapshot_refs_reads_bare_repo() {
+        let (_tmp, repo, sha) = bare_repo_with_commit();
+        let refs = snapshot_refs(&repo).await.unwrap();
+        assert_eq!(refs.get("refs/heads/main").map(String::as_str), Some(sha.as_str()));
+    }
+
+    #[tokio::test]
+    async fn is_ancestor_detects_history() {
+        let (_tmp, repo, sha) = bare_repo_with_commit();
+        assert!(is_ancestor(&repo, &sha, &sha).await.unwrap());
+        let other = "1111111111111111111111111111111111111111";
+        let err = is_ancestor(&repo, other, &sha).await.unwrap_err();
+        assert!(err.to_string().contains("git merge-base"));
+    }
+
+    fn bare_repo_with_commit() -> (tempfile::TempDir, std::path::PathBuf, String) {
+        use std::process::Command;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let worktree = tmp.path().to_path_buf();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["config", "user.email", "t@e.com"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["config", "user.name", "T"])
+            .status()
+            .unwrap();
+        std::fs::write(worktree.join("file.txt"), "data").unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["add", "."])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["commit", "-q", "-m", "init"])
+            .status()
+            .unwrap();
+        let sha = String::from_utf8(
+            Command::new("git")
+                .current_dir(&worktree)
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        (tmp, worktree.join(".git"), sha)
+    }
 }

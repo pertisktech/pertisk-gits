@@ -93,4 +93,12 @@ mod tests {
         );
         assert!(stored_text(&doc, schema.content).is_none());
     }
+
+    #[test]
+    fn stored_text_ignores_non_string_values() {
+        let schema = CodeSearchSchema::build();
+        let mut doc = tantivy::TantivyDocument::default();
+        doc.add_u64(schema.repository_id, 42);
+        assert!(stored_text(&doc, schema.repository_id).is_none());
+    }
 }

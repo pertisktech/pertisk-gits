@@ -54,4 +54,13 @@ mod tests {
         // idempotent
         init_bare_repo(root, "acme", "widget").unwrap();
     }
+
+    #[tokio::test]
+    async fn ensure_bare_repo_creates_repository() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        ensure_bare_repo(root, "org", "repo").await.unwrap();
+        assert!(repo_exists_on_disk(root, "org", "repo"));
+        ensure_bare_repo(root, "org", "repo").await.unwrap();
+    }
 }

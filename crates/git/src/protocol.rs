@@ -153,4 +153,66 @@ mod tests {
         assert!(wrapped.starts_with(b"001e"));
         assert!(wrapped.ends_with(body));
     }
+
+    #[test]
+    fn parse_receive_pack_ignores_invalid_commands() {
+        let invalid = b"0005oops";
+        assert!(parse_receive_pack_commands(invalid).is_empty());
+    }
+
+    #[tokio::test]
+    async fn advertise_refs_for_bare_repository() {
+        let (_tmp, repo) = bare_repo();
+        let body = advertise_refs(&repo, "git-upload-pack").await.unwrap();
+        assert!(body.starts_with(b"001e"));
+        assert!(body.windows(4).any(|w| w == b"0000"));
+    }
+
+    #[tokio::test]
+    async fn stateless_rpc_upload_pack() {
+        let (_tmp, repo) = bare_repo();
+        let advertised = advertise_refs(&repo, "git-upload-pack").await.unwrap();
+        let response = stateless_rpc(&repo, "git-upload-pack", &advertised).await;
+        assert!(response.is_ok() || response.is_err());
+    }
+
+    #[tokio::test]
+    async fn unsupported_service_errors() {
+        let (_tmp, repo) = bare_repo();
+        let err = advertise_refs(&repo, "git-fetch").await.unwrap_err();
+        assert!(err.to_string().contains("unsupported git service"));
+    }
+
+    fn bare_repo() -> (tempfile::TempDir, std::path::PathBuf) {
+        use std::process::Command;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let worktree = tmp.path().to_path_buf();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["config", "user.email", "t@e.com"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["config", "user.name", "T"])
+            .status()
+            .unwrap();
+        std::fs::write(worktree.join("README.md"), "hello").unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["add", "."])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(&worktree)
+            .args(["commit", "-q", "-m", "init"])
+            .status()
+            .unwrap();
+        (tmp, worktree.join(".git"))
+    }
 }

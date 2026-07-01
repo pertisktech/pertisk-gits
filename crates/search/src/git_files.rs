@@ -163,4 +163,94 @@ mod tests {
             .unwrap();
         assert!(content.contains("fn main"));
     }
+
+    #[test]
+    fn rejects_paths_without_extension() {
+        assert!(!is_indexable_path("README"));
+    }
+
+    #[tokio::test]
+    async fn list_indexable_paths_fails_for_missing_repo() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let err = list_indexable_paths(dir.path(), "deadbeef").await.unwrap_err();
+        assert!(err.to_string().contains("git ls-tree failed"));
+    }
+
+    #[tokio::test]
+    async fn read_blob_rejects_binary_and_large_files() {
+        use std::process::Command;
+        let dir = tempfile::TempDir::new().unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["config", "user.email", "t@e.com"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["config", "user.name", "T"])
+            .status()
+            .unwrap();
+        let binary = vec![0u8, 1, 2, 3];
+        std::fs::write(dir.path().join("bin.dat"), &binary).unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["add", "."])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["commit", "-q", "-m", "bin"])
+            .status()
+            .unwrap();
+        let sha = String::from_utf8(
+            Command::new("git")
+                .current_dir(dir.path())
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap();
+        let sha = sha.trim();
+        assert!(
+            read_blob_at_commit(dir.path(), sha, "bin.dat")
+                .await
+                .unwrap()
+                .is_none()
+        );
+
+        let large = "x".repeat(MAX_FILE_BYTES + 1);
+        std::fs::write(dir.path().join("big.txt"), large).unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["add", "big.txt"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["commit", "-q", "-m", "big"])
+            .status()
+            .unwrap();
+        let sha = String::from_utf8(
+            Command::new("git")
+                .current_dir(dir.path())
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap();
+        let sha = sha.trim();
+        assert!(
+            read_blob_at_commit(dir.path(), sha, "big.txt")
+                .await
+                .unwrap()
+                .is_none()
+        );
+    }
 }

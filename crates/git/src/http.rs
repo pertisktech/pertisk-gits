@@ -371,4 +371,43 @@ mod tests {
 
         assert!(parse_git_http_path("acme/repo/unknown").is_err());
     }
+
+    #[test]
+    fn parse_receive_pack_service() {
+        let (_, repo, service) =
+            parse_git_http_path("team/app.git/git-receive-pack").unwrap();
+        assert_eq!(repo, "app");
+        assert!(matches!(service, GitHttpService::ReceivePack));
+    }
+
+    #[test]
+    fn git_http_error_status_codes() {
+        use axum::response::IntoResponse;
+        assert_eq!(
+            GitHttpError::NotFound.into_response().status(),
+            StatusCode::NOT_FOUND
+        );
+        assert_eq!(
+            GitHttpError::Unauthorized.into_response().status(),
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            GitHttpError::Forbidden.into_response().status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            GitHttpError::BadRequest("bad".into()).into_response().status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            GitHttpError::ForbiddenMessage("nope".into())
+                .into_response()
+                .status(),
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(
+            GitHttpError::Internal("boom".into()).into_response().status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
 }

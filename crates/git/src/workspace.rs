@@ -142,4 +142,13 @@ mod tests {
         assert_eq!(&archive[0], &0x1f);
         assert_eq!(&archive[1], &0x8b);
     }
+
+    #[tokio::test]
+    async fn checkout_commit_errors_for_missing_repo() {
+        let workspace = tempfile::TempDir::new().unwrap();
+        let err = checkout_commit(Path::new("/no/such/repo.git"), "deadbeef", workspace.path())
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("repository not found"));
+    }
 }

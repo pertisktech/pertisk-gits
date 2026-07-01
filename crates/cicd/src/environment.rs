@@ -103,6 +103,7 @@ mod tests {
             effective_job_environment(None, None, "deploy-prod").as_deref(),
             Some("prd")
         );
+        assert!(effective_job_environment(None, None, "build").is_none());
         assert!(infer_environment_from_ref(None, Some("v1.0.0")).is_none());
     }
 }

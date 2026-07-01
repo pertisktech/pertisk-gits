@@ -327,6 +327,17 @@ mod tests {
     }
 
     #[test]
+    fn custom_ref_name_and_schedule_event() {
+        let mut ctx = sample_context();
+        ctx.ref_name = "custom-ref".into();
+        ctx.pipeline_event = "schedule".into();
+        let vars = build_predefined_vars(&ctx);
+        assert_eq!(vars["CI_COMMIT_REF_NAME"], "custom-ref");
+        assert_eq!(vars["CI_COMMIT_BRANCH"], "custom-ref");
+        assert_eq!(vars["CI_PIPELINE_SOURCE"], "schedule");
+    }
+
+    #[test]
     fn omits_optional_vars_when_not_set() {
         let mut ctx = sample_context();
         ctx.config_path = None;

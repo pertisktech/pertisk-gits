@@ -19,11 +19,13 @@ echo "HTML report: target/coverage/tarpaulin-report.html"
 echo ""
 echo "Enforcing ${THRESHOLD}% line coverage on unit-testable library crates..."
 
-for pkg in pertisk-cicd pertisk-search pertisk-domain pertisk-worker; do
+for pkg in pertisk-cicd pertisk-search pertisk-domain pertisk-git pertisk-worker; do
   crate="${pkg#pertisk-}"
   threshold="${THRESHOLD}"
   if [ "$pkg" = "pertisk-worker" ]; then
     threshold="${WORKER_COVERAGE_THRESHOLD:-10}"
+  elif [ "$pkg" = "pertisk-git" ]; then
+    threshold="${GIT_COVERAGE_THRESHOLD:-50}"
   fi
   echo "  checking ${pkg} (lib, crates/${crate}/src, threshold=${threshold}%)..."
   if [ "$pkg" = "pertisk-domain" ]; then

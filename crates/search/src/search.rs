@@ -208,6 +208,124 @@ mod tests {
         let fallback = make_snippet(&long, "missing");
         assert!(!fallback.is_empty());
         assert!(fallback.len() <= 181);
+
+        let long_match = format!("{}needle{}", "a".repeat(200), "z".repeat(200));
+        let end_snippet = make_snippet(&long_match, "needle");
+        assert!(end_snippet.ends_with('…'));
+    }
+
+    #[tokio::test]
+    async fn search_respects_result_limit() {
+        let repo = TempDir::new().unwrap();
+        let index = TempDir::new().unwrap();
+        let _sha = init_repo(repo.path());
+        let repository_id = Uuid::new_v4();
+        for i in 0..3 {
+            std::fs::write(
+                repo.path().join(format!("file{i}.rs")),
+                format!("fn token_{i}() {{}}"),
+            )
+            .unwrap();
+            Command::new("git")
+                .current_dir(repo.path())
+                .args(["add", "."])
+                .status()
+                .unwrap();
+            Command::new("git")
+                .current_dir(repo.path())
+                .args(["commit", "-q", "-m", &format!("add {i}")])
+                .status()
+                .unwrap();
+        }
+        let sha = String::from_utf8(
+            Command::new("git")
+                .current_dir(repo.path())
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        index_repository(IndexRepositoryInput {
+            index_root: index.path(),
+            repo_path: repo.path(),
+            repository_id,
+            org_slug: "acme",
+            repo_slug: "app",
+            commit_sha: &sha,
+            ref_name: "main",
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let hits = search_code(CodeSearchOptions {
+            index_root: index.path(),
+            query: "token",
+            repository_id: Some(repository_id),
+            allowed_repository_ids: None,
+            limit: 2,
+        })
+        .unwrap();
+        assert_eq!(hits.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn indexer_skips_empty_files() {
+        let repo = TempDir::new().unwrap();
+        let index = TempDir::new().unwrap();
+        Command::new("git")
+            .current_dir(repo.path())
+            .args(["init", "-q"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(repo.path())
+            .args(["config", "user.email", "t@e.com"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(repo.path())
+            .args(["config", "user.name", "T"])
+            .status()
+            .unwrap();
+        std::fs::write(repo.path().join("empty.rs"), "   \n").unwrap();
+        std::fs::write(repo.path().join("real.rs"), "fn ok() {}").unwrap();
+        Command::new("git")
+            .current_dir(repo.path())
+            .args(["add", "."])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(repo.path())
+            .args(["commit", "-q", "-m", "init"])
+            .status()
+            .unwrap();
+        let sha = String::from_utf8(
+            Command::new("git")
+                .current_dir(repo.path())
+                .args(["rev-parse", "HEAD"])
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        let result = index_repository(IndexRepositoryInput {
+            index_root: index.path(),
+            repo_path: repo.path(),
+            repository_id: Uuid::new_v4(),
+            org_slug: "acme",
+            repo_slug: "app",
+            commit_sha: &sha,
+            ref_name: "main",
+        })
+        .await
+        .unwrap();
+        assert_eq!(result.document_count, 1);
+        assert_eq!(result.skipped_files, 1);
     }
 
     #[tokio::test]

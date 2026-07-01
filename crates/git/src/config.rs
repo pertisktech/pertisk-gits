@@ -72,4 +72,26 @@ mod tests {
         let path = repo_disk_path(root, "/a//b/", "repo");
         assert_eq!(path, PathBuf::from("/data/repos/a/b/repo.git"));
     }
+
+    #[test]
+    fn from_env_reads_configuration() {
+        let repos = tempfile::TempDir::new().unwrap();
+        std::env::set_var("REPOS_ROOT", repos.path());
+        std::env::set_var("GIT_PUBLIC_BASE_URL", "https://git.example.com/");
+        std::env::set_var("GIT_HTTP_HOST", "127.0.0.1");
+        std::env::set_var("GIT_HTTP_PORT", "9090");
+        std::env::set_var("DATABASE_URL", "postgres://localhost/test");
+
+        let cfg = GitConfig::from_env().unwrap();
+        assert_eq!(cfg.host, "127.0.0.1");
+        assert_eq!(cfg.port, 9090);
+        assert_eq!(cfg.public_base_url, "https://git.example.com");
+        assert_eq!(cfg.repos_root, repos.path());
+
+        std::env::remove_var("REPOS_ROOT");
+        std::env::remove_var("GIT_PUBLIC_BASE_URL");
+        std::env::remove_var("GIT_HTTP_HOST");
+        std::env::remove_var("GIT_HTTP_PORT");
+        std::env::remove_var("DATABASE_URL");
+    }
 }

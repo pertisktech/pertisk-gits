@@ -499,6 +499,16 @@ mod tests {
         assert!(skipped.skipped());
         assert!(skipped.finishes_immediately());
         assert_eq!(skipped.commit_status(), ("success", "Skipped"));
+
+        let queued = ScheduledJob {
+            name: "build".into(),
+            job: job.job.clone(),
+            mode: JobScheduleMode::Queued,
+        };
+        assert_eq!(queued.db_status(), "queued");
+        assert_eq!(queued.initial_log(), "");
+        assert!(!queued.finishes_immediately());
+        assert_eq!(queued.commit_status(), ("pending", "Queued"));
     }
 
     #[test]
