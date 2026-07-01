@@ -1390,24 +1390,24 @@ body,
 }
 
 .app-toolbar--repo .app-toolbar-row {
-  gap: 0.35rem;
-  height: 2.85rem;
+  gap: 0.4rem;
+  height: 3.15rem;
   min-height: 0;
-  padding: 0 0.65rem;
+  padding: 0 0.75rem;
   flex-wrap: nowrap;
   align-items: center;
   background: var(--color-surface);
 }
 
 .app-toolbar--repo .app-toolbar-commit-row {
-  padding: 0.3rem 0.65rem;
+  padding: 0.45rem 0.75rem;
   min-height: 0;
 }
 
 .app-toolbar--repo .app-ref-head-commit {
-  font-size: var(--text-xs);
-  gap: 0.3rem 0.5rem;
-  line-height: 1.3;
+  font-size: var(--text-sm);
+  gap: 0.35rem 0.55rem;
+  line-height: 1.35;
 }
 
 .app-toolbar--repo .app-ref-select-meta {
@@ -1424,41 +1424,41 @@ body,
 .app-toolbar--repo .app-toolbar-row select.app-ref-select,
 .app-toolbar--repo .app-toolbar-row select.app-branch-select {
   width: auto;
-  max-width: 9rem;
-  height: 1.75rem;
+  max-width: 10rem;
+  height: 2rem;
   min-height: 0;
-  max-height: 1.75rem;
+  max-height: 2rem;
   margin: 0;
-  padding: 0 1.5rem 0 0.45rem;
-  font-size: var(--text-xs);
-  line-height: 1.75rem;
+  padding: 0 1.65rem 0 0.5rem;
+  font-size: var(--text-sm);
+  line-height: 2rem;
   border-radius: var(--radius-md);
-  background-position: right 0.4rem center;
-  background-size: 0.75rem;
+  background-position: right 0.45rem center;
+  background-size: 0.8rem;
 }
 
 .app-toolbar--repo .app-toolbar-row .app-ref-select-wrap {
   width: auto;
-  max-width: 9rem;
+  max-width: 10rem;
 }
 
 .app-toolbar--repo .app-toolbar-row .app-ref-select-trigger {
-  height: 1.75rem;
+  height: 2rem;
   min-height: 0;
-  max-height: 1.75rem;
-  padding: 0 0.45rem;
-  font-size: var(--text-xs);
-  gap: 0.3rem;
+  max-height: 2rem;
+  padding: 0 0.5rem;
+  font-size: var(--text-sm);
+  gap: 0.35rem;
   border-radius: var(--radius-md);
 }
 
 .app-toolbar--repo .app-toolbar-row .app-ref-select-trigger-label {
-  max-width: 5.5rem;
+  max-width: 6.5rem;
 }
 
 .app-toolbar--repo .app-path-crumb {
-  font-size: var(--text-xs);
-  line-height: 1.3;
+  font-size: var(--text-sm);
+  line-height: 1.35;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -1482,7 +1482,7 @@ body,
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  height: 1.75rem;
+  height: 2rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-naturals-n4);
   background: var(--color-naturals-n3);
@@ -1516,17 +1516,17 @@ body,
   align-items: center;
   justify-content: center;
   gap: 0;
-  width: 1.75rem;
-  height: 1.75rem;
-  min-width: 1.75rem;
+  width: 2rem;
+  height: 2rem;
+  min-width: 2rem;
   min-height: 0;
-  max-height: 1.75rem;
+  max-height: 2rem;
   padding: 0;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-naturals-n4);
   background: var(--color-naturals-n3);
   color: var(--color-text-secondary);
-  font-size: var(--text-xs);
+  font-size: var(--text-sm);
   font-weight: 500;
   line-height: 1;
   cursor: pointer;
@@ -1541,9 +1541,9 @@ body,
 .app-toolbar--repo .app-toolbar-btn--text {
   width: auto;
   min-width: 0;
-  height: 1.75rem;
-  padding: 0 0.45rem;
-  gap: 0.3rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  gap: 0.35rem;
 }
 
 .app-toolbar--repo .app-toolbar-btn:hover,
@@ -1558,8 +1558,8 @@ body,
 }
 
 .app-toolbar--repo .app-toolbar-row svg {
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 1rem;
+  height: 1rem;
 }
 
 .app-toolbar-row {
@@ -1572,7 +1572,7 @@ body,
 }
 
 .app-toolbar-commit-row {
-  padding: 0.35rem 0.75rem;
+  padding: 0.45rem 0.85rem;
   border-top: 1px solid var(--color-naturals-n4);
   background: var(--color-naturals-n3);
   min-width: 0;
@@ -1774,11 +1774,11 @@ body,
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 0.45rem 0.6rem;
+  gap: 0.45rem 0.65rem;
   min-width: 0;
   flex: 0 1 auto;
-  font-size: 0.75rem;
-  line-height: 1.35;
+  font-size: var(--text-sm);
+  line-height: 1.4;
   color: var(--color-text-secondary);
   text-align: right;
 }
@@ -1874,7 +1874,7 @@ body,
   align-items: center;
   flex-wrap: wrap;
   gap: 0.25rem;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   font-family: var(--font-mono);
 }
 
@@ -1892,7 +1892,7 @@ body,
 
 .app-file-table {
   width: 100%;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
   border-collapse: collapse;
 }
 
@@ -2003,14 +2003,14 @@ body,
   align-items: center;
   gap: 0.5rem;
   width: 100%;
-  padding: 0.7rem 1rem;
+  padding: 0.75rem 1rem;
   border: none;
   background: var(--color-surface-elevated);
   text-align: left;
   cursor: pointer;
   color: var(--color-text);
   font-family: inherit;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm);
 }
 
 .commit-history-date-toggle:hover {
@@ -2036,7 +2036,7 @@ body,
 
 .commit-history-date-count {
   flex-shrink: 0;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-text-secondary);
 }
 
@@ -2092,10 +2092,10 @@ body,
 
 .commit-history-sha {
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-primary);
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
-  padding: 0.1rem 0.35rem;
+  padding: 0.12rem 0.4rem;
   border-radius: 0.25rem;
 }
 
@@ -2107,7 +2107,7 @@ body,
 
 .commit-history-body {
   margin: 0.35rem 0 0;
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   line-height: 1.45;
   color: var(--color-text-secondary);
   display: -webkit-box;
@@ -2123,7 +2123,7 @@ body,
   align-items: center;
   gap: 0.35rem;
   margin-top: 0.4rem;
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   color: var(--color-muted);
 }
 
@@ -2489,8 +2489,8 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.55rem 1rem;
-  font-size: var(--text-xs);
+  padding: 0.65rem 1rem;
+  font-size: var(--text-sm);
   color: var(--color-text-secondary);
   background: var(--color-surface-elevated);
   border-bottom: 1px solid var(--color-naturals-n4);
@@ -2503,7 +2503,7 @@ body,
 
 .repo-file-preview-commit-meta {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
 }
 
 .repo-file-preview-header {
@@ -2554,8 +2554,8 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  padding: 0.65rem 0.85rem;
-  font-size: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text-secondary);
   border-bottom: 1px solid var(--color-naturals-n4);
@@ -2575,11 +2575,11 @@ body,
   align-items: center;
   gap: 0.35rem;
   width: 100%;
-  padding: 0.3rem 0.75rem 0.3rem 0;
+  padding: 0.35rem 0.75rem 0.35rem 0;
   border: none;
   background: transparent;
   color: var(--color-text);
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
 }
@@ -2680,11 +2680,11 @@ body,
   display: flex;
   align-items: center;
   gap: 0.35rem;
-  padding: 0.45rem 0.65rem;
+  padding: 0.5rem 0.7rem;
   border: none;
   background: transparent;
   color: var(--color-text);
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2724,9 +2724,10 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  padding: 0.35rem 0.75rem;
+  padding: 0.45rem 0.85rem;
   border-bottom: 1px solid var(--color-naturals-n4);
   background: var(--color-surface);
+  font-size: var(--text-sm);
 }
 
 .repo-explorer-path {
@@ -2734,13 +2735,13 @@ body,
 }
 
 .repo-explorer-commit-input {
-  width: min(16rem, 40vw);
-  padding: 0.35rem 0.55rem;
+  width: min(18rem, 40vw);
+  padding: 0.45rem 0.65rem;
   border: 1px solid var(--color-naturals-n4);
   border-radius: 0.375rem;
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 0.75rem;
+  font-size: var(--text-sm);
 }
 
 .repo-explorer-commit-input:focus {
