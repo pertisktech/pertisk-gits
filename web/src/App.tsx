@@ -20,6 +20,7 @@ import { SuperAdminRoute } from './routes/SuperAdminRoute'
 import { AdminBackupPage } from './pages/admin/AdminBackupPage'
 import { AdminConfigurationPage } from './pages/admin/AdminConfigurationPage'
 import { AdminHealthPage } from './pages/admin/AdminHealthPage'
+import { AdminObservabilityPage } from './pages/admin/AdminObservabilityPage'
 import { AdminSystemPage } from './pages/admin/AdminSystemPage'
 import { AdminUsersPage } from './pages/admin/AdminUsersPage'
 import { GroupAreaRouter } from './routes/GroupAreaRouter'
@@ -95,6 +96,7 @@ export default function App() {
                     <Route path="/admin" element={<AdminSystemPage />} />
                     <Route path="/admin/health" element={<AdminHealthPage />} />
                     <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
+                    <Route path="/admin/observability" element={<AdminObservabilityPage />} />
                     <Route path="/admin/auth" element={<AdminAuthPage />} />
                     <Route path="/admin/users" element={<AdminUsersPage />} />
                     <Route path="/admin/backups" element={<AdminBackupPage />} />

@@ -4209,6 +4209,7 @@ dependencies = [
  "pertisk-registry",
  "pertisk-search",
  "pertisk-worker",
+ "prometheus",
  "quick-xml",
  "rand 0.8.6",
  "reqwest",

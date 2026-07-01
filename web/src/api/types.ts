@@ -374,6 +374,22 @@ export interface AdminConfiguration {
   super_admin_env_override: boolean
 }
 
+export interface ObservabilitySettings {
+  http_logging_enabled: boolean
+  error_logging_enabled: boolean
+  log_level: string
+  prometheus_enabled: boolean
+  rust_log_env: string | null
+  log_level_managed: boolean
+}
+
+export interface UpdateObservabilitySettingsPayload {
+  http_logging_enabled?: boolean
+  error_logging_enabled?: boolean
+  log_level?: string
+  prometheus_enabled?: boolean
+}
+
 export interface SmtpSettings {
   enabled: boolean
   host: string

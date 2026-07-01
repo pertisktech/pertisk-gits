@@ -1,5 +1,7 @@
 import type {
   AdminConfiguration,
+  ObservabilitySettings,
+  UpdateObservabilitySettingsPayload,
   SmtpSettings,
   UpdateSmtpSettingsPayload,
   AdminHealth,
@@ -1488,6 +1490,31 @@ export const api = {
 
   getAdminConfiguration: (token: string) =>
     request<AdminConfiguration>('/admin/configuration', {}, token),
+
+  getObservabilitySettings: (token: string) =>
+    request<ObservabilitySettings>('/admin/observability', {}, token),
+
+  updateObservabilitySettings: (token: string, payload: UpdateObservabilitySettingsPayload) =>
+    request<ObservabilitySettings>('/admin/observability', {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }, token),
+
+  getAdminMetrics: async (token: string) => {
+    const response = await authFetch('/admin/metrics', {}, token)
+    const body = await response.text().catch(() => '')
+    if (!response.ok) {
+      let message = 'Failed to load metrics'
+      try {
+        const json = JSON.parse(body) as { error?: string }
+        if (typeof json.error === 'string') message = json.error
+      } catch {
+        // non-JSON error body
+      }
+      throw new Error(message)
+    }
+    return body
+  },
 
   getSmtpSettings: (token: string) =>
     request<SmtpSettings>('/admin/notifications/smtp', {}, token),

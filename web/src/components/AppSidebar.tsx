@@ -1,4 +1,5 @@
 import {
+  Activity,
   ArrowLeft,
   BookOpen,
   Bot,
@@ -79,6 +80,7 @@ const adminNavItems: { id: AdminTab; label: string; icon: LucideIcon }[] = [
   { id: 'system', label: 'System information', icon: Gauge },
   { id: 'health', label: 'Health check', icon: HeartPulse },
   { id: 'configuration', label: 'Configuration', icon: SlidersHorizontal },
+  { id: 'observability', label: 'Logging & metrics', icon: Activity },
   { id: 'auth', label: 'SSO / LDAP', icon: KeyRound },
   { id: 'users', label: 'Users', icon: UserCog },
   { id: 'backups', label: 'Backups', icon: HardDrive },

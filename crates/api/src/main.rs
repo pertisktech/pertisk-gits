@@ -28,7 +28,6 @@ use sqlx::PgPool;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 use validator::Validate;
 
@@ -54,6 +53,7 @@ mod gitops;
 mod import;
 mod email_templates;
 mod notifications;
+mod observability;
 mod org;
 mod password;
 mod permissions;
@@ -114,19 +114,16 @@ struct RepositoryResponse {
 async fn main() -> anyhow::Result<()> {
     dotenvy::dotenv().ok();
 
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info,pertisk_api=debug".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    observability::init_tracing_subscriber();
 
     let config = Arc::new(Config::from_env()?);
     std::fs::create_dir_all(&config.repos_root)?;
     std::fs::create_dir_all(&config.search_index_root)?;
     let pool = db::connect(&config.database_url).await?;
     sqlx::migrate!("../../migrations").run(&pool).await?;
+    observability::init_from_db(&pool)
+        .await
+        .map_err(|e| anyhow::anyhow!(e.0.to_string()))?;
     cicd::spawn_runner_stale_checker(pool.clone());
     import::spawn_background_processor(pool.clone(), config.repos_root.clone());
     code_search::spawn_background_processor(
@@ -246,6 +243,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(audit::audit_routes())
         .merge(import::import_routes())
         .merge(admin::admin_routes())
+        .merge(observability::observability_routes())
         .merge(notifications::notification_routes())
         .merge(backup::backup_routes())
         .merge(branch_protection::branch_protection_read_routes())
@@ -346,6 +344,7 @@ async fn main() -> anyhow::Result<()> {
                 .allow_methods(Any)
                 .allow_headers(Any),
         )
+        .layer(axum::middleware::from_fn(observability::http_observability_middleware))
         .layer(TraceLayer::new_for_http());
 
     if compression::http_compression_enabled() {
@@ -2250,6 +2249,7 @@ impl IntoResponse for ApiError {
         };
 
         let message = self.0.to_string();
+        observability::log_api_error(status, &message, "");
         (status, Json(ErrorBody { error: message })).into_response()
     }
 }

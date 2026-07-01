@@ -42,5 +42,6 @@ rand = "0.8"
 sha2 = "0.10"
 urlencoding = "2"
 sysinfo = "0.33"
+prometheus = { workspace = true }
 tar = "0.4"
 tokio-util = { version = "0.7", features = ["io"] }
