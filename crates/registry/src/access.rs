@@ -221,3 +221,30 @@ pub async fn user_has_org_membership(pool: &PgPool, user_id: Uuid) -> anyhow::Re
     .await?;
     Ok(ok)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_image_name_valid() {
+        assert_eq!(parse_image_name("acme/widget"), Some(("acme", "widget")));
+    }
+
+    #[test]
+    fn parse_image_name_rejects_invalid() {
+        assert!(parse_image_name("").is_none());
+        assert!(parse_image_name("noseparator").is_none());
+        assert!(parse_image_name("/image").is_none());
+        assert!(parse_image_name("org/").is_none());
+        assert!(parse_image_name("org/a/b").is_none());
+    }
+
+    #[test]
+    fn normalize_catalog_page_size_clamps() {
+        assert_eq!(normalize_catalog_page_size(None), 100);
+        assert_eq!(normalize_catalog_page_size(Some(0)), 1);
+        assert_eq!(normalize_catalog_page_size(Some(5000)), 1000);
+        assert_eq!(normalize_catalog_page_size(Some(50)), 50);
+    }
+}

@@ -234,6 +234,25 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn pipeline_event_from_tag_ref() {
+        let event = pipeline_event_from_ref("push", "refs/tags/v1.0");
+        assert_eq!(
+            event,
+            PipelineEvent::Push {
+                branch: String::new(),
+                tag: Some("v1.0".into()),
+            }
+        );
+        let pr = pipeline_event_from_ref("pull_request", "refs/heads/main");
+        assert_eq!(
+            pr,
+            PipelineEvent::PullRequest {
+                target_branch: "main".into(),
+            }
+        );
+    }
+
     fn sample_config_with_branches(branches: &[&str]) -> PipelineConfig {
         PipelineConfig {
             on: Triggers {

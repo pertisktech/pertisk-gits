@@ -1256,4 +1256,83 @@ mod tests {
             "lightweight tag should resolve commit sha"
         );
     }
+
+    fn init_bare_repo_with_commit() -> (tempfile::TempDir, PathBuf) {
+        use std::process::Command as StdCommand;
+        let tmp = tempfile::TempDir::new().unwrap();
+        let worktree = tmp.path().to_path_buf();
+        StdCommand::new("git").current_dir(&worktree).args(["init", "-q"]).status().unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["config", "user.email", "t@e.com"]).status().unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["config", "user.name", "T"]).status().unwrap();
+        std::fs::write(worktree.join("README.md"), "# hello").unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["add", "README.md"]).status().unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["commit", "-q", "-m", "init"]).status().unwrap();
+        (tmp, worktree.join(".git"))
+    }
+
+    #[tokio::test]
+    async fn repo_browser_lists_branches() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let browser = repo_browser(&repo_path, "main").await.unwrap();
+        assert!(!browser.empty);
+        assert!(browser.branches.contains(&"main".to_string()));
+    }
+
+    #[tokio::test]
+    async fn list_tree_and_read_blob() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let entries = list_tree(&repo_path, "main", RefKind::Branch, "").await.unwrap();
+        assert!(entries.iter().any(|e| e.name == "README.md"));
+        let content = read_blob(&repo_path, "main", RefKind::Branch, "README.md")
+            .await
+            .unwrap();
+        assert!(content.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn list_commits_and_get_commit() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let commits = list_commits(&repo_path, "main", RefKind::Branch, 5)
+            .await
+            .unwrap();
+        assert_eq!(commits.len(), 1);
+        let detail = get_commit(&repo_path, &commits[0].sha).await.unwrap();
+        assert_eq!(detail.message, "init");
+    }
+
+    #[tokio::test]
+    async fn branch_head_and_ref_checks() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let sha = branch_head_sha(&repo_path, "main").await.unwrap();
+        assert_eq!(sha.len(), 40);
+        assert!(ref_exists(&repo_path, "main").await.unwrap());
+        assert!(ref_exists_kind(&repo_path, "main", RefKind::Branch)
+            .await
+            .unwrap());
+    }
+
+    #[tokio::test]
+    async fn create_lightweight_tag() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let tag = create_tag(&repo_path, "v1", "HEAD", None, None).await.unwrap();
+        assert_eq!(tag.name, "v1");
+        assert!(tag_exists(&repo_path, "v1").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn compare_branch_to_itself_is_empty() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let result = compare_branches(&repo_path, "main", "main").await.unwrap();
+        assert!(result.commits.is_empty());
+    }
+
+    #[tokio::test]
+    async fn list_branch_details_populated() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        let branches = list_branch_details(&repo_path).await.unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].name, "main");
+        let detail = get_commit(&repo_path, &branches[0].sha).await.unwrap();
+        assert_eq!(detail.message, "init");
+    }
 }

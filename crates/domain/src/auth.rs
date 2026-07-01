@@ -40,3 +40,31 @@ pub fn verify_token(secret: &str, token: &str) -> Result<Claims, jsonwebtoken::e
     )?;
     Ok(data.claims)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_round_trip() {
+        let user_id = Uuid::new_v4();
+        let secret = "test-secret-key";
+        let token = create_token(user_id, "alice", secret, 24).unwrap();
+        let claims = verify_token(secret, &token).unwrap();
+        assert_eq!(claims.sub, user_id);
+        assert_eq!(claims.username, "alice");
+        assert!(claims.exp > claims.iat);
+    }
+
+    #[test]
+    fn wrong_secret_rejected() {
+        let user_id = Uuid::new_v4();
+        let token = create_token(user_id, "alice", "secret-a", 1).unwrap();
+        assert!(verify_token("secret-b", &token).is_err());
+    }
+
+    #[test]
+    fn malformed_token_rejected() {
+        assert!(verify_token("secret", "not-a-jwt").is_err());
+    }
+}

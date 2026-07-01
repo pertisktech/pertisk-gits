@@ -18,3 +18,15 @@ pub fn verify_password(password: &str, password_hash: &str) -> anyhow::Result<bo
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_and_verify_password() {
+        let hash = hash_password("test-password-123").unwrap();
+        assert!(verify_password("test-password-123", &hash).unwrap());
+        assert!(!verify_password("wrong", &hash).unwrap());
+    }
+}

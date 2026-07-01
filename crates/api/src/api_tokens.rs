@@ -386,3 +386,14 @@ pub fn hash_api_token(token: &str) -> String {
     token.hash(&mut hasher);
     format!("{:x}", hasher.finish())
 }
+
+#[cfg(test)]
+mod hash_tests {
+    use super::hash_api_token;
+
+    #[test]
+    fn hash_is_deterministic() {
+        assert_eq!(hash_api_token("pgs_abc"), hash_api_token("pgs_abc"));
+        assert_ne!(hash_api_token("pgs_abc"), hash_api_token("pgs_xyz"));
+    }
+}

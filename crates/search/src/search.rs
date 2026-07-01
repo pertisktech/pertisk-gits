@@ -130,3 +130,69 @@ fn make_snippet(content: &str, query: &str) -> String {
         .take(180)
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::{index_repository, IndexRepositoryInput};
+    use std::process::Command;
+    use tempfile::TempDir;
+    use uuid::Uuid;
+
+    fn init_repo(dir: &std::path::Path) -> String {
+        Command::new("git").current_dir(dir).args(["init", "-q"]).status().unwrap();
+        Command::new("git").current_dir(dir).args(["config", "user.email", "t@e.com"]).status().unwrap();
+        Command::new("git").current_dir(dir).args(["config", "user.name", "T"]).status().unwrap();
+        std::fs::write(dir.join("search_me.rs"), "fn find_unique_token_xyz() {}").unwrap();
+        Command::new("git").current_dir(dir).args(["add", "."]).status().unwrap();
+        Command::new("git").current_dir(dir).args(["commit", "-q", "-m", "init"]).status().unwrap();
+        String::from_utf8(Command::new("git").current_dir(dir).args(["rev-parse", "HEAD"]).output().unwrap().stdout)
+            .unwrap()
+            .trim()
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn search_code_finds_indexed_token() {
+        let repo = TempDir::new().unwrap();
+        let index = TempDir::new().unwrap();
+        let sha = init_repo(repo.path());
+        let repository_id = Uuid::new_v4();
+        index_repository(IndexRepositoryInput {
+            index_root: index.path(),
+            repo_path: repo.path(),
+            repository_id,
+            org_slug: "acme",
+            repo_slug: "app",
+            commit_sha: &sha,
+            ref_name: "main",
+        })
+        .await
+        .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+        let hits = search_code(CodeSearchOptions {
+            index_root: index.path(),
+            query: "unique_token_xyz",
+            repository_id: Some(repository_id),
+            allowed_repository_ids: None,
+            limit: 5,
+        })
+        .unwrap();
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].path, "search_me.rs");
+    }
+
+    #[test]
+    fn short_query_returns_empty() {
+        let index = TempDir::new().unwrap();
+        let hits = search_code(CodeSearchOptions {
+            index_root: index.path(),
+            query: "a",
+            repository_id: None,
+            allowed_repository_ids: None,
+            limit: 5,
+        })
+        .unwrap();
+        assert!(hits.is_empty());
+    }
+}

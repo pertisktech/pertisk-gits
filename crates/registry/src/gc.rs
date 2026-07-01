@@ -96,3 +96,31 @@ pub fn spawn_gc_loop(pool: PgPool, store: BlobStore) {
         }
     });
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_manifest_digests_from_v2_manifest() {
+        let payload = br#"{
+            "config": { "digest": "sha256:config" },
+            "layers": [
+                { "digest": "sha256:layer1" },
+                { "digest": "sha256:layer2" }
+            ]
+        }"#;
+        let mut out = HashSet::new();
+        extract_manifest_digests(payload, &mut out);
+        assert_eq!(out.len(), 3);
+        assert!(out.contains("sha256:config"));
+        assert!(out.contains("sha256:layer1"));
+    }
+
+    #[test]
+    fn extract_manifest_digests_ignores_invalid_json() {
+        let mut out = HashSet::new();
+        extract_manifest_digests(b"not json", &mut out);
+        assert!(out.is_empty());
+    }
+}

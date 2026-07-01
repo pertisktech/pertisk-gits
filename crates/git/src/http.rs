@@ -340,3 +340,17 @@ impl IntoResponse for GitHttpError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn smart_http_paths() {
+        assert!(is_smart_http_path("acme/repo.git/info/refs"));
+        assert!(is_smart_http_path("/acme/repo.git/git-upload-pack"));
+        assert!(is_smart_http_path("org/repo.git/git-receive-pack"));
+        assert!(!is_smart_http_path("acme/repo"));
+        assert!(!is_smart_http_path("/api/health"));
+    }
+}

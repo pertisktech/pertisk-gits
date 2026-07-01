@@ -337,3 +337,26 @@ pub async fn check_s3_health() -> Option<S3HealthReport> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn local_backend_round_trip() {
+        let root = std::env::temp_dir().join(format!("pertisk-blob-{}", uuid::Uuid::new_v4()));
+        let backend = StorageBackend::local(root.clone()).unwrap();
+        backend.put("blobs/ab/cd", b"data").await.unwrap();
+        assert!(backend.exists("blobs/ab/cd").await);
+        assert_eq!(backend.get("blobs/ab/cd").await.unwrap(), b"data");
+        backend.delete("blobs/ab/cd").await.unwrap();
+        assert!(!backend.exists("blobs/ab/cd").await);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn registry_uses_local_by_default() {
+        std::env::remove_var("REGISTRY_STORAGE");
+        assert!(!registry_uses_s3_storage());
+    }
+}

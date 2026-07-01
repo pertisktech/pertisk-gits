@@ -68,4 +68,33 @@ mod tests {
     fn star_matches_all() {
         assert!(branch_matches_pattern("anything", "*"));
     }
+
+    #[test]
+    fn empty_inputs_rejected() {
+        assert!(!branch_matches_pattern("", "main"));
+        assert!(!branch_matches_pattern("main", ""));
+        assert!(!branch_matches_pattern("", ""));
+    }
+
+    #[test]
+    fn middle_wildcard() {
+        assert!(branch_matches_pattern("feature-foo-bar", "feature-*-bar"));
+        assert!(!branch_matches_pattern("feature-foo-baz", "feature-*-bar"));
+    }
+
+    #[test]
+    fn leading_wildcard() {
+        assert!(branch_matches_pattern("v1-hotfix", "*-hotfix"));
+    }
+
+    #[test]
+    fn whitespace_trimmed() {
+        assert!(branch_matches_pattern(" main ", " main "));
+    }
+
+    #[test]
+    fn suffix_without_trailing_star() {
+        assert!(branch_matches_pattern("release-1.0", "release-1.0"));
+        assert!(!branch_matches_pattern("release-1.0-extra", "release-1.0"));
+    }
 }

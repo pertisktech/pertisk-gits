@@ -95,4 +95,10 @@ mod tests {
     fn sanitizes_names() {
         assert_eq!(sanitize_artifact_name("my build"), "my_build");
     }
+
+    #[test]
+    fn download_filename_adds_tar_gz() {
+        assert_eq!(download_filename("artifact"), "artifact.tar.gz");
+        assert_eq!(download_filename("bundle.tar.gz"), "bundle.tar.gz");
+    }
 }

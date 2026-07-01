@@ -85,3 +85,36 @@ pub async fn is_ancestor(
         ),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn diff_refs_detects_changes() {
+        let mut before = HashMap::new();
+        before.insert("refs/heads/main".into(), "aaa".into());
+        before.insert("refs/heads/dev".into(), "bbb".into());
+
+        let mut after = HashMap::new();
+        after.insert("refs/heads/main".into(), "ccc".into());
+        after.insert("refs/heads/dev".into(), "bbb".into());
+        after.insert("refs/heads/new".into(), "ddd".into());
+
+        let updates = diff_refs(&before, &after);
+        assert_eq!(updates.len(), 2);
+        let main = updates
+            .iter()
+            .find(|u| u.ref_name == "refs/heads/main")
+            .unwrap();
+        assert_eq!(main.old_sha.as_deref(), Some("aaa"));
+        assert_eq!(main.new_sha, "ccc");
+    }
+
+    #[test]
+    fn diff_refs_empty_when_unchanged() {
+        let mut refs = HashMap::new();
+        refs.insert("refs/heads/main".into(), "aaa".into());
+        assert!(diff_refs(&refs, &refs).is_empty());
+    }
+}

@@ -67,11 +67,37 @@ mod tests {
     fn infers_environment_from_branch() {
         assert_eq!(infer_environment_from_ref(Some("main"), None).as_deref(), Some("dev"));
         assert_eq!(infer_environment_from_ref(Some("qa"), None).as_deref(), Some("qa"));
+        assert_eq!(infer_environment_from_ref(Some("uat"), None).as_deref(), Some("uat"));
         assert_eq!(infer_environment_from_ref(None, Some("release/1.0.0")).as_deref(), Some("prd"));
+        assert!(infer_environment_from_ref(Some("feature"), None).is_none());
     }
 
     #[test]
     fn normalizes_prod_alias() {
         assert_eq!(normalize_environment("prod").as_deref(), Some("prd"));
+        assert_eq!(normalize_environment("production").as_deref(), Some("prd"));
+        assert_eq!(normalize_environment("  QA  ").as_deref(), Some("qa"));
+        assert!(normalize_environment("staging").is_none());
+        assert!(normalize_environment("").is_none());
+    }
+
+    #[test]
+    fn effective_job_environment_resolution() {
+        assert_eq!(
+            effective_job_environment(Some("prod"), None, "build").as_deref(),
+            Some("prd")
+        );
+        assert_eq!(
+            effective_job_environment(None, Some("uat"), "build").as_deref(),
+            Some("uat")
+        );
+        assert_eq!(
+            effective_job_environment(None, None, "deploy-prd").as_deref(),
+            Some("prd")
+        );
+        assert_eq!(
+            effective_job_environment(None, None, "build-dev").as_deref(),
+            Some("dev")
+        );
     }
 }

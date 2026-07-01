@@ -47,3 +47,26 @@ impl RegistryConfig {
             .unwrap_or(true)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn token_url_joins_base() {
+        let cfg = RegistryConfig {
+            host: "0.0.0.0".into(),
+            port: 8083,
+            database_url: "postgres://localhost/test".into(),
+            registry_root: PathBuf::from("data/registry"),
+            jwt_secret: "secret".into(),
+            public_base_url: "https://registry.example.com".into(),
+            service_name: "pertisk-registry".into(),
+            allow_anonymous_pull: true,
+        };
+        assert_eq!(
+            cfg.token_url(),
+            "https://registry.example.com/service/token"
+        );
+    }
+}

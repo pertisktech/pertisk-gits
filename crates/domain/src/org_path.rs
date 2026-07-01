@@ -70,4 +70,29 @@ mod tests {
         assert_eq!(parent_org_path("a"), None);
         assert_eq!(org_path_slug("a/b/c"), "c");
     }
+
+    #[test]
+    fn normalize_org_path_trims() {
+        assert_eq!(normalize_org_path("  /a/b/  "), "a/b");
+        assert_eq!(normalize_org_path(""), "");
+        assert_eq!(normalize_org_path("///"), "");
+    }
+
+    #[test]
+    fn join_org_path_segments() {
+        assert_eq!(join_org_path("a/b", "c"), "a/b/c");
+        assert_eq!(join_org_path("", "c"), "c");
+        assert_eq!(join_org_path("a", ""), "a");
+        assert_eq!(join_org_path("", ""), "");
+    }
+
+    #[test]
+    fn split_git_repo_path_edge_cases() {
+        assert_eq!(split_git_repo_path("repo"), None);
+        assert_eq!(split_git_repo_path("/a/b"), Some(("a", "b")));
+        assert_eq!(split_git_repo_path("a.git"), None);
+        assert_eq!(parent_org_path("a/b/"), Some("a".into()));
+        assert_eq!(org_path_slug("a"), "a");
+        assert_eq!(org_path_slug("/a/b/"), "b");
+    }
 }

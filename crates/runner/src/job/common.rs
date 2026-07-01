@@ -124,3 +124,55 @@ pub fn is_kubernetes_executor() -> bool {
         "kubernetes" | "k8s" | "kube"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[test]
+    fn build_job_env_includes_project_dir() {
+        let mut secrets = HashMap::new();
+        secrets.insert("CI".into(), "true".into());
+        let env = build_job_env(&secrets, "/workspace/project");
+        let map: HashMap<_, _> = env.into_iter().collect();
+        assert_eq!(map.get("CI").map(String::as_str), Some("true"));
+        assert_eq!(map.get("CI_PROJECT_DIR").map(String::as_str), Some("/workspace/project"));
+    }
+
+    #[test]
+    fn predefined_vars_from_job_includes_repo_metadata() {
+        let job = PollJobResponse {
+            job_id: Uuid::new_v4(),
+            pipeline_run_id: Uuid::new_v4(),
+            job_name: "build".into(),
+            repository_id: Uuid::new_v4(),
+            org_slug: "acme".into(),
+            repo_slug: "widget".into(),
+            repo_name: "acme/widget".into(),
+            commit_sha: "abc123".into(),
+            ref_name: "main".into(),
+            event_type: "push".into(),
+            pipeline_iid: 1,
+            pipeline_created_at: Utc::now(),
+            config_path: Some(".pertisk-ci.yaml".into()),
+            target_environment: None,
+            effective_environment: None,
+            default_branch: "main".into(),
+            pull_request_number: None,
+            steps: vec![],
+            artifacts: vec![],
+            timeout_minutes: None,
+            image: None,
+            dind: false,
+        };
+        let vars = predefined_vars_from_job(&job, "https://git.example.com");
+        assert_eq!(vars.get("CI_JOB_NAME").map(String::as_str), Some("build"));
+        assert_eq!(vars.get("CI_COMMIT_SHA").map(String::as_str), Some("abc123"));
+        assert_eq!(
+            vars.get("CI_SERVER_URL").map(String::as_str),
+            Some("https://git.example.com")
+        );
+    }
+}

@@ -102,4 +102,15 @@ mod tests {
         assert!(!is_indexable_path("Cargo.lock"));
         assert!(!is_indexable_path("node_modules/foo/index.js"));
     }
+
+    #[test]
+    fn indexable_extensions_and_special_files() {
+        assert!(is_indexable_path("Dockerfile"));
+        assert!(is_indexable_path("dir/Makefile"));
+        assert!(is_indexable_path("config.yaml"));
+        assert!(!is_indexable_path("vendor/lib/foo.rs"));
+        assert!(!is_indexable_path("dist/bundle.js"));
+        assert!(!is_indexable_path("Cargo.lock"));
+        assert!(is_indexable_path("package-lock.json"));
+    }
 }

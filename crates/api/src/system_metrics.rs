@@ -113,3 +113,33 @@ pub fn directory_size_bytes(path: &Path) -> u64 {
 
     total
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn directory_size_counts_nested_files() {
+        let base = std::env::temp_dir().join(format!("pertisk-metrics-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        fs::create_dir_all(base.join("sub")).unwrap();
+        fs::write(base.join("a.txt"), "12345").unwrap();
+        fs::write(base.join("sub/b.txt"), "678").unwrap();
+        assert_eq!(directory_size_bytes(&base), 8);
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn directory_size_missing_path_is_zero() {
+        assert_eq!(directory_size_bytes(Path::new("/nonexistent/path/xyz")), 0);
+    }
+
+    #[test]
+    fn host_and_process_metrics_smoke() {
+        let host = collect_host_metrics();
+        assert!(host.cpu_cores >= 1);
+        let proc = collect_process_metrics();
+        assert_eq!(proc.pid, std::process::id());
+    }
+}

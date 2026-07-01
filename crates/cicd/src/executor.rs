@@ -359,3 +359,43 @@ fn percentile(sorted: &[u64], pct: u8) -> u64 {
     let idx = ((sorted.len() as f64) * (pct as f64 / 100.0)).ceil() as usize;
     sorted[idx.saturating_sub(1).min(sorted.len() - 1)]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Step;
+    use tempfile::TempDir;
+
+    #[test]
+    fn percentile_empty_returns_zero() {
+        assert_eq!(percentile(&[], 50), 0);
+    }
+
+    #[test]
+    fn percentile_picks_expected_index() {
+        let data = vec![10, 20, 30, 40, 100];
+        assert_eq!(percentile(&data, 50), 30);
+        assert_eq!(percentile(&data, 95), 100);
+    }
+
+    #[tokio::test]
+    async fn execute_steps_runs_echo() {
+        let executor = ShellExecutor::new();
+        let tmp = TempDir::new().unwrap();
+        let step = Step {
+            name: Some("echo".into()),
+            run: "echo hello".into(),
+            uses: None,
+            working_directory: None,
+            env: Default::default(),
+            with: Default::default(),
+        };
+        let (metrics, outputs) = executor
+            .execute_steps("job", tmp.path(), &[step], Duration::ZERO, &[])
+            .await;
+        assert_eq!(outputs.len(), 1);
+        assert_eq!(outputs[0].exit_code, 0);
+        assert!(outputs[0].stdout.contains("hello"));
+        assert_eq!(metrics.job_name, "job");
+    }
+}

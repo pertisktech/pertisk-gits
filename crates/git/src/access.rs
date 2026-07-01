@@ -382,3 +382,36 @@ fn base64_decode(input: &str) -> Result<String, ()> {
 
     String::from_utf8(out).map_err(|_| ())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_basic_auth_valid() {
+        // user:pass -> dXNlcjpwYXNz
+        let (user, pass) = parse_basic_auth("Basic dXNlcjpwYXNz").unwrap();
+        assert_eq!(user, "user");
+        assert_eq!(pass, "pass");
+    }
+
+    #[test]
+    fn parse_basic_auth_rejects_invalid() {
+        assert!(parse_basic_auth("Bearer token").is_none());
+        assert!(parse_basic_auth("Basic !!!").is_none());
+    }
+
+    #[test]
+    fn git_principal_user() {
+        let user = AuthUser {
+            id: Uuid::new_v4(),
+            username: "alice".into(),
+        };
+        assert!(GitPrincipal::User(user.clone()).user().is_some());
+        assert!(GitPrincipal::DeployKey {
+            fingerprint: "fp".into()
+        }
+        .user()
+        .is_none());
+    }
+}

@@ -123,6 +123,63 @@ pub fn ensure_user_record_approved(user: &User) -> Result<(), ApiError> {
     }
 }
 
+#[cfg(test)]
+mod approval_tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    fn sample_user(status: UserApprovalStatus) -> User {
+        User {
+            id: Uuid::new_v4(),
+            username: "alice".into(),
+            email: "alice@example.com".into(),
+            password_hash: Some("hash".into()),
+            display_name: None,
+            is_super_admin: false,
+            is_machine_user: false,
+            approval_status: status,
+            approved_at: None,
+            approved_by: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[test]
+    fn ensure_user_record_approved_accepts_approved() {
+        assert!(ensure_user_record_approved(&sample_user(UserApprovalStatus::Approved)).is_ok());
+    }
+
+    #[test]
+    fn ensure_user_record_approved_rejects_pending() {
+        assert!(ensure_user_record_approved(&sample_user(UserApprovalStatus::Pending)).is_err());
+    }
+
+    #[test]
+    fn super_admin_bypasses_approval() {
+        let mut user = sample_user(UserApprovalStatus::Pending);
+        user.is_super_admin = true;
+        assert!(ensure_user_record_approved(&user).is_ok());
+    }
+
+    #[test]
+    fn registration_flags_default() {
+        let prev_disable = std::env::var("DISABLE_REGISTRATION").ok();
+        let prev_approval = std::env::var("REQUIRE_REGISTRATION_APPROVAL").ok();
+        std::env::remove_var("DISABLE_REGISTRATION");
+        std::env::remove_var("REQUIRE_REGISTRATION_APPROVAL");
+        assert!(registration_enabled());
+        assert!(registration_requires_approval());
+        if let Some(v) = prev_disable {
+            std::env::set_var("DISABLE_REGISTRATION", v);
+        }
+        if let Some(v) = prev_approval {
+            std::env::set_var("REQUIRE_REGISTRATION_APPROVAL", v);
+        }
+    }
+}
+
 #[derive(Serialize)]
 struct AdminSystemInfoResponse {
     version: &'static str,

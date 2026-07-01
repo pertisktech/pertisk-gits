@@ -170,4 +170,29 @@ mod tests {
         assert!(script.contains("step_exit=$?"));
         assert!(script.contains("=== test (exit $step_exit)"));
     }
+
+    #[test]
+    fn shell_quote_escapes_single_quotes() {
+        assert_eq!(shell_quote("plain"), "'plain'");
+        assert_eq!(shell_quote("it's"), "'it'\"'\"'s'");
+    }
+
+    #[test]
+    fn renders_artifact_upload_step() {
+        use crate::config::ArtifactDecl;
+        let steps = vec![Step {
+            name: Some("upload".into()),
+            run: String::new(),
+            uses: None,
+            working_directory: None,
+            env: HashMap::new(),
+            with: HashMap::new(),
+        }];
+        let artifacts = vec![ArtifactDecl {
+            name: "dist".into(),
+            path: "target/*.tar.gz".into(),
+        }];
+        let script = render_job_script("/workspace", &steps, &artifacts, &HashMap::new());
+        assert!(script.contains("target/*.tar.gz"));
+    }
 }

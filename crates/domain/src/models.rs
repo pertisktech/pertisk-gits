@@ -998,3 +998,68 @@ pub struct UpdateWikiPageRequest {
     pub position: Option<i32>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use uuid::Uuid;
+    use validator::Validate;
+
+    #[test]
+    fn import_on_conflict_defaults_to_override() {
+        assert_eq!(ImportOnConflict::default(), ImportOnConflict::Override);
+    }
+
+    #[test]
+    fn repo_role_serializes_snake_case() {
+        let json = serde_json::to_string(&RepoRole::Write).unwrap();
+        assert_eq!(json, "\"write\"");
+    }
+
+    #[test]
+    fn register_request_validates_email() {
+        let req = RegisterRequest {
+            username: "ab".into(),
+            email: "bad".into(),
+            password: "short".into(),
+            display_name: None,
+        };
+        assert!(req.validate().is_err());
+    }
+
+    #[test]
+    fn org_role_serializes_snake_case() {
+        let json = serde_json::to_string(&OrgRole::Member).unwrap();
+        assert_eq!(json, "\"member\"");
+    }
+
+    #[test]
+    fn user_password_hash_skipped_in_json() {
+        let user = User {
+            id: Uuid::new_v4(),
+            username: "bob".into(),
+            email: "bob@example.com".into(),
+            password_hash: Some("secret".into()),
+            display_name: None,
+            is_super_admin: false,
+            is_machine_user: false,
+            approval_status: UserApprovalStatus::Approved,
+            approved_at: None,
+            approved_by: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let json = serde_json::to_string(&user).unwrap();
+        assert!(!json.contains("secret"));
+    }
+
+    #[test]
+    fn login_request_requires_password() {
+        let req = LoginRequest {
+            login: "alice".into(),
+            password: "".into(),
+        };
+        assert!(req.validate().is_err());
+    }
+}
+

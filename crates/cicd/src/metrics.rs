@@ -39,6 +39,38 @@ impl JobMetrics {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn from_step_timings_sums_durations() {
+        let now = Utc::now();
+        let steps = vec![
+            StepTiming {
+                name: "build".into(),
+                duration_ms: 100,
+                exit_code: 0,
+                started_at: now,
+                finished_at: now,
+            },
+            StepTiming {
+                name: "test".into(),
+                duration_ms: 50,
+                exit_code: 0,
+                started_at: now,
+                finished_at: now,
+            },
+        ];
+        let metrics = JobMetrics::from_step_timings("ci", steps, Duration::from_millis(200));
+        assert_eq!(metrics.execution_ms, 150);
+        assert_eq!(metrics.queue_wait_ms, 200);
+        assert_eq!(metrics.total_ms, 350);
+        assert!(metrics.summary_json().contains("ci"));
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RunnerBenchReport {
     pub iterations: u32,

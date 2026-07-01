@@ -39,3 +39,37 @@ pub fn repo_disk_path(root: &Path, org_path: &str, repo_slug: &str) -> PathBuf {
     path.push(format!("{repo_slug}.git"));
     path
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clone_url_format() {
+        let cfg = GitConfig {
+            host: "0.0.0.0".into(),
+            port: 8082,
+            database_url: "postgres://localhost/test".into(),
+            repos_root: PathBuf::from("data/repos"),
+            public_base_url: "http://git.example.com".into(),
+        };
+        assert_eq!(
+            cfg.clone_url("acme", "widget"),
+            "http://git.example.com/acme/widget.git"
+        );
+    }
+
+    #[test]
+    fn repo_disk_path_nested() {
+        let root = Path::new("/data/repos");
+        let path = repo_disk_path(root, "a/b/c", "repo");
+        assert_eq!(path, PathBuf::from("/data/repos/a/b/c/repo.git"));
+    }
+
+    #[test]
+    fn repo_disk_path_skips_empty_segments() {
+        let root = Path::new("/data/repos");
+        let path = repo_disk_path(root, "/a//b/", "repo");
+        assert_eq!(path, PathBuf::from("/data/repos/a/b/repo.git"));
+    }
+}

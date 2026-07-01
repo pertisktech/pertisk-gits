@@ -132,4 +132,25 @@ mod tests {
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].2, "refs/heads/main");
     }
+
+    #[test]
+    fn packet_line_format() {
+        let line = packet_line(b"ok\n");
+        assert_eq!(&line[..4], b"0007");
+        assert_eq!(&line[4..], b"ok\n");
+        assert_eq!(packet_line(b""), b"0004");
+    }
+
+    #[test]
+    fn packet_flush_is_zeros() {
+        assert_eq!(packet_flush(), b"0000");
+    }
+
+    #[test]
+    fn wrap_service_advertisement_structure() {
+        let body = b"body";
+        let wrapped = wrap_service_advertisement("git-upload-pack", body);
+        assert!(wrapped.starts_with(b"001e"));
+        assert!(wrapped.ends_with(body));
+    }
 }

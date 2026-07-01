@@ -71,6 +71,9 @@ check:
 test:
 	$(CARGO) test --workspace
 
+test-coverage:
+	./scripts/coverage.sh 
+
 run:
 	$(CARGO) run -p pertisk-api
 

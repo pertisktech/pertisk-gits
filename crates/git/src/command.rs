@@ -73,4 +73,24 @@ mod tests {
         assert_eq!(cmd.org_path, "a/b/c");
         assert_eq!(cmd.repo_slug, "repo");
     }
+
+    #[test]
+    fn git_subcommand_names() {
+        assert_eq!(GitService::UploadPack.git_subcommand(), "upload-pack");
+        assert_eq!(GitService::ReceivePack.git_subcommand(), "receive-pack");
+    }
+
+    #[test]
+    fn parses_receive_pack_and_quoted_paths() {
+        let cmd = parse_ssh_command("git-receive-pack \"acme/widget.git\"").unwrap();
+        assert_eq!(cmd.service, GitService::ReceivePack);
+        assert_eq!(cmd.org_path, "acme");
+        assert_eq!(cmd.repo_slug, "widget");
+    }
+
+    #[test]
+    fn rejects_unknown_command() {
+        assert!(parse_ssh_command("git-fetch").is_none());
+        assert!(parse_ssh_command("").is_none());
+    }
 }

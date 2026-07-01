@@ -61,3 +61,24 @@ pub fn stored_text(doc: &tantivy::TantivyDocument, field: tantivy::schema::Field
         _ => None,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn build_schema_has_all_fields() {
+        let schema = CodeSearchSchema::build();
+        assert_eq!(schema.schema.num_fields(), 7);
+    }
+
+    #[test]
+    fn open_index_creates_directory() {
+        let tmp = TempDir::new().unwrap();
+        let index = open_index(tmp.path()).unwrap();
+        assert!(index.schema().num_fields() > 0);
+        // idempotent open
+        let _ = open_index(tmp.path()).unwrap();
+    }
+}

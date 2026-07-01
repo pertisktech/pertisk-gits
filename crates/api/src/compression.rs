@@ -36,3 +36,26 @@ pub fn compression_layer() -> CompressionLayer<impl Predicate> {
         .no_deflate()
         .compress_when(predicate)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compression_env_parsing() {
+        let previous = std::env::var("HTTP_COMPRESSION").ok();
+        std::env::remove_var("HTTP_COMPRESSION");
+        assert!(http_compression_enabled());
+
+        std::env::set_var("HTTP_COMPRESSION", "false");
+        assert!(!http_compression_enabled());
+
+        std::env::set_var("HTTP_COMPRESSION", "on");
+        assert!(http_compression_enabled());
+
+        match previous {
+            Some(value) => std::env::set_var("HTTP_COMPRESSION", value),
+            None => std::env::remove_var("HTTP_COMPRESSION"),
+        }
+    }
+}

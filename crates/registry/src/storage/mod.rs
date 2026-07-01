@@ -219,4 +219,43 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    #[tokio::test]
+    async fn write_and_delete_blob() {
+        let dir = std::env::temp_dir().join(format!("pertisk-registry-test-{}", Uuid::new_v4()));
+        let store = BlobStore::new_local(dir.clone()).unwrap();
+        let data = b"registry blob";
+        let digest = sha256_digest(data);
+        store.write_blob(&digest, data).await.unwrap();
+        assert!(store.blob_exists(&digest).await);
+        assert_eq!(store.read_blob(&digest).await.unwrap(), data);
+        store.delete_blob(&digest).await.unwrap();
+        assert!(!store.blob_exists(&digest).await);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn finalize_upload_rejects_digest_mismatch() {
+        let dir = std::env::temp_dir().join(format!("pertisk-registry-test-{}", Uuid::new_v4()));
+        let store = BlobStore::new_local(dir.clone()).unwrap();
+        let upload_id = store.create_upload();
+        store.write_upload(&upload_id, b"payload").await.unwrap();
+        let wrong = sha256_digest(b"other");
+        let err = store.finalize_upload(&upload_id, &wrong).await.unwrap_err();
+        assert!(err.to_string().contains("digest mismatch"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn append_upload_chunks() {
+        let dir = std::env::temp_dir().join(format!("pertisk-registry-test-{}", Uuid::new_v4()));
+        let store = BlobStore::new_local(dir.clone()).unwrap();
+        let upload_id = store.create_upload();
+        store.append_upload(&upload_id, b"hel").await.unwrap();
+        store.append_upload(&upload_id, b"lo").await.unwrap();
+        let digest = sha256_digest(b"hello");
+        store.finalize_upload(&upload_id, &digest).await.unwrap();
+        assert_eq!(store.read_blob(&digest).await.unwrap(), b"hello");
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

@@ -78,3 +78,30 @@ fn decode_key(raw: &str) -> anyhow::Result<[u8; 32]> {
     }
     anyhow::bail!("SECRETS_ENCRYPTION_KEY must be 32-byte base64 or 64-char hex")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_crypto() -> SecretsCrypto {
+        std::env::set_var(
+            "SECRETS_ENCRYPTION_KEY",
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        );
+        SecretsCrypto::from_env().unwrap()
+    }
+
+    #[test]
+    fn encrypt_decrypt_round_trip() {
+        let crypto = test_crypto();
+        let blob = crypto.encrypt("super-secret").unwrap();
+        assert_ne!(blob, b"super-secret".as_slice());
+        assert_eq!(crypto.decrypt(&blob).unwrap(), "super-secret");
+    }
+
+    #[test]
+    fn decrypt_rejects_short_blob() {
+        let crypto = test_crypto();
+        assert!(crypto.decrypt(&[1, 2, 3]).is_err());
+    }
+}

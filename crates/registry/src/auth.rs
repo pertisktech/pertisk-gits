@@ -390,4 +390,64 @@ mod tests {
         assert!(merged[0].1.contains(&"pull".to_string()));
         assert!(merged[0].1.contains(&"push".to_string()));
     }
+
+    #[test]
+    fn registry_token_round_trip() {
+        let user_id = Uuid::new_v4();
+        let secret = "registry-jwt-secret";
+        let access = vec![RegistryAccess {
+            access_type: "repository".into(),
+            name: "acme/widget".into(),
+            actions: vec!["pull".into()],
+        }];
+        let token = issue_registry_token(secret, user_id, access.clone()).unwrap();
+        let auth = verify_registry_token(secret, &token).unwrap();
+        assert_eq!(auth.user_id, user_id);
+        assert_eq!(auth.access.len(), 1);
+        assert!(auth_allows(&auth, "acme/widget", "pull"));
+        assert!(!auth_allows(&auth, "acme/widget", "push"));
+    }
+
+    #[test]
+    fn parse_bearer_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer my-token"),
+        );
+        assert_eq!(parse_bearer(&headers).as_deref(), Some("my-token"));
+        assert!(parse_bearer(&HeaderMap::new()).is_none());
+    }
+
+    #[test]
+    fn catalog_access_granted() {
+        let auth = RegistryAuth {
+            user_id: Uuid::new_v4(),
+            access: vec![RegistryAccess {
+                access_type: "registry".into(),
+                name: "catalog".into(),
+                actions: vec!["*".into()],
+            }],
+        };
+        assert!(auth_allows_catalog(&auth));
+    }
+
+    #[test]
+    fn unauthorized_headers_format() {
+        let headers = unauthorized_headers("https://registry/token", "pertisk", "repository:org/img:pull");
+        let value = headers.get(header::WWW_AUTHENTICATE).unwrap().to_str().unwrap();
+        assert!(value.contains("realm=\"https://registry/token\""));
+        assert!(value.contains("service=\"pertisk\""));
+    }
+
+    #[test]
+    fn merge_scopes_dedupes_actions() {
+        let merged = merge_scopes(vec![
+            ("repo".into(), vec!["pull".into()]),
+            ("repo".into(), vec!["push".into()]),
+        ]);
+        assert_eq!(merged.len(), 1);
+        assert!(merged[0].1.contains(&"pull".to_string()));
+        assert!(merged[0].1.contains(&"push".to_string()));
+    }
 }

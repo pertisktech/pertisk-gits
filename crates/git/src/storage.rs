@@ -38,3 +38,20 @@ pub async fn ensure_bare_repo(root: &Path, org_slug: &str, repo_slug: &str) -> a
 pub fn repo_exists_on_disk(root: &Path, org_slug: &str, repo_slug: &str) -> bool {
     repo_disk_path(root, org_slug, repo_slug).join("HEAD").exists()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[test]
+    fn init_and_exists_round_trip() {
+        let tmp = TempDir::new().unwrap();
+        let root = tmp.path();
+        assert!(!repo_exists_on_disk(root, "acme", "widget"));
+        init_bare_repo(root, "acme", "widget").unwrap();
+        assert!(repo_exists_on_disk(root, "acme", "widget"));
+        // idempotent
+        init_bare_repo(root, "acme", "widget").unwrap();
+    }
+}

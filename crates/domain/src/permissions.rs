@@ -81,3 +81,55 @@ pub fn repo_role_allows_write(role: RepoRole) -> bool {
 pub fn repo_role_allows_admin(role: RepoRole) -> bool {
     matches!(role, RepoRole::Admin)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use RepoRole::*;
+
+    #[test]
+    fn max_repo_role_pair_table() {
+        assert_eq!(max_repo_role_pair(Admin, Read), Admin);
+        assert_eq!(max_repo_role_pair(Write, Read), Write);
+        assert_eq!(max_repo_role_pair(Read, Write), Write);
+        assert_eq!(max_repo_role_pair(Read, Read), Read);
+    }
+
+    #[test]
+    fn max_repo_role_with_none() {
+        assert_eq!(max_repo_role(None, Some(Write)), Some(Write));
+        assert_eq!(max_repo_role(Some(Admin), None), Some(Admin));
+        assert_eq!(max_repo_role(None, None), None);
+    }
+
+    #[test]
+    fn repo_role_access_checks() {
+        assert!(repo_role_allows_read(Read));
+        assert!(!repo_role_allows_write(Read));
+        assert!(repo_role_allows_write(Write));
+        assert!(repo_role_allows_admin(Admin));
+        assert!(!repo_role_allows_admin(Write));
+    }
+
+    #[test]
+    fn custom_role_permissions() {
+        let perms = CustomRolePermissions {
+            manage_members: true,
+            manage_settings: false,
+            view_audit: true,
+            ..Default::default()
+        };
+        assert!(perms.can_manage_members());
+        assert!(!perms.can_manage_settings());
+        assert!(perms.can_view_audit());
+    }
+
+    #[test]
+    fn max_repo_role_pair_is_commutative() {
+        use RepoRole::*;
+        assert_eq!(
+            max_repo_role_pair(Write, Admin),
+            max_repo_role_pair(Admin, Write)
+        );
+    }
+}

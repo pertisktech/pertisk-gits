@@ -55,3 +55,14 @@ pub fn job_resource_name(job_id: Uuid) -> String {
     let short = job_id.simple().to_string();
     format!("pertisk-job-{}", &short[..12])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn job_resource_name_prefix() {
+        let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
+        assert_eq!(job_resource_name(id), "pertisk-job-550e8400e29b");
+    }
+}

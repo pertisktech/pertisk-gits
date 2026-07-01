@@ -166,5 +166,14 @@ mod tests {
             import_target_org_path("gitlab", "mp/coupon/coupon-api"),
             "gitlab/mp/coupon"
         );
+        assert_eq!(import_repo_slug("repo"), "repo");
+        assert_eq!(import_target_org_path("", "ns/repo"), "ns");
+        assert_eq!(import_target_org_path("a/b", "a/b/repo"), "a/b");
+        assert_eq!(import_target_org_path("target", "singlerepo"), "target");
+        assert_eq!(
+            import_target_org_path("gitlab", "other/repo"),
+            "gitlab/other"
+        );
+        assert_eq!(import_target_org_path("x", "x"), "x");
     }
 }

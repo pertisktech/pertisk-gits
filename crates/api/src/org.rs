@@ -84,3 +84,15 @@ pub type OrgPath = Path<String>;
 pub fn org_path_string(path: OrgPath) -> String {
     org_path_from_param(&path.0)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn org_path_from_param_strips_leading_slash() {
+        assert_eq!(org_path_from_param("/a/b/c"), "a/b/c");
+        assert_eq!(org_path_from_param("a/b"), "a/b");
+        assert_eq!(org_path_from_param("  /x/  "), "x");
+    }
+}

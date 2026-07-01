@@ -101,3 +101,45 @@ pub async fn archive_commit(repo_path: &Path, commit_sha: &str) -> anyhow::Resul
 
     Ok(output.stdout)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command as StdCommand;
+
+    fn bare_repo_with_commit() -> (tempfile::TempDir, std::path::PathBuf, String) {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let worktree = tmp.path().to_path_buf();
+        StdCommand::new("git").current_dir(&worktree).args(["init", "-q"]).status().unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["config", "user.email", "t@e.com"]).status().unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["config", "user.name", "T"]).status().unwrap();
+        std::fs::write(worktree.join("file.txt"), "data").unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["add", "."]).status().unwrap();
+        StdCommand::new("git").current_dir(&worktree).args(["commit", "-q", "-m", "init"]).status().unwrap();
+        let sha = String::from_utf8(
+            StdCommand::new("git").current_dir(&worktree).args(["rev-parse", "HEAD"]).output().unwrap().stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        (tmp, worktree.join(".git"), sha)
+    }
+
+    #[tokio::test]
+    async fn checkout_commit_materializes_files() {
+        let (_tmp, repo, sha) = bare_repo_with_commit();
+        let workspace = tempfile::TempDir::new().unwrap();
+        checkout_commit(&repo, &sha, workspace.path()).await.unwrap();
+        let content = std::fs::read_to_string(workspace.path().join("file.txt")).unwrap();
+        assert_eq!(content, "data");
+    }
+
+    #[tokio::test]
+    async fn archive_commit_returns_gzip_tar() {
+        let (_tmp, repo, sha) = bare_repo_with_commit();
+        let archive = archive_commit(&repo, &sha).await.unwrap();
+        assert!(archive.len() > 2);
+        assert_eq!(&archive[0], &0x1f);
+        assert_eq!(&archive[1], &0x8b);
+    }
+}

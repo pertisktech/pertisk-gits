@@ -51,4 +51,9 @@ mod tests {
         let payload = br#"{"schemaVersion": 2}"#;
         assert_eq!(image_total_size_bytes(payload), payload.len() as i64);
     }
+
+    #[test]
+    fn invalid_json_uses_payload_length() {
+        assert_eq!(image_total_size_bytes(b"not-json"), 8);
+    }
 }
