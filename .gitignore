@@ -28,3 +28,4 @@ postinstall.sh
 preinstall.sh
 preremove.sh
 .buildx-out-gits-amd64/
+.buildx-out-gits-arm64/
