@@ -7,6 +7,7 @@ import { ProjectListRow } from './ProjectListRow'
 import listStyles from './ProjectList.module.css'
 import { AppSegment } from './AppSegment'
 import { EmptyState, LinkButton, TablePagination } from './ui'
+import { ImportMenuDropdown } from './ImportMenuDropdown'
 import { useClientPagination } from '../lib/pagination'
 
 type ChildFilter = 'all' | 'subgroups' | 'projects'
@@ -179,12 +180,7 @@ export function GroupChildrenPanel({
           action={
             canManage ? (
               <div className="flex flex-wrap justify-center gap-2">
-                <LinkButton to={`${basePath}/import?provider=github`}>
-                  Import from GitHub
-                </LinkButton>
-                <LinkButton to={`${basePath}/import?provider=gitlab`}>
-                  Import from GitLab
-                </LinkButton>
+                <ImportMenuDropdown basePath={basePath} />
                 <LinkButton to={`${basePath}/projects/new`} primary>
                   New repository
                 </LinkButton>

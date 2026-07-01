@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { GroupChildrenPanel } from '../components/GroupChildrenPanel'
 import { GroupLandingHero } from '../components/GroupLandingHero'
+import { ImportMenuDropdown } from '../components/ImportMenuDropdown'
 import { Breadcrumbs, LinkButton } from '../components/ui'
 import { useGroupFromRoute } from '../hooks/useGroupFromRoute'
 import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
@@ -70,14 +71,7 @@ export function GroupDetailPage() {
           </LinkButton>
         )}
         {canManage && (
-          <LinkButton to={`${basePath}/import?provider=github`}>
-            Import from GitHub
-          </LinkButton>
-        )}
-        {canManage && (
-          <LinkButton to={`${basePath}/import?provider=gitlab`}>
-            Import from GitLab
-          </LinkButton>
+          <ImportMenuDropdown basePath={basePath} />
         )}
         {canManage && (
           <LinkButton to={`/groups/new?parent=${encodeURIComponent(orgPath)}`}>

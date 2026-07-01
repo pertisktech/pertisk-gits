@@ -17,10 +17,10 @@ echo "==> Building pertisk-runner packages (DEB + RPM, amd64 + arm64) v${VERSION
 make package-runner-clean
 make package-runner VERSION="$VERSION"
 
-echo "==> Building pertisk-runner Docker image (amd64 + arm64) v${VERSION}"
-make runner-image-multi VERSION="$VERSION"
+#echo "==> Building pertisk-runner Docker image (amd64 + arm64) v${VERSION}"
+#make runner-image-multi VERSION="$VERSION"
 
-echo "==> Building pertisk-gits Docker image (amd64 + arm64) v${VERSION}"
-make pertisk-gits-image-multi VERSION="$VERSION"
+#echo "==> Building pertisk-gits Docker image (amd64 + arm64) v${VERSION}"
+#make pertisk-gits-image-multi VERSION="$VERSION"
 
 echo "==> Build complete. Artifacts in release/ and container registry."
