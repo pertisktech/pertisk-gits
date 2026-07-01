@@ -76,7 +76,6 @@ test-api:
 
 test-coverage:
 	./scripts/coverage.sh
-	open target/coverage/tarpaulin-report.html
 
 run:
 	$(CARGO) run -p pertisk-api
