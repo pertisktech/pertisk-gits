@@ -594,6 +594,29 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
+  deleteRepository: (token: string, orgSlug: string, repoSlug: string) =>
+    request<void>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}`, {
+      method: 'DELETE',
+    }, token),
+
+  transferRepository: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    targetOrgPath: string,
+  ) =>
+    request<RepositoryDetail>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/transfer`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ target_org_path: targetOrgPath }),
+      },
+      token,
+    ),
+
+  deleteOrganization: (token: string, orgSlug: string) =>
+    request<void>(`/organizations/${orgApiPath(orgSlug)}`, { method: 'DELETE' }, token),
+
   getRepoBrowser: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<{ browser: RepoBrowser }>(
       `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/browser`,

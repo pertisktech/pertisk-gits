@@ -11,6 +11,7 @@ export function ConfirmModal({
   cancelLabel = 'Cancel',
   variant = 'default',
   loading = false,
+  confirmDisabled = false,
   icon,
   onConfirm,
   onCancel,
@@ -22,6 +23,7 @@ export function ConfirmModal({
   cancelLabel?: string
   variant?: 'default' | 'danger'
   loading?: boolean
+  confirmDisabled?: boolean
   icon?: ReactNode
   onConfirm: () => void
   onCancel: () => void
@@ -97,7 +99,7 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={loading}
+            disabled={loading || confirmDisabled}
             className={cn(
               'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60',
               variant === 'danger'

@@ -8,6 +8,7 @@ import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { findGroupByPath, groupBaseUrl, groupUrlPath } from '../lib/groupPath'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
 import { Card } from '../components/Card'
+import { GroupDangerZone } from '../components/GroupDangerZone'
 import { Breadcrumbs, LinkButton, PageHeader, PrimaryButton } from '../components/ui'
 
 const fieldClass =
@@ -41,6 +42,7 @@ export function GroupSettingsPage() {
     [members, user?.id],
   )
   const canManage = myRole === 'owner' || myRole === 'admin'
+  const isOwner = myRole === 'owner'
 
   useEffect(() => {
     if (!group) return
@@ -168,6 +170,12 @@ export function GroupSettingsPage() {
           </div>
         </form>
       </Card>
+
+      {isOwner && (
+        <div className="max-w-xl mt-6">
+          <GroupDangerZone token={token!} orgPath={orgPath} group={group} allGroups={groups} />
+        </div>
+      )}
     </>
   )
 }

@@ -482,6 +482,22 @@ pub(crate) async fn ensure_can_admin_repo(
     }
 }
 
+pub(crate) async fn ensure_org_owner(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), ApiError> {
+    let role = get_org_member_role(pool, org_id, user_id)
+        .await?
+        .ok_or(DomainError::Forbidden)?;
+
+    if role == OrgRole::Owner {
+        Ok(())
+    } else {
+        Err(DomainError::Forbidden.into())
+    }
+}
+
 async fn get_org_member_role(
     pool: &PgPool,
     org_id: Uuid,

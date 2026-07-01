@@ -131,7 +131,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
           className="app-brand"
           title={collapsed ? 'Pertisk Gits' : undefined}
         >
-          <img src="/favicon.svg" alt="" className="w-7 h-7 shrink-0" />
+          <img src="/logo.png" alt="" className="w-7 h-7 shrink-0 object-contain" />
           <span>Pertisk Gits</span>
         </NavLink>
         <button

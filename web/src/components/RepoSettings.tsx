@@ -9,6 +9,7 @@ import { BranchProtection } from './BranchProtection'
 import { DeployKeysPanel } from './DeployKeysPanel'
 import { GitOpsWebhooksPanel } from './GitOpsWebhooksPanel'
 import { RepoCollaborators } from './RepoCollaborators'
+import { RepoDangerZone } from './RepoDangerZone'
 import { RepoTeamAccess } from './RepoTeamAccess'
 import { REPO_SETTINGS_SECTION_META, RepoSettingsNav } from './settings/RepoSettingsNav'
 import { SettingsPanel } from './settings/SettingsPanel'
@@ -205,6 +206,10 @@ export function RepoSettings({
               )}
             </form>
           </SettingsPanel>
+        )}
+
+        {section === 'general' && (
+          <RepoDangerZone token={token} orgSlug={orgSlug} repoSlug={repoSlug} />
         )}
 
         {section === 'access' && (

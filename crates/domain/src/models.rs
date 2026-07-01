@@ -452,6 +452,12 @@ pub struct UpdateRepositoryRequest {
 }
 
 #[derive(Debug, Deserialize, Validate)]
+pub struct TransferRepositoryRequest {
+    #[validate(length(min = 1, max = 500))]
+    pub target_org_path: String,
+}
+
+#[derive(Debug, Deserialize, Validate)]
 pub struct AddOrganizationMemberRequest {
     pub username: Option<String>,
     pub user_id: Option<Uuid>,

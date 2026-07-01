@@ -63,7 +63,7 @@ export function RegisterPage() {
         </header>
 
         <div className={styles.brand}>
-          <img src="/favicon.svg" alt="" className={styles.brandLogo} />
+          <img src="/logo.png" alt="" className={styles.brandLogo} />
           <span className={styles.brandName}>Pertisk Gits</span>
         </div>
 
@@ -96,7 +96,7 @@ export function RegisterPage() {
       </header>
 
       <div className={styles.brand}>
-        <img src="/favicon.svg" alt="" className={styles.brandLogo} />
+        <img src="/logo.png" alt="" className={styles.brandLogo} />
         <span className={styles.brandName}>Pertisk Gits</span>
       </div>
 

@@ -211,7 +211,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/organizations", get(list_organizations).post(create_organization))
         .route(
             "/organizations/{org_path}",
-            patch(update_organization),
+            patch(update_organization).delete(delete_organization),
         )
         .route("/organizations/{org_path}/subgroups", get(list_organization_subgroups))
         .route("/organizations/{org_path}/members", get(list_organization_members))
@@ -221,7 +221,12 @@ async fn main() -> anyhow::Result<()> {
         )
         .route(
             "/organizations/{org_path}/repositories/{repo_slug}",
-            patch(update_repository),
+            patch(update_repository)
+                .delete(delete_repository),
+        )
+        .route(
+            "/organizations/{org_path}/repositories/{repo_slug}/transfer",
+            post(transfer_repository),
         )
         .merge(permissions::permissions_routes())
         .merge(custom_roles::custom_role_routes())
@@ -322,6 +327,9 @@ async fn main() -> anyhow::Result<()> {
                     .precompressed_gzip(),
             )
             .route_service("/favicon.svg", get_service(ServeFile::new(web_dist.join("favicon.svg"))))
+            .route_service("/favicon.png", get_service(ServeFile::new(web_dist.join("favicon.png"))))
+            .route_service("/logo.png", get_service(ServeFile::new(web_dist.join("logo.png"))))
+            .route_service("/logo-192.png", get_service(ServeFile::new(web_dist.join("logo-192.png"))))
             .route_service("/icons.svg", get_service(ServeFile::new(web_dist.join("icons.svg"))))
             .fallback(get(spa_index));
         tracing::info!("serving web UI from {}", web_dist.display());
@@ -1413,6 +1421,207 @@ async fn update_repository(
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok(Json(repo_response(&state.config, &crate::org::org_path_from_param(&org_path), updated)))
+}
+
+async fn delete_organization(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(org_path): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let org_path = crate::org::org_path_from_param(&org_path);
+    let org = find_org_for_member(&state.pool, &org_path, auth.user_id).await?;
+    permissions::ensure_org_owner(&state.pool, org.id, auth.user_id).await?;
+
+    let child_orgs: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM organizations WHERE parent_id = $1",
+    )
+    .bind(org.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if child_orgs > 0 {
+        return Err(DomainError::Validation(
+            "cannot delete group: move or delete subgroups first".into(),
+        )
+        .into());
+    }
+
+    let repo_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::bigint FROM repositories WHERE organization_id = $1",
+    )
+    .bind(org.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if repo_count > 0 {
+        return Err(DomainError::Validation(
+            "cannot delete group: move or delete repositories first".into(),
+        )
+        .into());
+    }
+
+    sqlx::query("DELETE FROM organizations WHERE id = $1")
+        .bind(org.id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let storage_dir = group_storage_dir(&state.config.repos_root, &org.full_path);
+    if storage_dir.exists() {
+        tokio::fs::remove_dir_all(&storage_dir)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_repository(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_path, repo_slug)): Path<(String, String)>,
+) -> Result<StatusCode, ApiError> {
+    let org_path = crate::org::org_path_from_param(&org_path);
+    let org = find_org_for_member(&state.pool, &org_path, auth.user_id).await?;
+
+    let repo = sqlx::query_as::<_, Repository>(
+        r#"
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        FROM repositories
+        WHERE organization_id = $1 AND slug = $2
+        "#,
+    )
+    .bind(org.id)
+    .bind(&repo_slug)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::NotFound)?;
+
+    permissions::ensure_can_admin_repo(&state.pool, org.id, &repo, &auth).await?;
+
+    sqlx::query("DELETE FROM repositories WHERE id = $1")
+        .bind(repo.id)
+        .execute(&state.pool)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let repo_path = repo_disk_path(&state.config.repos_root, &org_path, &repo.slug);
+    if repo_path.exists() {
+        tokio::fs::remove_dir_all(&repo_path)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn transfer_repository(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path((org_path, repo_slug)): Path<(String, String)>,
+    Json(body): Json<TransferRepositoryRequest>,
+) -> Result<Json<RepositoryResponse>, ApiError> {
+    body.validate()
+        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?;
+
+    let source_path = crate::org::org_path_from_param(&org_path);
+    let target_path = normalize_org_path(&body.target_org_path);
+    if target_path.is_empty() {
+        return Err(DomainError::Validation("target group path is required".into()).into());
+    }
+    if target_path == source_path {
+        return Err(DomainError::Validation(
+            "repository is already in this group".into(),
+        )
+        .into());
+    }
+
+    let source_org = find_org_for_member(&state.pool, &source_path, auth.user_id).await?;
+    let target_org = find_org_for_member(&state.pool, &target_path, auth.user_id).await?;
+    permissions::ensure_can_manage_org_settings(&state.pool, target_org.id, auth.user_id).await?;
+
+    let repo = sqlx::query_as::<_, Repository>(
+        r#"
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        FROM repositories
+        WHERE organization_id = $1 AND slug = $2
+        "#,
+    )
+    .bind(source_org.id)
+    .bind(&repo_slug)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+    .ok_or(DomainError::NotFound)?;
+
+    permissions::ensure_can_admin_repo(&state.pool, source_org.id, &repo, &auth).await?;
+
+    let conflict: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM repositories WHERE organization_id = $1 AND slug = $2)",
+    )
+    .bind(target_org.id)
+    .bind(&repo.slug)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if conflict {
+        return Err(DomainError::Conflict(format!(
+            "a repository named '{}' already exists in the target group",
+            repo.slug
+        ))
+        .into());
+    }
+
+    let old_disk = repo_disk_path(&state.config.repos_root, &source_path, &repo.slug);
+    let new_disk = repo_disk_path(&state.config.repos_root, &target_path, &repo.slug);
+    if new_disk.exists() {
+        return Err(DomainError::Conflict(
+            "cannot transfer repository: target storage path already exists".into(),
+        )
+        .into());
+    }
+
+    if old_disk.exists() {
+        if let Some(parent) = new_disk.parent() {
+            tokio::fs::create_dir_all(parent)
+                .await
+                .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        }
+        tokio::fs::rename(&old_disk, &new_disk)
+            .await
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    }
+
+    let updated = match sqlx::query_as::<_, Repository>(
+        r#"
+        UPDATE repositories
+        SET organization_id = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        "#,
+    )
+    .bind(target_org.id)
+    .bind(repo.id)
+    .fetch_one(&state.pool)
+    .await
+    {
+        Ok(row) => row,
+        Err(err) => {
+            if new_disk.exists() && !old_disk.exists() {
+                if let Some(parent) = old_disk.parent() {
+                    let _ = tokio::fs::create_dir_all(parent).await;
+                }
+                let _ = tokio::fs::rename(&new_disk, &old_disk).await;
+            }
+            return Err(ApiError::from(DomainError::Internal(err.to_string())));
+        }
+    };
+
+    Ok(Json(repo_response(&state.config, &target_path, updated)))
 }
 
 fn group_storage_dir(root: &std::path::Path, org_path: &str) -> std::path::PathBuf {
