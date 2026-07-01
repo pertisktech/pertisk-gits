@@ -27,3 +27,4 @@ release-test
 postinstall.sh
 preinstall.sh
 preremove.sh
+.buildx-out-gits-amd64/
