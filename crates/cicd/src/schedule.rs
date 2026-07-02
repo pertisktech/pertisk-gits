@@ -42,6 +42,35 @@ impl ScheduledJob {
             JobScheduleMode::Queued => ("pending", "Queued"),
         }
     }
+
+    /// GitLab-style retry: reset jobs run immediately (`queued`), not back to `manual`.
+    pub fn rerun_db_status(&self) -> &'static str {
+        if self.skipped() {
+            "skipped"
+        } else {
+            "queued"
+        }
+    }
+
+    pub fn rerun_initial_log(&self) -> &'static str {
+        if self.skipped() {
+            self.initial_log()
+        } else {
+            ""
+        }
+    }
+
+    pub fn rerun_finishes_immediately(&self) -> bool {
+        self.skipped()
+    }
+
+    pub fn rerun_commit_status(&self) -> (&'static str, &'static str) {
+        if self.skipped() {
+            self.commit_status()
+        } else {
+            ("pending", "Queued")
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -509,6 +538,12 @@ mod tests {
         assert_eq!(queued.initial_log(), "");
         assert!(!queued.finishes_immediately());
         assert_eq!(queued.commit_status(), ("pending", "Queued"));
+
+        assert_eq!(job.rerun_db_status(), "queued");
+        assert_eq!(job.rerun_initial_log(), "");
+        assert!(!job.rerun_finishes_immediately());
+        assert_eq!(job.rerun_commit_status(), ("pending", "Queued"));
+        assert_eq!(skipped.rerun_db_status(), "skipped");
     }
 
     #[test]

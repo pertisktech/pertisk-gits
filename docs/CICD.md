@@ -312,9 +312,9 @@ curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/$RUN_I
   -H "Authorization: Bearer $JWT"
 ```
 
-The selected job and any downstream jobs (via `needs`) are reset. Upstream jobs that already succeeded are left unchanged. Works for **manual**, **success**, **failed**, **cancelled**, and **skipped** jobs — only **queued** / **running** jobs cannot be re-run until they finish.
+The selected job and any downstream jobs (via `needs`) are reset and **queued to run immediately** (GitLab-style retry). Manual jobs (`when: manual`) are not sent back to the play button — they execute like any other job. Upstream jobs that already succeeded are left unchanged. Works for **manual**, **success**, **failed**, **cancelled**, and **skipped** jobs — only **queued** / **running** jobs cannot be re-run until they finish.
 
-**UI:** Each job in the pipeline graph, sidebar, job header, and log panel shows **Re-run job** (↻). Manual jobs also keep **Run job** (▶) to start without resetting.
+**UI:** Each job in the pipeline graph, sidebar, job header, and log panel shows **Re-run job** (↻). Manual jobs waiting for first play still use **Run job** (▶).
 
 ### Delete pipeline run
 

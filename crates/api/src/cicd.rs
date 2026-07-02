@@ -793,7 +793,7 @@ async fn get_pipeline_config_preview(
                         .name
                         .clone()
                         .or_else(|| step.uses.clone())
-                        .unwrap_or_else(|| format!("step-{}", index + 1)),
+                        .unwrap_or_else(|| format!("step-{index}")),
                     run: if step.run.trim().is_empty() {
                         step.uses.clone().unwrap_or_default()
                     } else {
@@ -2589,11 +2589,30 @@ async fn materialize_jobs_for_run(
         }
         reset_job_names.push(job.name.clone());
 
+        let use_rerun_status = !matches!(mode, MaterializeMode::Fresh);
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
         let artifacts_json =
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
-        let status = job.db_status();
-        let initial_log = job.initial_log();
+        let status = if use_rerun_status {
+            job.rerun_db_status()
+        } else {
+            job.db_status()
+        };
+        let initial_log = if use_rerun_status {
+            job.rerun_initial_log()
+        } else {
+            job.initial_log()
+        };
+        let finishes_immediately = if use_rerun_status {
+            job.rerun_finishes_immediately()
+        } else {
+            job.finishes_immediately()
+        };
+        let (commit_state, commit_description) = if use_rerun_status {
+            job.rerun_commit_status()
+        } else {
+            job.commit_status()
+        };
         let effective_environment = effective_job_environment(
             job.job.environment.as_deref(),
             run_environment,
@@ -2636,11 +2655,10 @@ async fn materialize_jobs_for_run(
         .bind(effective_environment.as_deref())
         .bind(status)
         .bind(initial_log)
-        .bind(job.finishes_immediately())
+        .bind(finishes_immediately)
         .execute(pool)
         .await?;
 
-        let (commit_state, commit_description) = job.commit_status();
         sqlx::query(
             r#"
             INSERT INTO commit_statuses (repository_id, commit_sha, context, state, description, pipeline_run_id, required)
@@ -3372,7 +3390,7 @@ fn steps_from_json(steps_json: &Value) -> Vec<JobStepResponse> {
                         .and_then(|v| v.as_str())
                         .map(str::to_string)
                         .or_else(|| uses.map(str::to_string))
-                        .unwrap_or_else(|| format!("step-{}", index + 1));
+                        .unwrap_or_else(|| format!("step-{index}"));
                     let display = if run.is_empty() {
                         uses.unwrap_or("").to_string()
                     } else {

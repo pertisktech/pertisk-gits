@@ -9,7 +9,7 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Cpu, Loader2, Play, RotateCcw } from 'lucide-react'
+import { Cpu, Loader2 } from 'lucide-react'
 import type { JobRun, PipelineRun } from '../api/types'
 import {
   graphHeight,
@@ -21,15 +21,13 @@ import { ActionsStatusIcon } from './PipelineStatus'
 
 function PipelineJobNode({ data }: NodeProps) {
   const nodeData = data as PipelineGraphNodeData
-  const { job, selected, canPlay, onPlay, canRerun, onRerun, rerunPending } = nodeData
+  const { job, selected } = nodeData
   const status = job.status ?? 'pending'
   const isManual = status === 'manual'
-  const showPlay = isManual && canPlay && onPlay
-  const showRerun = canRerun && onRerun
 
   return (
     <div
-      className={`pipeline-graph-node-wrap${selected ? ' pipeline-graph-node-wrap--selected' : ''}${status === 'skipped' ? ' pipeline-graph-node-wrap--skipped' : ''}${isManual ? ' pipeline-graph-node-wrap--manual' : ''}${showPlay && showRerun ? ' pipeline-graph-node-wrap--dual-action' : ''}`}
+      className={`pipeline-graph-node-wrap${selected ? ' pipeline-graph-node-wrap--selected' : ''}${status === 'skipped' ? ' pipeline-graph-node-wrap--skipped' : ''}${isManual ? ' pipeline-graph-node-wrap--manual' : ''}`}
     >
       <button
         type="button"
@@ -57,35 +55,6 @@ function PipelineJobNode({ data }: NodeProps) {
         </div>
         <Handle type="source" position={Position.Right} className="pipeline-graph-handle" />
       </button>
-      {showRerun && (
-        <button
-          type="button"
-          className="pipeline-graph-node-rerun"
-          title="Re-run job"
-          aria-label={`Re-run ${job.name}`}
-          disabled={rerunPending}
-          onClick={(event) => {
-            event.stopPropagation()
-            onRerun(job.job_id ?? job.name)
-          }}
-        >
-          {rerunPending ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
-        </button>
-      )}
-      {showPlay && (
-        <button
-          type="button"
-          className="pipeline-graph-node-play"
-          title="Run manual job"
-          aria-label={`Run ${job.name}`}
-          onClick={(event) => {
-            event.stopPropagation()
-            onPlay(job.job_id ?? job.name)
-          }}
-        >
-          <Play size={14} />
-        </button>
-      )}
     </div>
   )
 }
@@ -112,11 +81,6 @@ export function PipelineGraph({
   jobs,
   selectedJob,
   onJobSelect,
-  onPlayJob,
-  canPlayJob,
-  onRerunJob,
-  canRerunJob,
-  rerunPendingJobId,
   loading,
   emptyMessage = 'No jobs defined',
   className,
@@ -124,11 +88,6 @@ export function PipelineGraph({
   jobs: PipelineGraphJob[]
   selectedJob?: string | null
   onJobSelect?: (jobKey: string) => void
-  onPlayJob?: (jobKey: string) => void
-  canPlayJob?: (job: PipelineGraphJob) => boolean
-  onRerunJob?: (jobKey: string) => void
-  canRerunJob?: (job: PipelineGraphJob) => boolean
-  rerunPendingJobId?: string | null
   loading?: boolean
   emptyMessage?: string
   className?: string
@@ -151,17 +110,9 @@ export function PipelineGraph({
             selectedJob === node.data.job.job_id ||
             node.data.selected,
           onSelect: onJobSelect,
-          onPlay: onPlayJob,
-          canPlay: canPlayJob?.(node.data.job) ?? false,
-          onRerun: onRerunJob,
-          canRerun: canRerunJob?.(node.data.job) ?? false,
-          rerunPending:
-            rerunPendingJobId != null &&
-            (rerunPendingJobId === node.data.job.job_id ||
-              rerunPendingJobId === node.data.job.name),
         },
       })),
-    [layout.nodes, onJobSelect, onPlayJob, canPlayJob, onRerunJob, canRerunJob, rerunPendingJobId, selectedJob],
+    [layout.nodes, onJobSelect, selectedJob],
   )
 
   const structureKey = useMemo(

@@ -1,6 +1,6 @@
-import type { JobRun } from '../api/types'
+import type { JobRun, PipelineRun } from '../api/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Download, Loader2, RotateCcw, Square, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, Square, Trash2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
@@ -43,8 +43,8 @@ import { projectBreadcrumbItems } from '../lib/groupRoute'
 import { displayRepoName } from '../lib/projectInitial'
 import { Breadcrumbs, SecondaryButton } from '../components/ui'
 import {
-  defaultStepKey,
   inferRunningStepName,
+  initialStepKey,
   jobStepViews,
   stepLogText,
 } from '../lib/pipelineLog'
@@ -64,6 +64,7 @@ export function PipelineRunDetailPage() {
   const queryClient = useQueryClient()
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
   const [activeStepKey, setActiveStepKey] = useState<string | null>(null)
+  const [jobLogSession, setJobLogSession] = useState(0)
   const userPinnedStep = useRef(false)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -124,35 +125,46 @@ export function PipelineRunDetailPage() {
     [activeJob, run],
   )
 
-  useEffect(() => {
+  const refreshJobLogView = (updatedRun: PipelineRun, jobId: string) => {
+    const job = updatedRun.jobs.find((entry) => entry.id === jobId)
+    if (!job) return
     userPinnedStep.current = false
-    setActiveStepKey(null)
-  }, [activeJob?.id])
+    setActiveJobId(jobId)
+    setJobLogSession((session) => session + 1)
+    const step =
+      initialStepKey(job, updatedRun.status) ??
+      jobStepViews(job, updatedRun.status)[0]?.key ??
+      null
+    setActiveStepKey(step)
+  }
+
+  useEffect(() => {
+    if (!activeJob || !run || userPinnedStep.current || activeStepKey !== null) return
+    const next = initialStepKey(activeJob, run.status)
+    if (next) setActiveStepKey(next)
+  }, [activeJob, run, activeStepKey])
 
   useEffect(() => {
     if (!activeJob || !run || userPinnedStep.current) return
-
-    const jobStatus = displayJobStatus(activeJob, run.status)
-    if (jobStatus === 'running') {
-      const running = inferRunningStepName(activeJob, run.status)
-      if (running && running !== activeStepKey) {
-        setActiveStepKey(running)
-      }
-      return
+    if (displayJobStatus(activeJob, run.status) !== 'running') return
+    const running = inferRunningStepName(activeJob, run.status)
+    if (running && running !== activeStepKey) {
+      setActiveStepKey(running)
     }
-
-    if (activeStepKey !== null) return
-
-    const next = defaultStepKey(activeJob, run.status)
-    if (next) {
-      setActiveStepKey(next)
-    }
-  }, [activeJob, activeStepKey, run])
+  }, [activeJob, activeJob?.log_text, run, activeStepKey])
 
   const selectJob = (jobId: string) => {
+    if (!run) return
+    const job = run.jobs.find((entry) => entry.id === jobId)
+    if (!job) return
     userPinnedStep.current = false
     setActiveJobId(jobId)
-    setActiveStepKey(null)
+    setJobLogSession((session) => session + 1)
+    setActiveStepKey(
+      initialStepKey(job, run.status) ??
+        jobStepViews(job, run.status)[0]?.key ??
+        null,
+    )
   }
 
   const selectStep = (stepKey: string) => {
@@ -176,10 +188,12 @@ export function PipelineRunDetailPage() {
       api.rerunPipeline(token!, orgSlug, projectSlug, runId, scope),
     onSuccess: (updatedRun) => {
       queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
-      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
-      userPinnedStep.current = false
-      setActiveJobId(null)
-      setActiveStepKey(null)
+      queryClient.invalidateQueries({
+        queryKey: ['pipeline-runs', orgSlug, projectSlug],
+        refetchType: 'none',
+      })
+      const jobId = activeJobId ?? updatedRun.jobs[0]?.id
+      if (jobId) refreshJobLogView(updatedRun, jobId)
     },
   })
 
@@ -219,9 +233,13 @@ export function PipelineRunDetailPage() {
     onSettled: () => {
       setPlayingJobId(null)
     },
-    onSuccess: (updatedRun) => {
+    onSuccess: (updatedRun, jobId) => {
       queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
-      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+      queryClient.invalidateQueries({
+        queryKey: ['pipeline-runs', orgSlug, projectSlug],
+        refetchType: 'none',
+      })
+      refreshJobLogView(updatedRun, jobId)
     },
   })
 
@@ -234,9 +252,13 @@ export function PipelineRunDetailPage() {
     onSettled: () => {
       setRerunningJobId(null)
     },
-    onSuccess: (updatedRun) => {
+    onSuccess: (updatedRun, jobId) => {
       queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
-      queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+      queryClient.invalidateQueries({
+        queryKey: ['pipeline-runs', orgSlug, projectSlug],
+        refetchType: 'none',
+      })
+      refreshJobLogView(updatedRun, jobId)
     },
   })
 
@@ -409,27 +431,6 @@ export function PipelineRunDetailPage() {
             const match = resolveJobKey(jobKey)
             if (match) selectJob(match.id)
           }}
-          onPlayJob={(jobKey) => {
-            const match = resolveJobKey(jobKey)
-            if (match) playJobMutation.mutate(match.id)
-          }}
-          canPlayJob={(graphJob) => {
-            const match = run.jobs.find(
-              (job) => job.id === graphJob.job_id || job.job_name === graphJob.name,
-            )
-            return match ? canPlayJob(match) : false
-          }}
-          onRerunJob={(jobKey) => {
-            const match = resolveJobKey(jobKey)
-            if (match) rerunJobMutation.mutate(match.id)
-          }}
-          canRerunJob={(graphJob) => {
-            const match = run.jobs.find(
-              (job) => job.id === graphJob.job_id || job.job_name === graphJob.name,
-            )
-            return match ? canRerunSingleJob(match) : false
-          }}
-          rerunPendingJobId={rerunningJobId}
         />
       </div>
 
@@ -439,12 +440,6 @@ export function PipelineRunDetailPage() {
           runStatus={runStatus}
           activeJobId={activeJob?.id ?? null}
           onSelectJob={selectJob}
-          onPlayJob={(jobId) => playJobMutation.mutate(jobId)}
-          canPlayJob={canPlayJob}
-          playPendingJobId={playingJobId}
-          onRerunJob={(jobId) => rerunJobMutation.mutate(jobId)}
-          canRerunJob={canRerunSingleJob}
-          rerunPendingJobId={rerunningJobId}
         />
 
         <div className="gha-run-main">
@@ -472,45 +467,27 @@ export function PipelineRunDetailPage() {
               <ActionsLogPanel
                 title={activeStep ? stepLogTitle(activeStep, activeJob.job_name) : activeJob.job_name}
                 subtitle={activeStep ? stepLogSubtitle(activeStep) : undefined}
+                viewerKey={`${activeJob.id}-${jobLogSession}-${activeStepKey ?? ''}`}
                 actions={
-                  (canCancelStep || canRerunSingleJob(activeJob)) ? (
-                    <div className="flex items-center gap-2 shrink-0">
-                      {canRerunSingleJob(activeJob) && (
-                        <SecondaryButton
-                          type="button"
-                          className="text-xs py-1 px-2.5"
-                          disabled={rerunningJobId === activeJob.id}
-                          onClick={() => rerunJobMutation.mutate(activeJob.id)}
-                        >
-                          {rerunningJobId === activeJob.id ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <RotateCcw size={12} />
-                          )}
-                          Re-run job
-                        </SecondaryButton>
+                  canCancelStep ? (
+                    <SecondaryButton
+                      type="button"
+                      className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg text-xs py-1 px-2.5"
+                      disabled={cancelStepMutation.isPending}
+                      onClick={() =>
+                        cancelStepMutation.mutate({
+                          jobId: activeJob.id,
+                          stepName: cancelStepName,
+                        })
+                      }
+                    >
+                      {cancelStepMutation.isPending ? (
+                        <Loader2 size={12} className="animate-spin" />
+                      ) : (
+                        <Square size={12} />
                       )}
-                      {canCancelStep && (
-                        <SecondaryButton
-                          type="button"
-                          className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg text-xs py-1 px-2.5"
-                          disabled={cancelStepMutation.isPending}
-                          onClick={() =>
-                            cancelStepMutation.mutate({
-                              jobId: activeJob.id,
-                              stepName: cancelStepName,
-                            })
-                          }
-                        >
-                          {cancelStepMutation.isPending ? (
-                            <Loader2 size={12} className="animate-spin" />
-                          ) : (
-                            <Square size={12} />
-                          )}
-                          Cancel step
-                        </SecondaryButton>
-                      )}
-                    </div>
+                      Cancel step
+                    </SecondaryButton>
                   ) : undefined
                 }
                 logText={logText}

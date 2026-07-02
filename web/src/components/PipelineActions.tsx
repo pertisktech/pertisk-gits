@@ -85,23 +85,11 @@ export function ActionsJobSidebar({
   runStatus,
   activeJobId,
   onSelectJob,
-  onPlayJob,
-  canPlayJob,
-  playPendingJobId,
-  onRerunJob,
-  canRerunJob,
-  rerunPendingJobId,
 }: {
   jobs: JobRun[]
   runStatus: PipelineRun['status']
   activeJobId: string | null
   onSelectJob: (jobId: string) => void
-  onPlayJob?: (jobId: string) => void
-  canPlayJob?: (job: JobRun) => boolean
-  playPendingJobId?: string | null
-  onRerunJob?: (jobId: string) => void
-  canRerunJob?: (job: JobRun) => boolean
-  rerunPendingJobId?: string | null
 }) {
   return (
     <nav className="gha-job-sidebar" aria-label="Jobs">
@@ -110,8 +98,6 @@ export function ActionsJobSidebar({
         {jobs.map((job) => {
           const status = displayJobStatus(job, runStatus)
           const active = activeJobId === job.id
-          const canPlay = canPlayJob?.(job) ?? false
-          const canRerun = canRerunJob?.(job) ?? false
           return (
             <li key={job.id}>
               <button
@@ -120,60 +106,10 @@ export function ActionsJobSidebar({
                 onClick={() => onSelectJob(job.id)}
               >
                 <ActionsStatusIcon status={status} size="md" />
-                <span className="gha-job-item-name">{job.job_name}</span>
-                <span className="gha-job-item-runner">{job.runs_on}</span>
-                {canRerun && onRerunJob && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="gha-job-item-play gha-job-item-rerun"
-                    title="Re-run job"
-                    aria-label={`Re-run ${job.job_name}`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onRerunJob(job.id)
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        onRerunJob(job.id)
-                      }
-                    }}
-                  >
-                    {rerunPendingJobId === job.id ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <RotateCcw size={14} />
-                    )}
-                  </span>
-                )}
-                {canPlay && onPlayJob && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="gha-job-item-play"
-                    title="Run manual job"
-                    aria-label={`Run ${job.job_name}`}
-                    onClick={(event) => {
-                      event.stopPropagation()
-                      onPlayJob(job.id)
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault()
-                        event.stopPropagation()
-                        onPlayJob(job.id)
-                      }
-                    }}
-                  >
-                    {playPendingJobId === job.id ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <Play size={14} />
-                    )}
-                  </span>
-                )}
+                <span className="gha-job-item-body">
+                  <span className="gha-job-item-name">{job.job_name}</span>
+                  <span className="gha-job-item-runner">{job.runs_on}</span>
+                </span>
               </button>
             </li>
           )
@@ -245,39 +181,47 @@ export function ActionsJobHeader({
   rerunPending?: boolean
   canRerun?: boolean
 }) {
+  const showActions = (canRerun && onRerun) || (canPlay && onPlay)
+
   return (
     <div className="gha-job-header">
-      <div className="gha-job-header-main">
+      <div className="gha-job-header-identity">
         <ActionsStatusIcon status={jobStatus} size="md" />
-        <h2 className="gha-job-header-title">{job.job_name}</h2>
-        {canRerun && onRerun && (
-          <button
-            type="button"
-            className="gha-job-header-rerun"
-            disabled={rerunPending}
-            onClick={onRerun}
-          >
-            {rerunPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <RotateCcw size={14} />
-            )}
-            Re-run job
-          </button>
-        )}
-        {canPlay && onPlay && (
-          <button
-            type="button"
-            className="gha-job-header-play"
-            disabled={playPending}
-            onClick={onPlay}
-          >
-            {playPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            Run job
-          </button>
-        )}
+        <div className="gha-job-header-text">
+          <h2 className="gha-job-header-title">{job.job_name}</h2>
+          <span className="gha-job-header-runner">{job.runs_on}</span>
+        </div>
       </div>
-      <span className="gha-job-header-runner">{job.runs_on}</span>
+      {showActions && (
+        <div className="gha-job-actions">
+          {canRerun && onRerun && (
+            <button
+              type="button"
+              className="gha-job-action gha-job-action--secondary"
+              disabled={rerunPending}
+              onClick={onRerun}
+            >
+              {rerunPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <RotateCcw size={14} />
+              )}
+              Re-run job
+            </button>
+          )}
+          {canPlay && onPlay && (
+            <button
+              type="button"
+              className="gha-job-action gha-job-action--primary"
+              disabled={playPending}
+              onClick={onPlay}
+            >
+              {playPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+              Run job
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -289,6 +233,7 @@ export function ActionsLogPanel({
   logText,
   emptyMessage,
   footer,
+  viewerKey,
 }: {
   title: string
   subtitle?: string
@@ -296,6 +241,7 @@ export function ActionsLogPanel({
   logText: string
   emptyMessage?: string
   footer?: ReactNode
+  viewerKey?: string
 }) {
   return (
     <div className="gha-log-panel">
@@ -307,6 +253,7 @@ export function ActionsLogPanel({
         {actions}
       </div>
       <CiLogViewer
+        key={viewerKey}
         className="gha-log-viewer"
         text={logText}
         emptyMessage={emptyMessage ?? '(no output)'}
