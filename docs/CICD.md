@@ -169,7 +169,7 @@ jobs:
   test:
     runs-on: linux
     needs: []          # optional DAG deps
-    required: true     # default; set false for optional jobs (excluded from merge gate)
+    required: true     # default; optional job: allow_failure: true or required: false
     timeout_minutes: 30  # optional; kills the job after N minutes (runner + API reclaim)
     if:                  # optional — structured or string (see CICD_WORKFLOWS.md)
       branch: main       # branch pushes only; use tag: for tag pushes
@@ -182,6 +182,31 @@ jobs:
         env:
           RUSTFLAGS: "-D warnings"
 ```
+
+### Allow failure (optional jobs)
+
+Set **`allow_failure: true`** (GitLab) or **`required: false`** on a job when its failure should not fail the pipeline or block dependents:
+
+```yaml
+jobs:
+  lint:
+    runs-on: linux
+    allow_failure: true
+    steps:
+      - run: npm run lint
+
+  build:
+    runs-on: linux
+    needs: [lint]   # still runs if lint failed
+    steps:
+      - run: npm run build
+```
+
+- Optional failures do **not** cancel queued downstream jobs or mark the pipeline failed.
+- PR merge gate ignores optional job failures (same as `required: false` on commit status).
+- UI shows allowed failures in **amber** on the pipeline graph.
+
+See [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md#allow-failure-optional-jobs) for full behavior and GitLab mapping.
 
 ### Manual jobs and Run pipeline
 
@@ -278,7 +303,11 @@ While a step runs, the runner streams stdout/stderr to the API in ~400ms chunks 
 
 ### Fail-fast and runner status
 
-When any job in a pipeline run fails, remaining `queued` / `running` jobs are marked failed (`=== skipped: pipeline failed`) and are not claimed again. Runners return to **online** instead of staying **busy** while sibling jobs would have run. Parallel jobs without `needs` still follow this rule (first failure stops the run).
+When a **required** job fails, remaining `queued` / `running` jobs are marked failed (`=== skipped: pipeline failed`) and are not claimed again. Runners return to **online** instead of staying **busy** while sibling jobs would have run.
+
+Jobs with **`allow_failure: true`** / **`required: false`** do not trigger fail-fast: downstream `needs:` jobs still queue, and the pipeline can finish **success** if every required job passed.
+
+Parallel required jobs without `needs` still follow fail-fast (first required failure stops the run).
 
 ### Cancel pipeline / cancel step
 

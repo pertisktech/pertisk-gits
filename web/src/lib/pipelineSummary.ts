@@ -338,7 +338,7 @@ export function filterRunJobsForList(run: PipelineRun): JobRun[] {
   return run.jobs.filter((job) => job.status !== 'skipped')
 }
 
-/** Manual QA/UAT deploy jobs from a Run pipeline (event=manual + target_environment). */
+/** Jobs visible for a manual Run pipeline with a target environment. */
 export function filterRunJobsForManualDeploy(run: PipelineRun): JobRun[] {
   const jobs = filterRunJobsForList(run)
   if (run.event_type !== 'manual' || !run.target_environment) return jobs
@@ -346,7 +346,8 @@ export function filterRunJobsForManualDeploy(run: PipelineRun): JobRun[] {
   const env = run.target_environment
   return jobs.filter((job) => {
     const jobEnv = jobEnvironmentFromName(job.job_name)
-    if (!jobEnv) return false
+    // Build/test jobs (no env suffix) are part of every manual run.
+    if (!jobEnv) return true
     return jobEnv === env
   })
 }

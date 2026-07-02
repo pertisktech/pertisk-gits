@@ -18,6 +18,7 @@ Pertisk Gits supports **GitHub Actions–like** YAML (`on`, `jobs`, `needs`, wor
 | Run pipeline → branch/tag | workflow_dispatch | **Run pipeline** dialog or `POST .../pipelines/trigger` |
 | `environment: qa` | `environment:` (GHA) | `environment:` on job + secrets by env |
 | `needs:` | `needs:` | `needs:` |
+| `allow_failure: true` | `continue-on-error` (job-level) | `allow_failure: true` or `required: false` |
 | Job rules | `if:` | Structured `if:` (`branch`, `tag`, `event`, `environment`) |
 | `.gitlab-ci.yml` | `.github/workflows/*.yml` | `.pertisk-ci.yaml` |
 | Migrate CI | — | **Pipelines → Migrate** (suggested YAML) |
@@ -253,6 +254,57 @@ Environment-only manual jobs (no `branch:` in `if`):
 
 ---
 
+## Allow failure (optional jobs)
+
+GitLab-style **`allow_failure: true`** lets a job fail without failing the pipeline or blocking downstream jobs. Use the same idea as GitHub Actions job-level tolerance (not per-step `continue-on-error`).
+
+| YAML | Meaning |
+|------|---------|
+| `allow_failure: true` | Job is optional (GitLab naming) |
+| `required: false` | Same as above (explicit inverse) |
+
+Default is **`required: true`** (failures stop the run and block merge).
+
+### Behavior
+
+| When an optional job fails | Effect |
+|----------------------------|--------|
+| Pipeline status | Stays **success** if all **required** jobs passed |
+| Downstream `needs:` | Still runs (failed optional job counts as satisfied) |
+| PR merge gate | Does **not** block (`required: false` on `ci/<job>` status) |
+| Failure email | Not sent for optional-only failures |
+| UI | Job shows **amber/warning** (allowed failure), not red |
+
+Required job failures still fail the pipeline, cancel remaining queued jobs, and block merge.
+
+### Example
+
+```yaml
+jobs:
+  lint:
+    runs-on: linux
+    allow_failure: true
+    steps:
+      - run: npm run lint
+
+  build:
+    runs-on: linux
+    needs: [lint]          # runs even if lint fails
+    steps:
+      - run: npm run build
+
+  bench:
+    runs-on: linux
+    required: false        # same as allow_failure: true
+    needs: [build]
+    steps:
+      - run: cargo bench --no-run
+```
+
+**Migrate from GitLab:** `allow_failure: true` in `.gitlab-ci.yml` converts to `required: false` in suggested `.pertisk-ci.yaml`.
+
+---
+
 ## UI guide
 
 ### Pipeline list
@@ -267,6 +319,7 @@ Environment-only manual jobs (no `branch:` in `if`):
 - Graph shows **non-skipped jobs** in this run (path-skipped jobs are hidden).
 - If **every** job is skipped, the run shows **Skipped**, **No jobs defined**, and an empty job list — fix job `if:` conditions (see [Troubleshooting](#troubleshooting)).
 - **Manual** jobs: play button on graph, sidebar, and job header when dependencies are satisfied.
+- **Allowed failure** — amber icon on jobs with `allow_failure: true` / `required: false` that failed.
 - **Run pipeline** is on the repo Pipelines tab (not inline branch/env filters).
 
 ### Pipeline summary (config preview)
@@ -294,6 +347,7 @@ Returns the updated pipeline run (job moves from `manual` → `queued` → runne
 2. If there is no `.pertisk-ci.yaml`, Pertisk detects `.gitlab-ci.yml` or `.github/workflows/*`.
 3. Use **Migrate CI** to copy suggested YAML, then adjust:
    - `when: manual` → `if: event: manual`
+   - `allow_failure: true` → `required: false` (or keep `allow_failure: true` in YAML)
    - `only: branches` → `if: branch: ...` or `on.push.branches`
    - `environment: qa` → job `environment:` + `if: environment: qa`
 
@@ -309,6 +363,7 @@ Extended columns (Phase 4.6):
 
 - `pipeline_runs.target_environment`
 - `job_runs.effective_environment`
+- `job_runs.required` (optional vs required job; migration `20260703100000_job_runs_required.sql`)
 - `organization_secrets.environment` / `repository_secrets.environment`
 
 ---
@@ -323,7 +378,8 @@ Extended columns (Phase 4.6):
 | Pipeline list green but manual jobs not run | Expected — click **play** on manual jobs. Status should show play icon, not green-only success. |
 | Run pipeline QA does nothing | `environment: qa` in trigger body; secrets set for **qa**; jobs use `if: environment: qa`. |
 | 500 on pipeline detail | Redeploy API; ensure migration `manual` enum value exists (restart `pertisk-api`). |
-| Manual job play disabled | Upstream `needs:` must be `success` or `skipped`. |
+| Manual job play disabled | Upstream `needs:` must be `success`, `skipped`, or **failed optional** (`allow_failure: true`). |
+| Optional job still fails pipeline | Remove `required: true` default — set `allow_failure: true` or `required: false`. |
 | Wrong Harbor URL in deploy | Secret **name** same (`HARBOR_URL`), **environment** different per env. |
 
 ---
