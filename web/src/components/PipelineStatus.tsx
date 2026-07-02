@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
-import { CheckCircle2, Circle, CirclePlay, Loader2, MinusCircle, X, XCircle } from 'lucide-react'
-import type { JobRun, PipelineRun } from '../api/types'
+import { AlertCircle, CheckCircle2, Circle, CirclePlay, Loader2, MinusCircle, X, XCircle } from 'lucide-react'
+import type { PipelineRun } from '../api/types'
 import {
   isCancelledStatus,
   jobStatusVariant,
   runStatusVariant,
   statusDotClass,
+  type DisplayJobStatus,
 } from '../lib/pipelineStatus'
 import { cn } from '../utils/cn'
 import { StatusBadge } from './StatusBadge'
@@ -40,6 +41,15 @@ export function ActionsStatusIcon({
   if (status === 'failure') {
     return (
       <XCircle size={px} className={cn('gha-status-icon gha-status-icon--failure', className)} aria-hidden />
+    )
+  }
+  if (status === 'failure_allowed') {
+    return (
+      <AlertCircle
+        size={px}
+        className={cn('gha-status-icon gha-status-icon--warning', className)}
+        aria-hidden
+      />
     )
   }
   if (isCancelledStatus(status)) {
@@ -114,7 +124,7 @@ export function PipelineJobStatusBadge({
   children,
   className,
 }: {
-  status: JobRun['status'] | 'pending'
+  status: DisplayJobStatus | 'pending'
   children: ReactNode
   className?: string
 }) {

@@ -748,6 +748,26 @@ export const api = {
       token,
     ),
 
+  updateRepoTag: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    tagName: string,
+    payload: { name?: string; target_ref?: string; message?: string },
+  ) =>
+    request<{ tag: TagInfo }>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/tags/${encodeURIComponent(tagName)}`,
+      { method: 'PATCH', body: JSON.stringify(payload) },
+      token,
+    ),
+
+  deleteRepoTag: (token: string, orgSlug: string, repoSlug: string, tagName: string) =>
+    request<void>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/tags/${encodeURIComponent(tagName)}`,
+      { method: 'DELETE' },
+      token,
+    ),
+
   getRepoBranches: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<{ branches: BranchInfo[] }>(
       `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/branches`,

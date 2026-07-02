@@ -37,9 +37,9 @@ pub struct ArtifactDecl {
     pub path: String,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Job {
-    #[serde(rename = "runs-on", deserialize_with = "deserialize_runs_on")]
+    #[serde(rename = "runs-on")]
     pub runs_on: String,
     /// Container image for Kubernetes executor (GitLab-style `image:`).
     #[serde(default)]
@@ -52,8 +52,9 @@ pub struct Job {
     pub dind: bool,
     #[serde(default)]
     pub needs: Vec<String>,
-    #[serde(default, deserialize_with = "deserialize_job_if")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub r#if: Option<JobIfCondition>,
+    /// When false (or `allow_failure: true`), job failure does not fail the pipeline or block dependents.
     #[serde(default = "default_true")]
     pub required: bool,
     pub steps: Vec<Step>,
@@ -61,6 +62,52 @@ pub struct Job {
     pub timeout_minutes: Option<u32>,
     #[serde(default)]
     pub artifacts: Vec<ArtifactDecl>,
+}
+
+impl<'de> Deserialize<'de> for Job {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct JobRaw {
+            #[serde(rename = "runs-on", deserialize_with = "deserialize_runs_on")]
+            runs_on: String,
+            #[serde(default)]
+            image: Option<String>,
+            #[serde(default)]
+            environment: Option<String>,
+            #[serde(default)]
+            dind: bool,
+            #[serde(default)]
+            needs: Vec<String>,
+            #[serde(default, deserialize_with = "deserialize_job_if")]
+            r#if: Option<JobIfCondition>,
+            #[serde(default = "default_true")]
+            required: bool,
+            #[serde(default)]
+            allow_failure: bool,
+            steps: Vec<Step>,
+            #[serde(default)]
+            timeout_minutes: Option<u32>,
+            #[serde(default)]
+            artifacts: Vec<ArtifactDecl>,
+        }
+
+        let raw = JobRaw::deserialize(deserializer)?;
+        Ok(Job {
+            runs_on: raw.runs_on,
+            image: raw.image,
+            environment: raw.environment,
+            dind: raw.dind,
+            needs: raw.needs,
+            r#if: raw.r#if,
+            required: raw.required && !raw.allow_failure,
+            steps: raw.steps,
+            timeout_minutes: raw.timeout_minutes,
+            artifacts: raw.artifacts,
+        })
+    }
 }
 
 fn default_true() -> bool {
@@ -333,6 +380,29 @@ jobs:
         let cfg = parse_pipeline_yaml(SAMPLE).unwrap();
         assert!(cfg.jobs["test"].required);
         assert!(!cfg.jobs["bench"].required);
+    }
+
+    #[test]
+    fn parses_allow_failure_alias() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  lint:
+    runs-on: linux
+    allow_failure: true
+    steps:
+      - run: echo lint
+  build:
+    runs-on: linux
+    needs: [lint]
+    steps:
+      - run: echo build
+"#,
+        )
+        .unwrap();
+        assert!(!cfg.jobs["lint"].required);
+        assert!(cfg.jobs["build"].required);
     }
 
     #[test]

@@ -335,6 +335,91 @@ pub async fn create_tag(
         .ok_or_else(|| anyhow::anyhow!("failed to read created tag '{name}'"))
 }
 
+pub async fn tag_head_sha(repo_path: &Path, name: &str) -> anyhow::Result<String> {
+    let name = name.trim();
+    validate_tag_name(name)?;
+
+    if !tag_exists(repo_path, name).await? {
+        anyhow::bail!("tag '{name}' not found");
+    }
+
+    rev_parse_ref(repo_path, &format!("refs/tags/{name}")).await
+}
+
+pub async fn delete_tag(repo_path: &Path, name: &str) -> anyhow::Result<String> {
+    let old_sha = tag_head_sha(repo_path, name).await?;
+    let tag_ref = format!("refs/tags/{name}");
+    git(repo_path, &["update-ref", "-d", &tag_ref]).await?;
+    Ok(old_sha)
+}
+
+pub async fn update_tag(
+    repo_path: &Path,
+    current_name: &str,
+    new_name: Option<&str>,
+    target: Option<&str>,
+    message: Option<&str>,
+    tagger: Option<TaggerIdentity<'_>>,
+) -> anyhow::Result<TagInfo> {
+    let current_name = current_name.trim();
+    validate_tag_name(current_name)?;
+
+    let current = list_tag_details(repo_path)
+        .await?
+        .into_iter()
+        .find(|tag| tag.name == current_name)
+        .ok_or_else(|| anyhow::anyhow!("tag '{current_name}' not found"))?;
+
+    let final_name = new_name.map(str::trim).filter(|value| !value.is_empty()).unwrap_or(current_name);
+    validate_tag_name(final_name)?;
+
+    if final_name != current_name && tag_exists(repo_path, final_name).await? {
+        anyhow::bail!("tag '{final_name}' already exists");
+    }
+
+    let commit_sha = match target.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(target) => resolve_commit_target(repo_path, target).await?,
+        None => current.sha.clone(),
+    };
+
+    let annotated_message = match message {
+        Some(value) => {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        }
+        None => {
+            if !current.message.is_empty() {
+                Some(current.message.clone())
+            } else {
+                None
+            }
+        }
+    };
+
+    let tagger = if annotated_message.is_some() || !current.tagger_name.is_empty() {
+        Some(tagger.ok_or_else(|| {
+            anyhow::anyhow!("tagger identity is required for annotated tags")
+        })?)
+    } else {
+        tagger
+    };
+
+    delete_tag(repo_path, current_name).await?;
+
+    create_tag(
+        repo_path,
+        final_name,
+        &commit_sha,
+        annotated_message.as_deref(),
+        tagger,
+    )
+    .await
+}
+
 fn validate_tag_name(name: &str) -> anyhow::Result<()> {
     if name.is_empty() {
         anyhow::bail!("tag name is required");
@@ -1453,6 +1538,50 @@ filename README.md
         let tag = create_tag(&repo_path, "v1", "HEAD", None, None).await.unwrap();
         assert_eq!(tag.name, "v1");
         assert!(tag_exists(&repo_path, "v1").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn delete_tag_removes_ref() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        create_tag(&repo_path, "v1", "HEAD", None, None).await.unwrap();
+        delete_tag(&repo_path, "v1").await.unwrap();
+        assert!(!tag_exists(&repo_path, "v1").await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn update_tag_can_rename_and_retarget() {
+        let (_tmp, repo_path) = init_bare_repo_with_commit();
+        create_tag(
+            &repo_path,
+            "v1",
+            "HEAD",
+            Some("first release"),
+            Some(TaggerIdentity {
+                name: "Tester",
+                email: "test@example.com",
+            }),
+        )
+        .await
+        .unwrap();
+
+        let updated = update_tag(
+            &repo_path,
+            "v1",
+            Some("v1.0.0"),
+            Some("HEAD"),
+            Some("renamed release"),
+            Some(TaggerIdentity {
+                name: "Tester",
+                email: "test@example.com",
+            }),
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(updated.name, "v1.0.0");
+        assert!(!tag_exists(&repo_path, "v1").await.unwrap());
+        assert!(tag_exists(&repo_path, "v1.0.0").await.unwrap());
+        assert_eq!(updated.message, "renamed release");
     }
 
     #[tokio::test]

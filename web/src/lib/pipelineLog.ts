@@ -1,4 +1,5 @@
 import type { JobRun, PipelineRun } from '../api/types'
+import type { DisplayJobStatus } from './pipelineStatus'
 
 export interface LogStepSection {
   name: string
@@ -91,7 +92,7 @@ export function parseLogSteps(logText: string): LogStepSection[] {
 
 export function stepDisplayStatus(
   step: JobStepView,
-  jobStatus: JobRun['status'],
+  jobStatus: DisplayJobStatus,
   runStatus?: PipelineRun['status'],
 ): JobRun['status'] | 'pending' {
   if (step.exitCode !== undefined) {

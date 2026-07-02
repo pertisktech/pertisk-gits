@@ -6,7 +6,7 @@ export interface PipelineGraphJob {
   name: string
   runs_on: string
   needs: string[]
-  status?: JobRun['status']
+  status?: JobRun['status'] | 'failure_allowed'
   step_count?: number
   job_id?: string
 }
@@ -24,6 +24,7 @@ const ROW_GAP = 88
 export type PipelineGraphEdgeTone =
   | 'success'
   | 'failure'
+  | 'warning'
   | 'running'
   | 'manual'
   | 'pending'
@@ -31,11 +32,12 @@ export type PipelineGraphEdgeTone =
 
 /** Edge color reflects the downstream job — green only when that path is fully done. */
 export function edgeToneForConnection(
-  depStatus?: JobRun['status'],
-  targetStatus?: JobRun['status'],
+  depStatus?: JobRun['status'] | 'failure_allowed',
+  targetStatus?: JobRun['status'] | 'failure_allowed',
 ): PipelineGraphEdgeTone {
   if (targetStatus === 'manual') return 'manual'
   if (targetStatus === 'failure' || depStatus === 'failure') return 'failure'
+  if (targetStatus === 'failure_allowed' || depStatus === 'failure_allowed') return 'warning'
   if (targetStatus === 'cancelled' || depStatus === 'cancelled') return 'failure'
   if (targetStatus === 'running' || depStatus === 'running') return 'running'
   if (targetStatus === 'skipped' || depStatus === 'skipped') return 'skipped'

@@ -3693,6 +3693,11 @@ select.app-field:disabled,
   box-shadow: 0 0 6px color-mix(in srgb, #f85149 55%, transparent);
 }
 
+.ci-status-dot-warning {
+  background: #d29922;
+  box-shadow: 0 0 6px color-mix(in srgb, #d29922 55%, transparent);
+}
+
 .ci-status-dot-cancelled {
   width: 0.75rem;
   height: 0.75rem;
@@ -4453,6 +4458,10 @@ select.app-field:disabled,
   color: #f85149;
 }
 
+.gha-status-icon--warning {
+  color: #d29922;
+}
+
 .gha-status-icon--cancelled {
   color: var(--color-text-secondary);
 }
@@ -5144,6 +5153,7 @@ select.app-field:disabled,
   border-bottom: 1px solid var(--color-naturals-n4);
   --pipeline-graph-edge-success: #3fb950;
   --pipeline-graph-edge-failure: #f85149;
+  --pipeline-graph-edge-warning: #d29922;
   --pipeline-graph-edge-running: #d29922;
   --pipeline-graph-edge-manual: var(--color-primary);
   --pipeline-graph-edge-pending: var(--color-naturals-n7);
@@ -5311,6 +5321,10 @@ select.app-field:disabled,
 
 .pipeline-graph-edge--failure .react-flow__edge-path {
   stroke: var(--pipeline-graph-edge-failure);
+}
+
+.pipeline-graph-edge--warning .react-flow__edge-path {
+  stroke: var(--pipeline-graph-edge-warning);
 }
 
 .pipeline-graph-edge--running .react-flow__edge-path {

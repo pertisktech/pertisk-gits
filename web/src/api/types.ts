@@ -621,6 +621,8 @@ export interface JobRun {
   runs_on: string
   image?: string | null
   needs: string[]
+  /** When false, failure does not block the pipeline or downstream jobs. */
+  required: boolean
   steps: Array<{ name: string; run: string }>
   artifacts: JobArtifact[]
   metrics_json: JobMetrics | null

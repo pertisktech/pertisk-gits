@@ -17,6 +17,7 @@ import {
   type PipelineGraphJob,
   type PipelineGraphNodeData,
 } from '../lib/pipelineGraphLayout'
+import { displayJobStatus } from '../lib/pipelineStatus'
 import { ActionsStatusIcon } from './PipelineStatus'
 
 function PipelineJobNode({ data }: NodeProps) {
@@ -69,9 +70,7 @@ export function jobsFromRun(
     name: job.job_name,
     runs_on: job.runs_on,
     needs: job.needs ?? [],
-    status: runStatus === 'cancelled' && (job.status === 'running' || job.status === 'queued')
-      ? 'cancelled'
-      : job.status,
+    status: displayJobStatus(job, runStatus),
     job_id: job.id,
     step_count: job.steps?.length ?? job.metrics_json?.steps.length,
   }))

@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Loader2, Play, RotateCcw } from 'lucide-reac
 import type { ReactNode } from 'react'
 import type { JobRun, PipelineRun } from '../api/types'
 import { formatDateTime } from '../lib/collaboration'
+import type { DisplayJobStatus } from '../lib/pipelineStatus'
 import { type JobStepView, stepDisplayStatus, stepMeta } from '../lib/pipelineLog'
 import {
   displayJobStatus,
@@ -127,7 +128,7 @@ export function ActionsStepList({
   onSelectStep,
 }: {
   steps: JobStepView[]
-  jobStatus: JobRun['status']
+  jobStatus: DisplayJobStatus
   runStatus: PipelineRun['status']
   activeStepKey: string | null
   onSelectStep: (stepKey: string) => void
@@ -173,7 +174,7 @@ export function ActionsJobHeader({
   canRerun,
 }: {
   job: JobRun
-  jobStatus: JobRun['status']
+  jobStatus: DisplayJobStatus
   onPlay?: () => void
   playPending?: boolean
   canPlay?: boolean

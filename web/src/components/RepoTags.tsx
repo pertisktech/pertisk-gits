@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Check, Copy, Loader2, Plus, Tag } from 'lucide-react'
+import { Check, Copy, Loader2, Pencil, Plus, Tag, Trash2 } from 'lucide-react'
 import { useState, type MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
@@ -7,7 +7,9 @@ import type { PipelineRun, TagInfo } from '../api/types'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { pipelineRunForTag } from '../lib/pipelineRunIndex'
 import { useRepoPipelineRunsIndex } from '../hooks/useRepoPipelineRunsIndex'
+import { ConfirmModal } from './ConfirmModal'
 import { CreateTagDialog } from './CreateTagDialog'
+import { EditTagDialog, type EditTagParams } from './EditTagDialog'
 import { PipelineRunStatusLink } from './PipelineRunStatusLink'
 import { commitUrl } from './RepoCommits'
 import { EmptyState, PrimaryButton, TablePagination, Toolbar, ToolbarActions } from './ui'
@@ -24,6 +26,10 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
   const queryClient = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<TagInfo | null>(null)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const { data: browserData } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug],
@@ -37,6 +43,13 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
     enabled: Boolean(orgSlug && repoSlug),
   })
 
+  const invalidateTags = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['repo-tags', orgSlug, repoSlug] }),
+      queryClient.invalidateQueries({ queryKey: ['repo-browser', orgSlug, repoSlug] }),
+    ])
+  }
+
   const createMutation = useMutation({
     mutationFn: (payload: { name: string; targetRef: string; message: string }) =>
       api.createRepoTag(token!, orgSlug, repoSlug, {
@@ -47,13 +60,39 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
     onSuccess: async () => {
       setCreateError(null)
       setShowCreate(false)
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['repo-tags', orgSlug, repoSlug] }),
-        queryClient.invalidateQueries({ queryKey: ['repo-browser', orgSlug, repoSlug] }),
-      ])
+      await invalidateTags()
     },
     onError: (err) => {
       setCreateError((err as Error).message)
+    },
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ originalName, params }: { originalName: string; params: EditTagParams }) =>
+      api.updateRepoTag(token!, orgSlug, repoSlug, originalName, {
+        name: params.name,
+        ...(params.targetRef ? { target_ref: params.targetRef } : {}),
+        message: params.message,
+      }),
+    onSuccess: async () => {
+      setEditError(null)
+      setEditTarget(null)
+      await invalidateTags()
+    },
+    onError: (err) => {
+      setEditError((err as Error).message)
+    },
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (tagName: string) => api.deleteRepoTag(token!, orgSlug, repoSlug, tagName),
+    onSuccess: async () => {
+      setDeleteError(null)
+      setDeleteTarget(null)
+      await invalidateTags()
+    },
+    onError: (err) => {
+      setDeleteError((err as Error).message)
     },
   })
 
@@ -69,7 +108,7 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
   const branches = browserData?.browser.branches.length
     ? browserData.browser.branches
     : [defaultBranch]
-  const canCreate = Boolean(token)
+  const canManage = Boolean(token)
 
   if (isLoading) {
     return (
@@ -99,7 +138,7 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
           <span className="text-xs text-text-secondary">
             {tags.length} tag{tags.length === 1 ? '' : 's'}
           </span>
-          {canCreate && (
+          {canManage && (
             <ToolbarActions>
               <PrimaryButton
                 type="button"
@@ -121,7 +160,7 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
             title="No tags yet"
             description="Create a tag to mark a release or snapshot of this repository."
             action={
-              canCreate ? (
+              canManage ? (
                 <PrimaryButton
                   type="button"
                   onClick={() => {
@@ -143,7 +182,16 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
                 tag={tag}
                 orgSlug={orgSlug}
                 repoSlug={repoSlug}
+                canManage={canManage}
                 pipelineRun={pipelineRunForTag(pipelineIndex, tag.name, tag.sha)}
+                onEdit={() => {
+                  setEditError(null)
+                  setEditTarget(tag)
+                }}
+                onDelete={() => {
+                  setDeleteError(null)
+                  setDeleteTarget(tag.name)
+                }}
               />
             ))}
           </ul>
@@ -173,6 +221,52 @@ export function RepoTags({ token, orgSlug, repoSlug, defaultBranch }: RepoTagsPr
         }}
         onCreate={(params) => createMutation.mutate(params)}
       />
+
+      <EditTagDialog
+        open={editTarget !== null}
+        tag={editTarget}
+        branches={branches}
+        defaultBranch={defaultBranch}
+        pending={updateMutation.isPending}
+        error={editError}
+        onClose={() => {
+          if (!updateMutation.isPending) {
+            setEditTarget(null)
+            setEditError(null)
+          }
+        }}
+        onSave={(params) => {
+          if (editTarget) {
+            updateMutation.mutate({ originalName: editTarget.name, params })
+          }
+        }}
+      />
+
+      <ConfirmModal
+        open={deleteTarget !== null}
+        variant="danger"
+        title="Delete tag?"
+        description={
+          <>
+            Permanently delete tag{' '}
+            <strong className="font-mono text-text">{deleteTarget}</strong>. This cannot be undone.
+            {deleteError && (
+              <p className="mt-2 text-dashboard-danger">{deleteError}</p>
+            )}
+          </>
+        }
+        confirmLabel="Delete tag"
+        loading={deleteMutation.isPending}
+        onConfirm={() => {
+          if (deleteTarget) deleteMutation.mutate(deleteTarget)
+        }}
+        onCancel={() => {
+          if (!deleteMutation.isPending) {
+            setDeleteTarget(null)
+            setDeleteError(null)
+          }
+        }}
+      />
     </>
   )
 }
@@ -181,12 +275,18 @@ function TagRow({
   tag,
   orgSlug,
   repoSlug,
+  canManage,
   pipelineRun,
+  onEdit,
+  onDelete,
 }: {
   tag: TagInfo
   orgSlug: string
   repoSlug: string
+  canManage: boolean
   pipelineRun?: PipelineRun
+  onEdit: () => void
+  onDelete: () => void
 }) {
   return (
     <li className="commit-history-row">
@@ -211,6 +311,36 @@ function TagRow({
       </Link>
       <PipelineRunStatusLink run={pipelineRun} orgSlug={orgSlug} repoSlug={repoSlug} />
       <CopyShaButton sha={tag.sha} label={`Copy commit SHA for ${tag.name}`} />
+      {canManage && (
+        <>
+          <button
+            type="button"
+            className="commit-history-copy text-text-secondary hover:text-text"
+            aria-label={`Edit tag ${tag.name}`}
+            title="Edit tag"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onEdit()
+            }}
+          >
+            <Pencil size={12} aria-hidden />
+          </button>
+          <button
+            type="button"
+            className="commit-history-copy text-text-secondary hover:text-dashboard-danger"
+            aria-label={`Delete tag ${tag.name}`}
+            title="Delete tag"
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              onDelete()
+            }}
+          >
+            <Trash2 size={12} aria-hidden />
+          </button>
+        </>
+      )}
     </li>
   )
 }

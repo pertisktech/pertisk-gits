@@ -740,7 +740,7 @@ pub fn notify_pipeline_failed(pool: PgPool, pipeline_run_id: Uuid) {
         let failed_jobs: Vec<String> = sqlx::query_scalar(
             r#"
             SELECT job_name FROM job_runs
-            WHERE pipeline_run_id = $1 AND status = 'failure'
+            WHERE pipeline_run_id = $1 AND status = 'failure' AND required = TRUE
             ORDER BY queued_at
             "#,
         )

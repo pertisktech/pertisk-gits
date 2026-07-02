@@ -177,8 +177,8 @@ async fn process_trigger_now(
         );
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, status, log_text, finished_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::job_run_status, $10, CASE WHEN $11 THEN NOW() ELSE NULL END)
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, required, status, log_text, finished_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::job_run_status, $11, CASE WHEN $12 THEN NOW() ELSE NULL END)
             "#,
         )
         .bind(run_id)
@@ -189,6 +189,7 @@ async fn process_trigger_now(
         .bind(&job.job.needs)
         .bind(job.job.timeout_minutes.map(|m| m as i32))
         .bind(effective_environment.as_deref())
+        .bind(job.job.required)
         .bind(status)
         .bind(initial_log)
         .bind(job.finishes_immediately())

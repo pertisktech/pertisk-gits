@@ -491,6 +491,7 @@ struct JobRunResponse {
     runs_on: String,
     image: Option<String>,
     needs: Vec<String>,
+    required: bool,
     steps: Vec<JobStepResponse>,
     artifacts: Vec<JobArtifactResponse>,
     metrics_json: Option<Value>,
@@ -2626,8 +2627,8 @@ async fn materialize_jobs_for_run(
         );
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, status, log_text, finished_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::job_run_status, $12, CASE WHEN $13 THEN NOW() ELSE NULL END)
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, required, status, log_text, finished_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::job_run_status, $13, CASE WHEN $14 THEN NOW() ELSE NULL END)
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
@@ -2638,6 +2639,7 @@ async fn materialize_jobs_for_run(
                 needs = EXCLUDED.needs,
                 timeout_minutes = EXCLUDED.timeout_minutes,
                 effective_environment = EXCLUDED.effective_environment,
+                required = EXCLUDED.required,
                 status = EXCLUDED.status,
                 runner_id = NULL,
                 metrics_json = NULL,
@@ -2659,6 +2661,7 @@ async fn materialize_jobs_for_run(
         .bind(&job.job.needs)
         .bind(job.job.timeout_minutes.map(|m| m as i32))
         .bind(effective_environment.as_deref())
+        .bind(job.job.required)
         .bind(status)
         .bind(initial_log)
         .bind(finishes_immediately)
@@ -2938,7 +2941,10 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
             FROM job_runs dep
             WHERE dep.pipeline_run_id = j.pipeline_run_id
               AND dep.job_name = ANY(j.needs)
-              AND dep.status NOT IN ('success', 'skipped')
+              AND (
+                dep.status NOT IN ('success', 'skipped')
+                AND NOT (dep.status = 'failure' AND dep.required = FALSE)
+              )
           )
         ORDER BY j.queued_at ASC
         FOR UPDATE OF j SKIP LOCKED
@@ -2985,6 +2991,13 @@ async fn update_commit_status_for_job(
     status: &str,
     job_name: &str,
 ) -> Result<(), sqlx::Error> {
+    let required = sqlx::query_scalar::<_, bool>(
+        r#"SELECT required FROM job_runs WHERE id = $1"#,
+    )
+    .bind(job_id)
+    .fetch_one(pool)
+    .await?;
+
     let state = match status {
         "success" => "success",
         _ => "failure",
@@ -2992,6 +3005,7 @@ async fn update_commit_status_for_job(
     let description = match status {
         "success" => "Job success".to_string(),
         "cancelled" => "Job cancelled".to_string(),
+        "failure" if !required => "Job failed (allowed to fail)".to_string(),
         other => format!("Job {other}"),
     };
     sqlx::query(
@@ -3045,7 +3059,7 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
     let failed = sqlx::query_scalar::<_, i64>(
         r#"
         SELECT COUNT(*) FROM job_runs
-        WHERE pipeline_run_id = $1 AND status = 'failure'
+        WHERE pipeline_run_id = $1 AND status = 'failure' AND required = TRUE
         "#,
     )
     .bind(pipeline_run_id)
@@ -3209,7 +3223,7 @@ async fn force_finalize_stuck_pipeline(
         r#"
         SELECT EXISTS(
             SELECT 1 FROM job_runs
-            WHERE pipeline_run_id = $1 AND status = 'failure'
+            WHERE pipeline_run_id = $1 AND status = 'failure' AND required = TRUE
         )
         "#,
     )
@@ -3370,6 +3384,7 @@ struct JobRunRow {
     runs_on: String,
     image: Option<String>,
     needs: Vec<String>,
+    required: bool,
     steps_json: Value,
     metrics_json: Option<Value>,
     log_text: String,
@@ -3441,7 +3456,7 @@ async fn fetch_job_artifacts(
 async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobRunResponse>, sqlx::Error> {
     let rows = sqlx::query_as::<_, JobRunRow>(
         r#"
-        SELECT id, job_name, status::text, runs_on, image, needs, steps_json, metrics_json, log_text, queued_at, started_at, finished_at
+        SELECT id, job_name, status::text, runs_on, image, needs, required, steps_json, metrics_json, log_text, queued_at, started_at, finished_at
         FROM job_runs
         WHERE pipeline_run_id = $1
         ORDER BY queued_at ASC
@@ -3461,6 +3476,7 @@ async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobR
             runs_on: row.runs_on,
             image: row.image,
             needs: row.needs,
+            required: row.required,
             steps: steps_from_json(&row.steps_json),
             artifacts,
             metrics_json: row.metrics_json,
@@ -4068,7 +4084,10 @@ async fn play_manual_job_run(
         INNER JOIN job_runs j ON j.id = $1
         WHERE dep.pipeline_run_id = j.pipeline_run_id
           AND dep.job_name = ANY(j.needs)
-          AND dep.status NOT IN ('success', 'skipped')
+          AND (
+            dep.status NOT IN ('success', 'skipped')
+            AND NOT (dep.status = 'failure' AND dep.required = FALSE)
+          )
         "#,
     )
     .bind(job_id)
