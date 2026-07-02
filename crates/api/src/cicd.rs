@@ -3243,7 +3243,7 @@ async fn force_finalize_stuck_pipeline(
         r#"
         UPDATE pipeline_runs
         SET status = $2::pipeline_run_status,
-            finished_at = CASE WHEN $2 = 'running'::pipeline_run_status THEN NULL ELSE COALESCE(finished_at, NOW()) END
+            finished_at = CASE WHEN $2 = 'running' THEN NULL ELSE COALESCE(finished_at, NOW()) END
         WHERE id = $1
         "#,
     )
