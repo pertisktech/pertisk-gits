@@ -4,14 +4,15 @@ import {
   ChevronDown,
   Copy,
   KeyRound,
+  Link2,
   Loader2,
   Pencil,
   Plus,
   Search,
   Trash2,
 } from 'lucide-react'
-import { useMemo, useState } from 'react'
-import type { CiSecret, CiSecretEnvironment, CiSecretKind } from '../api/types'
+import { useMemo, useState, type ReactNode } from 'react'
+import type { CiConfigScope, CiSecret, CiSecretEnvironment, CiSecretKind } from '../api/types'
 import { formatRelativeTimeFromIso } from '../lib/relativeTime'
 import { cn } from '../utils/cn'
 import { SecretDeleteDialog } from './SecretDeleteDialog'
@@ -43,20 +44,31 @@ interface SecretsPanelProps {
   listSecrets: () => Promise<CiSecret[]>
   createSecret: (payload: {
     name: string
-    secret_kind: CiSecretKind
+    secret_kind?: CiSecretKind
+    config_scope?: CiConfigScope
+    masked?: boolean
     environment?: CiSecretEnvironment
     value: string
   }) => Promise<CiSecret>
   updateSecret: (
     id: string,
-    payload: { secret_kind?: CiSecretKind; value?: string },
+    payload: {
+      secret_kind?: CiSecretKind
+      config_scope?: CiConfigScope
+      masked?: boolean
+      value?: string
+    },
   ) => Promise<CiSecret>
   deleteSecret: (id: string) => Promise<void>
   embedded?: boolean
 }
 
-function secretReference(name: string) {
-  return `\${{ secrets.${name} }}`
+function itemScope(item: CiSecret): CiConfigScope {
+  return item.config_scope ?? 'secret'
+}
+
+function pipelineReference(name: string, scope: CiConfigScope) {
+  return scope === 'variable' ? `\${{ vars.${name} }}` : `\${{ secrets.${name} }}`
 }
 
 function groupSecretsByEnvironment(secrets: CiSecret[]) {
@@ -85,6 +97,7 @@ export function SecretsPanel({
   embedded = false,
 }: SecretsPanelProps) {
   const queryClient = useQueryClient()
+  const [scopeTab, setScopeTab] = useState<CiConfigScope>('secret')
   const [search, setSearch] = useState('')
   const [envFilter, setEnvFilter] = useState<EnvFilter>('all_envs')
   const [guideOpen, setGuideOpen] = useState(false)
@@ -101,14 +114,22 @@ export function SecretsPanel({
     enabled: Boolean(token),
   })
 
+  const scopedItems = useMemo(
+    () => secrets.filter((item) => itemScope(item) === scopeTab),
+    [scopeTab, secrets],
+  )
+
   const filteredSecrets = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return secrets.filter((secret) => {
+    return scopedItems.filter((secret) => {
       if (envFilter !== 'all_envs' && secret.environment !== envFilter) return false
       if (!q) return true
-      return secret.name.toLowerCase().includes(q)
+      return (
+        secret.name.toLowerCase().includes(q) ||
+        (secret.value?.toLowerCase().includes(q) ?? false)
+      )
     })
-  }, [envFilter, search, secrets])
+  }, [envFilter, scopedItems, search])
 
   const groupedSecrets = useMemo(
     () => groupSecretsByEnvironment(filteredSecrets),
@@ -127,8 +148,13 @@ export function SecretsPanel({
   })
 
   const rotateMutation = useMutation({
-    mutationFn: ({ id, newValue }: { id: string; newValue: string }) =>
-      updateSecret(id, { value: newValue }),
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string
+      payload: { value: string; masked?: boolean }
+    }) => updateSecret(id, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey })
       setFormOpen(false)
@@ -162,9 +188,9 @@ export function SecretsPanel({
     setFormOpen(true)
   }
 
-  async function copyReference(name: string) {
+  async function copyReference(name: string, scope: CiConfigScope) {
     try {
-      await navigator.clipboard.writeText(secretReference(name))
+      await navigator.clipboard.writeText(pipelineReference(name, scope))
       setCopiedRef(name)
       window.setTimeout(() => setCopiedRef((current) => (current === name ? null : current)), 2000)
     } catch {
@@ -178,14 +204,24 @@ export function SecretsPanel({
       createMutation.mutate({
         name: values.name,
         secret_kind: values.secret_kind,
+        config_scope: values.config_scope,
+        masked: values.masked,
         environment: values.environment,
         value: values.value,
       })
       return
     }
     if (!activeSecret) return
-    rotateMutation.mutate({ id: activeSecret.id, newValue: values.value })
+    rotateMutation.mutate({
+      id: activeSecret.id,
+      payload: {
+        value: values.value,
+        masked: values.masked,
+      },
+    })
   }
+
+  const isVariableTab = scopeTab === 'variable'
 
   const toolbar = (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -205,7 +241,7 @@ export function SecretsPanel({
       </div>
       <PrimaryButton type="button" onClick={openCreateDialog}>
         <Plus size={14} />
-        Add secret
+        {isVariableTab ? 'Add variable' : 'Add secret'}
       </PrimaryButton>
     </div>
   )
@@ -225,6 +261,25 @@ export function SecretsPanel({
           label={SECRET_ENV_LABELS[environment]}
         />
       ))}
+    </div>
+  )
+
+  const scopeTabs = (
+    <div className="flex gap-1 rounded-lg border border-border bg-surface-elevated/40 p-1 w-fit">
+      <ScopeTabButton
+        active={scopeTab === 'secret'}
+        onClick={() => setScopeTab('secret')}
+        icon={<KeyRound size={14} />}
+        label="Secrets"
+        count={secrets.filter((s) => itemScope(s) === 'secret').length}
+      />
+      <ScopeTabButton
+        active={scopeTab === 'variable'}
+        onClick={() => setScopeTab('variable')}
+        icon={<Link2 size={14} />}
+        label="Variables"
+        count={secrets.filter((s) => itemScope(s) === 'variable').length}
+      />
     </div>
   )
 
@@ -248,20 +303,44 @@ export function SecretsPanel({
       {guideOpen && (
         <div className="border-t border-border bg-surface-elevated/30 px-4 py-3 space-y-3 text-sm text-text-secondary">
           <p>
-            Use the same variable name in each environment with a different value — for example{' '}
-            <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">HARBOR_REGISTRY</code>{' '}
-            in dev and qa. Reference secrets in{' '}
-            <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">.pertisk-ci.yaml</code>:
+            {isVariableTab ? (
+              <>
+                Variables are non-sensitive config — SonarQube dashboard URLs, registry hostnames, feature
+                flags. Use{' '}
+                <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
+                  {'${{ vars.SONAR_HOST_URL }}'}
+                </code>{' '}
+                in pipelines; values stay visible here and appear in logs unless masked.
+              </>
+            ) : (
+              <>
+                Secrets are encrypted (passwords, tokens). Use the same key per environment with different
+                values — e.g.{' '}
+                <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">HARBOR_PASSWORD</code>.
+                Reference as{' '}
+                <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">
+                  {'${{ secrets.HARBOR_PASSWORD }}'}
+                </code>.
+              </>
+            )}
           </p>
           <pre className="overflow-x-auto rounded-md border border-border bg-surface p-3 font-mono text-xs text-text">
-{`jobs:
+{isVariableTab
+  ? `jobs:
+  sonar:
+    environment: dev
+    steps:
+      - run: |
+          sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL"
+          echo "Dashboard: \${{ vars.SONAR_DASHBOARD_URL }}"`
+  : `jobs:
   build:
     environment: dev
     steps:
       - run: |
           docker login -u "\${{ secrets.HARBOR_USERNAME }}" \\
             -p "\${{ secrets.HARBOR_PASSWORD }}" \\
-            "\${{ secrets.HARBOR_REGISTRY }}"`}
+            "\${{ vars.HARBOR_REGISTRY }}"`}
           </pre>
           <p className="text-xs">
             Jobs receive secrets for their effective environment (<code className="font-mono">environment:</code> on the job, or inferred from branch / Run pipeline).
@@ -279,17 +358,19 @@ export function SecretsPanel({
   ) : filteredSecrets.length === 0 ? (
     <EmptyState
       icon={<KeyRound size={28} />}
-      title={secrets.length === 0 ? 'No secrets yet' : 'No matching secrets'}
+      title={scopedItems.length === 0 ? (isVariableTab ? 'No variables yet' : 'No secrets yet') : 'No matching entries'}
       description={
-        secrets.length === 0
-          ? 'Add registry credentials, tokens, and other sensitive values for your pipelines.'
+        scopedItems.length === 0
+          ? isVariableTab
+            ? 'Add URLs and other non-sensitive config your pipelines need to print or open.'
+            : 'Add registry credentials, tokens, and other sensitive values for your pipelines.'
           : 'Try a different search or environment filter.'
       }
       action={
-        secrets.length === 0 ? (
+        scopedItems.length === 0 ? (
           <PrimaryButton type="button" onClick={openCreateDialog}>
             <Plus size={14} />
-            Add your first secret
+            {isVariableTab ? 'Add your first variable' : 'Add your first secret'}
           </PrimaryButton>
         ) : undefined
       }
@@ -306,11 +387,13 @@ export function SecretsPanel({
               </span>
             </div>
             <span className="text-xs text-text-secondary">
-              {group.secrets.length} secret{group.secrets.length === 1 ? '' : 's'}
+              {group.secrets.length} {isVariableTab ? 'variable' : 'secret'}
+              {group.secrets.length === 1 ? '' : 's'}
             </span>
           </header>
           <SecretTable
             secrets={group.secrets}
+            scope={scopeTab}
             copiedRef={copiedRef}
             onCopy={copyReference}
             onRotate={openRotateDialog}
@@ -324,6 +407,7 @@ export function SecretsPanel({
     <div className="overflow-hidden rounded-lg border border-border">
       <SecretTable
         secrets={filteredSecrets.sort((a, b) => a.name.localeCompare(b.name))}
+        scope={scopeTab}
         copiedRef={copiedRef}
         onCopy={copyReference}
         onRotate={openRotateDialog}
@@ -341,6 +425,7 @@ export function SecretsPanel({
       )}
 
       {guide}
+      {scopeTabs}
       {toolbar}
       {envFilters}
 
@@ -355,6 +440,7 @@ export function SecretsPanel({
       <SecretFormDialog
         open={formOpen}
         mode={formMode}
+        defaultScope={scopeTab}
         secret={activeSecret}
         pending={createMutation.isPending || rotateMutation.isPending}
         error={error}
@@ -388,7 +474,7 @@ export function SecretsPanel({
   if (embedded) return body
 
   return (
-    <div className="app-panel max-w-4xl">
+    <div className="app-panel max-w-6xl">
       <div className="app-panel-header flex items-center gap-2">
         <KeyRound size={16} />
         {title}
@@ -425,8 +511,40 @@ function EnvFilterChip({
   )
 }
 
+function ScopeTabButton({
+  active,
+  label,
+  icon,
+  count,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  icon: ReactNode
+  count: number
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+        active ? 'bg-surface text-text shadow-sm' : 'text-text-secondary hover:text-text',
+      )}
+      onClick={onClick}
+    >
+      {icon}
+      {label}
+      <span className="rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-secondary">
+        {count}
+      </span>
+    </button>
+  )
+}
+
 function SecretTable({
   secrets,
+  scope,
   copiedRef,
   onCopy,
   onRotate,
@@ -435,21 +553,35 @@ function SecretTable({
   showEnvironment = false,
 }: {
   secrets: CiSecret[]
+  scope: CiConfigScope
   copiedRef: string | null
-  onCopy: (name: string) => void
+  onCopy: (name: string, scope: CiConfigScope) => void
   onRotate: (secret: CiSecret) => void
   onDelete: (secret: CiSecret) => void
   pendingDeleteId?: string
   showEnvironment?: boolean
 }) {
+  const showValue = scope === 'variable'
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[640px] text-sm">
+    <div className={cn('min-w-0', !showValue && 'overflow-x-auto')}>
+      <table className={cn('w-full text-sm', showValue ? 'table-fixed' : 'min-w-[640px]')}>
+        {showValue && (
+          <colgroup>
+            <col className="w-[24%]" />
+            <col />
+            {showEnvironment && <col className="w-[12%]" />}
+            <col className="w-[9%]" />
+            <col className="w-[11%]" />
+            <col className="w-[1%]" />
+          </colgroup>
+        )}
         <thead>
           <tr className="border-b border-border bg-surface-elevated/20 text-left text-xs uppercase tracking-wide text-text-secondary">
-            <th className="px-4 py-2.5 font-medium">Name</th>
+            <th className="px-4 py-2.5 font-medium">Key</th>
+            {showValue && <th className="px-4 py-2.5 font-medium">Value</th>}
             {showEnvironment && <th className="px-4 py-2.5 font-medium">Environment</th>}
-            <th className="px-4 py-2.5 font-medium">Type</th>
+            {!showValue && <th className="px-4 py-2.5 font-medium">Type</th>}
+            {showValue && <th className="px-4 py-2.5 font-medium">Masked</th>}
             <th className="px-4 py-2.5 font-medium">Updated</th>
             <th className="px-4 py-2.5 font-medium text-right">Actions</th>
           </tr>
@@ -464,7 +596,7 @@ function SecretTable({
                     type="button"
                     className="shrink-0 rounded p-1 text-text-secondary hover:bg-surface-2 hover:text-text"
                     title="Copy pipeline reference"
-                    onClick={() => onCopy(secret.name)}
+                    onClick={() => onCopy(secret.name, scope)}
                   >
                     <Copy size={13} />
                   </button>
@@ -473,17 +605,31 @@ function SecretTable({
                   )}
                 </div>
                 <div className="mt-0.5 font-mono text-[11px] text-text-secondary truncate">
-                  {secretReference(secret.name)}
+                  {pipelineReference(secret.name, scope)}
                 </div>
               </td>
+              {showValue && (
+                <td className="px-4 py-3 align-top min-w-0">
+                  <div className="max-h-28 overflow-auto rounded-md border border-border/40 bg-surface-elevated/20 px-2.5 py-1.5 font-mono text-xs leading-relaxed text-text-secondary break-all">
+                    {secret.value ?? '—'}
+                  </div>
+                </td>
+              )}
               {showEnvironment && (
                 <td className="px-4 py-3">
                   <SecretEnvBadge environment={secret.environment} />
                 </td>
               )}
-              <td className="px-4 py-3">
-                <SecretKindBadge kind={secret.secret_kind} />
-              </td>
+              {!showValue && (
+                <td className="px-4 py-3">
+                  <SecretKindBadge kind={secret.secret_kind} />
+                </td>
+              )}
+              {showValue && (
+                <td className="px-4 py-3 text-text-secondary">
+                  {secret.masked ? 'Yes' : 'No'}
+                </td>
+              )}
               <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
                 {formatRelativeTimeFromIso(secret.updated_at)}
               </td>
@@ -495,7 +641,7 @@ function SecretTable({
                     onClick={() => onRotate(secret)}
                   >
                     <Pencil size={14} />
-                    <span className="sr-only sm:not-sr-only sm:inline">Update</span>
+                    <span className="sr-only sm:not-sr-only sm:inline">Edit</span>
                   </SecondaryButton>
                   <SecondaryButton
                     type="button"

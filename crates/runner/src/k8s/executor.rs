@@ -13,7 +13,7 @@ use k8s_openapi::api::core::v1::Pod;
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::OwnerReference;
 use kube::api::{DeleteParams, ListParams, LogParams, PostParams, PropagationPolicy};
 use kube::{Api, Client};
-use pertisk_cicd::apply_secrets_to_step;
+use pertisk_cicd::apply_ci_config_to_step;
 use pertisk_cicd::metrics::{JobMetrics, StepTiming};
 use pertisk_cicd::render_job_script;
 use tempfile::TempDir;
@@ -64,7 +64,7 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
     let resolved_steps: Vec<_> = job
         .steps
         .iter()
-        .map(|step| apply_secrets_to_step(step, &secrets.injection))
+        .map(|step| apply_ci_config_to_step(step, &secrets.secret_refs, &secrets.variable_refs))
         .collect();
 
     let mut extra_env: HashMap<String, String> =

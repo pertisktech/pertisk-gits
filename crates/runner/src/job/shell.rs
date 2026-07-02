@@ -2,7 +2,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use pertisk_cicd::apply_secrets_to_step;
+use pertisk_cicd::apply_ci_config_to_step;
 use pertisk_cicd::metrics::{JobMetrics, StepTiming};
 use pertisk_cicd::ShellExecutor;
 use tempfile::TempDir;
@@ -192,7 +192,7 @@ pub async fn run_job(
         };
 
         let started_at = Utc::now();
-        let resolved_step = apply_secrets_to_step(step, &secrets.injection);
+        let resolved_step = apply_ci_config_to_step(step, &secrets.secret_refs, &secrets.variable_refs);
         let output = tokio::join!(
             drain_logs,
             executor.run_step_streaming_cancellable(

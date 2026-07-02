@@ -13,20 +13,22 @@ export function GroupSecretsPage() {
   return (
     <>
       <PageHeader
-        title="Secrets"
+        title="CI/CD variables"
         subtitle={
           <>
-            Encrypted variables for CI/CD pipelines. Use the same name per environment (e.g.{' '}
-            <code className="font-mono text-xs">HARBOR_REGISTRY</code>) with different values.
-            Repository secrets override group secrets when names and environments match.
+            Secrets hide passwords and tokens after save. Variables keep URLs and hostnames visible
+            (e.g. SonarQube dashboard links). Use{' '}
+            <code className="font-mono text-xs">{'${{ secrets.NAME }}'}</code> and{' '}
+            <code className="font-mono text-xs">{'${{ vars.NAME }}'}</code> in{' '}
+            <code className="font-mono text-xs">.pertisk-ci.yaml</code>.
           </>
         }
       />
 
       <SecretsPanel
         token={token}
-        title="Group secrets"
-        description="Visible to group owners and admins. Values are never shown after creation."
+        title="Group CI/CD"
+        description="Visible to group owners and admins. Repository entries override group entries with the same key and environment."
         queryKey={['org-secrets', orgPath]}
         listSecrets={() => api.listOrgSecrets(token, orgPath)}
         createSecret={(payload) => api.createOrgSecret(token, orgPath, payload)}

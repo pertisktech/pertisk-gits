@@ -257,8 +257,8 @@ export function RepoSettings({
         {section === 'automation' && (
           <>
             <SettingsPanel
-              title="Repository secrets"
-              description="Per-environment secrets for this repo (e.g. HARBOR_URL in dev vs qa). Overrides group secrets with the same name and environment."
+              title="CI/CD variables"
+              description="Secrets and variables for this repository. Repository entries override group entries with the same key and environment."
             >
               <SecretsPanel
                 embedded

@@ -7,6 +7,8 @@ use crate::api::{PollJobResponse, RunnerApi};
 
 pub struct PreparedSecrets {
     pub injection: HashMap<String, String>,
+    pub secret_refs: HashMap<String, String>,
+    pub variable_refs: HashMap<String, String>,
     pub mask_values: Vec<String>,
 }
 
@@ -88,6 +90,8 @@ pub async fn prepare_secrets(
     }
 
     let mut mask_values = Vec::new();
+    let mut secret_refs = predefined_vars_from_job(job, api.api_url());
+    let mut variable_refs = HashMap::new();
 
     for item in response.secrets {
         if item.masked && item.value.len() >= 4 {
@@ -105,11 +109,18 @@ pub async fn prepare_secrets(
         } else {
             item.value.clone()
         };
-        injection.insert(item.name, value);
+        injection.insert(item.name.clone(), value.clone());
+        if item.config_scope == "variable" {
+            variable_refs.insert(item.name, value);
+        } else {
+            secret_refs.insert(item.name, value);
+        }
     }
 
     Ok(PreparedSecrets {
         injection,
+        secret_refs,
+        variable_refs,
         mask_values,
     })
 }

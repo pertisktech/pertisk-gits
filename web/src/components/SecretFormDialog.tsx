@@ -1,11 +1,14 @@
 import { FileKey, KeyRound, Loader2, X } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import type { CiSecret, CiSecretEnvironment, CiSecretKind } from '../api/types'
-import { PrimaryButton, SecondaryButton, Select } from './ui'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { cn } from '../utils/cn'
+import type { CiConfigScope, CiSecret, CiSecretEnvironment, CiSecretKind } from '../api/types'
+import { Checkbox, PrimaryButton, SecondaryButton, Select } from './ui'
 
 export interface SecretFormValues {
   name: string
   secret_kind: CiSecretKind
+  config_scope: CiConfigScope
+  masked: boolean
   environment: CiSecretEnvironment
   value: string
 }
@@ -13,6 +16,7 @@ export interface SecretFormValues {
 export function SecretFormDialog({
   open,
   mode,
+  defaultScope,
   secret,
   pending,
   error,
@@ -21,6 +25,7 @@ export function SecretFormDialog({
 }: {
   open: boolean
   mode: 'create' | 'rotate'
+  defaultScope: CiConfigScope
   secret?: CiSecret | null
   pending?: boolean
   error?: string | null
@@ -29,23 +34,48 @@ export function SecretFormDialog({
 }) {
   const [name, setName] = useState('')
   const [kind, setKind] = useState<CiSecretKind>('variable')
+  const [scope, setScope] = useState<CiConfigScope>(defaultScope)
+  const [masked, setMasked] = useState(defaultScope === 'secret')
   const [environment, setEnvironment] = useState<CiSecretEnvironment>('dev')
   const [value, setValue] = useState('')
+  const valueRef = useRef<HTMLTextAreaElement>(null)
+
+  const isVariable = scope === 'variable'
+  const isCreate = mode === 'create'
 
   useEffect(() => {
     if (!open) return
     if (mode === 'rotate' && secret) {
       setName(secret.name)
       setKind(secret.secret_kind)
+      setScope(secret.config_scope)
+      setMasked(secret.masked)
       setEnvironment(secret.environment)
-      setValue('')
+      setValue(secret.config_scope === 'variable' ? secret.value ?? '' : '')
       return
     }
     setName('')
     setKind('variable')
+    setScope(defaultScope)
+    setMasked(defaultScope === 'secret')
     setEnvironment('dev')
     setValue('')
-  }, [open, mode, secret])
+  }, [open, mode, secret, defaultScope])
+
+  const syncValueHeight = useCallback(() => {
+    const el = valueRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    const maxHeight = 240
+    const nextHeight = Math.min(el.scrollHeight, maxHeight)
+    el.style.height = `${Math.max(nextHeight, 96)}px`
+    el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden'
+  }, [])
+
+  useEffect(() => {
+    if (!open) return
+    syncValueHeight()
+  }, [open, value, syncValueHeight])
 
   useEffect(() => {
     if (!open) return
@@ -58,7 +88,6 @@ export function SecretFormDialog({
 
   if (!open) return null
 
-  const isCreate = mode === 'create'
   const trimmedName = name.trim().toUpperCase()
   const canSubmit = Boolean(trimmedName) && Boolean(value.trim())
 
@@ -74,18 +103,27 @@ export function SecretFormDialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby="secret-form-title"
-        className="w-full max-w-lg rounded-lg border border-naturals-n4 bg-surface shadow-xl"
+        className={cn(
+          'w-full rounded-lg border border-naturals-n4 bg-surface shadow-xl',
+          isVariable ? 'max-w-2xl' : 'max-w-lg',
+        )}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between gap-3 border-b border-naturals-n4 px-5 py-4">
           <div>
             <h2 id="secret-form-title" className="text-base font-semibold text-text">
-              {isCreate ? 'Add secret' : 'Update secret value'}
+              {isCreate
+                ? isVariable
+                  ? 'Add variable'
+                  : 'Add secret'
+                : isVariable
+                  ? 'Edit variable'
+                  : 'Update secret value'}
             </h2>
             <p className="mt-1 text-sm text-text-secondary">
-              {isCreate
-                ? 'Values are encrypted and never shown again after saving.'
-                : `Replace the stored value for ${secret?.name ?? 'this secret'}.`}
+              {isVariable
+                ? 'Non-sensitive config (URLs, hostnames). Visible here and referenced as ${{ vars.NAME }}.'
+                : 'Sensitive values are encrypted and referenced as ${{ secrets.NAME }}.'}
             </p>
           </div>
           <button
@@ -106,7 +144,9 @@ export function SecretFormDialog({
             if (!canSubmit || pending) return
             onSubmit({
               name: trimmedName,
-              secret_kind: kind,
+              secret_kind: isVariable ? 'variable' : kind,
+              config_scope: scope,
+              masked: isVariable ? masked : true,
               environment,
               value: value.trim(),
             })
@@ -116,7 +156,7 @@ export function SecretFormDialog({
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1 sm:col-span-2">
                 <label className="text-sm font-medium text-text" htmlFor="secret-form-name">
-                  Name
+                  Key
                 </label>
                 <input
                   id="secret-form-name"
@@ -124,22 +164,24 @@ export function SecretFormDialog({
                   value={name}
                   disabled={pending}
                   autoFocus
-                  placeholder="HARBOR_REGISTRY"
+                  placeholder={isVariable ? 'SONAR_HOST_URL' : 'HARBOR_PASSWORD'}
                   pattern="[A-Z][A-Z0-9_]*"
                   onChange={(event) => setName(event.target.value.toUpperCase())}
                   required
                 />
               </div>
-              <Select
-                id="secret-form-kind"
-                label="Type"
-                value={kind}
-                disabled={pending}
-                onChange={(event) => setKind(event.target.value as CiSecretKind)}
-              >
-                <option value="variable">Variable</option>
-                <option value="file">File</option>
-              </Select>
+              {!isVariable && (
+                <Select
+                  id="secret-form-kind"
+                  label="Type"
+                  value={kind}
+                  disabled={pending}
+                  onChange={(event) => setKind(event.target.value as CiSecretKind)}
+                >
+                  <option value="variable">Variable</option>
+                  <option value="file">File</option>
+                </Select>
+              )}
               <Select
                 id="secret-form-environment"
                 label="Environment"
@@ -167,16 +209,34 @@ export function SecretFormDialog({
               {isCreate ? 'Value' : 'New value'}
             </label>
             <textarea
+              ref={valueRef}
               id="secret-form-value"
-              className="app-field min-h-24 resize-y font-mono text-xs"
+              className="app-field min-h-24 resize-none overflow-hidden font-mono text-xs"
               value={value}
               disabled={pending}
               autoFocus={!isCreate}
-              placeholder={kind === 'file' ? '-----BEGIN PRIVATE KEY-----' : 'harbor.example.com'}
+              placeholder={
+                isVariable
+                  ? 'https://sonar.example.com/dashboard?id=my-project'
+                  : kind === 'file'
+                    ? '-----BEGIN PRIVATE KEY-----'
+                    : 'harbor.example.com'
+              }
               onChange={(event) => setValue(event.target.value)}
               required
             />
           </div>
+
+          {isVariable && (
+            <Checkbox
+              id="secret-form-masked"
+              label="Mask in job logs"
+              description="Hide this value in streamed logs (use for tokens that are not passwords)."
+              checked={masked}
+              disabled={pending}
+              onChange={(event) => setMasked(event.target.checked)}
+            />
+          )}
 
           {error && <p className="text-sm text-dashboard-danger">{error}</p>}
 
@@ -192,7 +252,7 @@ export function SecretFormDialog({
               ) : (
                 <FileKey size={14} />
               )}
-              {pending ? 'Saving…' : isCreate ? 'Add secret' : 'Update value'}
+              {pending ? 'Saving…' : isCreate ? 'Save' : 'Update'}
             </PrimaryButton>
           </div>
         </form>

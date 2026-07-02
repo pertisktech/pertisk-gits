@@ -1445,7 +1445,9 @@ export const api = {
     orgSlug: string,
     payload: {
       name: string
-      secret_kind: import('./types').CiSecretKind
+      secret_kind?: import('./types').CiSecretKind
+      config_scope?: import('./types').CiConfigScope
+      masked?: boolean
       environment?: import('./types').CiSecretEnvironment
       value: string
     },
@@ -1461,6 +1463,8 @@ export const api = {
     secretId: string,
     payload: {
       secret_kind?: import('./types').CiSecretKind
+      config_scope?: import('./types').CiConfigScope
+      masked?: boolean
       environment?: import('./types').CiSecretEnvironment
       value?: string
     },
@@ -1486,7 +1490,9 @@ export const api = {
     repoSlug: string,
     payload: {
       name: string
-      secret_kind: import('./types').CiSecretKind
+      secret_kind?: import('./types').CiSecretKind
+      config_scope?: import('./types').CiConfigScope
+      masked?: boolean
       environment?: import('./types').CiSecretEnvironment
       value: string
     },
@@ -1507,6 +1513,8 @@ export const api = {
     secretId: string,
     payload: {
       secret_kind?: import('./types').CiSecretKind
+      config_scope?: import('./types').CiConfigScope
+      masked?: boolean
       environment?: import('./types').CiSecretEnvironment
       value?: string
     },

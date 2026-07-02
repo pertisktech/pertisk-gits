@@ -2,35 +2,9 @@ use std::collections::HashMap;
 
 use crate::config::Step;
 
-/// Replace `${{ secrets.NAME }}` references in pipeline strings.
-pub fn resolve_secret_refs(input: &str, secrets: &HashMap<String, String>) -> String {
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if let Some(rest) = input[i..].strip_prefix("${{") {
-            if let Some((name, consumed)) = parse_secret_ref(rest) {
-                if let Some(value) = secrets.get(&name) {
-                    out.push_str(value);
-                }
-                i += 3 + consumed;
-                continue;
-            }
-        }
-        if let Some(ch) = input[i..].chars().next() {
-            out.push(ch);
-            i += ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    out
-}
-
-fn parse_secret_ref(rest: &str) -> Option<(String, usize)> {
+fn parse_ci_ref(rest: &str, prefix: &str) -> Option<(String, usize)> {
     let trimmed = rest.trim_start();
     let skip = rest.len() - trimmed.len();
-    let prefix = "secrets.";
     if !trimmed.starts_with(prefix) {
         return None;
     }
@@ -51,16 +25,60 @@ fn parse_secret_ref(rest: &str) -> Option<(String, usize)> {
     Some((name, skip + end))
 }
 
-/// Resolve secret references in a step's `run` script and `env` values.
-pub fn apply_secrets_to_step(step: &Step, secrets: &HashMap<String, String>) -> Step {
+fn resolve_refs(input: &str, prefix: &str, values: &HashMap<String, String>) -> String {
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if let Some(rest) = input[i..].strip_prefix("${{") {
+            if let Some((name, consumed)) = parse_ci_ref(rest, prefix) {
+                if let Some(value) = values.get(&name) {
+                    out.push_str(value);
+                }
+                i += 3 + consumed;
+                continue;
+            }
+        }
+        if let Some(ch) = input[i..].chars().next() {
+            out.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+/// Replace `${{ secrets.NAME }}` references in pipeline strings.
+pub fn resolve_secret_refs(input: &str, secrets: &HashMap<String, String>) -> String {
+    resolve_refs(input, "secrets.", secrets)
+}
+
+/// Replace `${{ vars.NAME }}` references in pipeline strings.
+pub fn resolve_var_refs(input: &str, variables: &HashMap<String, String>) -> String {
+    resolve_refs(input, "vars.", variables)
+}
+
+/// Resolve secret and variable references in a step's `run` script and `env` values.
+pub fn apply_ci_config_to_step(
+    step: &Step,
+    secrets: &HashMap<String, String>,
+    variables: &HashMap<String, String>,
+) -> Step {
+    let resolve = |input: &str| resolve_var_refs(&resolve_secret_refs(input, secrets), variables);
     let mut out = step.clone();
-    out.run = resolve_secret_refs(&step.run, secrets);
+    out.run = resolve(&step.run);
     out.env = step
         .env
         .iter()
-        .map(|(key, value)| (key.clone(), resolve_secret_refs(value, secrets)))
+        .map(|(key, value)| (key.clone(), resolve(value)))
         .collect();
     out
+}
+
+/// Backward-compatible alias when all values live in one map.
+pub fn apply_secrets_to_step(step: &Step, secrets: &HashMap<String, String>) -> Step {
+    apply_ci_config_to_step(step, secrets, &HashMap::new())
 }
 
 /// Mask secret values in log output (longest values first to avoid partial leaks).
@@ -95,6 +113,14 @@ mod tests {
     }
 
     #[test]
+    fn resolves_var_syntax() {
+        let mut variables = HashMap::new();
+        variables.insert("SONAR_HOST_URL".into(), "https://sonar.example.com".into());
+        let resolved = resolve_var_refs("open ${{ vars.SONAR_HOST_URL }}/dashboard", &variables);
+        assert_eq!(resolved, "open https://sonar.example.com/dashboard");
+    }
+
+    #[test]
     fn resolves_predefined_pipeline_vars() {
         let mut secrets = HashMap::new();
         secrets.insert("CI_PIPELINE_ID".into(), "11111111-1111-1111-1111-111111111111".into());
@@ -107,6 +133,22 @@ mod tests {
             resolved,
             "pipeline=11111111-1111-1111-1111-111111111111 job=build"
         );
+    }
+
+    #[test]
+    fn apply_ci_config_resolves_both_scopes() {
+        let secrets = HashMap::from([("TOKEN".into(), "sekret".into())]);
+        let variables = HashMap::from([("SONAR_HOST_URL".into(), "https://sonar.example.com".into())]);
+        let step = Step {
+            name: None,
+            run: "curl ${{ secrets.TOKEN }} ${{ vars.SONAR_HOST_URL }}".into(),
+            uses: None,
+            working_directory: None,
+            env: HashMap::new(),
+            with: HashMap::new(),
+        };
+        let out = apply_ci_config_to_step(&step, &secrets, &variables);
+        assert_eq!(out.run, "curl sekret https://sonar.example.com");
     }
 
     #[test]
@@ -152,11 +194,20 @@ mod tests {
     }
 
     #[test]
-    fn ignores_non_secret_refs() {
+    fn secret_resolver_ignores_var_syntax() {
         let secrets = HashMap::new();
         assert_eq!(
             resolve_secret_refs("value=${{ vars.API_TOKEN }}", &secrets),
             "value=${{ vars.API_TOKEN }}"
+        );
+    }
+
+    #[test]
+    fn unknown_var_placeholder_is_removed() {
+        let variables = HashMap::new();
+        assert_eq!(
+            resolve_var_refs("x=${{ vars.MISSING }}", &variables),
+            "x="
         );
     }
 

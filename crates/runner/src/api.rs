@@ -340,9 +340,15 @@ impl RunnerApi {
 pub struct JobSecretItem {
     pub name: String,
     pub secret_kind: String,
+    #[serde(default = "default_secret_scope")]
+    pub config_scope: String,
     pub value: String,
     #[serde(default = "default_true")]
     pub masked: bool,
+}
+
+fn default_secret_scope() -> String {
+    "secret".into()
 }
 
 fn default_true() -> bool {

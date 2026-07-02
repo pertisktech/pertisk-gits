@@ -1,6 +1,13 @@
-# CI/CD secrets
+# CI/CD secrets and variables
 
-Group and repository secrets for pipelines. Values are encrypted at rest (AES-256-GCM) and never returned by the API after creation.
+Group and repository **secrets** and **variables** for pipelines (GitLab-style). All values are encrypted at rest (AES-256-GCM).
+
+| Kind | UI tab | After save | Pipeline syntax | Logs |
+|------|--------|------------|-----------------|------|
+| **Secret** | Secrets | Value hidden | `${{ secrets.NAME }}` | Masked by default |
+| **Variable** | Variables | Value visible in UI | `${{ vars.NAME }}` | Shown unless **Mask in job logs** is enabled |
+
+Use **variables** for non-sensitive config: SonarQube dashboard URLs, registry hostnames, API base URLs. Use **secrets** for passwords and tokens.
 
 **Deploy workflows:** how environments tie to Run pipeline and manual jobs — [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md)
 
@@ -55,10 +62,17 @@ Effective environment comes from (in order):
 
 ## Pipeline usage
 
-Reference secrets in step `run` scripts and `env` values:
+Reference **secrets** and **variables** in step `run` scripts and `env` values:
 
 ```yaml
 jobs:
+  sonar:
+    environment: dev
+    steps:
+      - run: |
+          sonar-scanner -Dsonar.host.url="$SONAR_HOST_URL"
+          echo "Results: ${{ vars.SONAR_DASHBOARD_URL }}"
+
   deploy-qa:
     runs-on: kubernetes
     environment: qa
@@ -68,16 +82,16 @@ jobs:
     steps:
       - name: push image
         run: |
-          echo "Logging in to ${{ secrets.HARBOR_URL }}"
-          docker login "${{ secrets.HARBOR_URL }}" -u "$USER" -p "$PASS"
+          docker login "${{ vars.HARBOR_REGISTRY }}" -u "${{ secrets.HARBOR_USERNAME }}" -p "${{ secrets.HARBOR_PASSWORD }}"
 ```
 
-- **variable** — resolves to the secret string.
-- **file** — content is written to `.pertisk-secrets/NAME` on the runner (mode 600); the reference resolves to that file path.
+- **Secret `variable`** — resolves to the secret string (`${{ secrets.NAME }}`).
+- **Secret `file`** — content is written to `.pertisk-secrets/NAME` on the runner (mode 600); `${{ secrets.NAME }}` resolves to that file path.
+- **CI variable** — resolves via `${{ vars.NAME }}`; also exported as shell env `$NAME`.
 
 ## Runner behavior
 
-After a job is claimed, the runner fetches decrypted secrets from `GET /api/v1/runner/jobs/{id}/secrets` (filtered by job environment), materializes file secrets, resolves `${{ secrets.* }}` in each step, and masks known secret values in streamed logs.
+After a job is claimed, the runner fetches decrypted values from `GET /api/v1/runner/jobs/{id}/secrets` (filtered by job environment), materializes file secrets, resolves `${{ secrets.* }}` and `${{ vars.* }}` in each step, and masks values marked **masked** in streamed logs.
 
 ## Predefined variables (GitLab-style)
 
@@ -129,5 +143,5 @@ Or use standard shell variables (same values):
 
 ## UI locations
 
-- **Group → Secrets** — group-level secrets
-- **Project → Settings** — repository secrets section
+- **Group → Secrets** — group-level secrets and variables (tabs)
+- **Project → Settings → Automation** — repository secrets and variables

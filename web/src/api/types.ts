@@ -942,13 +942,18 @@ export interface AuditListResponse {
 
 export type CiSecretKind = 'variable' | 'file'
 
+export type CiConfigScope = 'secret' | 'variable'
+
 export type CiSecretEnvironment = 'all' | 'dev' | 'qa' | 'uat' | 'prd'
 
 export interface CiSecret {
   id: string
   name: string
   secret_kind: CiSecretKind
+  config_scope: CiConfigScope
+  masked: boolean
   environment: CiSecretEnvironment
+  value?: string | null
   created_at: string
   updated_at: string
 }
