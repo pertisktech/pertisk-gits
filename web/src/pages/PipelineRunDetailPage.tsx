@@ -30,6 +30,7 @@ import {
   displayJobStatus,
   displayRunStatus,
   displayRunStatusIcon,
+  formatPipelineIid,
   isRunInProgress,
   blocksPipelineRerun,
   refLabel,
@@ -314,7 +315,7 @@ export function PipelineRunDetailPage() {
           groups,
           projectName: repoName,
           projectTo: pipelinesPath,
-          suffix: [{ label: shortSha(run.commit_sha) }],
+          suffix: [{ label: `${formatPipelineIid(run.pipeline_iid)} ${shortSha(run.commit_sha)}` }],
         })}
       />
 
@@ -327,6 +328,7 @@ export function PipelineRunDetailPage() {
           <div className="gha-run-title-row">
             <ActionsStatusIcon status={runStatusIcon} size="lg" />
             <h1 className="gha-run-title">
+              <span className="gha-run-title-iid font-mono">{formatPipelineIid(run.pipeline_iid)}</span>
               <span className="font-mono">.pertisk-ci.yaml</span>
             </h1>
           </div>

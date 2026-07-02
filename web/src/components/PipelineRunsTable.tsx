@@ -9,6 +9,7 @@ import {
   displayRunStatusIcon,
   failureSummary,
   formatRunDuration,
+  formatPipelineIid,
   blocksPipelineRerun,
   refLabel,
   shortSha,
@@ -113,6 +114,7 @@ function PipelineRunRow({
         <ActionsStatusIcon status={status} size="lg" className="gha-run-row-icon" />
         <div className="gha-run-row-body">
           <div className="gha-run-row-title">
+            <span className="gha-run-row-iid font-mono">{formatPipelineIid(run.pipeline_iid)}</span>
             <span className="font-mono">.pertisk-ci.yaml</span>
             <span className="gha-run-row-event">{run.event_type}</span>
           </div>

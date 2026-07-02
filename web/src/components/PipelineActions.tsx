@@ -7,6 +7,7 @@ import { type JobStepView, stepDisplayStatus, stepMeta } from '../lib/pipelineLo
 import {
   displayJobStatus,
   displayRunStatusIcon,
+  formatPipelineIid,
   hasPendingManualJobs,
   formatRunDuration,
   refLabel,
@@ -46,6 +47,10 @@ export function ActionsRunSummary({ run }: { run: PipelineRun }) {
   return (
     <div className="gha-summary">
       <div className="gha-summary-grid">
+        <div className="gha-summary-item">
+          <span className="gha-summary-label">Pipeline</span>
+          <span className="gha-summary-value font-mono">{formatPipelineIid(run.pipeline_iid)}</span>
+        </div>
         <div className="gha-summary-item">
           <span className="gha-summary-label">Status</span>
           <span className="gha-summary-value gha-summary-value--status">

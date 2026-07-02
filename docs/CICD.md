@@ -260,6 +260,8 @@ curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/trigge
 | POST | `/api/v1/runner/jobs/{id}/artifacts` | Runner token (multipart upload) |
 | GET | `/api/v1/organizations/{org}/repositories/{repo}/pipelines/{run_id}/artifacts/{id}/download` | User JWT |
 
+Pipeline list and run detail responses include `pipeline_iid` (repository-scoped sequence: 1, 2, 3, …). This matches the `CI_PIPELINE_IID` variable injected into job scripts.
+
 ## Job metrics
 
 Each completed job stores `metrics_json`:
@@ -303,7 +305,7 @@ While a step runs, the runner streams stdout/stderr to the API in ~400ms chunks 
 
 ### Fail-fast and runner status
 
-When a **required** job fails, remaining `queued` / `running` jobs are marked failed (`=== skipped: pipeline failed`) and are not claimed again. Runners return to **online** instead of staying **busy** while sibling jobs would have run.
+When a **required** job fails, remaining **queued** jobs are marked **skipped** (gray, “not run”) — not failed. They stay visible in the graph with log `=== skipped: not run (upstream job failed)`. Runners return to **online** instead of staying **busy** while sibling jobs would have run.
 
 Jobs with **`allow_failure: true`** / **`required: false`** do not trigger fail-fast: downstream `needs:` jobs still queue, and the pipeline can finish **success** if every required job passed.
 

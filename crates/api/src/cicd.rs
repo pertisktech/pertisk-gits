@@ -482,6 +482,7 @@ pub fn post_receive_hook(
 #[derive(Serialize)]
 struct PipelineRunResponse {
     id: Uuid,
+    pipeline_iid: i64,
     commit_sha: String,
     ref_name: String,
     event_type: String,
@@ -835,10 +836,25 @@ async fn list_pipeline_runs(
 
     let runs = sqlx::query_as::<_, PipelineRunRow>(
         r#"
-        SELECT id, commit_sha, ref_name, event_type::text, target_environment, status::text, created_at, started_at, finished_at
-        FROM pipeline_runs
-        WHERE repository_id = $1
-        ORDER BY created_at DESC
+        SELECT
+            p.id,
+            p.commit_sha,
+            p.ref_name,
+            p.event_type::text,
+            p.target_environment,
+            p.status::text,
+            p.created_at,
+            p.started_at,
+            p.finished_at,
+            (
+                SELECT COUNT(*)::bigint
+                FROM pipeline_runs pr2
+                WHERE pr2.repository_id = p.repository_id
+                  AND pr2.created_at <= p.created_at
+            ) AS pipeline_iid
+        FROM pipeline_runs p
+        WHERE p.repository_id = $1
+        ORDER BY p.created_at DESC
         LIMIT 50
         "#,
     )
@@ -1044,18 +1060,18 @@ async fn rerun_pipeline(
     let mode = match scope {
         RerunScope::All => MaterializeMode::RerunAll,
         RerunScope::Failed => {
-            let statuses = fetch_job_status_map(&state.pool, run_id)
+            let reset_names = fetch_rerun_failed_job_names(&state.pool, run_id)
                 .await
                 .map_err(sqlx_error)?;
-            let has_failed = statuses
-                .values()
-                .any(|status| status == "failure" || status == "cancelled");
-            if !has_failed {
+            if reset_names.is_empty() {
                 return Err(
-                    DomainError::Validation("no failed or cancelled jobs to rerun".into()).into(),
+                    DomainError::Validation(
+                        "no failed, cancelled, or skipped jobs to rerun".into(),
+                    )
+                    .into(),
                 );
             }
-            MaterializeMode::RerunFailed
+            MaterializeMode::RerunJobs(reset_names)
         }
     };
 
@@ -2490,6 +2506,36 @@ async fn fetch_job_status_map(
     Ok(rows.into_iter().collect())
 }
 
+fn is_upstream_skipped_job(status: &str, log_text: &str) -> bool {
+    status == "skipped"
+        && (log_text.contains("not run (upstream job failed)")
+            || log_text.contains("skipped: pipeline failed"))
+}
+
+async fn fetch_rerun_failed_job_names(
+    pool: &PgPool,
+    run_id: Uuid,
+) -> Result<HashSet<String>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, String, String)>(
+        r#"
+        SELECT job_name, status::text, COALESCE(log_text, '')
+        FROM job_runs
+        WHERE pipeline_run_id = $1
+        "#,
+    )
+    .bind(run_id)
+    .fetch_all(pool)
+    .await?;
+
+    Ok(rows
+        .into_iter()
+        .filter(|(_, status, log)| {
+            status == "failure" || status == "cancelled" || is_upstream_skipped_job(status, log)
+        })
+        .map(|(name, _, _)| name)
+        .collect())
+}
+
 fn job_should_reset(mode: &MaterializeMode, existing_status: Option<&str>, job_name: &str) -> bool {
     match mode {
         MaterializeMode::Fresh | MaterializeMode::RerunAll => true,
@@ -3009,11 +3055,12 @@ async fn update_commit_status_for_job(
     .await?;
 
     let state = match status {
-        "success" => "success",
+        "success" | "skipped" => "success",
         _ => "failure",
     };
     let description = match status {
         "success" => "Job success".to_string(),
+        "skipped" => "Skipped".to_string(),
         "cancelled" => "Job cancelled".to_string(),
         "failure" if !required => "Job failed (allowed to fail)".to_string(),
         other => format!("Job {other}"),
@@ -3096,10 +3143,10 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
         let skipped = sqlx::query_as::<_, (Uuid, String)>(
             r#"
             UPDATE job_runs
-            SET status = 'failure'::job_run_status,
+            SET status = 'skipped'::job_run_status,
                 finished_at = NOW(),
-                log_text = log_text || E'\n=== skipped: pipeline failed\n'
-            WHERE pipeline_run_id = $1 AND status IN ('queued', 'running')
+                log_text = E'=== skipped: not run (upstream job failed)\n'
+            WHERE pipeline_run_id = $1 AND status = 'queued'
             RETURNING id, job_name
             "#,
         )
@@ -3108,7 +3155,7 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
         .await?;
 
         for (job_id, job_name) in skipped {
-            let _ = update_commit_status_for_job(pool, job_id, "failure", &job_name).await;
+            let _ = update_commit_status_for_job(pool, job_id, "skipped", &job_name).await;
         }
 
         let _ = release_idle_runners(pool).await;
@@ -3359,6 +3406,7 @@ async fn ensure_pipeline_idle(
 #[derive(sqlx::FromRow)]
 struct PipelineRunRow {
     id: Uuid,
+    pipeline_iid: i64,
     commit_sha: String,
     ref_name: String,
     event_type: String,
@@ -3373,6 +3421,7 @@ impl PipelineRunRow {
     fn into_response(self, jobs: Vec<JobRunResponse>) -> PipelineRunResponse {
         PipelineRunResponse {
             id: self.id,
+            pipeline_iid: self.pipeline_iid,
             commit_sha: self.commit_sha,
             ref_name: self.ref_name,
             event_type: self.event_type,
@@ -3506,7 +3555,22 @@ async fn fetch_pipeline_run(
 ) -> Result<Option<PipelineRunRow>, sqlx::Error> {
     sqlx::query_as::<_, PipelineRunRow>(
         r#"
-        SELECT id, commit_sha, ref_name, event_type::text, target_environment, status::text, created_at, started_at, finished_at
+        SELECT
+            id,
+            commit_sha,
+            ref_name,
+            event_type::text,
+            target_environment,
+            status::text,
+            created_at,
+            started_at,
+            finished_at,
+            (
+                SELECT COUNT(*)::bigint
+                FROM pipeline_runs pr2
+                WHERE pr2.repository_id = pipeline_runs.repository_id
+                  AND pr2.created_at <= pipeline_runs.created_at
+            ) AS pipeline_iid
         FROM pipeline_runs
         WHERE id = $1 AND repository_id = $2
         "#,

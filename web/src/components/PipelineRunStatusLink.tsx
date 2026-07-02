@@ -1,7 +1,7 @@
 import type { MouseEvent } from 'react'
 import { Link } from 'react-router-dom'
 import type { PipelineRun } from '../api/types'
-import { displayRunStatusIcon } from '../lib/pipelineStatus'
+import { displayRunStatusIcon, formatPipelineIid } from '../lib/pipelineStatus'
 import { ActionsStatusIcon } from './PipelineStatus'
 
 export function PipelineRunStatusLink({
@@ -16,7 +16,7 @@ export function PipelineRunStatusLink({
   if (!run) return null
 
   const status = displayRunStatusIcon(run)
-  const label = `Pipeline ${status}`
+  const label = `Pipeline ${formatPipelineIid(run.pipeline_iid)} ${status}`
 
   function stopNavigation(event: MouseEvent) {
     event.stopPropagation()

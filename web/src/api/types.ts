@@ -755,6 +755,7 @@ export interface CodeSearchStatus {
 
 export interface PipelineRun {
   id: string
+  pipeline_iid: number
   commit_sha: string
   ref_name: string
   event_type: 'push' | 'pull_request' | 'manual'

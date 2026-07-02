@@ -19,9 +19,14 @@ export function failureSummary(jobs: JobRun[]): string | null {
   return line?.trim().slice(0, 160) ?? `Job "${failed[0].job_name}" failed`
 }
 
-/** Jobs that belong to this run (exclude path-skipped). */
+/** Jobs hidden from run UI (skipped by `if:` in YAML, never part of this run). */
+export function isConfigSkippedJob(job: JobRun): boolean {
+  return job.status === 'skipped' && /if condition not met/i.test(job.log_text)
+}
+
+/** Jobs that belong to this run (exclude YAML `if:` skips). */
 export function activeRunJobs(run: PipelineRun): JobRun[] {
-  return run.jobs.filter((job) => job.status !== 'skipped')
+  return run.jobs.filter((job) => !isConfigSkippedJob(job))
 }
 
 export function isAllowedFailure(job: JobRun): boolean {
@@ -127,6 +132,7 @@ export function statusDotClass(status: string): string {
   if (status === 'failure_allowed') return 'ci-status-dot-warning'
   if (status === 'failure') return 'ci-status-dot-failure'
   if (status === 'cancelled') return 'ci-status-dot-cancelled'
+  if (status === 'skipped') return 'ci-status-dot-pending'
   if (status === 'running') return 'ci-status-dot-running'
   if (status === 'manual') return 'ci-status-dot-manual'
   return 'ci-status-dot-pending'
@@ -172,10 +178,28 @@ export function pipelineUrl(orgSlug: string, repoSlug: string, runId: string) {
   return `/groups/${orgSlug}/projects/${repoSlug}/pipelines/${runId}`
 }
 
+export function formatPipelineIid(iid: number): string {
+  return `#${iid}`
+}
+
 export type RerunScope = 'all' | 'failed'
 
 export function countRerunnableFailedJobs(run: PipelineRun): number {
-  return run.jobs.filter((j) => j.status === 'failure' || j.status === 'cancelled').length
+  return run.jobs.filter(
+    (j) =>
+      j.status === 'failure' ||
+      j.status === 'cancelled' ||
+      isUpstreamSkippedJob(j),
+  ).length
+}
+
+/** Skipped because a required upstream job failed (not YAML `if:` skip). */
+export function isUpstreamSkippedJob(job: JobRun): boolean {
+  return (
+    job.status === 'skipped' &&
+    (/not run \(upstream job failed\)/i.test(job.log_text) ||
+      /skipped: pipeline failed/i.test(job.log_text))
+  )
 }
 
 export function canRerunFailed(run: PipelineRun): boolean {

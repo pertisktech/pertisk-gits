@@ -5023,6 +5023,16 @@ select.app-field:disabled,
   color: var(--color-text);
 }
 
+.gha-run-row-iid {
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+
+.gha-run-title-iid {
+  color: var(--color-text-secondary);
+  margin-right: 0.35rem;
+}
+
 .gha-run-row-event {
   font-size: 0.75rem;
   font-weight: 500;

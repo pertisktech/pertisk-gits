@@ -5,6 +5,7 @@ import type {
   PipelineJobPreview,
   PipelineRun,
 } from '../api/types'
+import { isConfigSkippedJob } from './pipelineStatus'
 
 export interface PipelinePathSummary {
   id: string
@@ -335,7 +336,7 @@ export function filterJobsForViewRef(
 }
 
 export function filterRunJobsForList(run: PipelineRun): JobRun[] {
-  return run.jobs.filter((job) => job.status !== 'skipped')
+  return run.jobs.filter((job) => !isConfigSkippedJob(job))
 }
 
 /** Jobs visible for a manual Run pipeline with a target environment. */
