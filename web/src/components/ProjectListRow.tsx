@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { DashboardProjectStats } from '../api/types'
 import { displayRepoName, projectInitial } from '../lib/projectInitial'
+import { repositoryActivityAt } from '../lib/repositoryActivity'
 import { formatRelativeTimeFromIso } from '../lib/relativeTime'
 import { cn } from '../utils/cn'
 import { DashboardProjectAside } from './DashboardProjectAside'
@@ -11,6 +12,7 @@ export function ProjectListRow({
   slug,
   name,
   updatedAt,
+  lastCommitAt,
   stats,
   statsLoading,
 }: {
@@ -18,10 +20,15 @@ export function ProjectListRow({
   slug: string
   name: string
   updatedAt: string
+  lastCommitAt?: string | null
   stats?: DashboardProjectStats
   statsLoading?: boolean
 }) {
   const shortName = displayRepoName(name, slug)
+  const activityAt = repositoryActivityAt({
+    last_commit_at: lastCommitAt,
+    updated_at: updatedAt,
+  })
 
   return (
     <li className={styles.row}>
@@ -45,8 +52,8 @@ export function ProjectListRow({
         loading={statsLoading}
       />
       <div className={styles.meta}>
-        <span className={styles.updated} title={new Date(updatedAt).toLocaleString()}>
-          {formatRelativeTimeFromIso(updatedAt)}
+        <span className={styles.updated} title={new Date(activityAt).toLocaleString()}>
+          {formatRelativeTimeFromIso(activityAt)}
         </span>
       </div>
     </li>

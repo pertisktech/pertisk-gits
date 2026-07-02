@@ -445,9 +445,19 @@ pub fn post_receive_hook(
         + Send
         + Sync,
 > {
-    Arc::new(move |repository_id, _repo_path, updates| {
+    Arc::new(move |repository_id, repo_path, updates| {
         let state = state.clone();
         Box::pin(async move {
+            if let Err(err) =
+                crate::repository_activity::refresh_repository_last_commit_at(
+                    &state.pool,
+                    repository_id,
+                    &repo_path,
+                )
+                .await
+            {
+                tracing::warn!(%repository_id, %err, "failed to refresh repository last commit time");
+            }
             if let Err(err) = enqueue_push_triggers(&state, repository_id, &updates).await {
                 tracing::warn!("failed to enqueue pipeline triggers: {err:#}");
                 return;

@@ -801,6 +801,18 @@ pub async fn list_commits(
     Ok(commits)
 }
 
+/// Unix committer timestamp of the latest commit on a ref, if the ref exists.
+pub async fn latest_commit_time(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+) -> anyhow::Result<Option<i64>> {
+    Ok(list_commits(repo_path, ref_name, kind, 1)
+        .await?
+        .first()
+        .map(|commit| commit.committed_at))
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CommitDetail {
     pub sha: String,

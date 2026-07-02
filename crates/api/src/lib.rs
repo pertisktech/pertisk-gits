@@ -60,6 +60,7 @@ mod permissions;
 pub(crate) use org::find_org_for_member;
 
 mod registry;
+mod repository_activity;
 mod secrets_crypto;
 mod sso;
 mod system_metrics;
@@ -1255,11 +1256,12 @@ async fn list_repositories(
     auth: AuthUser,
     Path(org_path): Path<String>,
 ) -> Result<Json<Vec<Repository>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
+    let org_path = crate::org::org_path_from_param(&org_path);
+    let org = find_org_for_member(&state.pool, &org_path, auth.user_id).await?;
 
-    let repos = sqlx::query_as::<_, Repository>(
+    let mut repos = sqlx::query_as::<_, Repository>(
         r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         FROM repositories
         WHERE organization_id = $1
         ORDER BY name
@@ -1269,6 +1271,21 @@ async fn list_repositories(
     .fetch_all(&state.pool)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if repos.iter().any(|repo| repo.last_commit_at.is_none()) {
+        let pool = state.pool.clone();
+        let repos_root = state.config.repos_root.clone();
+        let org_path = org_path.clone();
+        for repo in repos.iter_mut().filter(|repo| repo.last_commit_at.is_none()) {
+            repository_activity::backfill_repository_last_commit_at(
+                &pool,
+                &repos_root,
+                &org_path,
+                repo,
+            )
+            .await;
+        }
+    }
 
     Ok(Json(repos))
 }
@@ -1295,7 +1312,7 @@ async fn create_repository(
         r#"
         INSERT INTO repositories (organization_id, name, slug, description, visibility)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         "#,
     )
     .bind(org.id)
@@ -1366,7 +1383,7 @@ async fn update_repository(
 
     let repo = sqlx::query_as::<_, Repository>(
         r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         FROM repositories
         WHERE organization_id = $1 AND slug = $2
         "#,
@@ -1418,7 +1435,7 @@ async fn update_repository(
             default_branch = $4,
             updated_at = NOW()
         WHERE id = $5
-        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         "#,
     )
     .bind(name)
@@ -1503,7 +1520,7 @@ async fn delete_repository(
 
     let repo = sqlx::query_as::<_, Repository>(
         r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         FROM repositories
         WHERE organization_id = $1 AND slug = $2
         "#,
@@ -1560,7 +1577,7 @@ async fn transfer_repository(
 
     let repo = sqlx::query_as::<_, Repository>(
         r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         FROM repositories
         WHERE organization_id = $1 AND slug = $2
         "#,
@@ -1616,7 +1633,7 @@ async fn transfer_repository(
         UPDATE repositories
         SET organization_id = $1, updated_at = NOW()
         WHERE id = $2
-        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        RETURNING id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         "#,
     )
     .bind(target_org.id)
@@ -1804,7 +1821,7 @@ pub(crate) async fn load_repo_for_read(
 
     let repo = sqlx::query_as::<_, Repository>(
         r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         FROM repositories
         WHERE organization_id = $1 AND slug = $2
         "#,

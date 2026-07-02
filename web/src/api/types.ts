@@ -41,6 +41,7 @@ export interface Repository {
   default_branch: string
   created_at: string
   updated_at: string
+  last_commit_at?: string | null
 }
 
 export interface DashboardProjectStats {

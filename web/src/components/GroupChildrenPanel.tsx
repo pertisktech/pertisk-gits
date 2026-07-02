@@ -218,6 +218,7 @@ export function GroupChildrenPanel({
                 slug={item.project.slug}
                 name={item.project.name}
                 updatedAt={item.project.updated_at}
+                lastCommitAt={item.project.last_commit_at}
                 stats={getProjectStats({ orgSlug: orgPath, slug: item.project.slug })}
                 statsLoading={projectStatsLoading}
               />

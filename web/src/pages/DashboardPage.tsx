@@ -11,6 +11,7 @@ import { EmptyState, LinkButton, Select, TablePagination } from '../components/u
 import { useAllProjects, type DashboardProject } from '../hooks/useAllProjects'
 import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
 import { DEFAULT_PAGE_SIZE, useClientPagination } from '../lib/pagination'
+import { repositoryActivityMs } from '../lib/repositoryActivity'
 import styles from './DashboardPage.module.css'
 
 type SortOption = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc' | 'group_asc'
@@ -20,8 +21,7 @@ function compareText(a: string, b: string) {
 }
 
 function projectUpdatedAt(project: DashboardProject): number {
-  const parsed = Date.parse(project.updated_at)
-  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : 0
+  return Math.floor(repositoryActivityMs(project) / 1000)
 }
 
 function sortProjects(projects: DashboardProject[], sort: SortOption): DashboardProject[] {
@@ -188,6 +188,7 @@ export function DashboardPage() {
                   slug={project.slug}
                   name={project.name}
                   updatedAt={project.updated_at}
+                  lastCommitAt={project.last_commit_at}
                   stats={getStats(project)}
                   statsLoading={statsLoading}
                 />

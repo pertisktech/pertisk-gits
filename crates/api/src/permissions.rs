@@ -577,7 +577,7 @@ pub(crate) async fn find_repo_in_org(
 ) -> Result<Repository, ApiError> {
     sqlx::query_as::<_, Repository>(
         r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at
+        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
         FROM repositories
         WHERE organization_id = $1 AND slug = $2
         "#,
