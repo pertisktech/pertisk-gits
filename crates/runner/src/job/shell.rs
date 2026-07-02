@@ -315,13 +315,13 @@ async fn poll_cancel_signals(
     cancel_tx: watch::Sender<bool>,
 ) {
     loop {
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let Ok(control) = api.fetch_job_control(job_id).await else {
-            continue;
-        };
-        if control.timed_out || control.should_cancel_step(&step_name) {
-            let _ = cancel_tx.send(true);
-            return;
+        if let Ok(control) = api.fetch_job_control(job_id).await {
+            if control.timed_out || control.should_cancel_job() || control.should_cancel_step(&step_name)
+            {
+                let _ = cancel_tx.send(true);
+                return;
+            }
         }
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 }

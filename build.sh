@@ -21,4 +21,5 @@ make package-runner VERSION="$VERSION"
 
 #echo "==> Building pertisk-gits Docker image (amd64 + arm64) v${VERSION}"
 #make pertisk-gits-image-multi VERSION="$VERSION"
+docker system prune -f
 echo "==> Build complete. Artifacts in release/ and container registry."

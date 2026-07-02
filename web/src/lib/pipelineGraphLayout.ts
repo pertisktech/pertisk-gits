@@ -21,6 +21,28 @@ const NODE_WIDTH = 176
 const COL_GAP = 248
 const ROW_GAP = 88
 
+export type PipelineGraphEdgeTone =
+  | 'success'
+  | 'failure'
+  | 'running'
+  | 'manual'
+  | 'pending'
+  | 'skipped'
+
+/** Edge color reflects the downstream job — green only when that path is fully done. */
+export function edgeToneForConnection(
+  depStatus?: JobRun['status'],
+  targetStatus?: JobRun['status'],
+): PipelineGraphEdgeTone {
+  if (targetStatus === 'manual') return 'manual'
+  if (targetStatus === 'failure' || depStatus === 'failure') return 'failure'
+  if (targetStatus === 'cancelled' || depStatus === 'cancelled') return 'failure'
+  if (targetStatus === 'running' || depStatus === 'running') return 'running'
+  if (targetStatus === 'skipped' || depStatus === 'skipped') return 'skipped'
+  if (depStatus === 'success' && targetStatus === 'success') return 'success'
+  return 'pending'
+}
+
 function jobDepths(jobs: PipelineGraphJob[]): Map<string, number> {
   const byName = new Map(jobs.map((job) => [job.name, job]))
   const depths = new Map<string, number>()
@@ -154,27 +176,20 @@ export function layoutPipelineGraph(
       .filter((dep) => positions.has(dep))
       .map((dep) => {
         const depStatus = statusByName.get(dep)
-        const stroke =
-          depStatus === 'success'
-            ? '#3fb950'
-            : depStatus === 'failure'
-              ? '#f85149'
-              : depStatus === 'running'
-                ? '#d29922'
-                : depStatus === 'skipped'
-                  ? 'var(--color-naturals-n7)'
-                  : 'var(--color-border)'
+        const targetStatus = job.status
+        const tone = edgeToneForConnection(depStatus, targetStatus)
 
         return {
           id: `${dep}->${job.name}`,
           source: dep,
           target: job.name,
           type: 'smoothstep',
-          animated: depStatus === 'running',
-          style: { stroke, strokeWidth: 1.5 },
+          className: `pipeline-graph-edge pipeline-graph-edge--${tone}`,
+          animated: tone === 'running',
+          style: { strokeWidth: tone === 'manual' ? 2 : 1.5 },
           markerEnd: {
             type: 'arrowclosed' as const,
-            color: stroke,
+            color: `var(--pipeline-graph-edge-${tone})`,
             width: 16,
             height: 16,
           },

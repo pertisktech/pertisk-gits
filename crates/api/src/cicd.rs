@@ -40,7 +40,7 @@ const RUNNER_OFFLINE_AFTER_SECS: i64 = 180;
 /// Manager pod rows older than this are hidden and deleted (3× the ~30s heartbeat interval).
 const RUNNER_INSTANCE_STALE_SECS: i64 = 90;
 /// Running job with cancel_requested older than this is force-finalized (safety net).
-const CANCEL_RECLAIM_AFTER_SECS: i64 = 120;
+const CANCEL_RECLAIM_AFTER_SECS: i64 = 30;
 /// RPM/tar.gz CI artifacts exceed axum's default 2 MiB body limit.
 const MAX_RUNNER_ARTIFACT_BYTES: usize = 256 * 1024 * 1024;
 
@@ -1645,15 +1645,20 @@ async fn complete_runner_job(
         other => return Err((StatusCode::BAD_REQUEST, format!("invalid status: {other}"))),
     };
 
-    let row = sqlx::query_as::<_, (Uuid, Uuid, String)>(
+    let row = sqlx::query_as::<_, (Uuid, String, String)>(
         r#"
         UPDATE job_runs
-        SET status = $3::job_run_status,
+        SET status = CASE
+                WHEN status = 'cancelled'::job_run_status THEN 'cancelled'::job_run_status
+                ELSE $3::job_run_status
+            END,
             log_text = COALESCE($4, log_text),
             metrics_json = COALESCE($5, metrics_json),
-            finished_at = NOW()
-        WHERE id = $1 AND runner_id = $2 AND status IN ('running', 'cancelled')
-        RETURNING pipeline_run_id, pipeline_run_id, job_name
+            finished_at = COALESCE(finished_at, NOW())
+        WHERE id = $1
+          AND runner_id = $2
+          AND status IN ('running', 'cancelled')
+        RETURNING pipeline_run_id, job_name, status::text
         "#,
     )
     .bind(job_id)
@@ -1667,8 +1672,9 @@ async fn complete_runner_job(
     .ok_or((StatusCode::NOT_FOUND, "job not found".into()))?;
 
     let pipeline_run_id = row.0;
-    let job_name = row.2;
-    update_commit_status_for_job(&state.pool, job_id, status, &job_name)
+    let job_name = row.1;
+    let final_status = row.2;
+    update_commit_status_for_job(&state.pool, job_id, &final_status, &job_name)
         .await
         .map_err(|e| internal(e.to_string()))?;
     finalize_pipeline_run_if_done(&state.pool, pipeline_run_id)
@@ -1696,7 +1702,7 @@ async fn complete_runner_job(
     )
     .bind(runner_id)
     .bind(&job_name)
-    .bind(status)
+    .bind(&final_status)
     .execute(&state.pool)
     .await
     .map_err(|e| internal(e.to_string()))?;
@@ -1710,7 +1716,7 @@ async fn complete_runner_job(
         "#,
     )
     .bind(job_id)
-    .bind(k8s_pod_phase_for_status(status))
+    .bind(k8s_pod_phase_for_status(&final_status))
     .execute(&state.pool)
     .await
     .map_err(|e| internal(e.to_string()))?;
@@ -3931,7 +3937,7 @@ async fn cancel_pipeline_run(
         SET status = 'cancelled'::job_run_status,
             finished_at = NOW(),
             log_text = log_text || E'\n=== pipeline cancelled\n'
-        WHERE pipeline_run_id = $1 AND status = 'queued'
+        WHERE pipeline_run_id = $1 AND status IN ('queued', 'manual')
         RETURNING id, job_name
         "#,
     )
@@ -3943,8 +3949,10 @@ async fn cancel_pipeline_run(
     let running_jobs = sqlx::query_as::<_, (Uuid, String)>(
         r#"
         UPDATE job_runs
-        SET cancel_requested_at = COALESCE(cancel_requested_at, NOW()),
-            log_text = log_text || E'\n=== pipeline cancel requested\n'
+        SET status = 'cancelled'::job_run_status,
+            finished_at = NOW(),
+            cancel_requested_at = COALESCE(cancel_requested_at, NOW()),
+            log_text = log_text || E'\n=== pipeline cancelled\n'
         WHERE pipeline_run_id = $1 AND status = 'running'
         RETURNING id, job_name
         "#,
@@ -3956,11 +3964,16 @@ async fn cancel_pipeline_run(
 
     tx.commit().await.map_err(|_| CancelError::NotFound)?;
 
-    for (job_id, job_name) in queued_jobs {
+    for (job_id, job_name) in queued_jobs
+        .into_iter()
+        .chain(running_jobs.iter().map(|(id, name)| (*id, name.clone())))
+    {
         let _ = update_commit_status_for_job(pool, job_id, "cancelled", &job_name).await;
     }
-    for (job_id, job_name) in running_jobs {
-        let _ = update_commit_status_for_job(pool, job_id, "failure", &job_name).await;
+    for (job_id, _) in &running_jobs {
+        if let Err(err) = finish_k8s_pod_for_job(pool, *job_id, "cancelled").await {
+            tracing::warn!(%job_id, %err, "failed to finish k8s pod record for cancelled job");
+        }
     }
 
     let _ = release_idle_runners(pool).await;

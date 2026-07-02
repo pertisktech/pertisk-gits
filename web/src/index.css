@@ -5142,6 +5142,12 @@ select.app-field:disabled,
   width: 100%;
   background: var(--color-naturals-n2);
   border-bottom: 1px solid var(--color-naturals-n4);
+  --pipeline-graph-edge-success: #3fb950;
+  --pipeline-graph-edge-failure: #f85149;
+  --pipeline-graph-edge-running: #d29922;
+  --pipeline-graph-edge-manual: var(--color-primary);
+  --pipeline-graph-edge-pending: var(--color-naturals-n7);
+  --pipeline-graph-edge-skipped: var(--color-naturals-n7);
 }
 
 .pipeline-graph-panel--inline {
@@ -5189,8 +5195,9 @@ select.app-field:disabled,
 }
 
 .pipeline-graph-node--manual {
-  border-color: color-mix(in srgb, var(--color-primary) 45%, var(--color-naturals-n4));
-  background: color-mix(in srgb, var(--color-primary) 6%, var(--color-naturals-n3));
+  border-color: color-mix(in srgb, var(--color-primary) 55%, var(--color-naturals-n4));
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-naturals-n3));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-primary) 12%, transparent);
 }
 
 .ci-status-dot-manual {
@@ -5251,6 +5258,11 @@ select.app-field:disabled,
   flex-shrink: 0;
 }
 
+.pipeline-graph-node-steps--manual {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
 .pipeline-graph-handle {
   width: 6px !important;
   height: 6px !important;
@@ -5290,7 +5302,33 @@ select.app-field:disabled,
 }
 
 .react-flow__edge-path {
-  stroke: var(--color-naturals-n7) !important;
+  stroke: var(--color-naturals-n7);
+}
+
+.pipeline-graph-edge--success .react-flow__edge-path {
+  stroke: var(--pipeline-graph-edge-success);
+}
+
+.pipeline-graph-edge--failure .react-flow__edge-path {
+  stroke: var(--pipeline-graph-edge-failure);
+}
+
+.pipeline-graph-edge--running .react-flow__edge-path {
+  stroke: var(--pipeline-graph-edge-running);
+}
+
+.pipeline-graph-edge--manual .react-flow__edge-path {
+  stroke: var(--pipeline-graph-edge-manual);
+  stroke-dasharray: 7 5;
+}
+
+.pipeline-graph-edge--pending .react-flow__edge-path {
+  stroke: var(--pipeline-graph-edge-pending);
+}
+
+.pipeline-graph-edge--skipped .react-flow__edge-path {
+  stroke: var(--pipeline-graph-edge-skipped);
+  opacity: 0.65;
 }
 
 .react-flow__background pattern circle {

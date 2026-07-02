@@ -46,7 +46,7 @@ function PipelineJobNode({ data }: NodeProps) {
         <div className="pipeline-graph-node-meta">
           <span className="pipeline-graph-node-label">{job.runs_on}</span>
           {isManual ? (
-            <span className="pipeline-graph-node-steps">manual</span>
+            <span className="pipeline-graph-node-steps pipeline-graph-node-steps--manual">awaiting run</span>
           ) : (
             job.step_count !== undefined && (
               <span className="pipeline-graph-node-steps">{job.step_count} steps</span>

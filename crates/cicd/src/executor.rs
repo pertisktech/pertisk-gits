@@ -44,7 +44,8 @@ impl ShellExecutor {
 
     fn command_for_script(&self, script: &str) -> Command {
         let mut command = Command::new(&self.shell);
-        command.arg("-c").arg(script);
+        command.arg("-c").arg(wrap_script_for_process_group(script));
+        configure_process_group(&mut command);
         command
     }
 
@@ -193,17 +194,25 @@ impl ShellExecutor {
         let mut forward = Box::pin(forward);
         let mut was_cancelled = false;
         let (combined, status) = loop {
+            if *cancel.borrow() {
+                was_cancelled = true;
+                kill_step_child(&mut child).await;
+                let combined = forward.as_mut().await;
+                break (combined, child.wait().await);
+            }
+
             tokio::select! {
-                combined = forward.as_mut() => {
-                    break (combined, child.wait().await);
-                }
+                biased;
                 changed = cancel.changed() => {
                     if changed.is_err() || *cancel.borrow() {
                         was_cancelled = true;
-                        let _ = child.kill().await;
+                        kill_step_child(&mut child).await;
                         let combined = forward.as_mut().await;
                         break (combined, child.wait().await);
                     }
+                }
+                combined = forward.as_mut() => {
+                    break (combined, child.wait().await);
                 }
             }
         };
@@ -239,6 +248,46 @@ impl ShellExecutor {
             stderr: String::new(),
             duration,
         }
+    }
+}
+
+/// Forward TERM/INT to the whole step subtree (npm/jest workers, etc.).
+fn wrap_script_for_process_group(script: &str) -> String {
+    #[cfg(unix)]
+    {
+        format!("trap 'kill 0' TERM INT; {script}")
+    }
+    #[cfg(not(unix))]
+    {
+        script.to_string()
+    }
+}
+
+fn configure_process_group(command: &mut Command) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.as_std_mut().process_group(0);
+    }
+}
+
+async fn kill_step_child(child: &mut tokio::process::Child) {
+    #[cfg(unix)]
+    {
+        if let Some(pid) = child.id() {
+            let pgid = pid as i32;
+            unsafe {
+                libc::killpg(pgid, libc::SIGTERM);
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            unsafe {
+                libc::killpg(pgid, libc::SIGKILL);
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = child.kill().await;
     }
 }
 
