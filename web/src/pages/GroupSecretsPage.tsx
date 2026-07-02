@@ -2,6 +2,7 @@ import { useAuth } from '../auth/AuthContext'
 import { useOrgPathParam } from '../hooks/useOrgPathParam'
 import { api } from '../api/client'
 import { SecretsPanel } from '../components/SecretsPanel'
+import { PageHeader } from '../components/ui'
 
 export function GroupSecretsPage() {
   const orgPath = useOrgPathParam()
@@ -11,16 +12,16 @@ export function GroupSecretsPage() {
 
   return (
     <>
-      <div className="app-repo-header mb-4">
-        <div className="min-w-0">
-          <h1 className="text-lg font-semibold text-text">Secrets</h1>
-          <p className="text-sm text-text-secondary">
-            Configure secrets per environment (dev / qa / uat / prd). Use the same name — e.g.{' '}
-            <code className="font-mono text-xs">HARBOR_URL</code> — with a different value in each
-            environment. Repository secrets override group secrets with the same name and environment.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        title="Secrets"
+        subtitle={
+          <>
+            Encrypted variables for CI/CD pipelines. Use the same name per environment (e.g.{' '}
+            <code className="font-mono text-xs">HARBOR_REGISTRY</code>) with different values.
+            Repository secrets override group secrets when names and environments match.
+          </>
+        }
+      />
 
       <SecretsPanel
         token={token}

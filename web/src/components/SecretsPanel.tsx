@@ -1,32 +1,39 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { KeyRound, Loader2, Plus, Trash2 } from 'lucide-react'
-import { useState } from 'react'
+import {
+  BookOpen,
+  ChevronDown,
+  Copy,
+  KeyRound,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+} from 'lucide-react'
+import { useMemo, useState } from 'react'
 import type { CiSecret, CiSecretEnvironment, CiSecretKind } from '../api/types'
-import { PrimaryButton, SecondaryButton, Select } from './ui'
+import { formatRelativeTimeFromIso } from '../lib/relativeTime'
+import { cn } from '../utils/cn'
+import { SecretDeleteDialog } from './SecretDeleteDialog'
+import {
+  SecretEnvBadge,
+  SecretFormDialog,
+  SecretKindBadge,
+  type SecretFormValues,
+} from './SecretFormDialog'
+import { EmptyState, PrimaryButton, SecondaryButton } from './ui'
 
 const SECRET_ENV_ORDER: CiSecretEnvironment[] = ['dev', 'qa', 'uat', 'prd', 'all']
 
 const SECRET_ENV_LABELS: Record<CiSecretEnvironment, string> = {
-  dev: 'dev',
-  qa: 'qa',
-  uat: 'uat',
-  prd: 'prd',
-  all: 'all environments',
+  dev: 'Development',
+  qa: 'QA',
+  uat: 'UAT',
+  prd: 'Production',
+  all: 'All environments',
 }
 
-function groupSecretsByEnvironment(secrets: CiSecret[]) {
-  const buckets = new Map<CiSecretEnvironment, CiSecret[]>()
-  for (const env of SECRET_ENV_ORDER) {
-    buckets.set(env, [])
-  }
-  for (const secret of secrets) {
-    buckets.get(secret.environment)?.push(secret)
-  }
-  return SECRET_ENV_ORDER.map((environment) => ({
-    environment,
-    secrets: buckets.get(environment) ?? [],
-  })).filter((group) => group.secrets.length > 0)
-}
+type EnvFilter = CiSecretEnvironment | 'all_envs'
 
 interface SecretsPanelProps {
   token: string
@@ -48,6 +55,24 @@ interface SecretsPanelProps {
   embedded?: boolean
 }
 
+function secretReference(name: string) {
+  return `\${{ secrets.${name} }}`
+}
+
+function groupSecretsByEnvironment(secrets: CiSecret[]) {
+  const buckets = new Map<CiSecretEnvironment, CiSecret[]>()
+  for (const env of SECRET_ENV_ORDER) {
+    buckets.set(env, [])
+  }
+  for (const secret of secrets) {
+    buckets.get(secret.environment)?.push(secret)
+  }
+  return SECRET_ENV_ORDER.map((environment) => ({
+    environment,
+    secrets: (buckets.get(environment) ?? []).sort((a, b) => a.name.localeCompare(b.name)),
+  })).filter((group) => group.secrets.length > 0)
+}
+
 export function SecretsPanel({
   token,
   title,
@@ -60,12 +85,15 @@ export function SecretsPanel({
   embedded = false,
 }: SecretsPanelProps) {
   const queryClient = useQueryClient()
-  const [showForm, setShowForm] = useState(false)
-  const [name, setName] = useState('')
-  const [kind, setKind] = useState<CiSecretKind>('variable')
-  const [environment, setEnvironment] = useState<CiSecretEnvironment>('dev')
-  const [value, setValue] = useState('')
+  const [search, setSearch] = useState('')
+  const [envFilter, setEnvFilter] = useState<EnvFilter>('all_envs')
+  const [guideOpen, setGuideOpen] = useState(false)
+  const [formOpen, setFormOpen] = useState(false)
+  const [formMode, setFormMode] = useState<'create' | 'rotate'>('create')
+  const [activeSecret, setActiveSecret] = useState<CiSecret | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CiSecret | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [copiedRef, setCopiedRef] = useState<string | null>(null)
 
   const { data: secrets = [], isLoading } = useQuery({
     queryKey,
@@ -73,15 +101,38 @@ export function SecretsPanel({
     enabled: Boolean(token),
   })
 
+  const filteredSecrets = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return secrets.filter((secret) => {
+      if (envFilter !== 'all_envs' && secret.environment !== envFilter) return false
+      if (!q) return true
+      return secret.name.toLowerCase().includes(q)
+    })
+  }, [envFilter, search, secrets])
+
+  const groupedSecrets = useMemo(
+    () => groupSecretsByEnvironment(filteredSecrets),
+    [filteredSecrets],
+  )
+
   const createMutation = useMutation({
     mutationFn: createSecret,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey })
-      setShowForm(false)
-      setName('')
-      setValue('')
-      setKind('variable')
-      setEnvironment('dev')
+      setFormOpen(false)
+      setActiveSecret(null)
+      setError(null)
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const rotateMutation = useMutation({
+    mutationFn: ({ id, newValue }: { id: string; newValue: string }) =>
+      updateSecret(id, { value: newValue }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey })
+      setFormOpen(false)
+      setActiveSecret(null)
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
@@ -89,198 +140,378 @@ export function SecretsPanel({
 
   const deleteMutation = useMutation({
     mutationFn: deleteSecret,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey })
+      setDeleteTarget(null)
+      setError(null)
+    },
     onError: (err: Error) => setError(err.message),
   })
 
-  const rotateMutation = useMutation({
-    mutationFn: ({ id, newValue }: { id: string; newValue: string }) =>
-      updateSecret(id, { value: newValue }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-    onError: (err: Error) => setError(err.message),
-  })
-
-  function onCreate(e: React.FormEvent) {
-    e.preventDefault()
+  function openCreateDialog() {
+    setFormMode('create')
+    setActiveSecret(null)
     setError(null)
-    createMutation.mutate({
-      name: name.trim().toUpperCase(),
-      secret_kind: kind,
-      environment,
-      value,
-    })
+    setFormOpen(true)
   }
 
-  async function onRotate(secret: CiSecret) {
-    const newValue = window.prompt(`Enter new value for ${secret.name}`)
-    if (!newValue) return
-    rotateMutation.mutate({ id: secret.id, newValue })
+  function openRotateDialog(secret: CiSecret) {
+    setFormMode('rotate')
+    setActiveSecret(secret)
+    setError(null)
+    setFormOpen(true)
   }
+
+  async function copyReference(name: string) {
+    try {
+      await navigator.clipboard.writeText(secretReference(name))
+      setCopiedRef(name)
+      window.setTimeout(() => setCopiedRef((current) => (current === name ? null : current)), 2000)
+    } catch {
+      setError('Could not copy to clipboard')
+    }
+  }
+
+  function onFormSubmit(values: SecretFormValues) {
+    setError(null)
+    if (formMode === 'create') {
+      createMutation.mutate({
+        name: values.name,
+        secret_kind: values.secret_kind,
+        environment: values.environment,
+        value: values.value,
+      })
+      return
+    }
+    if (!activeSecret) return
+    rotateMutation.mutate({ id: activeSecret.id, newValue: values.value })
+  }
+
+  const toolbar = (
+    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="relative min-w-0 flex-1 sm:max-w-xs">
+        <Search
+          size={15}
+          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary"
+        />
+        <input
+          type="search"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search secrets…"
+          className="app-field w-full pl-9"
+          aria-label="Search secrets"
+        />
+      </div>
+      <PrimaryButton type="button" onClick={openCreateDialog}>
+        <Plus size={14} />
+        Add secret
+      </PrimaryButton>
+    </div>
+  )
+
+  const envFilters = (
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by environment">
+      <EnvFilterChip
+        active={envFilter === 'all_envs'}
+        onClick={() => setEnvFilter('all_envs')}
+        label="All"
+      />
+      {SECRET_ENV_ORDER.map((environment) => (
+        <EnvFilterChip
+          key={environment}
+          active={envFilter === environment}
+          onClick={() => setEnvFilter(environment)}
+          label={SECRET_ENV_LABELS[environment]}
+        />
+      ))}
+    </div>
+  )
+
+  const guide = (
+    <div className="rounded-lg border border-border overflow-hidden">
+      <button
+        type="button"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-hover/50 transition-colors"
+        onClick={() => setGuideOpen((open) => !open)}
+        aria-expanded={guideOpen}
+      >
+        <span className="inline-flex items-center gap-2 text-sm font-medium text-text">
+          <BookOpen size={15} className="text-text-secondary" />
+          How secrets work in pipelines
+        </span>
+        <ChevronDown
+          size={16}
+          className={cn('text-text-secondary transition-transform', guideOpen && 'rotate-180')}
+        />
+      </button>
+      {guideOpen && (
+        <div className="border-t border-border bg-surface-elevated/30 px-4 py-3 space-y-3 text-sm text-text-secondary">
+          <p>
+            Use the same variable name in each environment with a different value — for example{' '}
+            <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">HARBOR_REGISTRY</code>{' '}
+            in dev and qa. Reference secrets in{' '}
+            <code className="rounded bg-surface-2 px-1 py-0.5 font-mono text-xs">.pertisk-ci.yaml</code>:
+          </p>
+          <pre className="overflow-x-auto rounded-md border border-border bg-surface p-3 font-mono text-xs text-text">
+{`jobs:
+  build:
+    environment: dev
+    steps:
+      - run: |
+          docker login -u "\${{ secrets.HARBOR_USERNAME }}" \\
+            -p "\${{ secrets.HARBOR_PASSWORD }}" \\
+            "\${{ secrets.HARBOR_REGISTRY }}"`}
+          </pre>
+          <p className="text-xs">
+            Jobs receive secrets for their effective environment (<code className="font-mono">environment:</code> on the job, or inferred from branch / Run pipeline).
+          </p>
+        </div>
+      )}
+    </div>
+  )
+
+  const listBody = isLoading ? (
+    <div className="flex items-center gap-2 py-10 text-sm text-text-secondary">
+      <Loader2 size={16} className="animate-spin" />
+      Loading secrets…
+    </div>
+  ) : filteredSecrets.length === 0 ? (
+    <EmptyState
+      icon={<KeyRound size={28} />}
+      title={secrets.length === 0 ? 'No secrets yet' : 'No matching secrets'}
+      description={
+        secrets.length === 0
+          ? 'Add registry credentials, tokens, and other sensitive values for your pipelines.'
+          : 'Try a different search or environment filter.'
+      }
+      action={
+        secrets.length === 0 ? (
+          <PrimaryButton type="button" onClick={openCreateDialog}>
+            <Plus size={14} />
+            Add your first secret
+          </PrimaryButton>
+        ) : undefined
+      }
+    />
+  ) : envFilter === 'all_envs' ? (
+    <div className="space-y-4">
+      {groupedSecrets.map((group) => (
+        <section key={group.environment} className="overflow-hidden rounded-lg border border-border">
+          <header className="flex items-center justify-between gap-3 border-b border-border bg-surface-elevated/40 px-4 py-2.5">
+            <div className="flex items-center gap-2">
+              <SecretEnvBadge environment={group.environment} />
+              <span className="text-sm font-medium text-text">
+                {SECRET_ENV_LABELS[group.environment]}
+              </span>
+            </div>
+            <span className="text-xs text-text-secondary">
+              {group.secrets.length} secret{group.secrets.length === 1 ? '' : 's'}
+            </span>
+          </header>
+          <SecretTable
+            secrets={group.secrets}
+            copiedRef={copiedRef}
+            onCopy={copyReference}
+            onRotate={openRotateDialog}
+            onDelete={setDeleteTarget}
+            pendingDeleteId={deleteMutation.isPending ? deleteTarget?.id : undefined}
+          />
+        </section>
+      ))}
+    </div>
+  ) : (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <SecretTable
+        secrets={filteredSecrets.sort((a, b) => a.name.localeCompare(b.name))}
+        copiedRef={copiedRef}
+        onCopy={copyReference}
+        onRotate={openRotateDialog}
+        onDelete={setDeleteTarget}
+        pendingDeleteId={deleteMutation.isPending ? deleteTarget?.id : undefined}
+        showEnvironment
+      />
+    </div>
+  )
 
   const body = (
     <div className="space-y-4">
-        {!embedded && description && (
-          <p className="text-sm text-text-secondary">{description}</p>
-        )}
-        <p className="text-xs text-text-secondary">
-          Use the same name in each environment with different values — for example{' '}
-          <code className="rounded bg-surface-2 px-1 py-0.5">HARBOR_URL</code> for dev and qa.
-          Reference in pipelines as{' '}
-          <code className="rounded bg-surface-2 px-1 py-0.5">{'${{ secrets.HARBOR_URL }}'}</code>.
-          Jobs only receive secrets for their deploy environment (set{' '}
-          <code className="rounded bg-surface-2 px-1 py-0.5">environment:</code> on the job).
-        </p>
+      {!embedded && description && (
+        <p className="text-sm text-text-secondary">{description}</p>
+      )}
 
-        <pre className="text-xs font-mono bg-naturals-n2 border border-naturals-n4 rounded-md p-3 text-text-secondary overflow-x-auto">
-{`dev   HARBOR_URL = harbor-dev.tools.example.com
-qa    HARBOR_URL = harbor-qa.tools.example.com
-uat   HARBOR_URL = harbor-uat.tools.example.com
-prd   HARBOR_URL = harbor.tools.example.com`}
-        </pre>
+      {guide}
+      {toolbar}
+      {envFilters}
 
-        {error && (
-          <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-            {error}
-          </div>
-        )}
+      {error && !formOpen && !deleteTarget && (
+        <div className="rounded-md border border-red-r1/30 bg-dashboard-danger-bg px-3 py-2 text-sm text-dashboard-danger">
+          {error}
+        </div>
+      )}
 
-        {isLoading ? (
-          <div className="flex items-center gap-2 text-sm text-text-secondary">
-            <Loader2 size={14} className="animate-spin" />
-            Loading secrets…
-          </div>
-        ) : secrets.length === 0 ? (
-          <p className="text-sm text-text-secondary">No secrets configured yet.</p>
-        ) : (
-          <div className="space-y-4">
-            {groupSecretsByEnvironment(secrets).map((group) => (
-              <section key={group.environment} className="rounded-md border border-border overflow-hidden">
-                <div className="px-4 py-2 bg-naturals-n3 border-b border-border text-xs font-semibold uppercase tracking-wide text-text-secondary">
-                  {SECRET_ENV_LABELS[group.environment]}
-                </div>
-                <ul className="divide-y divide-border">
-                  {group.secrets.map((secret) => (
-                    <li
-                      key={secret.id}
-                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm"
-                    >
-                      <div>
-                        <div className="font-mono font-medium text-text">{secret.name}</div>
-                        <div className="text-xs text-text-secondary capitalize">
-                          {secret.secret_kind} · updated {new Date(secret.updated_at).toLocaleString()}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <SecondaryButton
-                          type="button"
-                          onClick={() => onRotate(secret)}
-                          disabled={rotateMutation.isPending}
-                        >
-                          Update value
-                        </SecondaryButton>
-                        <SecondaryButton
-                          type="button"
-                          onClick={() => {
-                            if (
-                              window.confirm(
-                                `Delete ${secret.name} (${group.environment})?`,
-                              )
-                            ) {
-                              deleteMutation.mutate(secret.id)
-                            }
-                          }}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 size={14} />
-                        </SecondaryButton>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        )}
+      {listBody}
 
-        {showForm ? (
-          <form onSubmit={onCreate} className="space-y-3 rounded-md border border-border p-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1">
-                <label className="text-sm font-medium text-text" htmlFor="secret-name">
-                  Name
-                </label>
-                <input
-                  id="secret-name"
-                  className="app-field font-mono"
-                  value={name}
-                  onChange={(e) => setName(e.target.value.toUpperCase())}
-                  placeholder="HARBOR_URL"
-                  pattern="[A-Z][A-Z0-9_]*"
-                  required
-                />
-              </div>
-              <Select
-                id="secret-kind"
-                label="Type"
-                value={kind}
-                onChange={(e) => setKind(e.target.value as CiSecretKind)}
-              >
-                <option value="variable">Variable</option>
-                <option value="file">File (PEM, key material)</option>
-              </Select>
-              <Select
-                id="secret-environment"
-                label="Environment"
-                value={environment}
-                onChange={(e) => setEnvironment(e.target.value as CiSecretEnvironment)}
-              >
-                <option value="all">All environments</option>
-                <option value="dev">dev</option>
-                <option value="qa">qa</option>
-                <option value="uat">uat</option>
-                <option value="prd">prd</option>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium text-text" htmlFor="secret-value">
-                Value
-              </label>
-              <textarea
-                id="secret-value"
-                className="app-field font-mono text-xs"
-                rows={kind === 'file' ? 6 : 2}
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                required
-              />
-            </div>
-            <div className="flex items-center gap-2">
-              <PrimaryButton type="submit" disabled={createMutation.isPending}>
-                {createMutation.isPending ? 'Saving…' : 'Add secret'}
-              </PrimaryButton>
-              <SecondaryButton type="button" onClick={() => setShowForm(false)}>
-                Cancel
-              </SecondaryButton>
-            </div>
-          </form>
-        ) : (
-          <SecondaryButton type="button" onClick={() => setShowForm(true)}>
-            <Plus size={14} />
-            Add secret
-          </SecondaryButton>
-        )}
+      <SecretFormDialog
+        open={formOpen}
+        mode={formMode}
+        secret={activeSecret}
+        pending={createMutation.isPending || rotateMutation.isPending}
+        error={error}
+        onClose={() => {
+          if (createMutation.isPending || rotateMutation.isPending) return
+          setFormOpen(false)
+          setActiveSecret(null)
+          setError(null)
+        }}
+        onSubmit={onFormSubmit}
+      />
+
+      <SecretDeleteDialog
+        open={deleteTarget != null}
+        secret={deleteTarget}
+        pending={deleteMutation.isPending}
+        error={error}
+        onClose={() => {
+          if (deleteMutation.isPending) return
+          setDeleteTarget(null)
+          setError(null)
+        }}
+        onConfirm={() => {
+          if (!deleteTarget) return
+          deleteMutation.mutate(deleteTarget.id)
+        }}
+      />
     </div>
   )
 
   if (embedded) return body
 
   return (
-    <div className="app-panel max-w-3xl">
+    <div className="app-panel max-w-4xl">
       <div className="app-panel-header flex items-center gap-2">
         <KeyRound size={16} />
         {title}
       </div>
       <div className="app-panel-body">{body}</div>
+    </div>
+  )
+}
+
+function EnvFilterChip({
+  active,
+  label,
+  onClick,
+}: {
+  active: boolean
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      className={cn(
+        'rounded-full border px-3 py-1 text-xs font-medium transition-colors',
+        active
+          ? 'border-primary-p4/40 bg-primary-p4/10 text-text'
+          : 'border-border text-text-secondary hover:border-naturals-n5 hover:text-text',
+      )}
+      onClick={onClick}
+    >
+      {label}
+    </button>
+  )
+}
+
+function SecretTable({
+  secrets,
+  copiedRef,
+  onCopy,
+  onRotate,
+  onDelete,
+  pendingDeleteId,
+  showEnvironment = false,
+}: {
+  secrets: CiSecret[]
+  copiedRef: string | null
+  onCopy: (name: string) => void
+  onRotate: (secret: CiSecret) => void
+  onDelete: (secret: CiSecret) => void
+  pendingDeleteId?: string
+  showEnvironment?: boolean
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full min-w-[640px] text-sm">
+        <thead>
+          <tr className="border-b border-border bg-surface-elevated/20 text-left text-xs uppercase tracking-wide text-text-secondary">
+            <th className="px-4 py-2.5 font-medium">Name</th>
+            {showEnvironment && <th className="px-4 py-2.5 font-medium">Environment</th>}
+            <th className="px-4 py-2.5 font-medium">Type</th>
+            <th className="px-4 py-2.5 font-medium">Updated</th>
+            <th className="px-4 py-2.5 font-medium text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-border">
+          {secrets.map((secret) => (
+            <tr key={secret.id} className="hover:bg-hover/30 transition-colors">
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-mono font-medium text-text truncate">{secret.name}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 rounded p-1 text-text-secondary hover:bg-surface-2 hover:text-text"
+                    title="Copy pipeline reference"
+                    onClick={() => onCopy(secret.name)}
+                  >
+                    <Copy size={13} />
+                  </button>
+                  {copiedRef === secret.name && (
+                    <span className="text-[11px] text-dashboard-success">Copied</span>
+                  )}
+                </div>
+                <div className="mt-0.5 font-mono text-[11px] text-text-secondary truncate">
+                  {secretReference(secret.name)}
+                </div>
+              </td>
+              {showEnvironment && (
+                <td className="px-4 py-3">
+                  <SecretEnvBadge environment={secret.environment} />
+                </td>
+              )}
+              <td className="px-4 py-3">
+                <SecretKindBadge kind={secret.secret_kind} />
+              </td>
+              <td className="px-4 py-3 text-text-secondary whitespace-nowrap">
+                {formatRelativeTimeFromIso(secret.updated_at)}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-1">
+                  <SecondaryButton
+                    type="button"
+                    className="px-2 py-1"
+                    onClick={() => onRotate(secret)}
+                  >
+                    <Pencil size={14} />
+                    <span className="sr-only sm:not-sr-only sm:inline">Update</span>
+                  </SecondaryButton>
+                  <SecondaryButton
+                    type="button"
+                    className="px-2 py-1 text-dashboard-danger hover:text-dashboard-danger"
+                    disabled={pendingDeleteId === secret.id}
+                    onClick={() => onDelete(secret)}
+                  >
+                    <Trash2 size={14} />
+                    <span className="sr-only sm:not-sr-only sm:inline">Delete</span>
+                  </SecondaryButton>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
