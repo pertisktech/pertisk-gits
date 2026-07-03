@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 
 export function AuthCallbackPage() {
   const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
   const { setSession } = useAuth()
   const [error, setError] = useState<string | null>(null)
 
@@ -16,14 +15,29 @@ export function AuthCallbackPage() {
       return
     }
 
+    const decodedToken = (() => {
+      try {
+        return decodeURIComponent(token)
+      } catch {
+        return token
+      }
+    })()
+
     api
-      .me(token)
+      .me(decodedToken)
       .then(({ user, is_super_admin }) => {
-        setSession(token, { ...user, is_super_admin })
-        navigate('/dashboard', { replace: true })
+        setSession(decodedToken, { ...user, is_super_admin })
+        // Full navigation so ProtectedRoute reads token from localStorage immediately.
+        window.location.replace('/dashboard')
       })
-      .catch(() => setError('Could not complete sign-in'))
-  }, [navigate, searchParams, setSession])
+      .catch((err: unknown) => {
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : 'Could not complete sign-in'
+        setError(message)
+      })
+  }, [searchParams, setSession])
 
   if (error) {
     return (

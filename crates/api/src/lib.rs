@@ -2290,6 +2290,15 @@ impl UserExt for User {
 
 pub struct ApiError(DomainError);
 
+impl ApiError {
+    pub fn user_message(&self) -> String {
+        let raw = self.0.to_string();
+        raw.strip_prefix("validation error: ")
+            .unwrap_or(&raw)
+            .to_string()
+    }
+}
+
 impl From<DomainError> for ApiError {
     fn from(value: DomainError) -> Self {
         Self(value)

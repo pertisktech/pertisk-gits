@@ -2,19 +2,20 @@ import { Navigate, Outlet } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import { useAuth } from '../auth/AuthContext'
+import { getStoredAuthToken, useAuth } from '../auth/AuthContext'
 
 export function SuperAdminRoute() {
   const { token, user } = useAuth()
+  const effectiveToken = token ?? getStoredAuthToken()
 
   const { data, isLoading, isFetched } = useQuery({
-    queryKey: ['me', token],
-    queryFn: () => api.me(token!),
-    enabled: Boolean(token),
+    queryKey: ['me', effectiveToken],
+    queryFn: () => api.me(effectiveToken!),
+    enabled: Boolean(effectiveToken),
     retry: false,
   })
 
-  if (!token) return <Navigate to="/login" replace />
+  if (!effectiveToken) return <Navigate to="/login" replace />
 
   if (isLoading || !isFetched) {
     return (

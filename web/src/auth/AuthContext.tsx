@@ -13,6 +13,10 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const TOKEN_KEY = 'pertisk_token'
 const USER_KEY = 'pertisk_user'
 
+export function getStoredAuthToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY)
+}
+
 function loadUser(): User | null {
   const raw = localStorage.getItem(USER_KEY)
   if (!raw) return null

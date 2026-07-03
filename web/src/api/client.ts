@@ -1345,17 +1345,13 @@ export const api = {
     }),
 
   listAdminAuthProviders: (token: string) =>
-    request<{ provider: import('./types').AuthProviderAdmin; ldap_mappings: import('./types').LdapGroupMapping[] | null }[]>(
-      '/admin/auth-providers',
-      {},
-      token,
-    ),
+    request<import('./types').AuthProviderAdmin[]>('/admin/auth-providers', {}, token),
 
   createAuthProvider: (
     token: string,
     payload: Record<string, unknown>,
   ) =>
-    request<{ provider: import('./types').AuthProviderAdmin; ldap_mappings: null }>(
+    request<import('./types').AuthProviderAdmin>(
       '/admin/auth-providers',
       { method: 'POST', body: JSON.stringify(payload) },
       token,
@@ -1366,7 +1362,7 @@ export const api = {
     providerId: string,
     payload: Record<string, unknown>,
   ) =>
-    request<{ provider: import('./types').AuthProviderAdmin; ldap_mappings: import('./types').LdapGroupMapping[] | null }>(
+    request<import('./types').AuthProviderAdmin>(
       `/admin/auth-providers/${providerId}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,

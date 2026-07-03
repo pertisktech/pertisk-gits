@@ -180,6 +180,13 @@ async fn create_auth_provider(
     ensure_auth_admin(&state.pool, auth.user_id).await?;
     validate_provider_payload(&body.provider_type, &body)?;
 
+    let issuer_url = match body.provider_type {
+        AuthProviderType::Oidc => Some(super::oidc::normalize_issuer_url(
+            body.issuer_url.as_deref().unwrap_or(""),
+        )?),
+        _ => body.issuer_url.clone(),
+    };
+
     let provider = sqlx::query_as::<_, AuthProvider>(
         r#"
         INSERT INTO auth_providers (
@@ -214,7 +221,7 @@ async fn create_auth_provider(
     .bind(&body.name)
     .bind(body.provider_type)
     .bind(body.enabled)
-    .bind(&body.issuer_url)
+    .bind(&issuer_url)
     .bind(&body.client_id)
     .bind(&body.client_secret)
     .bind(&body.scopes)
@@ -256,6 +263,14 @@ async fn update_auth_provider(
 
     let existing = load_provider(&state.pool, provider_id).await?;
 
+    let issuer_url = match body.issuer_url.as_deref() {
+        Some(url) if existing.provider_type == AuthProviderType::Oidc => {
+            Some(super::oidc::normalize_issuer_url(url)?)
+        }
+        Some(url) => Some(url.to_string()),
+        None => None,
+    };
+
     let provider = sqlx::query_as::<_, AuthProvider>(
         r#"
         UPDATE auth_providers SET
@@ -293,7 +308,7 @@ async fn update_auth_provider(
     .bind(provider_id)
     .bind(&body.name)
     .bind(body.enabled)
-    .bind(&body.issuer_url)
+    .bind(&issuer_url)
     .bind(&body.client_id)
     .bind(&body.client_secret)
     .bind(&body.scopes)
@@ -481,6 +496,7 @@ fn validate_provider_payload(
                 )
                 .into());
             }
+            super::oidc::normalize_issuer_url(body.issuer_url.as_deref().unwrap_or(""))?;
         }
         AuthProviderType::Saml => {
             if body.idp_entity_id.as_deref().unwrap_or("").is_empty()
@@ -512,7 +528,7 @@ fn validate_provider_payload(
 async fn oidc_login(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
-) -> Result<axum::response::Redirect, ApiError> {
+) -> impl axum::response::IntoResponse {
     super::oidc::start_oidc_login(&state, provider_id).await
 }
 

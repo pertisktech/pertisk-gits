@@ -51,7 +51,19 @@ pub fn api_callback_url(state: &AppState, path: &str) -> String {
 }
 
 pub fn frontend_callback_url(state: &AppState, token: &str) -> String {
-    format!("{}/auth/callback?token={token}", public_base_url(state))
+    format!(
+        "{}/auth/callback?token={}",
+        public_base_url(state),
+        urlencoding::encode(token)
+    )
+}
+
+pub fn frontend_login_url_with_error(state: &AppState, message: &str) -> String {
+    format!(
+        "{}/login?error={}",
+        public_base_url(state),
+        urlencoding::encode(message)
+    )
 }
 
 pub async fn store_flow_state(
@@ -189,6 +201,12 @@ pub async fn jit_provision_user(
         return load_user_by_id(pool, existing_id).await;
     }
 
+    if let Some(user_id) = find_user_id_by_email(pool, &external.email).await? {
+        ensure_can_link_provider_identity(pool, provider.id, user_id, &external.subject).await?;
+        link_external_identity(pool, user_id, provider.id, external).await?;
+        return load_user_by_id(pool, user_id).await;
+    }
+
     let username = unique_username(pool, external).await?;
     let display_name = external.display_name.clone();
 
@@ -207,26 +225,82 @@ pub async fn jit_provision_user(
     .await
     .map_err(|e| match e {
         sqlx::Error::Database(db) if db.constraint().is_some() => {
-            ApiError::from(DomainError::Conflict("could not provision user".into()))
+            ApiError::from(DomainError::Conflict(
+                "could not provision user — username or email already exists".into(),
+            ))
         }
         other => ApiError::from(DomainError::Internal(other.to_string())),
     })?;
 
+    link_external_identity(pool, user.id, provider.id, external).await?;
+
+    Ok(user)
+}
+
+async fn find_user_id_by_email(pool: &PgPool, email: &str) -> Result<Option<Uuid>, ApiError> {
+    sqlx::query_scalar(
+        r#"
+        SELECT id FROM users WHERE LOWER(email) = LOWER($1)
+        "#,
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))
+}
+
+async fn ensure_can_link_provider_identity(
+    pool: &PgPool,
+    provider_id: Uuid,
+    user_id: Uuid,
+    external_subject: &str,
+) -> Result<(), ApiError> {
+    let existing_subject = sqlx::query_scalar::<_, String>(
+        r#"
+        SELECT external_subject
+        FROM user_external_identities
+        WHERE provider_id = $1 AND user_id = $2
+        "#,
+    )
+    .bind(provider_id)
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if let Some(subject) = existing_subject {
+        if subject != external_subject {
+            return Err(DomainError::Conflict(
+                "account is already linked to a different SSO identity for this provider".into(),
+            )
+            .into());
+        }
+    }
+
+    Ok(())
+}
+
+async fn link_external_identity(
+    pool: &PgPool,
+    user_id: Uuid,
+    provider_id: Uuid,
+    external: &ExternalUser,
+) -> Result<(), ApiError> {
     sqlx::query(
         r#"
         INSERT INTO user_external_identities (user_id, provider_id, external_subject, external_email)
         VALUES ($1, $2, $3, $4)
         "#,
     )
-    .bind(user.id)
-    .bind(provider.id)
+    .bind(user_id)
+    .bind(provider_id)
     .bind(&external.subject)
     .bind(&external.email)
     .execute(pool)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    Ok(user)
+    Ok(())
 }
 
 async fn unique_username(pool: &PgPool, external: &ExternalUser) -> Result<String, ApiError> {

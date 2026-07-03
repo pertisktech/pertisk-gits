@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { Navigate } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
+import { useAuth, getStoredAuthToken } from '../auth/AuthContext'
 import { parseGroupRoute } from '../lib/groupRoute'
 import {
   parseNewProjectRoute,
@@ -27,7 +27,8 @@ import { RegistryPage } from '../pages/RegistryPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { token } = useAuth()
-  if (!token) return <Navigate to="/login" replace />
+  const effectiveToken = token ?? getStoredAuthToken()
+  if (!effectiveToken) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 

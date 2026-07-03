@@ -1,6 +1,7 @@
 use axum::{
     extract::{Query, State},
-    response::Redirect,
+    http::{header, HeaderMap, HeaderValue},
+    response::{IntoResponse, Redirect},
 };
 use base64::Engine;
 use pertisk_domain::models::{AuditEventType, AuthProviderType};
@@ -10,9 +11,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
-    api_callback_url, ensure_enabled_provider, frontend_callback_url, issue_auth_response,
-    jit_provision_user, load_provider, random_token, store_flow_state, take_flow_state,
-    ExternalUser,
+    api_callback_url, ensure_enabled_provider, frontend_callback_url, frontend_login_url_with_error,
+    issue_auth_response, jit_provision_user, load_provider, random_token, store_flow_state,
+    take_flow_state, ExternalUser,
 };
 use crate::{
     audit::{record_audit_event, AuditEventInput},
@@ -21,8 +22,10 @@ use crate::{
 
 #[derive(Deserialize)]
 pub struct OidcCallbackQuery {
-    code: String,
-    state: String,
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+    error_description: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -48,17 +51,17 @@ struct OidcIdClaims {
 pub async fn start_oidc_login(
     state: &AppState,
     provider_id: Uuid,
-) -> Result<Redirect, ApiError> {
+) -> Result<impl IntoResponse, ApiError> {
     let provider = load_provider(&state.pool, provider_id).await?;
     ensure_enabled_provider(&provider)?;
     if provider.provider_type != AuthProviderType::Oidc {
         return Err(DomainError::Validation("provider is not OIDC".into()).into());
     }
 
-    let discovery = fetch_discovery(provider.issuer_url.as_deref().ok_or(
+    let issuer = provider.issuer_url.as_deref().ok_or(
         DomainError::Validation("missing issuer_url".into()),
-    )?)
-    .await?;
+    )?;
+    let discovery = fetch_discovery(issuer).await?;
 
     let verifier = random_token(32);
     let challenge = pkce_challenge(&verifier);
@@ -79,7 +82,7 @@ pub async fn start_oidc_login(
     let scopes = urlencoding::encode(provider.scopes.as_str());
 
     let auth_url = format!(
-        "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256",
+        "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256&prompt=login",
         discovery.authorization_endpoint,
         urlencoding::encode(client_id),
         urlencoding::encode(&redirect_uri),
@@ -88,27 +91,58 @@ pub async fn start_oidc_login(
         urlencoding::encode(&challenge),
     );
 
-    Ok(Redirect::temporary(&auth_url))
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, no-cache"),
+    );
+
+    Ok((headers, Redirect::to(&auth_url)).into_response())
 }
 
 pub async fn oidc_callback(
     State(state): State<AppState>,
     Query(query): Query<OidcCallbackQuery>,
+) -> Redirect {
+    match oidc_callback_inner(&state, query).await {
+        Ok(redirect) => redirect,
+        Err(err) => Redirect::to(&frontend_login_url_with_error(&state, &err.user_message())),
+    }
+}
+
+async fn oidc_callback_inner(
+    state: &AppState,
+    query: OidcCallbackQuery,
 ) -> Result<Redirect, ApiError> {
-    let flow = take_flow_state(&state.pool, &query.state).await?;
+    if let Some(error) = query.error {
+        let message = query
+            .error_description
+            .unwrap_or(error)
+            .replace('+', " ");
+        return Ok(Redirect::to(&frontend_login_url_with_error(state, &message)));
+    }
+
+    let code = query
+        .code
+        .ok_or(DomainError::Validation("missing authorization code".into()))?;
+    let state_param = query
+        .state
+        .ok_or(DomainError::Validation("missing OAuth state".into()))?;
+
+    let flow = take_flow_state(&state.pool, &state_param).await?;
     let provider = load_provider(&state.pool, flow.provider_id).await?;
     ensure_enabled_provider(&provider)?;
 
-    let discovery = fetch_discovery(provider.issuer_url.as_deref().ok_or(
+    let issuer = provider.issuer_url.as_deref().ok_or(
         DomainError::Validation("missing issuer_url".into()),
-    )?)
-    .await?;
+    )?;
+    let discovery = fetch_discovery(issuer).await?;
 
     let client_id = provider
         .client_id
         .as_deref()
         .ok_or(DomainError::Validation("missing client_id".into()))?;
-    let redirect_uri = api_callback_url(&state, "/auth/oidc/callback");
+    let redirect_uri = api_callback_url(state, "/auth/oidc/callback");
     let verifier = flow
         .code_verifier
         .ok_or(DomainError::Validation("missing PKCE verifier".into()))?;
@@ -116,14 +150,14 @@ pub async fn oidc_callback(
     let body = if provider.client_secret.as_ref().is_some_and(|s| !s.is_empty()) {
         format!(
             "grant_type=authorization_code&code={}&redirect_uri={}&code_verifier={}",
-            urlencoding::encode(&query.code),
+            urlencoding::encode(&code),
             urlencoding::encode(&redirect_uri),
             urlencoding::encode(&verifier),
         )
     } else {
         format!(
             "grant_type=authorization_code&code={}&redirect_uri={}&client_id={}&code_verifier={}",
-            urlencoding::encode(&query.code),
+            urlencoding::encode(&code),
             urlencoding::encode(&redirect_uri),
             urlencoding::encode(client_id),
             urlencoding::encode(&verifier),
@@ -186,31 +220,102 @@ pub async fn oidc_callback(
     )
     .await?;
 
-    let auth = issue_auth_response(&state, user, "oidc").await?;
-    Ok(Redirect::temporary(&frontend_callback_url(
-        &state,
-        &auth.token,
-    )))
+    let auth = issue_auth_response(state, user, "oidc").await?;
+    Ok(Redirect::to(&frontend_callback_url(state, &auth.token)))
+}
+
+/// Normalize OIDC issuer URLs from admin input (trim, default https, strip discovery suffix).
+pub(crate) fn normalize_issuer_url(issuer_url: &str) -> Result<String, DomainError> {
+    let trimmed = issuer_url.trim();
+    if trimmed.is_empty() {
+        return Err(DomainError::Validation("issuer_url is empty".into()));
+    }
+
+    let issuer = trimmed
+        .trim_end_matches('/')
+        .strip_suffix("/.well-known/openid-configuration")
+        .unwrap_or(trimmed)
+        .trim_end_matches('/');
+
+    let with_scheme = if issuer.contains("://") {
+        issuer.to_string()
+    } else {
+        format!("https://{issuer}")
+    };
+
+    reqwest::Url::parse(&with_scheme).map_err(|_| {
+        DomainError::Validation(format!(
+            "invalid issuer_url — use https://your-tenant.auth0.com (got {issuer_url:?})"
+        ))
+    })?;
+
+    Ok(with_scheme)
 }
 
 async fn fetch_discovery(issuer_url: &str) -> Result<OidcDiscovery, ApiError> {
-    let issuer = issuer_url.trim_end_matches('/');
-    let url = format!("{issuer}/.well-known/openid-configuration");
+    let issuer = normalize_issuer_url(issuer_url)?;
+    let discovery_url = format!("{issuer}/.well-known/openid-configuration");
+    let discovery_url = reqwest::Url::parse(&discovery_url).map_err(|e| {
+        ApiError::from(DomainError::Internal(format!(
+            "invalid OIDC discovery URL: {e}"
+        )))
+    })?;
+
     let http = reqwest::Client::new();
-    http.get(url)
+    http.get(discovery_url)
         .send()
         .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+        .map_err(|e| map_oidc_http_error("OIDC discovery request failed", e))?
         .error_for_status()
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
+        .map_err(|e| ApiError::from(DomainError::Internal(format!(
+            "OIDC discovery returned error: {e}"
+        ))))?
         .json::<OidcDiscovery>()
         .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))
+        .map_err(|e| ApiError::from(DomainError::Internal(format!(
+            "OIDC discovery response invalid: {e}"
+        ))))
+}
+
+fn map_oidc_http_error(context: &str, err: reqwest::Error) -> ApiError {
+    if err.is_builder() {
+        return ApiError::from(DomainError::Validation(format!(
+            "{context}: invalid URL (issuer_url must start with https://)"
+        )));
+    }
+    ApiError::from(DomainError::Internal(format!("{context}: {err}")))
 }
 
 fn pkce_challenge(verifier: &str) -> String {
     let digest = Sha256::digest(verifier.as_bytes());
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_issuer_url_adds_https_scheme() {
+        assert_eq!(
+            normalize_issuer_url("tenant.auth0.com").unwrap(),
+            "https://tenant.auth0.com"
+        );
+    }
+
+    #[test]
+    fn normalize_issuer_url_trims_and_strips_discovery_suffix() {
+        assert_eq!(
+            normalize_issuer_url(" https://tenant.auth0.com/.well-known/openid-configuration ")
+                .unwrap(),
+            "https://tenant.auth0.com"
+        );
+    }
+
+    #[test]
+    fn normalize_issuer_url_rejects_empty() {
+        assert!(normalize_issuer_url("  ").is_err());
+    }
 }
 
 fn decode_id_token_claims(id_token: &str) -> Result<OidcIdClaims, ApiError> {

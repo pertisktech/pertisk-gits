@@ -1,10 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { Moon, Shield, Sun } from 'lucide-react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuthProviderPublic } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
+import { getStoredAuthToken, useAuth } from '../auth/AuthContext'
 import { AppVersion } from '../components/AppVersion'
 import { useTheme } from '../context/ThemeContext'
 import styles from './AuthPage.module.css'
@@ -12,15 +12,25 @@ import styles from './AuthPage.module.css'
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
 export function LoginPage() {
-  const { setSession } = useAuth()
+  const { setSession, token } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
+  const [searchParams] = useSearchParams()
   const sessionExpired = (location.state as { reason?: string } | null)?.reason === 'session_expired'
   const [login, setLogin] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(() => {
+    const raw = searchParams.get('error')
+    if (!raw) return null
+    try {
+      return decodeURIComponent(raw.replace(/\+/g, ' '))
+    } catch {
+      return raw
+    }
+  })
   const [loading, setLoading] = useState(false)
+  const [ssoRedirecting, setSsoRedirecting] = useState(false)
   const [ldapUser, setLdapUser] = useState('')
   const [ldapPass, setLdapPass] = useState('')
   const [ldapLoading, setLdapLoading] = useState(false)
@@ -32,6 +42,11 @@ export function LoginPage() {
 
   const oidcProviders = providers.filter((p) => p.provider_type === 'oidc' || p.provider_type === 'saml')
   const ldapProviders = providers.filter((p) => p.provider_type === 'ldap')
+
+  const storedToken = getStoredAuthToken()
+  if (token ?? storedToken) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -46,6 +61,13 @@ export function LoginPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function startSsoLogin(provider: AuthProviderPublic) {
+    if (ssoRedirecting) return
+    setSsoRedirecting(true)
+    setError(null)
+    window.location.assign(ssoLoginUrl(provider))
   }
 
   function ssoLoginUrl(provider: AuthProviderPublic) {
@@ -137,14 +159,16 @@ export function LoginPage() {
             <p className="text-sm text-text-secondary mb-2">Or continue with</p>
             <div className="flex flex-col gap-2">
               {oidcProviders.map((provider) => (
-                <a
+                <button
                   key={provider.id}
-                  href={ssoLoginUrl(provider)}
+                  type="button"
                   className={styles.button}
-                  style={{ textAlign: 'center', textDecoration: 'none' }}
+                  disabled={ssoRedirecting}
+                  onClick={() => startSsoLogin(provider)}
+                  data-no-global-button-hover="true"
                 >
-                  {provider.name}
-                </a>
+                  {ssoRedirecting ? 'Redirecting…' : provider.name}
+                </button>
               ))}
             </div>
           </div>
