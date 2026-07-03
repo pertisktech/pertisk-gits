@@ -65,6 +65,7 @@ export function RegisterPage() {
         <div className={styles.brand}>
           <img src="/logo.png" alt="" className={styles.brandLogo} />
           <span className={styles.brandName}>Pertisk Gits</span>
+          <AppVersion variant="short" className={styles.brandVersion} />
         </div>
 
         <div className={styles.card}>
@@ -76,12 +77,6 @@ export function RegisterPage() {
             <Link to="/login">Back to sign in</Link>
           </p>
         </div>
-
-        <footer className={styles.footer}>
-          <p className={styles.version}>
-            <AppVersion />
-          </p>
-        </footer>
       </div>
     )
   }
@@ -98,6 +93,7 @@ export function RegisterPage() {
       <div className={styles.brand}>
         <img src="/logo.png" alt="" className={styles.brandLogo} />
         <span className={styles.brandName}>Pertisk Gits</span>
+        <AppVersion variant="short" className={styles.brandVersion} />
       </div>
 
       <div className={styles.card}>
@@ -152,12 +148,6 @@ export function RegisterPage() {
           )}
         </p>
       </div>
-
-      <footer className={styles.footer}>
-        <p className={styles.version}>
-          <AppVersion />
-        </p>
-      </footer>
     </div>
   )
 }

@@ -660,6 +660,31 @@ body,
   border: none;
   border-top: 1px solid var(--color-border);
 }
+.markdown-viewer .markdown-viewer-content img,
+.markdown-viewer .markdown-viewer-content .repo-markdown-image {
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--radius-md);
+  margin: 0.75em 0;
+}
+.markdown-viewer .markdown-viewer-content .repo-markdown-image-loading {
+  display: inline-block;
+  width: 4rem;
+  height: 2.5rem;
+  margin: 0.75em 0;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-elevated);
+}
+.markdown-viewer .markdown-viewer-content .repo-markdown-image-fallback {
+  display: inline-block;
+  margin: 0.75em 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  color: var(--color-text-secondary);
+  background: var(--color-surface-elevated);
+  border: 1px dashed var(--color-border);
+}
 
 /* ── Application layout (sidebar | content-top + content) ───────────────── */
 
@@ -777,6 +802,7 @@ body,
   color: var(--color-text);
   text-decoration: none;
   min-width: 0;
+  flex: 1;
 }
 
 .app-brand:hover {
@@ -821,6 +847,13 @@ body,
   border-bottom: 1px solid var(--color-border);
 }
 
+.app-sidebar-version {
+  font-size: var(--text-xs);
+  color: var(--color-muted);
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
 @media (min-width: 768px) {
   .app-sidebar-header {
     height: 3.25rem;
@@ -859,6 +892,10 @@ body,
   .app-sidebar-collapse-btn {
     display: inline-flex;
   }
+}
+
+.app-sidebar.collapsed .app-sidebar-version {
+  display: none;
 }
 
 .app-sidebar.collapsed .app-brand {
@@ -989,11 +1026,12 @@ body,
 
 .app-sidebar-footer {
   flex-shrink: 0;
-  padding: 0.75rem 1.5rem;
+  padding: 0.5rem;
   border-top: 1px solid var(--color-border);
-  font-size: var(--text-xs);
-  color: var(--color-muted);
-  text-align: center;
+}
+
+.app-sidebar-footer .app-sidebar-link {
+  margin: 0;
 }
 
 .app-main {

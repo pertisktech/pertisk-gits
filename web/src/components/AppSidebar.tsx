@@ -119,6 +119,8 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
   const admin = useAdminNav()
   const activity = useActivityNav()
   const isSuperAdmin = useSuperAdmin()
+  const showGlobalNav = !project && !group && !admin && !activity
+  const showAdminFooter = showGlobalNav && isSuperAdmin
 
   return (
     <aside
@@ -135,6 +137,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
         >
           <img src="/logo.png" alt="" className="w-7 h-7 shrink-0 object-contain" />
           <span>Pertisk Gits</span>
+          <AppVersion collapsed={collapsed} variant="short" className="app-sidebar-version" />
         </NavLink>
         <button
           type="button"
@@ -162,13 +165,6 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
               <span>{label}</span>
             </NavLink>
           ))}
-
-        {!project && !group && !admin && !activity && isSuperAdmin && (
-          <NavLink to="/admin" className={globalLinkClass} title={collapsed ? 'Admin' : undefined}>
-            <Shield size={16} className="shrink-0" aria-hidden />
-            <span>Admin</span>
-          </NavLink>
-        )}
 
         {activity && !project && !group && !admin && (
           <div className="app-sidebar-section">
@@ -285,9 +281,14 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
         )}
       </nav>
 
-      <div className="app-sidebar-footer">
-        <AppVersion collapsed={collapsed} />
-      </div>
+      {showAdminFooter && (
+        <div className="app-sidebar-footer">
+          <NavLink to="/admin" className={globalLinkClass} title={collapsed ? 'Admin' : undefined}>
+            <Shield size={16} className="shrink-0" aria-hidden />
+            <span>Admin</span>
+          </NavLink>
+        </div>
+      )}
     </aside>
   )
 }

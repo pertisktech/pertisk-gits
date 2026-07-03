@@ -6,6 +6,37 @@ export function joinRepoPath(base: string, segment: string): string {
   return parts.join('/')
 }
 
+/** Collapse `.` / `..` segments in a repository-relative path. */
+export function normalizeRepoPath(path: string): string {
+  const parts: string[] = []
+  for (const segment of path.split('/')) {
+    if (!segment || segment === '.') continue
+    if (segment === '..') {
+      parts.pop()
+      continue
+    }
+    parts.push(segment)
+  }
+  return parts.join('/')
+}
+
+/** Resolve a markdown image/link href relative to the markdown file path. */
+export function resolveRepoAssetPath(markdownPath: string, href: string): string | null {
+  const target = href.trim().split(/[?#]/)[0]
+  if (!target) return null
+  if (/^(https?:|data:|mailto:|\/\/)/i.test(target)) return null
+
+  if (target.startsWith('/')) {
+    return normalizeRepoPath(target.slice(1))
+  }
+
+  const dir = markdownPath.includes('/')
+    ? markdownPath.slice(0, markdownPath.lastIndexOf('/'))
+    : ''
+
+  return normalizeRepoPath(joinRepoPath(dir, target))
+}
+
 /** Validate a single file/folder name or relative path segment. */
 export function validateRepoPathSegment(
   segment: string,

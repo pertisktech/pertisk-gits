@@ -7,6 +7,7 @@ import { formatBytes } from '../lib/formatBytes'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
 import { CodeFileView } from './CodeFileView'
+import { RepoMarkdownBody } from './RepoMarkdownBody'
 import { PrimaryButton, SecondaryButton } from './ui'
 
 interface RepoFilePreviewProps {
@@ -44,6 +45,7 @@ export function RepoFilePreview({
 }: RepoFilePreviewProps) {
   const [copied, setCopied] = useState(false)
   const fileName = path.split('/').pop() ?? path
+  const isMarkdown = /\.(md|markdown)$/i.test(path)
   const rawUrl = api.repoRawUrl(orgSlug, repoSlug, { ref, path, ref_kind: refKind })
 
   async function copyPath() {
@@ -148,6 +150,18 @@ export function RepoFilePreview({
           </div>
         ) : isBinary ? (
           <p className="text-sm text-text-secondary p-6">Binary file — preview not available.</p>
+        ) : isMarkdown ? (
+          <div className="markdown-viewer markdown-viewer-content p-6 text-sm text-text">
+            <RepoMarkdownBody
+              content={content}
+              markdownPath={path}
+              orgSlug={orgSlug}
+              repoSlug={repoSlug}
+              ref={ref}
+              refKind={refKind}
+              token={token}
+            />
+          </div>
         ) : (
           <CodeFileView path={path} content={content} readOnly />
         )}

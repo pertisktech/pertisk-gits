@@ -221,6 +221,7 @@ export function LoginPage() {
       <div className={styles.brand}>
         <img src="/logo.png" alt="" className={styles.brandLogo} />
         <span className={styles.brandName}>Pertisk Gits</span>
+        <AppVersion variant="short" className={styles.brandVersion} />
       </div>
 
       <div className={styles.card}>
@@ -344,12 +345,6 @@ export function LoginPage() {
           </>
         )}
       </div>
-
-      <footer className={styles.footer}>
-        <p className={styles.version}>
-          <AppVersion />
-        </p>
-      </footer>
     </div>
   )
 }
