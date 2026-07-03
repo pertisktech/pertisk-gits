@@ -3198,31 +3198,6 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
         return Ok(());
     }
 
-    let manual_waiting = sqlx::query_scalar::<_, i64>(
-        r#"
-        SELECT COUNT(*) FROM job_runs
-        WHERE pipeline_run_id = $1 AND status::text = 'manual'
-        "#,
-    )
-    .bind(pipeline_run_id)
-    .fetch_one(pool)
-    .await?;
-
-    if manual_waiting > 0 {
-        sqlx::query(
-            r#"
-            UPDATE pipeline_runs
-            SET status = 'running'::pipeline_run_status,
-                finished_at = NULL
-            WHERE id = $1 AND status IN ('pending', 'queued', 'running', 'success')
-            "#,
-        )
-        .bind(pipeline_run_id)
-        .execute(pool)
-        .await?;
-        return Ok(());
-    }
-
     let all_skipped = sqlx::query_scalar::<_, bool>(
         r#"
         SELECT COUNT(*) > 0
@@ -3333,24 +3308,12 @@ async fn force_finalize_stuck_pipeline(
     .fetch_one(pool)
     .await?;
 
-    let manual_waiting = sqlx::query_scalar::<_, i64>(
-        r#"
-        SELECT COUNT(*) FROM job_runs
-        WHERE pipeline_run_id = $1 AND status::text = 'manual'
-        "#,
-    )
-    .bind(pipeline_run_id)
-    .fetch_one(pool)
-    .await?;
-
     let new_status = if has_failed {
         "failure"
     } else if all_cancelled {
         "cancelled"
     } else if all_skipped {
         "skipped"
-    } else if manual_waiting > 0 {
-        "running"
     } else {
         "success"
     };

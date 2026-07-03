@@ -133,10 +133,24 @@ async fn open_issue_count(pool: &sqlx::PgPool, repository_id: Uuid) -> i64 {
 async fn latest_pipeline_status(pool: &sqlx::PgPool, repository_id: Uuid) -> Option<String> {
     sqlx::query_scalar::<_, String>(
         r#"
-        SELECT status::text
-        FROM pipeline_runs
-        WHERE repository_id = $1
-        ORDER BY created_at DESC
+        SELECT CASE
+            WHEN pr.status = 'running'
+                 AND NOT EXISTS (
+                     SELECT 1 FROM job_runs j
+                     WHERE j.pipeline_run_id = pr.id
+                       AND j.status IN ('queued', 'running')
+                 )
+                 AND EXISTS (
+                     SELECT 1 FROM job_runs j
+                     WHERE j.pipeline_run_id = pr.id
+                       AND j.status::text = 'manual'
+                 )
+            THEN 'success'
+            ELSE pr.status::text
+        END
+        FROM pipeline_runs pr
+        WHERE pr.repository_id = $1
+        ORDER BY pr.created_at DESC
         LIMIT 1
         "#,
     )

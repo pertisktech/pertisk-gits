@@ -83,7 +83,7 @@ export function displayRunStatus(run: PipelineRun): PipelineRun['status'] {
 
   if (actionable.some(isRequiredFailure)) return 'failure'
   if (actionable.some((job) => job.status === 'cancelled')) return 'cancelled'
-  if (hasPendingManualJobs(run)) return 'running'
+  if (hasPendingManualJobs(run)) return 'success'
   if (actionable.every((job) => job.status === 'success')) return 'success'
 
   return status
