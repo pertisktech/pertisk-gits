@@ -30,7 +30,7 @@ Pertisk Gits supports **GitHub Actions–like** YAML (`on`, `jobs`, `needs`, wor
 | Environment | Typical trigger | Secrets example |
 |-------------|-----------------|-----------------|
 | **dev** | Push to `main` (automatic) | `HARBOR_URL` → dev registry |
-| **qa** | Run pipeline + env **qa**, or manual play on push | `HARBOR_URL` → qa registry |
+| **qa** | Run pipeline + env **qa**, or manual play on push / Run pipeline (no env) | `HARBOR_URL` → qa registry |
 | **uat** | Run pipeline + env **uat** | `HARBOR_URL` → uat registry |
 | **prd** | Tag `release/*` (inferred) or Run pipeline + **prd** | prod registry |
 
@@ -59,11 +59,27 @@ From `pertisk-ci-staged.yaml`:
 | Event | Branch / ref | What runs |
 |-------|--------------|-----------|
 | **Push** | `main` | Build chain → deploy **dev** (automatic) |
-| **Push** | `main` | `deploy-qa-manual`, `deploy-uat-manual` appear as **manual** (click play after dev chain) |
+| **Push** | `main` | `deploy-qa`, `deploy-uat`, etc. appear as **manual** (click play after upstream jobs) |
 | **Push** | `feature/*` | Nothing automatic (`on.push` is `main` only) |
+| **Run pipeline** | branch in `on.push` + **no environment** | **Same jobs as push** on that ref (re-run CI + same manual play jobs) |
 | **Run pipeline** | any ref + env **qa** | `deploy-qa` → `health-check-qa` → `e2e-test-qa` (automatic) |
 | **Run pipeline** | any ref + env **uat** | UAT deploy chain (automatic) |
-| **Run pipeline** | `feature/*` + manual | `build-feature` → `test-feature` (automatic) |
+| **Run pipeline** | `feature/*` (not in `on.push`) | Jobs for that ref only (`if: branch: feature/*`, etc.) |
+
+### Run pipeline vs push (same job graph)
+
+On a branch that **would start a pipeline on push** (e.g. `main` when `on.push.branches` includes `main`):
+
+| Run pipeline environment | Job graph | `target_environment` in UI |
+|--------------------------|-----------|----------------------------|
+| **None — same as push** | Identical to a **push** on the same ref (same job names, same manual / queued / skipped) | *(empty)* |
+| **qa**, **uat**, **prd**, … | Deploy chain for that env only (jobs with `if: environment: qa` + `event: manual` queue automatically) | `qa`, `uat`, … |
+
+**Rule:** If push shows 5 jobs on `main`, Run pipeline on `main` with environment **None** shows the same 5 jobs.
+
+Manual jobs (`if: event: manual`) stay **visible** on push and on Run pipeline (no env). They keep status **manual** until you click **play**, even when an upstream job was skipped by `if:` — the play button stays disabled until `needs:` are satisfied.
+
+**Do not** use Run pipeline with environment **None** to deploy QA/UAT without the play step; pick **qa** or **uat** in the dialog, or use **Deploy qa** in the pipeline summary.
 
 ### Push to `main` (automatic dev + manual QA/UAT)
 
@@ -100,9 +116,30 @@ jobs:
       - run: echo "deploy qa → ${{ secrets.HARBOR_URL }}"
 ```
 
-After push, open the pipeline run → click **play** on `deploy-qa-manual` when upstream jobs are green.
+After push, open the pipeline run → click **play** on manual deploy jobs (e.g. `deploy-qa-manual`) when upstream jobs are green.
 
-### Run pipeline → QA (GitLab “Run pipeline”)
+The same manual jobs appear when you use **Run pipeline** on `main` with environment **None — same as push**.
+
+### Run pipeline → re-run CI (same as push)
+
+**UI:** Pipelines → **Run pipeline** → branch `main` → Environment **None — same as push** → Run.
+
+Re-runs the build chain and shows the same manual deploy jobs as a push pipeline. Use this to retry CI without a new commit.
+
+**API** (omit `environment` for push-equivalent schedule):
+
+```bash
+curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/trigger" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commit_sha": "<sha>",
+    "ref_name": "refs/heads/main",
+    "event_type": "manual"
+  }'
+```
+
+### Run pipeline → QA (GitLab “Run pipeline” deploy)
 
 **UI:** Pipelines → **Run pipeline** → pick branch or tag → environment **qa** → Run.
 
@@ -233,11 +270,18 @@ Examples:
 
 ### How `event: manual` behaves
 
-| Pipeline trigger | Job with `event: manual` |
-|------------------|---------------------------|
+| Pipeline trigger | Job with `if: event: manual` (env-only, e.g. `environment: qa`) |
+|------------------|------------------------------------------------------------------|
 | **Push** / **PR** | Job status **manual** — shown in graph, **play** to start |
-| **Run pipeline** (manual trigger) | Jobs with `environment: qa` etc. **queue automatically** |
-| **Run pipeline** on `main` | `deploy-qa-manual` (`branch: main` + `event: manual`) stays **manual** — use play on the **push** run, not Run pipeline |
+| **Run pipeline**, environment **None** (same as push) | Same as push — **manual**, click **play** |
+| **Run pipeline**, environment **qa** / **uat** / … | Matching env jobs **queue automatically** (no play click) |
+
+Jobs with `branch: main` + `event: manual` (e.g. `deploy-qa-manual`):
+
+| Pipeline trigger | Behavior |
+|------------------|----------|
+| **Push** / **Run pipeline** (no env) | **manual** — click **play** on that pipeline run |
+| **Run pipeline** with explicit environment | **Skipped** — use play on the push / no-env run instead |
 
 Environment-only manual jobs (no `branch:` in `if`):
 
@@ -249,7 +293,7 @@ Environment-only manual jobs (no `branch:` in `if`):
       event: manual
 ```
 
-- On **push** to a branch that infers env **qa** → **manual** (play).
+- On **push** to `main` (or **Run pipeline** with no environment on a push branch) → **manual** (play).
 - On **Run pipeline** with `environment: qa` → **queued** (auto).
 
 ---
@@ -312,11 +356,20 @@ jobs:
 - **Green** — all non-skipped jobs succeeded.
 - **Yellow / in progress** — jobs running or queued.
 - **Play icon** — manual jobs waiting (not done yet).
-- Shows `event_type`, ref, and `target_environment` when set.
+- Shows `event_type`, ref, and `target_environment` when the user picked an environment on **Run pipeline** (push runs may show inferred env, e.g. `dev` on `main`).
+
+### Run pipeline dialog
+
+| Field | Purpose |
+|-------|---------|
+| **Branch / tag** | Ref to run against (HEAD commit on that ref) |
+| **Environment (optional)** | **None — same as push** (default): identical job graph to push on push-enabled branches. **qa** / **uat** / **prd**: deploy that environment only. |
+
+Preset **Deploy qa** / **Deploy uat** in **Pipeline summary** opens Run pipeline with that environment locked.
 
 ### Pipeline detail
 
-- Graph shows **non-skipped jobs** in this run (path-skipped jobs are hidden).
+- Graph shows jobs for this run (YAML `if:` skips are hidden; upstream-skipped and **manual** jobs stay visible).
 - If **every** job is skipped, the run shows **Skipped**, **No jobs defined**, and an empty job list — fix job `if:` conditions (see [Troubleshooting](#troubleshooting)).
 - **Manual** jobs: play button on graph, sidebar, and job header when dependencies are satisfied.
 - **Allowed failure** — amber icon on jobs with `allow_failure: true` / `required: false` that failed.
@@ -372,6 +425,8 @@ Extended columns (Phase 4.6):
 
 | Symptom | Check |
 |---------|--------|
+| Push shows N jobs, Run pipeline shows fewer | Use **Run pipeline** with Environment **None — same as push** (not **dev** / **qa** unless you want a deploy-only run). Redeploy **pertisk-api** if behavior is old. |
+| `deploy-qa` missing on manual run | Same as above — env-only manual jobs need no environment selected, or pick **qa** to auto-run deploy. |
 | Pipeline triggered but **No jobs** / status **Skipped** | Every job’s `if:` failed. On tag push: use `if: tag:` not `if: branch:`; remove `if: environment: dev` unless ref infers `dev` (see [inferred environment](#inferred-environment-for-if-environment)). |
 | Tag push does not start a pipeline | Add `on.push.tags: ['*']` or a matching pattern. |
 | `release-dev` skipped on tag `v1.0.0` | Drop `environment: dev` from `if:`; keep `environment: dev` on the job for secrets. |

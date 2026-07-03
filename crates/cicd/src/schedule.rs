@@ -2,12 +2,15 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::config::{Job, PipelineConfig};
 use crate::job_if::{JobIfMatcher, JobScheduleMode, RunContext};
+use crate::trigger::matches_pipeline_trigger;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScheduledJob {
     pub name: String,
     pub job: Job,
     pub mode: JobScheduleMode,
+    /// Skipped because a `needs:` dependency was skipped (not because `if:` failed).
+    pub skipped_upstream: bool,
 }
 
 impl ScheduledJob {
@@ -25,6 +28,9 @@ impl ScheduledJob {
 
     pub fn initial_log(&self) -> &'static str {
         match self.mode {
+            JobScheduleMode::Skipped if self.skipped_upstream => {
+                "=== skipped (not run — upstream job skipped)\n"
+            }
             JobScheduleMode::Skipped => "=== skipped (if condition not met)\n",
             JobScheduleMode::Manual => "=== waiting for manual trigger (click play to run)\n",
             JobScheduleMode::Queued => "",
@@ -84,6 +90,29 @@ pub enum ScheduleError {
 pub struct Scheduler;
 
 impl Scheduler {
+    /// Build the run context used to evaluate job `if:` rules.
+    ///
+    /// Manual Run pipeline **without** a chosen environment on a branch that would auto-trigger
+    /// on push uses the same schedule as push — identical job graph on the same ref.
+    pub fn build_schedule_context(
+        config: &PipelineConfig,
+        event_type: &str,
+        ref_name: &str,
+        schedule_env: Option<String>,
+        environment_explicit: bool,
+    ) -> RunContext {
+        let mirror_push = event_type == "manual"
+            && !environment_explicit
+            && matches_pipeline_trigger(config, "push", ref_name);
+        let schedule_event = if mirror_push { "push" } else { event_type };
+        RunContext::from_trigger_with_environment(
+            schedule_event,
+            ref_name,
+            schedule_env,
+            environment_explicit && event_type == "manual",
+        )
+    }
+
     /// Topological order of all jobs, marking skipped / manual / queued by `if:` and needs.
     pub fn schedule_for_run(
         config: &PipelineConfig,
@@ -99,6 +128,7 @@ impl Scheduler {
                 )
             })
             .collect();
+        let mut skipped_upstream: HashSet<String> = HashSet::new();
 
         loop {
             let mut changed = false;
@@ -106,9 +136,14 @@ impl Scheduler {
                 if modes.get(&job.name) == Some(&JobScheduleMode::Skipped) {
                     continue;
                 }
+                // GitLab-style: manual jobs stay visible even when upstream jobs are skipped by `if:`.
+                if modes.get(&job.name) == Some(&JobScheduleMode::Manual) {
+                    continue;
+                }
                 for need in &job.job.needs {
                     if modes.get(need) == Some(&JobScheduleMode::Skipped) {
                         modes.insert(job.name.clone(), JobScheduleMode::Skipped);
+                        skipped_upstream.insert(job.name.clone());
                         changed = true;
                         break;
                     }
@@ -126,6 +161,7 @@ impl Scheduler {
                     .get(&job.name)
                     .copied()
                     .unwrap_or(JobScheduleMode::Skipped),
+                skipped_upstream: skipped_upstream.contains(&job.name),
                 name: job.name,
                 job: job.job,
             })
@@ -165,6 +201,7 @@ impl Scheduler {
                 name: name.to_string(),
                 job,
                 mode: JobScheduleMode::Queued,
+                skipped_upstream: false,
             });
 
             if let Some(children) = dependents.get(name) {
@@ -282,7 +319,7 @@ mod tests {
         );
         assert_eq!(
             jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
-            JobScheduleMode::Skipped
+            JobScheduleMode::Manual
         );
     }
 
@@ -342,6 +379,7 @@ mod tests {
             "manual",
             "refs/tags/v1.0.0",
             Some("qa".into()),
+            true,
         );
         let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
 
@@ -369,6 +407,7 @@ mod tests {
             "manual",
             "refs/heads/main",
             Some("uat".into()),
+            true,
         );
         let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
 
@@ -387,6 +426,70 @@ mod tests {
     }
 
     #[test]
+    fn manual_without_env_on_main_matches_push_schedule() {
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let push_jobs = Scheduler::schedule_for_run(
+            &config,
+            &RunContext::from_trigger("push", "refs/heads/main"),
+        )
+        .unwrap();
+        let manual_jobs = Scheduler::schedule_for_run(
+            &config,
+            &Scheduler::build_schedule_context(
+                &config,
+                "manual",
+                "refs/heads/main",
+                RunContext::from_trigger("push", "refs/heads/main").environment,
+                false,
+            ),
+        )
+        .unwrap();
+
+        for push_job in &push_jobs {
+            let manual_job = manual_jobs
+                .iter()
+                .find(|job| job.name == push_job.name)
+                .unwrap_or_else(|| panic!("missing job {} on manual run", push_job.name));
+            assert_eq!(
+                manual_job.mode, push_job.mode,
+                "job {} mode differs between push and manual",
+                push_job.name
+            );
+        }
+        assert_eq!(
+            manual_jobs.iter().filter(|job| !job.skipped()).count(),
+            push_jobs.iter().filter(|job| !job.skipped()).count(),
+        );
+    }
+
+    #[test]
+    fn staged_manual_main_without_explicit_shows_env_manual_jobs() {
+        use crate::parse_pipeline_yaml;
+
+        let yaml = include_str!("../examples/pertisk-ci-staged.yaml");
+        let config = parse_pipeline_yaml(yaml).unwrap();
+        let ctx = RunContext::from_trigger_with_environment(
+            "manual",
+            "refs/heads/main",
+            None,
+            false,
+        );
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Manual
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-uat").unwrap().mode,
+            JobScheduleMode::Manual
+        );
+    }
+
+    #[test]
     fn staged_manual_main_play_jobs_not_in_run_pipeline() {
         use crate::parse_pipeline_yaml;
 
@@ -396,6 +499,7 @@ mod tests {
             "manual",
             "refs/heads/main",
             Some("dev".into()),
+            true,
         );
         let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
 
@@ -513,6 +617,7 @@ mod tests {
                 artifacts: vec![],
             },
             mode: JobScheduleMode::Manual,
+            skipped_upstream: false,
         };
         assert!(!job.skipped());
         assert_eq!(job.db_status(), "manual");
@@ -524,15 +629,26 @@ mod tests {
             name: "deploy".into(),
             job: job.job.clone(),
             mode: JobScheduleMode::Skipped,
+            skipped_upstream: false,
         };
         assert!(skipped.skipped());
+        assert!(skipped.initial_log().contains("if condition not met"));
         assert!(skipped.finishes_immediately());
         assert_eq!(skipped.commit_status(), ("success", "Skipped"));
+
+        let upstream_skipped = ScheduledJob {
+            name: "deploy".into(),
+            job: job.job.clone(),
+            mode: JobScheduleMode::Skipped,
+            skipped_upstream: true,
+        };
+        assert!(upstream_skipped.initial_log().contains("upstream job skipped"));
 
         let queued = ScheduledJob {
             name: "build".into(),
             job: job.job.clone(),
             mode: JobScheduleMode::Queued,
+            skipped_upstream: false,
         };
         assert_eq!(queued.db_status(), "queued");
         assert_eq!(queued.initial_log(), "");
@@ -701,6 +817,82 @@ mod tests {
         assert_eq!(
             jobs.iter().find(|job| job.name == "deploy").unwrap().mode,
             JobScheduleMode::Skipped
+        );
+    }
+
+    #[test]
+    fn manual_job_stays_visible_when_upstream_skipped_by_if() {
+        use crate::job_if::{IfStringList, JobIfCondition};
+
+        let step = Step {
+            name: None,
+            run: "true".into(),
+            uses: None,
+            working_directory: None,
+            env: HashMap::new(),
+            with: HashMap::new(),
+        };
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: HashMap::from([
+                (
+                    "e2e-test-dev".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("main".into())),
+                            tag: None,
+                            event: Some(IfStringList::One("push".into())),
+                            environment: Some(IfStringList::One("dev".into())),
+                        }),
+                        required: true,
+                        steps: vec![step.clone()],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+                (
+                    "deploy-qa".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: Some("qa".into()),
+                        dind: false,
+                        needs: vec!["e2e-test-dev".into()],
+                        r#if: Some(JobIfCondition {
+                            branch: None,
+                            tag: None,
+                            event: Some(IfStringList::One("manual".into())),
+                            environment: Some(IfStringList::One("qa".into())),
+                        }),
+                        required: true,
+                        steps: vec![step],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+            ]),
+        };
+
+        let ctx = RunContext::from_trigger_with_environment(
+            "manual",
+            "refs/heads/main",
+            None,
+            false,
+        );
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "e2e-test-dev").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Manual
         );
     }
 }

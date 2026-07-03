@@ -1,12 +1,12 @@
 import { Loader2, Play, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { CI_ENVIRONMENTS, inferEnvironmentFromRef, viewRefFromKind, type CiEnvironment } from '../lib/pipelineSummary'
+import { CI_ENVIRONMENTS, type CiEnvironment } from '../lib/pipelineSummary'
 import { PrimaryButton, Radio, RadioGroup, SecondaryButton, Select } from './ui'
 
 export interface RunPipelineParams {
   refKind: 'branch' | 'tag'
   refName: string
-  environment: CiEnvironment
+  environment?: CiEnvironment
 }
 
 export function RunPipelineDialog({
@@ -15,7 +15,7 @@ export function RunPipelineDialog({
   tags,
   defaultBranch,
   pending,
-  initialEnvironment = 'dev',
+  initialEnvironment,
   initialRefKind = 'branch',
   initialRefName,
   lockEnvironment = false,
@@ -36,14 +36,14 @@ export function RunPipelineDialog({
 }) {
   const [refKind, setRefKind] = useState<'branch' | 'tag'>(initialRefKind)
   const [refName, setRefName] = useState(initialRefName ?? defaultBranch)
-  const [environment, setEnvironment] = useState<CiEnvironment>(initialEnvironment)
+  const [environment, setEnvironment] = useState<CiEnvironment | ''>(initialEnvironment ?? '')
 
   const refList = refKind === 'tag' ? tags : branches.length > 0 ? branches : [defaultBranch]
 
   useEffect(() => {
     if (!open) return
     setRefKind(initialRefKind)
-    setEnvironment(initialEnvironment)
+    setEnvironment(initialEnvironment ?? '')
     const list = initialRefKind === 'tag' ? tags : branches.length > 0 ? branches : [defaultBranch]
     const preferred =
       initialRefName && list.includes(initialRefName)
@@ -66,15 +66,6 @@ export function RunPipelineDialog({
   }, [open, pending, onClose])
 
   useEffect(() => {
-    if (lockEnvironment) return
-    const viewRef = viewRefFromKind(refKind, refName)
-    const inferred = inferEnvironmentFromRef(viewRef)
-    if (inferred && CI_ENVIRONMENTS.includes(inferred as CiEnvironment)) {
-      setEnvironment(inferred as CiEnvironment)
-    }
-  }, [refKind, refName, lockEnvironment])
-
-  useEffect(() => {
     if (!refList.includes(refName)) {
       setRefName(refList[0] ?? defaultBranch)
     }
@@ -86,7 +77,8 @@ export function RunPipelineDialog({
 
   const summary = useMemo(() => {
     const refLabel = refKind === 'tag' ? `tag ${refName}` : `branch ${refName}`
-    return `Manual run on ${refLabel} → ${environment}`
+    if (environment) return `Manual run on ${refLabel} → ${environment}`
+    return `Manual run on ${refLabel} (same jobs as push)`
   }, [refKind, refName, environment])
 
   if (!open) return null
@@ -112,7 +104,7 @@ export function RunPipelineDialog({
               Run pipeline
             </h2>
             <p className="mt-1 text-sm text-text-secondary">
-              Select branch or tag and deploy environment (GitLab-style manual run).
+              Select branch or tag. Leave environment unset to run the same jobs as a push on this branch.
             </p>
           </div>
           <button
@@ -169,11 +161,14 @@ export function RunPipelineDialog({
 
           <Select
             id="run-pipeline-environment"
-            label="Environment"
+            label="Environment (optional)"
             value={environment}
-            disabled={pending}
-            onChange={(event) => setEnvironment(event.target.value as CiEnvironment)}
+            disabled={pending || lockEnvironment}
+            onChange={(event) =>
+              setEnvironment(event.target.value as CiEnvironment | '')
+            }
           >
+            <option value="">None — same as push</option>
             {CI_ENVIRONMENTS.map((env) => (
               <option key={env} value={env}>
                 {env}
@@ -201,7 +196,7 @@ export function RunPipelineDialog({
               onRun({
                 refKind,
                 refName,
-                environment,
+                ...(environment ? { environment } : {}),
               })
             }
           >

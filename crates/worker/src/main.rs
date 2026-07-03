@@ -137,14 +137,23 @@ async fn process_trigger_now(
         anyhow::bail!("event does not match pipeline triggers");
     }
 
-    let resolved_env = target_environment
-        .map(|env| env.to_string())
+    let explicit_env = target_environment.map(|env| env.to_string());
+    let resolved_env = explicit_env
+        .clone()
         .or_else(|| RunContext::from_trigger(event_type, ref_name).environment);
+    let environment_explicit = event_type == "manual" && explicit_env.is_some();
+    let stored_env = if event_type == "manual" {
+        explicit_env
+    } else {
+        resolved_env.clone()
+    };
 
-    let run_ctx = RunContext::from_trigger_with_environment(
+    let run_ctx = Scheduler::build_schedule_context(
+        &config,
         event_type,
         ref_name,
         resolved_env.clone(),
+        environment_explicit,
     );
     let scheduled = Scheduler::schedule_for_run(&config, &run_ctx)?;
     let has_runnable = scheduled.iter().any(|job| !job.skipped());
@@ -160,7 +169,7 @@ async fn process_trigger_now(
     .bind(commit_sha)
     .bind(ref_name)
     .bind(event_type)
-    .bind(resolved_env.as_deref())
+    .bind(stored_env.as_deref())
     .bind(config_path)
     .fetch_one(&state.pool)
     .await?;

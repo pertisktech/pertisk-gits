@@ -10,17 +10,20 @@ pub struct RunContext {
     pub branch: Option<String>,
     pub tag: Option<String>,
     pub environment: Option<String>,
+    /// True when the user picked `environment` on a manual Run pipeline trigger.
+    pub environment_explicit: bool,
 }
 
 impl RunContext {
     pub fn from_trigger(event_type: &str, ref_name: &str) -> Self {
-        Self::from_trigger_with_environment(event_type, ref_name, None)
+        Self::from_trigger_with_environment(event_type, ref_name, None, false)
     }
 
     pub fn from_trigger_with_environment(
         event_type: &str,
         ref_name: &str,
         target_environment: Option<String>,
+        environment_explicit: bool,
     ) -> Self {
         let tag = ref_name.strip_prefix("refs/tags/").map(str::to_string);
         let branch = if tag.is_none() {
@@ -41,6 +44,7 @@ impl RunContext {
             branch,
             tag,
             environment,
+            environment_explicit,
         }
     }
 }
@@ -214,13 +218,16 @@ impl JobIfMatcher {
             });
 
             if env_only {
-                if ctx.event_type == "manual" && Self::matches(condition, ctx) {
-                    return JobScheduleMode::Queued;
+                if ctx.event_type == "manual" {
+                    if !ctx.environment_explicit {
+                        return JobScheduleMode::Manual;
+                    }
+                    if Self::matches(condition, ctx) {
+                        return JobScheduleMode::Queued;
+                    }
+                    return JobScheduleMode::Skipped;
                 }
-                if ctx.event_type != "manual" {
-                    return JobScheduleMode::Manual;
-                }
-                return JobScheduleMode::Skipped;
+                return JobScheduleMode::Manual;
             }
 
             // branch/tag + event:manual — play button in automatic pipelines only
@@ -264,6 +271,16 @@ impl JobIfMatcher {
                     event: None,
                     ..condition.clone()
                 };
+                let env_only = condition.environment.is_some()
+                    && condition.branch.is_none()
+                    && condition.tag.is_none();
+                if env_only && ctx.event_type == "manual" && !ctx.environment_explicit {
+                    let without_env = JobIfCondition {
+                        environment: None,
+                        ..without_event
+                    };
+                    return Self::matches_condition(&without_env, ctx);
+                }
                 Self::matches_condition(&without_event, ctx)
             }
         }
@@ -362,11 +379,22 @@ mod tests {
         tag: Option<&str>,
         environment: Option<&str>,
     ) -> RunContext {
+        ctx_with_explicit(event_type, branch, tag, environment, false)
+    }
+
+    fn ctx_with_explicit(
+        event_type: &str,
+        branch: Option<&str>,
+        tag: Option<&str>,
+        environment: Option<&str>,
+        environment_explicit: bool,
+    ) -> RunContext {
         RunContext {
             event_type: event_type.to_string(),
             branch: branch.map(str::to_string),
             tag: tag.map(str::to_string),
             environment: environment.map(str::to_string),
+            environment_explicit,
         }
     }
 

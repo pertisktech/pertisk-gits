@@ -9,7 +9,7 @@ Group and repository **secrets** and **variables** for pipelines (GitLab-style).
 
 Use **variables** for non-sensitive config: SonarQube dashboard URLs, registry hostnames, API base URLs. Use **secrets** for passwords and tokens.
 
-**Deploy workflows:** how environments tie to Run pipeline and manual jobs — [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md)
+**Deploy workflows:** Run pipeline (optional environment, same jobs as push) — [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md#run-pipeline-vs-push-same-job-graph)
 
 ## Configuration
 
@@ -57,7 +57,7 @@ A job gets secrets where:
 Effective environment comes from (in order):
 
 1. `environment:` on the job in `.pertisk-ci.yaml`
-2. `target_environment` on the pipeline run (manual trigger or inferred from branch/tag)
+2. `target_environment` on the pipeline run when the user picked an environment on **Run pipeline** (push runs use ref-inferred env for scheduling; see [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md#run-pipeline-vs-push-same-job-graph))
 3. Job name suffix (e.g. `deploy-qa` → `qa`)
 
 ## Pipeline usage

@@ -215,7 +215,7 @@ export function RepoPipelines({
       commit_sha: head.sha,
       ref_name: pipelineRefName(refKind, refName),
       event_type: 'manual',
-      environment,
+      ...(environment ? { environment } : {}),
     })
   }
 
@@ -391,7 +391,7 @@ jobs:
         tags={tags}
         defaultBranch={configRef}
         pending={triggerMutation.isPending}
-        initialEnvironment={runDialogPreset.environment ?? 'dev'}
+        initialEnvironment={runDialogPreset.environment}
         initialRefKind={runDialogPreset.refKind ?? 'branch'}
         initialRefName={runDialogPreset.refName}
         lockEnvironment={runDialogPreset.environment != null}

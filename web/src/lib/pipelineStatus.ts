@@ -19,9 +19,23 @@ export function failureSummary(jobs: JobRun[]): string | null {
   return line?.trim().slice(0, 160) ?? `Job "${failed[0].job_name}" failed`
 }
 
+/** Skipped because a required upstream job failed or was skipped (not YAML `if:` skip). */
+export function isUpstreamSkippedJob(job: JobRun): boolean {
+  return (
+    job.status === 'skipped' &&
+    (/not run \(upstream job failed\)/i.test(job.log_text) ||
+      /not run \(upstream job skipped\)/i.test(job.log_text) ||
+      /not run — upstream job skipped/i.test(job.log_text) ||
+      /skipped: pipeline failed/i.test(job.log_text))
+  )
+}
+
 /** Jobs hidden from run UI (skipped by `if:` in YAML, never part of this run). */
 export function isConfigSkippedJob(job: JobRun): boolean {
-  return job.status === 'skipped' && /if condition not met/i.test(job.log_text)
+  if (job.status === 'manual') return false
+  if (job.status !== 'skipped') return false
+  if (isUpstreamSkippedJob(job)) return false
+  return /if condition not met/i.test(job.log_text)
 }
 
 /** Jobs that belong to this run (exclude YAML `if:` skips). */
@@ -191,15 +205,6 @@ export function countRerunnableFailedJobs(run: PipelineRun): number {
       j.status === 'cancelled' ||
       isUpstreamSkippedJob(j),
   ).length
-}
-
-/** Skipped because a required upstream job failed (not YAML `if:` skip). */
-export function isUpstreamSkippedJob(job: JobRun): boolean {
-  return (
-    job.status === 'skipped' &&
-    (/not run \(upstream job failed\)/i.test(job.log_text) ||
-      /skipped: pipeline failed/i.test(job.log_text))
-  )
 }
 
 export function canRerunFailed(run: PipelineRun): boolean {

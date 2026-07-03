@@ -963,8 +963,8 @@ async fn trigger_pipeline(
     ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
     let event_type = body.event_type.as_deref().unwrap_or("manual");
-    let target_environment = resolve_trigger_environment(body.environment.as_deref(), event_type, &body.ref_name)
-        .map_err(|msg| DomainError::Validation(msg))?;
+    let explicit_environment = normalize_explicit_environment(body.environment.as_deref())
+        .map_err(DomainError::Validation)?;
 
     let run_id = process_trigger_now(
         &state,
@@ -974,7 +974,7 @@ async fn trigger_pipeline(
         &body.commit_sha,
         &body.ref_name,
         event_type,
-        target_environment.as_deref(),
+        explicit_environment.as_deref(),
     )
     .await
     .map_err(|e| match e {
@@ -1047,10 +1047,17 @@ async fn rerun_pipeline(
         DomainError::Validation(format!("invalid pipeline config: {e}"))
     })?;
 
-    let run_ctx = RunContext::from_trigger_with_environment(
+    let environment_explicit = run.event_type == "manual" && run.target_environment.is_some();
+    let schedule_env = run
+        .target_environment
+        .clone()
+        .or_else(|| RunContext::from_trigger(&run.event_type, &run.ref_name).environment);
+    let run_ctx = Scheduler::build_schedule_context(
+        &config,
         &run.event_type,
         &run.ref_name,
-        run.target_environment.clone(),
+        schedule_env,
+        environment_explicit,
     );
     let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         DomainError::Validation(format!("schedule failed: {e}"))
@@ -1193,10 +1200,17 @@ async fn rerun_job(
         DomainError::Validation(format!("invalid pipeline config: {e}"))
     })?;
 
-    let run_ctx = RunContext::from_trigger_with_environment(
+    let environment_explicit = run.event_type == "manual" && run.target_environment.is_some();
+    let schedule_env = run
+        .target_environment
+        .clone()
+        .or_else(|| RunContext::from_trigger(&run.event_type, &run.ref_name).environment);
+    let run_ctx = Scheduler::build_schedule_context(
+        &config,
         &run.event_type,
         &run.ref_name,
-        run.target_environment.clone(),
+        schedule_env,
+        environment_explicit,
     );
     let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         DomainError::Validation(format!("schedule failed: {e}"))
@@ -2391,17 +2405,25 @@ async fn process_trigger_now(
         return Err(sqlx::Error::RowNotFound);
     }
 
-    let resolved_env = resolve_trigger_environment(
-        target_environment,
-        event_type,
-        ref_name,
-    )
-    .map_err(|msg| sqlx::Error::Protocol(msg.into()))?;
+    let explicit_env = normalize_explicit_environment(target_environment)
+        .map_err(|msg| sqlx::Error::Protocol(msg.into()))?;
+    let schedule_env = explicit_env
+        .clone()
+        .or_else(|| RunContext::from_trigger(event_type, ref_name).environment);
+    let environment_explicit = event_type == "manual" && explicit_env.is_some();
+    // Manual runs: store target_environment only when the user picked one in the UI.
+    let stored_env = if event_type == "manual" {
+        explicit_env
+    } else {
+        schedule_env.clone()
+    };
 
-    let run_ctx = RunContext::from_trigger_with_environment(
+    let run_ctx = Scheduler::build_schedule_context(
+        &config,
         event_type,
         ref_name,
-        resolved_env.clone(),
+        schedule_env,
+        environment_explicit,
     );
     let jobs = Scheduler::schedule_for_run(&config, &run_ctx).map_err(|e| {
         sqlx::Error::Protocol(format!("schedule failed: {e}").into())
@@ -2418,7 +2440,7 @@ async fn process_trigger_now(
     .bind(commit_sha)
     .bind(ref_name)
     .bind(event_type)
-    .bind(resolved_env.as_deref())
+    .bind(stored_env.as_deref())
     .bind(config_path)
     .fetch_one(&state.pool)
     .await?;
@@ -2438,18 +2460,17 @@ async fn process_trigger_now(
     Ok(run_id)
 }
 
-fn resolve_trigger_environment(
-    explicit: Option<&str>,
-    event_type: &str,
-    ref_name: &str,
-) -> Result<Option<String>, String> {
-    if let Some(raw) = explicit {
-        let normalized = normalize_environment(raw).ok_or_else(|| {
-            format!("invalid environment `{raw}` — use dev, qa, uat, or prd")
-        })?;
-        return Ok(Some(normalized));
+fn normalize_explicit_environment(raw: Option<&str>) -> Result<Option<String>, String> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
     }
-    Ok(RunContext::from_trigger(event_type, ref_name).environment)
+    normalize_environment(trimmed)
+        .ok_or_else(|| format!("invalid environment `{raw}` — use dev, qa, uat, or prd"))
+        .map(Some)
 }
 
 async fn reset_pipeline_run(
@@ -4278,16 +4299,19 @@ mod runner_instance_tests {
                 name: "build".into(),
                 job: job(vec![]),
                 mode: JobScheduleMode::Queued,
+                skipped_upstream: false,
             },
             ScheduledJob {
                 name: "test".into(),
                 job: job(vec!["build"]),
                 mode: JobScheduleMode::Queued,
+                skipped_upstream: false,
             },
             ScheduledJob {
                 name: "deploy".into(),
                 job: job(vec!["test"]),
                 mode: JobScheduleMode::Queued,
+                skipped_upstream: false,
             },
         ];
 

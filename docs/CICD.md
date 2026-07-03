@@ -213,17 +213,34 @@ See [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md#allow-failure-optional-jobs) for ful
 Jobs with `if: event: manual` behave like GitLab `when: manual`:
 
 - On **push** / **PR** → job status **manual** (play button in UI).
-- On **Run pipeline** with matching `environment` → job queues automatically.
+- On **Run pipeline** with **no environment** on a push-enabled branch → **same jobs as push** (manual jobs included).
+- On **Run pipeline** with explicit **environment** (e.g. `qa`) → matching env deploy jobs queue automatically.
 
-Staged example: `crates/cicd/examples/pertisk-ci-staged.yaml`. Tag releases and `if:` rules: [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md#tag-push-release-on-any-tag).
+Staged example: `crates/cicd/examples/pertisk-ci-staged.yaml`. Full rules: [CICD_WORKFLOWS.md](./CICD_WORKFLOWS.md#run-pipeline-vs-push-same-job-graph).
 
 ### Run pipeline (manual trigger)
 
-**UI:** Project → Pipelines → **Run pipeline** → branch or tag + optional environment.
+**UI:** Project → Pipelines → **Run pipeline** → branch or tag → optional environment.
+
+| Environment | Effect |
+|-------------|--------|
+| **None — same as push** (default) | Same job graph as **push** on that ref (when branch is in `on.push.branches`) |
+| **qa**, **uat**, **prd** | Deploy chain for that environment only |
 
 **API:**
 
 ```bash
+# Same jobs as push (omit environment):
+curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/trigger" \
+  -H "Authorization: Bearer $JWT" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "commit_sha": "<sha>",
+    "ref_name": "refs/heads/main",
+    "event_type": "manual"
+  }'
+
+# Deploy QA only:
 curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/trigger" \
   -H "Authorization: Bearer $JWT" \
   -H "Content-Type: application/json" \
@@ -235,7 +252,7 @@ curl -X POST "$API/api/v1/organizations/$ORG/repositories/$REPO/pipelines/trigge
   }'
 ```
 
-`environment` sets `pipeline_runs.target_environment` so env-scoped jobs and secrets resolve correctly.
+`environment` in the trigger body sets `pipeline_runs.target_environment` only when provided. Omit it for push-equivalent runs. When set, env-scoped jobs and secrets resolve to that environment.
 
 ## API endpoints
 

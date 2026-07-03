@@ -346,6 +346,7 @@ export function filterRunJobsForManualDeploy(run: PipelineRun): JobRun[] {
 
   const env = run.target_environment
   return jobs.filter((job) => {
+    if (job.status === 'manual') return true
     const jobEnv = jobEnvironmentFromName(job.job_name)
     // Build/test jobs (no env suffix) are part of every manual run.
     if (!jobEnv) return true
@@ -427,7 +428,7 @@ function inferPipelinePathsWithIf(
     }
     const pathJobs = topoSortAll(jobs).filter((name) => {
       const job = jobs.find((entry) => entry.name === name)
-      return job && evaluateJobIf(job.if, ctx)
+      return job && evaluateJobScheduleMode(job.if, ctx) !== 'skipped'
     })
     if (pathJobs.length === 0) continue
 
@@ -513,7 +514,7 @@ export function jobsForViewScope(
     const names = new Set(
       topoSortAll(jobs).filter((name) => {
         const job = jobs.find((entry) => entry.name === name)
-        return job && evaluateJobIf(job.if, ctx)
+        return job && evaluateJobScheduleMode(job.if, ctx) !== 'skipped'
       }),
     )
     return jobs.filter((job) => names.has(job.name))
@@ -569,6 +570,8 @@ export interface PathContext {
   branch?: string
   tag?: string
   environment?: string
+  /** User picked environment on Run pipeline (manual trigger only). */
+  environment_explicit?: boolean
 }
 
 export function evaluateJobIf(condition: JobIfCondition | undefined, ctx: PathContext): boolean {
@@ -600,6 +603,59 @@ export function evaluateJobIf(condition: JobIfCondition | undefined, ctx: PathCo
   }
 
   return true
+}
+
+/** Mirrors backend JobIfMatcher::schedule_mode (without needs: propagation). */
+export type JobScheduleModePreview = 'skipped' | 'manual' | 'queued'
+
+function matchesWithoutEvent(condition: JobIfCondition | undefined, ctx: PathContext): boolean {
+  if (!condition) return true
+  const { event: _event, ...rest } = condition
+  return evaluateJobIf(rest as JobIfCondition, ctx)
+}
+
+function requiresManualEvent(condition: JobIfCondition | undefined): boolean {
+  if (!condition?.event) return false
+  const patterns = listValue(condition.event)
+  return patterns?.includes('manual') ?? false
+}
+
+function isInPipelineManualPlay(condition: JobIfCondition | undefined, ctx: PathContext): boolean {
+  if (!condition?.branch || !ctx.branch) return false
+  const patterns = listValue(condition.branch)
+  return (
+    patterns?.some((pattern) => globMatch(pattern, ctx.branch!) && pattern === 'main') ?? false
+  )
+}
+
+export function evaluateJobScheduleMode(
+  condition: JobIfCondition | undefined,
+  ctx: PathContext,
+): JobScheduleModePreview {
+  if (!matchesWithoutEvent(condition, ctx)) return 'skipped'
+
+  if (requiresManualEvent(condition)) {
+    const envOnly =
+      condition?.environment !== undefined &&
+      condition.branch === undefined &&
+      condition.tag === undefined
+
+    if (envOnly) {
+      if (ctx.event_type === 'manual') {
+        if (!ctx.environment_explicit) return 'manual'
+        if (evaluateJobIf(condition, ctx)) return 'queued'
+        return 'skipped'
+      }
+      return 'manual'
+    }
+
+    if (ctx.event_type !== 'manual') return 'manual'
+    if (isInPipelineManualPlay(condition, ctx)) return 'skipped'
+    return 'queued'
+  }
+
+  if (evaluateJobIf(condition, ctx)) return 'queued'
+  return 'skipped'
 }
 
 /** Infer deploy environment from branch/tag (matches backend). */
