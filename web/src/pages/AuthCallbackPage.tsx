@@ -1,33 +1,55 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 
+function readCallbackToken(searchParams: URLSearchParams): string | null {
+  const fromQuery = searchParams.get('token')
+  if (fromQuery) {
+    try {
+      return decodeURIComponent(fromQuery)
+    } catch {
+      return fromQuery
+    }
+  }
+
+  const hash = window.location.hash
+  const prefix = '#token='
+  if (hash.startsWith(prefix)) {
+    const raw = hash.slice(prefix.length)
+    try {
+      return decodeURIComponent(raw)
+    } catch {
+      return raw
+    }
+  }
+
+  return null
+}
+
 export function AuthCallbackPage() {
   const [searchParams] = useSearchParams()
-  const { setSession } = useAuth()
+  const { setSession, clearSession } = useAuth()
   const [error, setError] = useState<string | null>(null)
+  const started = useRef(false)
 
   useEffect(() => {
-    const token = searchParams.get('token')
-    if (!token) {
+    if (started.current) return
+    started.current = true
+
+    const decodedToken = readCallbackToken(searchParams)
+    if (!decodedToken) {
       setError('Missing sign-in token')
       return
     }
 
-    const decodedToken = (() => {
-      try {
-        return decodeURIComponent(token)
-      } catch {
-        return token
-      }
-    })()
+    clearSession()
 
     api
       .me(decodedToken)
       .then(({ user, is_super_admin }) => {
         setSession(decodedToken, { ...user, is_super_admin })
-        // Full navigation so ProtectedRoute reads token from localStorage immediately.
+        window.history.replaceState(null, '', '/auth/callback')
         window.location.replace('/dashboard')
       })
       .catch((err: unknown) => {
@@ -37,7 +59,7 @@ export function AuthCallbackPage() {
             : 'Could not complete sign-in'
         setError(message)
       })
-  }, [searchParams, setSession])
+  }, [searchParams, setSession, clearSession])
 
   if (error) {
     return (

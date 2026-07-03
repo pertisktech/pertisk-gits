@@ -5,6 +5,7 @@ import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react
 import { api } from '../api/client'
 import type { AuthProviderPublic } from '../api/types'
 import { getStoredAuthToken, useAuth } from '../auth/AuthContext'
+import { isJwtExpired } from '../auth/session'
 import { AppVersion } from '../components/AppVersion'
 import { useTheme } from '../context/ThemeContext'
 import styles from './AuthPage.module.css'
@@ -12,7 +13,7 @@ import styles from './AuthPage.module.css'
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
 export function LoginPage() {
-  const { setSession, token } = useAuth()
+  const { setSession, token, clearSession } = useAuth()
   const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
@@ -44,7 +45,8 @@ export function LoginPage() {
   const ldapProviders = providers.filter((p) => p.provider_type === 'ldap')
 
   const storedToken = getStoredAuthToken()
-  if (token ?? storedToken) {
+  const validStoredToken = storedToken && !isJwtExpired(storedToken) ? storedToken : null
+  if (token ?? validStoredToken) {
     return <Navigate to="/dashboard" replace />
   }
 
@@ -67,6 +69,7 @@ export function LoginPage() {
     if (ssoRedirecting) return
     setSsoRedirecting(true)
     setError(null)
+    clearSession()
     window.location.assign(ssoLoginUrl(provider))
   }
 

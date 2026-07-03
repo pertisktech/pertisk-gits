@@ -117,21 +117,12 @@ pub fn browser_redirect_response(target_url: &str) -> SsoHtmlPage {
 
 /// Complete SSO in the browser without an HTTP redirect (OIDC/SAML callback).
 ///
-/// pertisk-proxy HTTP/3 follows redirects server-side, so redirecting to
-/// `/auth/callback?token=…` never reaches the browser with the JWT in the URL.
+/// Token is passed in the URL hash (`#token=…`) so proxies cannot strip it and it is
+/// never logged server-side. AuthCallbackPage reads the hash and stores the session.
 pub fn browser_session_response(state: &AppState, auth: &AuthResponse) -> SsoHtmlPage {
-    let dashboard = format!("{}/dashboard", public_base_url(state));
-    let dashboard_js = serde_json::to_string(&dashboard).unwrap_or_else(|_| "\"/dashboard\"".into());
+    let callback_base = format!("{}/auth/callback", public_base_url(state));
+    let callback_base_js = serde_json::to_string(&callback_base).unwrap_or_else(|_| "\"/auth/callback\"".into());
     let token_js = serde_json::to_string(&auth.token).unwrap_or_else(|_| "\"\"".into());
-    let user_js = serde_json::json!({
-        "id": auth.user.id,
-        "username": auth.user.username,
-        "email": auth.user.email,
-        "display_name": auth.user.display_name,
-        "created_at": auth.user.created_at,
-        "is_super_admin": auth.is_super_admin,
-    });
-    let user_js = serde_json::to_string(&user_js).unwrap_or_else(|_| "\"{}\"".into());
     let html = format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -139,9 +130,7 @@ pub fn browser_session_response(state: &AppState, auth: &AuthResponse) -> SsoHtm
 <body>
 <p>Signing in…</p>
 <script>
-localStorage.setItem("pertisk_token", {token_js});
-localStorage.setItem("pertisk_user", {user_js});
-location.replace({dashboard_js});
+location.replace({callback_base_js} + '#token=' + encodeURIComponent({token_js}));
 </script>
 </body>
 </html>"#

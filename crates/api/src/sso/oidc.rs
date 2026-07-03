@@ -93,6 +93,7 @@ pub async fn start_oidc_login(
         query.append_pair("state", &flow_state);
         query.append_pair("code_challenge", &challenge);
         query.append_pair("code_challenge_method", "S256");
+        query.append_pair("prompt", "select_account");
     }
     Ok(browser_redirect_response(&auth_url.to_string()).into_response())
 }

@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { api } from '../api/client'
 import type { DashboardProjectStats } from '../api/types'
-import { useAuth } from '../auth/AuthContext'
+import { useEffectiveAuthToken } from '../auth/AuthContext'
 export interface ProjectStatsRef {
   orgSlug: string
   slug: string
@@ -13,7 +13,7 @@ function statsKey(project: ProjectStatsRef) {
 }
 
 export function useDashboardProjectStats(projects: ProjectStatsRef[]) {
-  const { token } = useAuth()
+  const token = useEffectiveAuthToken()
 
   const payload = useMemo(
     () =>

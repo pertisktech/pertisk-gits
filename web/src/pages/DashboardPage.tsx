@@ -4,7 +4,7 @@ import {
   Search,
 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { useAuth } from '../auth/AuthContext'
+import { useEffectiveUser } from '../auth/AuthContext'
 import { ProjectListRow } from '../components/ProjectListRow'
 import listStyles from '../components/ProjectList.module.css'
 import { EmptyState, LinkButton, Select, TablePagination } from '../components/ui'
@@ -59,7 +59,7 @@ function matchesSearch(project: DashboardProject, query: string) {
 }
 
 export function DashboardPage() {
-  const { user } = useAuth()
+  const user = useEffectiveUser()
   const { projects, isLoading, error } = useAllProjects()
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<SortOption>('updated_desc')

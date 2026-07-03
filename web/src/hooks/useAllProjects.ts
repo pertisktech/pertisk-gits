@@ -1,7 +1,7 @@
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
 import { api } from '../api/client'
-import { useAuth } from '../auth/AuthContext'
+import { useEffectiveAuthToken } from '../auth/AuthContext'
 import type { Repository } from '../api/types'
 import { groupUrlPath } from '../lib/groupPath'
 
@@ -11,7 +11,7 @@ export interface DashboardProject extends Repository {
 }
 
 export function useAllProjects() {
-  const { token } = useAuth()
+  const token = useEffectiveAuthToken()
 
   const {
     data: groups = [],

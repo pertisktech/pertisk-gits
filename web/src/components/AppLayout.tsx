@@ -1,7 +1,7 @@
 import { Menu, Moon, Plus, Sun, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { useAuth } from '../auth/AuthContext'
+import { useEffectiveUser } from '../auth/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { cn } from '../utils/cn'
 import { AppSidebar } from './AppSidebar'
@@ -17,7 +17,7 @@ function getStoredSidebarCollapsed(): boolean {
 
 export function AppLayout() {
   const { isDark, toggleTheme } = useTheme()
-  const { user } = useAuth()
+  const user = useEffectiveUser()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getStoredSidebarCollapsed)
