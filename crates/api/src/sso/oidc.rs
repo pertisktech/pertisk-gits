@@ -1,12 +1,17 @@
 use axum::{
-    extract::{Query, State},
+    extract::{Path, Query, State},
     response::IntoResponse,
+    Json,
 };
 use base64::Engine;
-use pertisk_domain::models::{AuditEventType, AuthProviderType};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use pertisk_domain::models::{AuditEventType, AuthProvider, AuthProviderType, AuthResponse};
 use pertisk_domain::DomainError;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 use super::{
@@ -45,6 +50,35 @@ struct OidcIdClaims {
     email: Option<String>,
     preferred_username: Option<String>,
     name: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct OidcSessionRequest {
+    id_token: String,
+}
+
+#[derive(Clone, Deserialize)]
+struct OidcJwk {
+    kid: Option<String>,
+    n: Option<String>,
+    e: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OidcJwks {
+    keys: Vec<OidcJwk>,
+}
+
+struct OidcJwksCacheEntry {
+    fetched_at: Instant,
+    keys: Vec<OidcJwk>,
+}
+
+const OIDC_JWKS_TTL_SECS: u64 = 3600;
+
+fn oidc_jwks_cache() -> &'static Mutex<HashMap<String, OidcJwksCacheEntry>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, OidcJwksCacheEntry>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 pub async fn start_oidc_login(
@@ -93,9 +127,38 @@ pub async fn start_oidc_login(
         query.append_pair("state", &flow_state);
         query.append_pair("code_challenge", &challenge);
         query.append_pair("code_challenge_method", "S256");
-        query.append_pair("prompt", "select_account");
+        query.append_pair("prompt", "login select_account");
     }
     Ok(browser_redirect_response(&auth_url.to_string()).into_response())
+}
+
+pub async fn oidc_logout(
+    State(state): State<AppState>,
+    Path(provider_id): Path<Uuid>,
+) -> Result<impl IntoResponse, ApiError> {
+    let provider = load_provider(&state.pool, provider_id).await?;
+    ensure_enabled_provider(&provider)?;
+    if provider.provider_type != AuthProviderType::Oidc {
+        return Err(DomainError::Validation("provider is not OIDC".into()).into());
+    }
+
+    let issuer = provider
+        .issuer_url
+        .as_deref()
+        .ok_or(DomainError::Validation("missing issuer_url".into()))?;
+    let issuer = normalize_issuer_url(issuer)?;
+    let client_id = provider
+        .client_id
+        .as_deref()
+        .ok_or(DomainError::Validation("missing client_id".into()))?;
+    let return_to = format!("{}/login", super::public_base_url(&state));
+    let logout_url = format!(
+        "{issuer}/v2/logout?client_id={}&returnTo={}",
+        urlencoding::encode(client_id),
+        urlencoding::encode(&return_to),
+    );
+
+    Ok(super::browser_redirect_response(&logout_url).into_response())
 }
 
 pub async fn oidc_callback(
@@ -220,6 +283,163 @@ async fn oidc_callback_inner(
 
     let auth = issue_auth_response(state, user, "oidc").await?;
     Ok(browser_session_response(state, &auth))
+}
+
+pub async fn oidc_session(
+    State(state): State<AppState>,
+    Path(provider_id): Path<Uuid>,
+    Json(body): Json<OidcSessionRequest>,
+) -> Result<Json<AuthResponse>, ApiError> {
+    let provider = load_provider(&state.pool, provider_id).await?;
+    ensure_enabled_provider(&provider)?;
+    if provider.provider_type != AuthProviderType::Oidc {
+        return Err(DomainError::Validation("provider is not OIDC".into()).into());
+    }
+
+    let claims = verify_id_token_for_provider(&provider, &body.id_token).await?;
+    let email = claims
+        .email
+        .clone()
+        .or(claims
+            .preferred_username
+            .as_ref()
+            .map(|u| format!("{u}@sso.local")))
+        .ok_or(DomainError::Validation("OIDC token missing email".into()))?;
+
+    let external = ExternalUser {
+        subject: claims.sub,
+        email: email.clone(),
+        display_name: claims.name,
+        username_hint: claims.preferred_username,
+    };
+
+    let user = jit_provision_user(&state.pool, &provider, &external).await?;
+
+    record_audit_event(
+        &state.pool,
+        AuditEventInput {
+            organization_id: None,
+            actor_user_id: Some(user.id),
+            event_type: AuditEventType::SsoLogin,
+            action: format!("oidc spa login via {}", provider.name),
+            resource_type: Some("auth_provider".into()),
+            resource_id: Some(provider.id.to_string()),
+            metadata: Some(serde_json::json!({ "provider_type": "oidc", "email": email })),
+            ip_address: None,
+            user_agent: None,
+        },
+    )
+    .await?;
+
+    Ok(Json(issue_auth_response(&state, user, "oidc").await?))
+}
+
+/// Extract the OIDC host from issuer_url (e.g. `dev-xxx.auth0.com`).
+pub fn issuer_to_oidc_domain(issuer_url: &str) -> Result<String, DomainError> {
+    let normalized = normalize_issuer_url(issuer_url)?;
+    let url = reqwest::Url::parse(&normalized).map_err(|_| {
+        DomainError::Validation(format!("invalid issuer_url host (got {issuer_url:?})"))
+    })?;
+    url.host_str()
+        .map(|host| host.to_ascii_lowercase())
+        .ok_or_else(|| DomainError::Validation("issuer_url missing host".into()))
+}
+
+async fn verify_id_token_for_provider(
+    provider: &AuthProvider,
+    id_token: &str,
+) -> Result<OidcIdClaims, ApiError> {
+    let issuer = provider
+        .issuer_url
+        .as_deref()
+        .ok_or(DomainError::Validation("missing issuer_url".into()))?;
+    let issuer = normalize_issuer_url(issuer)?;
+    let client_id = provider
+        .client_id
+        .as_deref()
+        .ok_or(DomainError::Validation("missing client_id".into()))?;
+
+    let domain = issuer_to_oidc_domain(&issuer)?;
+    let header = decode_header(id_token).map_err(|_| DomainError::Unauthorized)?;
+    if header.alg != Algorithm::RS256 {
+        return Err(DomainError::Unauthorized.into());
+    }
+    let kid = header
+        .kid
+        .as_deref()
+        .ok_or(DomainError::Unauthorized)?;
+
+    let key = oidc_decoding_key(&domain, kid).await?;
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.validate_exp = true;
+    validation.set_audience(&[client_id]);
+    let issuer_with_slash = format!("{issuer}/");
+    validation.set_issuer(&[issuer_with_slash.as_str()]);
+
+    decode::<OidcIdClaims>(id_token, &key, &validation)
+        .map(|data| data.claims)
+        .map_err(|_| DomainError::Unauthorized.into())
+}
+
+async fn fetch_oidc_jwks(domain: &str) -> Result<Vec<OidcJwk>, ApiError> {
+    let url = format!("https://{domain}/.well-known/jwks.json");
+    let resp = reqwest::get(url)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(format!("JWKS fetch failed: {e}"))))?;
+    if !resp.status().is_success() {
+        return Err(ApiError::from(DomainError::Internal(format!(
+            "JWKS fetch returned HTTP {}",
+            resp.status()
+        ))));
+    }
+    resp.json::<OidcJwks>()
+        .await
+        .map(|jwks| jwks.keys)
+        .map_err(|e| ApiError::from(DomainError::Internal(format!("invalid JWKS response: {e}"))))
+}
+
+async fn oidc_decoding_key(domain: &str, kid: &str) -> Result<DecodingKey, ApiError> {
+    let domain_key = domain.trim().trim_end_matches('/').to_ascii_lowercase();
+    let now = Instant::now();
+
+    if let Ok(cache) = oidc_jwks_cache().lock() {
+        if let Some(entry) = cache.get(&domain_key) {
+            if now.duration_since(entry.fetched_at) <= Duration::from_secs(OIDC_JWKS_TTL_SECS) {
+                if let Some(found) = entry
+                    .keys
+                    .iter()
+                    .find(|k| k.kid.as_deref() == Some(kid) && k.n.is_some() && k.e.is_some())
+                {
+                    return DecodingKey::from_rsa_components(
+                        found.n.as_deref().unwrap_or_default(),
+                        found.e.as_deref().unwrap_or_default(),
+                    )
+                    .map_err(|_| DomainError::Unauthorized.into());
+                }
+            }
+        }
+    }
+
+    let keys = fetch_oidc_jwks(&domain_key).await?;
+    if let Ok(mut cache) = oidc_jwks_cache().lock() {
+        cache.insert(
+            domain_key.clone(),
+            OidcJwksCacheEntry {
+                fetched_at: now,
+                keys: keys.clone(),
+            },
+        );
+    }
+
+    let found = keys
+        .iter()
+        .find(|k| k.kid.as_deref() == Some(kid) && k.n.is_some() && k.e.is_some())
+        .ok_or(DomainError::Unauthorized)?;
+    DecodingKey::from_rsa_components(
+        found.n.as_deref().unwrap_or_default(),
+        found.e.as_deref().unwrap_or_default(),
+    )
+    .map_err(|_| DomainError::Unauthorized.into())
 }
 
 /// Normalize OIDC issuer URLs from admin input (trim, default https, strip discovery suffix).

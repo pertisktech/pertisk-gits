@@ -50,6 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const storedToken = localStorage.getItem(TOKEN_KEY)
     if (!storedToken) return
+
+    const storedUser = loadUser()
+    if (storedUser) {
+      if (!token) setToken(storedToken)
+      if (!user) setUser(storedUser)
+      return
+    }
+
     if (user && token === storedToken) return
 
     let cancelled = false

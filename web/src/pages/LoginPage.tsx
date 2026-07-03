@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Moon, Shield, Sun } from 'lucide-react'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuthProviderPublic } from '../api/types'
+import { getAuth0Client, isAuth0Provider } from '../auth/auth0'
 import { getStoredAuthToken, useAuth } from '../auth/AuthContext'
 import { isJwtExpired } from '../auth/session'
 import { AppVersion } from '../components/AppVersion'
@@ -41,8 +42,84 @@ export function LoginPage() {
     queryFn: () => api.listAuthProviders(),
   })
 
-  const oidcProviders = providers.filter((p) => p.provider_type === 'oidc' || p.provider_type === 'saml')
+  const oidcProviders = providers.filter((p) => p.provider_type === 'oidc')
+  const samlProviders = providers.filter((p) => p.provider_type === 'saml')
   const ldapProviders = providers.filter((p) => p.provider_type === 'ldap')
+
+  useEffect(() => {
+    setSsoRedirecting(false)
+    const stored = getStoredAuthToken()
+    if (stored && isJwtExpired(stored)) {
+      clearSession()
+    }
+  }, [clearSession])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function handleAuth0Redirect() {
+      if (!searchParams.has('code') || !searchParams.has('state')) return
+      if (providers.length === 0) return
+
+      const auth0Providers = providers.filter(isAuth0Provider)
+      if (auth0Providers.length === 0) return
+
+      setSsoRedirecting(true)
+      setError(null)
+
+      try {
+        let matchedProvider: (typeof auth0Providers)[number] | null = null
+        let providerId = auth0Providers[0].id
+        let lastError: unknown = null
+
+        for (const candidate of auth0Providers) {
+          try {
+            const client = await getAuth0Client({
+              domain: candidate.oidc_domain,
+              clientId: candidate.oidc_client_id,
+            })
+            const result = await client.handleRedirectCallback()
+            matchedProvider = candidate
+            providerId =
+              (result.appState as { providerId?: string } | undefined)?.providerId ?? candidate.id
+            break
+          } catch (err) {
+            lastError = err
+          }
+        }
+
+        if (!matchedProvider) {
+          throw lastError instanceof Error ? lastError : new Error('SSO login failed')
+        }
+
+        const client = await getAuth0Client({
+          domain: matchedProvider.oidc_domain,
+          clientId: matchedProvider.oidc_client_id,
+        })
+        const claims = await client.getIdTokenClaims()
+        const idToken = claims?.__raw
+        if (!idToken) {
+          throw new Error('Missing identity token from Auth0')
+        }
+
+        const response = await api.completeOidcSession(providerId, { id_token: idToken })
+        if (cancelled) return
+
+        setSession(response.token, { ...response.user, is_super_admin: response.is_super_admin })
+        navigate('/dashboard', { replace: true })
+      } catch (err) {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : 'SSO login failed')
+        setSsoRedirecting(false)
+        window.history.replaceState({}, '', '/login')
+      }
+    }
+
+    void handleAuth0Redirect()
+    return () => {
+      cancelled = true
+    }
+  }, [providers, searchParams, setSession, navigate])
 
   const storedToken = getStoredAuthToken()
   const validStoredToken = storedToken && !isJwtExpired(storedToken) ? storedToken : null
@@ -65,19 +142,35 @@ export function LoginPage() {
     }
   }
 
-  function startSsoLogin(provider: AuthProviderPublic) {
+  async function startOidcLogin(provider: AuthProviderPublic) {
+    if (ssoRedirecting || !isAuth0Provider(provider)) return
+    setSsoRedirecting(true)
+    setError(null)
+    clearSession()
+
+    try {
+      const client = await getAuth0Client({
+        domain: provider.oidc_domain,
+        clientId: provider.oidc_client_id,
+      })
+      await client.loginWithRedirect({
+        appState: { providerId: provider.id },
+        authorizationParams: {
+          prompt: 'login',
+        },
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'SSO login failed')
+      setSsoRedirecting(false)
+    }
+  }
+
+  function startSamlLogin(provider: AuthProviderPublic) {
     if (ssoRedirecting) return
     setSsoRedirecting(true)
     setError(null)
     clearSession()
-    window.location.assign(ssoLoginUrl(provider))
-  }
-
-  function ssoLoginUrl(provider: AuthProviderPublic) {
-    if (provider.provider_type === 'oidc') {
-      return `${API_BASE}/auth/oidc/${provider.id}/login`
-    }
-    return `${API_BASE}/auth/saml/${provider.id}/login`
+    window.location.assign(`${API_BASE}/auth/saml/${provider.id}/login`)
   }
 
   async function onLdapSubmit(event: FormEvent, providerId: string) {
@@ -97,6 +190,8 @@ export function LoginPage() {
       setLdapLoading(false)
     }
   }
+
+  const ssoBusy = ssoRedirecting || (searchParams.has('code') && searchParams.has('state'))
 
   return (
     <div className={styles.wrap}>
@@ -129,95 +224,114 @@ export function LoginPage() {
           <p className={styles.error}>Your session has expired. Please sign in again.</p>
         )}
         {error && <p className={styles.error}>{error}</p>}
-
-        <form onSubmit={onSubmit} className={styles.form}>
-          <label className={styles.label}>
-            Username or email
-            <input
-              className={styles.input}
-              value={login}
-              onChange={(e) => setLogin(e.target.value)}
-              autoComplete="username"
-              required
-            />
-          </label>
-          <label className={styles.label}>
-            Password
-            <input
-              className={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          <button type="submit" className={styles.button} disabled={loading} data-no-global-button-hover="true">
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
-
-        {oidcProviders.length > 0 && (
-          <div className={styles.linkRow} style={{ marginTop: '1.25rem' }}>
-            <p className="text-sm text-text-secondary mb-2">Or continue with</p>
-            <div className="flex flex-col gap-2">
-              {oidcProviders.map((provider) => (
-                <button
-                  key={provider.id}
-                  type="button"
-                  className={styles.button}
-                  disabled={ssoRedirecting}
-                  onClick={() => startSsoLogin(provider)}
-                  data-no-global-button-hover="true"
-                >
-                  {ssoRedirecting ? 'Redirecting…' : provider.name}
-                </button>
-              ))}
-            </div>
-          </div>
+        {ssoBusy && !error && (
+          <p className={styles.subtitle}>Completing sign-in…</p>
         )}
 
-        {ldapProviders.map((provider) => (
-          <form
-            key={provider.id}
-            className={styles.form}
-            style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}
-            onSubmit={(e) => onLdapSubmit(e, provider.id)}
-          >
-            <p className="text-sm text-text-secondary mb-2">{provider.name} (LDAP)</p>
-            <label className={styles.label}>
-              Username
-              <input
-                className={styles.input}
-                value={ldapUser}
-                onChange={(e) => setLdapUser(e.target.value)}
-                required
-              />
-            </label>
-            <label className={styles.label}>
-              Password
-              <input
-                className={styles.input}
-                type="password"
-                value={ldapPass}
-                onChange={(e) => setLdapPass(e.target.value)}
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              className={styles.button}
-              disabled={ldapLoading}
-              data-no-global-button-hover="true"
-            >
-              {ldapLoading ? 'Signing in…' : `Sign in with ${provider.name}`}
-            </button>
-          </form>
-        ))}
+        {!ssoBusy && (
+          <>
+            <form onSubmit={onSubmit} className={styles.form}>
+              <label className={styles.label}>
+                Username or email
+                <input
+                  className={styles.input}
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value)}
+                  autoComplete="username"
+                  required
+                />
+              </label>
+              <label className={styles.label}>
+                Password
+                <input
+                  className={styles.input}
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </label>
+              <button type="submit" className={styles.button} disabled={loading} data-no-global-button-hover="true">
+                {loading ? 'Signing in…' : 'Sign in'}
+              </button>
+            </form>
 
-        <p className={styles.linkRow} style={{ marginTop: '1rem' }}>
-          New here? <Link to="/register">Create an account</Link>
-        </p>
+            {(oidcProviders.length > 0 || samlProviders.length > 0) && (
+              <div className={styles.linkRow} style={{ marginTop: '1.25rem' }}>
+                <p className="text-sm text-text-secondary mb-2">Or continue with</p>
+                <div className="flex flex-col gap-2">
+                  {oidcProviders.map((provider) => (
+                    <button
+                      key={provider.id}
+                      type="button"
+                      className={styles.button}
+                      disabled={ssoRedirecting}
+                      onClick={() => void startOidcLogin(provider)}
+                      data-no-global-button-hover="true"
+                    >
+                      {ssoRedirecting ? 'Redirecting…' : provider.name}
+                    </button>
+                  ))}
+                  {samlProviders.map((provider) => (
+                    <button
+                      key={provider.id}
+                      type="button"
+                      className={styles.button}
+                      disabled={ssoRedirecting}
+                      onClick={() => startSamlLogin(provider)}
+                      data-no-global-button-hover="true"
+                    >
+                      {ssoRedirecting ? 'Redirecting…' : provider.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {ldapProviders.map((provider) => (
+              <form
+                key={provider.id}
+                className={styles.form}
+                style={{ marginTop: '1rem', borderTop: '1px solid var(--border)', paddingTop: '1rem' }}
+                onSubmit={(e) => onLdapSubmit(e, provider.id)}
+              >
+                <p className="text-sm text-text-secondary mb-2">{provider.name} (LDAP)</p>
+                <label className={styles.label}>
+                  Username
+                  <input
+                    className={styles.input}
+                    value={ldapUser}
+                    onChange={(e) => setLdapUser(e.target.value)}
+                    required
+                  />
+                </label>
+                <label className={styles.label}>
+                  Password
+                  <input
+                    className={styles.input}
+                    type="password"
+                    value={ldapPass}
+                    onChange={(e) => setLdapPass(e.target.value)}
+                    required
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className={styles.button}
+                  disabled={ldapLoading}
+                  data-no-global-button-hover="true"
+                >
+                  {ldapLoading ? 'Signing in…' : `Sign in with ${provider.name}`}
+                </button>
+              </form>
+            ))}
+
+            <p className={styles.linkRow} style={{ marginTop: '1rem' }}>
+              New here? <Link to="/register">Create an account</Link>
+            </p>
+          </>
+        )}
       </div>
 
       <footer className={styles.footer}>

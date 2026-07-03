@@ -874,6 +874,8 @@ export interface AuthProviderPublic {
   id: string
   name: string
   provider_type: AuthProviderType
+  oidc_domain?: string
+  oidc_client_id?: string
 }
 
 export interface AuthProviderAdmin {

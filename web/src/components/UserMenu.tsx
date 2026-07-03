@@ -1,6 +1,9 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { Shield, LogOut, User } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { api } from '../api/client'
+import { getAuth0Client, isAuth0Provider } from '../auth/auth0'
 import { useAuth } from '../auth/AuthContext'
 import { useSuperAdmin } from '../hooks/useSuperAdmin'
 import { cn } from '../utils/cn'
@@ -12,7 +15,7 @@ function initials(username: string) {
 export function UserMenu() {
   const { user, clearSession } = useAuth()
   const isSuperAdmin = useSuperAdmin()
-  const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -25,6 +28,33 @@ export function UserMenu() {
     document.addEventListener('mousedown', onClickOutside)
     return () => document.removeEventListener('mousedown', onClickOutside)
   }, [])
+
+  async function signOut() {
+    setOpen(false)
+    clearSession()
+    queryClient.clear()
+
+    try {
+      const providers = await api.listAuthProviders()
+      const oidc = providers.find(isAuth0Provider)
+      if (oidc) {
+        const client = await getAuth0Client({
+          domain: oidc.oidc_domain,
+          clientId: oidc.oidc_client_id,
+        })
+        await client.logout({
+          logoutParams: {
+            returnTo: `${window.location.origin}/login`,
+          },
+        })
+        return
+      }
+    } catch {
+      // fall through to local login page
+    }
+
+    window.location.replace('/login')
+  }
 
   if (!user) return null
 
@@ -72,10 +102,7 @@ export function UserMenu() {
               'w-full flex items-center gap-2 px-4 py-2.5 text-sm text-text hover:bg-hover text-left',
             )}
             data-no-global-button-hover="true"
-            onClick={() => {
-              clearSession()
-              navigate('/login')
-            }}
+            onClick={() => void signOut()}
           >
             <LogOut size={14} />
             Sign out

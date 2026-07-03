@@ -23,6 +23,11 @@ pub fn sso_routes() -> Router<AppState> {
     Router::new()
         .route("/auth/providers", get(list_public_providers))
         .route("/auth/oidc/{provider_id}/login", get(oidc_login))
+        .route(
+            "/auth/oidc/{provider_id}/session",
+            post(super::oidc::oidc_session),
+        )
+        .route("/auth/oidc/{provider_id}/logout", get(super::oidc::oidc_logout))
         .route("/auth/oidc/callback", get(super::oidc::oidc_callback))
         .route("/auth/saml/{provider_id}/login", get(super::saml::saml_login))
         .route("/auth/saml/{provider_id}/acs", post(super::saml::saml_acs))
@@ -112,12 +117,50 @@ fn to_safe(provider: AuthProvider) -> AuthProviderSafe {
     }
 }
 
+#[derive(Serialize)]
+struct AuthProviderPublicResponse {
+    id: Uuid,
+    name: String,
+    provider_type: AuthProviderType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oidc_domain: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    oidc_client_id: Option<String>,
+}
+
+fn to_public_response(provider: AuthProvider) -> AuthProviderPublicResponse {
+    let (oidc_domain, oidc_client_id) = if provider.provider_type == AuthProviderType::Oidc {
+        let domain = provider
+            .issuer_url
+            .as_deref()
+            .and_then(|issuer| super::oidc::issuer_to_oidc_domain(issuer).ok());
+        (domain, provider.client_id.clone())
+    } else {
+        (None, None)
+    };
+
+    AuthProviderPublicResponse {
+        id: provider.id,
+        name: provider.name,
+        provider_type: provider.provider_type,
+        oidc_domain,
+        oidc_client_id,
+    }
+}
+
 async fn list_public_providers(
     State(state): State<AppState>,
-) -> Result<Json<Vec<AuthProviderPublic>>, ApiError> {
-    let rows = sqlx::query_as::<_, AuthProviderPublic>(
+) -> Result<Json<Vec<AuthProviderPublicResponse>>, ApiError> {
+    let rows = sqlx::query_as::<_, AuthProvider>(
         r#"
-        SELECT id, name, provider_type
+        SELECT
+            id, name, provider_type, enabled,
+            issuer_url, client_id, client_secret, scopes,
+            idp_entity_id, idp_sso_url, idp_certificate, sp_entity_id,
+            ldap_url, ldap_bind_dn, ldap_bind_password, ldap_base_dn,
+            ldap_user_filter, ldap_email_attr, ldap_display_name_attr,
+            ldap_username_attr, ldap_group_filter,
+            created_at, updated_at
         FROM auth_providers
         WHERE enabled = true
         ORDER BY name
@@ -127,7 +170,9 @@ async fn list_public_providers(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    Ok(Json(rows))
+    Ok(Json(
+        rows.into_iter().map(to_public_response).collect(),
+    ))
 }
 
 async fn list_auth_providers(
