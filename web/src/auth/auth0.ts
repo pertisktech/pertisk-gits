@@ -24,6 +24,7 @@ export function getAuth0Client(config: Auth0ClientConfig): Promise<Auth0Client> 
       clientId: config.clientId,
       authorizationParams: {
         redirect_uri: `${window.location.origin}/login`,
+        scope: 'openid profile email',
       },
       cacheLocation: 'memory',
       useRefreshTokens: false,

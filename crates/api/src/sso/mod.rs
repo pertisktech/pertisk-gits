@@ -261,6 +261,7 @@ mod tests {
     }
 }
 
+#[derive(Clone)]
 pub struct ExternalUser {
     pub subject: String,
     pub email: String,
@@ -268,11 +269,30 @@ pub struct ExternalUser {
     pub username_hint: Option<String>,
 }
 
+pub(crate) fn normalize_email(email: &str) -> String {
+    email.trim().to_ascii_lowercase()
+}
+
+pub(crate) fn is_placeholder_sso_email(email: &str) -> bool {
+    email.trim().to_ascii_lowercase().ends_with("@sso.local")
+}
+
 pub async fn jit_provision_user(
     pool: &PgPool,
     provider: &AuthProvider,
     external: &ExternalUser,
 ) -> Result<User, ApiError> {
+    let external = ExternalUser {
+        email: normalize_email(&external.email),
+        ..external.clone()
+    };
+    if external.email.is_empty() || is_placeholder_sso_email(&external.email) {
+        return Err(DomainError::Validation(
+            "SSO login requires a valid email from your identity provider".into(),
+        )
+        .into());
+    }
+
     if let Some(existing_id) = sqlx::query_scalar::<_, Uuid>(
         r#"
         SELECT user_id FROM user_external_identities
@@ -285,16 +305,39 @@ pub async fn jit_provision_user(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
     {
-        return load_user_by_id(pool, existing_id).await;
+        let user = load_user_by_id(pool, existing_id).await?;
+        if normalize_email(&user.email) == external.email {
+            return Ok(user);
+        }
+
+        if let Some(correct_id) = find_user_id_by_email(pool, &external.email).await? {
+            if correct_id != existing_id {
+                sqlx::query(
+                    r#"
+                    DELETE FROM user_external_identities
+                    WHERE provider_id = $1 AND external_subject = $2
+                    "#,
+                )
+                .bind(provider.id)
+                .bind(&external.subject)
+                .execute(pool)
+                .await
+                .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+            } else {
+                return Ok(user);
+            }
+        } else {
+            return Ok(user);
+        }
     }
 
     if let Some(user_id) = find_user_id_by_email(pool, &external.email).await? {
         ensure_can_link_provider_identity(pool, provider.id, user_id, &external.subject).await?;
-        link_external_identity(pool, user_id, provider.id, external).await?;
+        link_external_identity(pool, user_id, provider.id, &external).await?;
         return load_user_by_id(pool, user_id).await;
     }
 
-    let username = unique_username(pool, external).await?;
+    let username = unique_username(pool, &external).await?;
     let display_name = external.display_name.clone();
 
     let user = sqlx::query_as::<_, User>(
@@ -319,7 +362,7 @@ pub async fn jit_provision_user(
         other => ApiError::from(DomainError::Internal(other.to_string())),
     })?;
 
-    link_external_identity(pool, user.id, provider.id, external).await?;
+    link_external_identity(pool, user.id, provider.id, &external).await?;
 
     Ok(user)
 }
@@ -377,6 +420,9 @@ async fn link_external_identity(
         r#"
         INSERT INTO user_external_identities (user_id, provider_id, external_subject, external_email)
         VALUES ($1, $2, $3, $4)
+        ON CONFLICT (provider_id, external_subject) DO UPDATE SET
+            user_id = EXCLUDED.user_id,
+            external_email = EXCLUDED.external_email
         "#,
     )
     .bind(user_id)

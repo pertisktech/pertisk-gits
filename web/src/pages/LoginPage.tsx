@@ -102,7 +102,17 @@ export function LoginPage() {
           throw new Error('Missing identity token from Auth0')
         }
 
-        const response = await api.completeOidcSession(providerId, { id_token: idToken })
+        let accessToken: string | undefined
+        try {
+          accessToken = await client.getTokenSilently()
+        } catch {
+          accessToken = undefined
+        }
+
+        const response = await api.completeOidcSession(providerId, {
+          id_token: idToken,
+          access_token: accessToken,
+        })
         if (cancelled) return
 
         setSession(response.token, { ...response.user, is_super_admin: response.is_super_admin })
@@ -157,6 +167,7 @@ export function LoginPage() {
         appState: { providerId: provider.id },
         authorizationParams: {
           prompt: 'login',
+          scope: 'openid profile email',
         },
       })
     } catch (err) {

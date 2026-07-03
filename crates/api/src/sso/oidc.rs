@@ -44,7 +44,7 @@ struct OidcTokenResponse {
     access_token: Option<String>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct OidcIdClaims {
     sub: String,
     email: Option<String>,
@@ -55,6 +55,15 @@ struct OidcIdClaims {
 #[derive(Deserialize)]
 pub struct OidcSessionRequest {
     id_token: String,
+    access_token: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OidcUserInfo {
+    sub: String,
+    email: Option<String>,
+    name: Option<String>,
+    preferred_username: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
@@ -250,18 +259,12 @@ async fn oidc_callback_inner(
         .id_token
         .ok_or(DomainError::Unauthorized)?;
     let claims = decode_id_token_claims(&id_token)?;
-
-    let email = claims
-        .email
-        .or(claims.preferred_username.as_ref().map(|u| format!("{u}@sso.local")))
-        .ok_or(DomainError::Validation("OIDC token missing email".into()))?;
-
-    let external = ExternalUser {
-        subject: claims.sub,
-        email: email.clone(),
-        display_name: claims.name,
-        username_hint: claims.preferred_username,
-    };
+    let external = external_user_from_oidc(
+        &provider,
+        claims,
+        token_response.access_token.as_deref(),
+    )
+    .await?;
 
     let user = jit_provision_user(&state.pool, &provider, &external).await?;
 
@@ -274,7 +277,11 @@ async fn oidc_callback_inner(
             action: format!("oidc login via {}", provider.name),
             resource_type: Some("auth_provider".into()),
             resource_id: Some(provider.id.to_string()),
-            metadata: Some(serde_json::json!({ "provider_type": "oidc", "email": email })),
+            metadata: Some(serde_json::json!({
+                "provider_type": "oidc",
+                "email": external.email,
+                "subject": external.subject,
+            })),
             ip_address: None,
             user_agent: None,
         },
@@ -297,21 +304,8 @@ pub async fn oidc_session(
     }
 
     let claims = verify_id_token_for_provider(&provider, &body.id_token).await?;
-    let email = claims
-        .email
-        .clone()
-        .or(claims
-            .preferred_username
-            .as_ref()
-            .map(|u| format!("{u}@sso.local")))
-        .ok_or(DomainError::Validation("OIDC token missing email".into()))?;
-
-    let external = ExternalUser {
-        subject: claims.sub,
-        email: email.clone(),
-        display_name: claims.name,
-        username_hint: claims.preferred_username,
-    };
+    let external =
+        external_user_from_oidc(&provider, claims, body.access_token.as_deref()).await?;
 
     let user = jit_provision_user(&state.pool, &provider, &external).await?;
 
@@ -324,7 +318,11 @@ pub async fn oidc_session(
             action: format!("oidc spa login via {}", provider.name),
             resource_type: Some("auth_provider".into()),
             resource_id: Some(provider.id.to_string()),
-            metadata: Some(serde_json::json!({ "provider_type": "oidc", "email": email })),
+            metadata: Some(serde_json::json!({
+                "provider_type": "oidc",
+                "email": external.email,
+                "subject": external.subject,
+            })),
             ip_address: None,
             user_agent: None,
         },
@@ -546,4 +544,63 @@ fn decode_id_token_claims(id_token: &str) -> Result<OidcIdClaims, ApiError> {
         .or_else(|_| base64::engine::general_purpose::STANDARD.decode(payload))
         .map_err(|_| DomainError::Unauthorized)?;
     serde_json::from_slice(&bytes).map_err(|_| DomainError::Unauthorized.into())
+}
+
+async fn fetch_oidc_userinfo(issuer_url: &str, access_token: &str) -> Result<OidcUserInfo, ApiError> {
+    let issuer = normalize_issuer_url(issuer_url)?;
+    let url = format!("{issuer}/userinfo");
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .bearer_auth(access_token)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(format!("userinfo request failed: {e}"))))?;
+    if !resp.status().is_success() {
+        return Err(ApiError::from(DomainError::Internal(format!(
+            "userinfo returned HTTP {}",
+            resp.status()
+        ))));
+    }
+    resp.json::<OidcUserInfo>()
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(format!("invalid userinfo response: {e}"))))
+}
+
+fn usable_oidc_email(email: Option<String>) -> Option<String> {
+    email
+        .map(|value| super::normalize_email(&value))
+        .filter(|value| !value.is_empty() && !super::is_placeholder_sso_email(value))
+}
+
+pub(crate) async fn external_user_from_oidc(
+    provider: &AuthProvider,
+    claims: OidcIdClaims,
+    access_token: Option<&str>,
+) -> Result<ExternalUser, ApiError> {
+    let mut email = usable_oidc_email(claims.email.clone());
+
+    if email.is_none() {
+        if let Some(token) = access_token.filter(|value| !value.is_empty()) {
+            if let Some(issuer) = provider.issuer_url.as_deref() {
+                if let Ok(info) = fetch_oidc_userinfo(issuer, token).await {
+                    if info.sub == claims.sub {
+                        email = usable_oidc_email(info.email);
+                    }
+                }
+            }
+        }
+    }
+
+    let email = email.ok_or(DomainError::Validation(
+        "OIDC login requires an email from your identity provider — enable the email scope in Auth0"
+            .into(),
+    ))?;
+
+    Ok(ExternalUser {
+        subject: claims.sub,
+        email,
+        display_name: claims.name,
+        username_hint: claims.preferred_username,
+    })
 }

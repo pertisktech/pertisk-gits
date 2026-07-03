@@ -1338,7 +1338,7 @@ export const api = {
   listAuthProviders: () =>
     request<import('./types').AuthProviderPublic[]>('/auth/providers'),
 
-  completeOidcSession: (providerId: string, payload: { id_token: string }) =>
+  completeOidcSession: (providerId: string, payload: { id_token: string; access_token?: string }) =>
     request<AuthResponse>(`/auth/oidc/${providerId}/session`, {
       method: 'POST',
       body: JSON.stringify(payload),
