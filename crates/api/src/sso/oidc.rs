@@ -1,7 +1,6 @@
 use axum::{
     extract::{Query, State},
-    http::{header, HeaderMap, HeaderValue},
-    response::{IntoResponse, Redirect},
+    response::IntoResponse,
 };
 use base64::Engine;
 use pertisk_domain::models::{AuditEventType, AuthProviderType};
@@ -11,9 +10,9 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{
-    api_callback_url, ensure_enabled_provider, frontend_callback_url, frontend_login_url_with_error,
-    issue_auth_response, jit_provision_user, load_provider, random_token, store_flow_state,
-    take_flow_state, ExternalUser,
+    api_callback_url, browser_login_error_response, browser_redirect_response,
+    browser_session_response, ensure_enabled_provider, issue_auth_response, jit_provision_user,
+    load_provider, random_token, store_flow_state, take_flow_state, ExternalUser, SsoHtmlPage,
 };
 use crate::{
     audit::{record_audit_event, AuditEventInput},
@@ -79,47 +78,45 @@ pub async fn start_oidc_login(
         .as_deref()
         .ok_or(DomainError::Validation("missing client_id".into()))?;
     let redirect_uri = api_callback_url(state, "/auth/oidc/callback");
-    let scopes = urlencoding::encode(provider.scopes.as_str());
 
-    let auth_url = format!(
-        "{}?response_type=code&client_id={}&redirect_uri={}&scope={}&state={}&code_challenge={}&code_challenge_method=S256&prompt=login",
-        discovery.authorization_endpoint,
-        urlencoding::encode(client_id),
-        urlencoding::encode(&redirect_uri),
-        scopes,
-        urlencoding::encode(&flow_state),
-        urlencoding::encode(&challenge),
-    );
-
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        header::CACHE_CONTROL,
-        HeaderValue::from_static("no-store, no-cache"),
-    );
-
-    Ok((headers, Redirect::to(&auth_url)).into_response())
+    let mut auth_url = reqwest::Url::parse(&discovery.authorization_endpoint).map_err(|e| {
+        ApiError::from(DomainError::Internal(format!(
+            "invalid authorization_endpoint from discovery: {e}"
+        )))
+    })?;
+    {
+        let mut query = auth_url.query_pairs_mut();
+        query.append_pair("response_type", "code");
+        query.append_pair("client_id", client_id);
+        query.append_pair("redirect_uri", &redirect_uri);
+        query.append_pair("scope", provider.scopes.as_str());
+        query.append_pair("state", &flow_state);
+        query.append_pair("code_challenge", &challenge);
+        query.append_pair("code_challenge_method", "S256");
+    }
+    Ok(browser_redirect_response(&auth_url.to_string()).into_response())
 }
 
 pub async fn oidc_callback(
     State(state): State<AppState>,
     Query(query): Query<OidcCallbackQuery>,
-) -> Redirect {
+) -> impl IntoResponse {
     match oidc_callback_inner(&state, query).await {
-        Ok(redirect) => redirect,
-        Err(err) => Redirect::to(&frontend_login_url_with_error(&state, &err.user_message())),
+        Ok(page) => page.into_response(),
+        Err(err) => browser_login_error_response(&state, &err.user_message()).into_response(),
     }
 }
 
 async fn oidc_callback_inner(
     state: &AppState,
     query: OidcCallbackQuery,
-) -> Result<Redirect, ApiError> {
+) -> Result<SsoHtmlPage, ApiError> {
     if let Some(error) = query.error {
         let message = query
             .error_description
             .unwrap_or(error)
             .replace('+', " ");
-        return Ok(Redirect::to(&frontend_login_url_with_error(state, &message)));
+        return Ok(browser_login_error_response(state, &message));
     }
 
     let code = query
@@ -221,7 +218,7 @@ async fn oidc_callback_inner(
     .await?;
 
     let auth = issue_auth_response(state, user, "oidc").await?;
-    Ok(Redirect::to(&frontend_callback_url(state, &auth.token)))
+    Ok(browser_session_response(state, &auth))
 }
 
 /// Normalize OIDC issuer URLs from admin input (trim, default https, strip discovery suffix).

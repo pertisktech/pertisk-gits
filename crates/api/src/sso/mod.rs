@@ -1,3 +1,7 @@
+use axum::{
+    http::{header, HeaderMap, HeaderValue},
+    response::{Html, IntoResponse},
+};
 use chrono::{Duration, Utc};
 use pertisk_domain::{models::*, DomainError};
 use rand::RngCore;
@@ -64,6 +68,89 @@ pub fn frontend_login_url_with_error(state: &AppState, message: &str) -> String 
         public_base_url(state),
         urlencoding::encode(message)
     )
+}
+
+pub(crate) type SsoHtmlPage = (HeaderMap, Html<String>);
+
+fn sso_html_headers() -> HeaderMap {
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("no-store, no-cache"),
+    );
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    headers
+}
+
+fn html_escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+}
+
+/// Client-side navigation to an external or internal URL.
+///
+/// Required when a reverse proxy follows HTTP redirects on HTTP/3 (OIDC login start).
+pub fn browser_redirect_response(target_url: &str) -> SsoHtmlPage {
+    let href = html_escape_attr(target_url);
+    let target_js = serde_json::to_string(target_url).unwrap_or_else(|_| "\"/\"".into());
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="refresh" content="0;url={href}">
+<title>Redirecting…</title>
+</head>
+<body>
+<p>Redirecting… <a href="{href}">Continue</a></p>
+<script>location.replace({target_js});</script>
+</body>
+</html>"#
+    );
+    (sso_html_headers(), Html(html))
+}
+
+/// Complete SSO in the browser without an HTTP redirect (OIDC/SAML callback).
+///
+/// pertisk-proxy HTTP/3 follows redirects server-side, so redirecting to
+/// `/auth/callback?token=…` never reaches the browser with the JWT in the URL.
+pub fn browser_session_response(state: &AppState, auth: &AuthResponse) -> SsoHtmlPage {
+    let dashboard = format!("{}/dashboard", public_base_url(state));
+    let dashboard_js = serde_json::to_string(&dashboard).unwrap_or_else(|_| "\"/dashboard\"".into());
+    let token_js = serde_json::to_string(&auth.token).unwrap_or_else(|_| "\"\"".into());
+    let user_js = serde_json::json!({
+        "id": auth.user.id,
+        "username": auth.user.username,
+        "email": auth.user.email,
+        "display_name": auth.user.display_name,
+        "created_at": auth.user.created_at,
+        "is_super_admin": auth.is_super_admin,
+    });
+    let user_js = serde_json::to_string(&user_js).unwrap_or_else(|_| "\"{}\"".into());
+    let html = format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Signing in…</title></head>
+<body>
+<p>Signing in…</p>
+<script>
+localStorage.setItem("pertisk_token", {token_js});
+localStorage.setItem("pertisk_user", {user_js});
+location.replace({dashboard_js});
+</script>
+</body>
+</html>"#
+    );
+    (sso_html_headers(), Html(html))
+}
+
+pub fn browser_login_error_response(state: &AppState, message: &str) -> SsoHtmlPage {
+    browser_redirect_response(&frontend_login_url_with_error(state, message))
 }
 
 pub async fn store_flow_state(

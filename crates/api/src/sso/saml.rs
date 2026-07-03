@@ -1,6 +1,6 @@
 use axum::{
     extract::{Form, Path, State},
-    response::{IntoResponse, Redirect, Response},
+    response::{IntoResponse, Response},
 };
 use base64::Engine;
 use flate2::read::DeflateDecoder;
@@ -12,9 +12,9 @@ use std::io::Read;
 use uuid::Uuid;
 
 use super::{
-    api_callback_url, ensure_enabled_provider, frontend_callback_url, issue_auth_response,
-    jit_provision_user, load_provider, public_base_url, store_flow_state, take_flow_state,
-    ExternalUser,
+    api_callback_url, browser_redirect_response, browser_session_response, ensure_enabled_provider,
+    issue_auth_response, jit_provision_user, load_provider, public_base_url, store_flow_state,
+    take_flow_state, ExternalUser,
 };
 use crate::{
     audit::{record_audit_event, AuditEventInput},
@@ -33,7 +33,7 @@ pub struct SamlAcsForm {
 pub async fn saml_login(
     State(state): State<AppState>,
     Path(provider_id): Path<Uuid>,
-) -> Result<Redirect, ApiError> {
+) -> Result<impl IntoResponse, ApiError> {
     let provider = load_provider(&state.pool, provider_id).await?;
     ensure_enabled_provider(&provider)?;
     if provider.provider_type != AuthProviderType::Saml {
@@ -64,7 +64,7 @@ pub async fn saml_login(
         urlencoding::encode(&relay_state)
     );
 
-    Ok(Redirect::temporary(&redirect_url))
+    Ok(browser_redirect_response(&redirect_url).into_response())
 }
 
 pub async fn saml_acs(
@@ -127,7 +127,7 @@ pub async fn saml_acs(
     .await?;
 
     let auth = issue_auth_response(&state, user, "saml").await?;
-    Ok(Redirect::temporary(&frontend_callback_url(&state, &auth.token)).into_response())
+    Ok(browser_session_response(&state, &auth).into_response())
 }
 
 fn deflate_base64(input: &str) -> String {
