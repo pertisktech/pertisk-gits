@@ -90,8 +90,8 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="app-segment inline-flex !mb-0 !border-b-0">
+      <div className="app-segment-bar">
+        <div className="app-segment">
           {(['open', 'closed', 'all'] as const).map((state) => (
             <button
               key={state}
@@ -106,7 +106,7 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
           ))}
         </div>
         {token && (
-          <PrimaryButton type="button" className="ml-auto" onClick={() => setShowNew((v) => !v)}>
+          <PrimaryButton type="button" onClick={() => setShowNew((v) => !v)}>
             <Plus size={14} />
             New pull request
           </PrimaryButton>
