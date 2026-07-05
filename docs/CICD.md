@@ -169,6 +169,7 @@ jobs:
   test:
     runs-on: linux
     needs: []          # optional DAG deps
+    parallel: 4        # optional — fan out into N parallel job instances
     required: true     # default; optional job: allow_failure: true or required: false
     timeout_minutes: 30  # optional; kills the job after N minutes (runner + API reclaim)
     if:                  # optional — structured or string (see CICD_WORKFLOWS.md)
@@ -327,6 +328,35 @@ When a **required** job fails, remaining **queued** jobs are marked **skipped** 
 Jobs with **`allow_failure: true`** / **`required: false`** do not trigger fail-fast: downstream `needs:` jobs still queue, and the pipeline can finish **success** if every required job passed.
 
 Parallel required jobs without `needs` still follow fail-fast (first required failure stops the run).
+
+### Parallel jobs (`parallel: N`)
+
+Run the same job **N times in parallel** (GitLab-style `parallel:`). The scheduler expands one YAML job into `job [1/N]` … `job [N/N]` instances. Each instance gets:
+
+| Variable | Example |
+|----------|---------|
+| `CI_PARALLEL_INDEX` | `2` |
+| `CI_PARALLEL_TOTAL` | `4` |
+| `CI_NODE_INDEX` / `CI_NODE_TOTAL` | Same as above (GitLab aliases) |
+
+Downstream `needs:` jobs wait for **all** parallel instances of their dependencies to finish.
+
+```yaml
+jobs:
+  test:
+    runs-on: linux
+    parallel: 4
+    steps:
+      - run: echo "Shard ${CI_PARALLEL_INDEX}/${CI_PARALLEL_TOTAL}"
+
+  report:
+    runs-on: linux
+    needs: [test]
+    steps:
+      - run: echo "All shards done"
+```
+
+Maximum `parallel` is **50**. Use multiple runners (or `PERTISK_RUNNER_MAX_PARALLEL` on a single process) to execute instances concurrently. Example: `crates/cicd/examples/pertisk-ci-parallel.yaml`.
 
 ### Cancel pipeline / cancel step
 

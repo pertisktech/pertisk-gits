@@ -80,6 +80,7 @@ fn synthetic_config(job_count: usize) -> PipelineConfig {
                 }],
                 timeout_minutes: None,
                 artifacts: vec![],
+                parallel: None,
             },
         );
     }

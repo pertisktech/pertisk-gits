@@ -63,6 +63,9 @@ pub struct Job {
     pub timeout_minutes: Option<u32>,
     #[serde(default)]
     pub artifacts: Vec<ArtifactDecl>,
+    /// Run this job N times in parallel (GitLab-style `parallel:`). Max 50.
+    #[serde(default)]
+    pub parallel: Option<u32>,
 }
 
 impl<'de> Deserialize<'de> for Job {
@@ -93,6 +96,8 @@ impl<'de> Deserialize<'de> for Job {
             timeout_minutes: Option<u32>,
             #[serde(default)]
             artifacts: Vec<ArtifactDecl>,
+            #[serde(default)]
+            parallel: Option<u32>,
         }
 
         let raw = JobRaw::deserialize(deserializer)?;
@@ -107,6 +112,7 @@ impl<'de> Deserialize<'de> for Job {
             steps: raw.steps,
             timeout_minutes: raw.timeout_minutes,
             artifacts: raw.artifacts,
+            parallel: raw.parallel.filter(|count| *count > 1),
         })
     }
 }
@@ -404,6 +410,23 @@ jobs:
         .unwrap();
         assert!(!cfg.jobs["lint"].required);
         assert!(cfg.jobs["build"].required);
+    }
+
+    #[test]
+    fn parses_job_parallel() {
+        let cfg = parse_pipeline_yaml(
+            r#"
+on: push
+jobs:
+  test:
+    runs-on: linux
+    parallel: 3
+    steps:
+      - run: echo test
+"#,
+        )
+        .unwrap();
+        assert_eq!(cfg.jobs["test"].parallel, Some(3));
     }
 
     #[test]

@@ -3016,7 +3016,7 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
         FROM job_runs j
         INNER JOIN runners r ON r.id = $1
         WHERE j.status = 'queued'
-          AND j.runs_on = ANY(r.labels)
+          AND string_to_array(j.runs_on, ',') <@ r.labels
           AND NOT EXISTS (
             SELECT 1
             FROM pipeline_runs p
@@ -4380,6 +4380,7 @@ mod runner_instance_tests {
                 steps: vec![],
                 timeout_minutes: None,
                 artifacts: vec![],
+                parallel: None,
             }
         }
 

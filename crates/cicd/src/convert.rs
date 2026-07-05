@@ -200,9 +200,15 @@ fn gitlab_job_to_pertisk(
         warnings.push("GitLab `except` is not converted — use Pertisk `if:` with branch/tag patterns.".into());
     }
 
-    if job.contains_key("parallel") || job.contains_key("trigger") {
-        warnings.push("GitLab `parallel`/`trigger` jobs are not converted.".into());
+    if job.contains_key("trigger") {
+        warnings.push("GitLab `trigger` jobs are not converted.".into());
     }
+
+    if job.get("parallel").and_then(|v| v.as_mapping()).is_some() {
+        warnings.push("GitLab `parallel:matrix` is not converted — use numeric `parallel:`.".into());
+    }
+
+    let parallel = gitlab_parallel(job);
 
     let job_if = gitlab_if_from_job(job, &mut warnings);
 
@@ -248,7 +254,18 @@ fn gitlab_job_to_pertisk(
         steps,
         timeout_minutes,
         artifacts,
+        parallel,
     })
+}
+
+fn gitlab_parallel(job: &Mapping) -> Option<u32> {
+    match job.get("parallel") {
+        Some(serde_yaml::Value::Number(number)) => number
+            .as_u64()
+            .and_then(|value| u32::try_from(value).ok())
+            .filter(|count| *count > 1),
+        _ => None,
+    }
 }
 
 fn gitlab_if_from_job(job: &Mapping, warnings: &mut Vec<String>) -> Option<JobIfCondition> {
@@ -425,6 +442,7 @@ fn convert_github_actions(raw: &str) -> Result<(PipelineConfig, Vec<String>), Co
                 steps,
                 timeout_minutes,
                 artifacts: Vec::new(),
+                parallel: None,
             },
         );
     }
@@ -808,7 +826,7 @@ test:
     }
 
     #[test]
-    fn converts_gitlab_rules_and_parallel_warnings() {
+    fn converts_gitlab_rules_and_parallel() {
         let raw = r#"
 job:
   script: echo ok
@@ -818,7 +836,7 @@ job:
 "#;
         let result = convert_legacy_ci(LegacyCiKind::Gitlab, ".gitlab-ci.yml", raw).unwrap();
         assert!(result.warnings.iter().any(|w| w.contains("rules")));
-        assert!(result.warnings.iter().any(|w| w.contains("parallel")));
+        assert!(result.converted_yaml.contains("parallel: 2"));
     }
 
     #[test]

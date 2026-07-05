@@ -1,5 +1,6 @@
 pub mod config;
 pub mod convert;
+pub mod parallel;
 pub mod environment;
 pub mod predefined;
 pub mod secrets;

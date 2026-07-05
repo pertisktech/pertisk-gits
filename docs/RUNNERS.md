@@ -27,6 +27,7 @@ Save the `ptr_…` token — it is shown once.
 | `PERTISK_RUNNER_TOKEN` | Yes | Token from registration |
 | `PERTISK_API_URL` | Yes | API base URL (e.g. `https://git.example.com`) |
 | `PERTISK_REPOS_ROOT` | No | Path to bare repos on the git host (faster checkout) |
+| `PERTISK_RUNNER_MAX_PARALLEL` | No | Max concurrent jobs per runner process (default `1`) |
 | `RUST_LOG` | No | Default `info,pertisk_runner=info` |
 
 Runners do **not** need inbound ports — they poll the API outbound.
@@ -67,6 +68,19 @@ sudo -u pertisk-runner docker ps
 ```
 
 The RPM postinstall adds `pertisk-runner` to the `docker` group when Docker is installed.
+
+### Parallel job execution
+
+Independent queued jobs (no `needs` between them) or expanded `parallel: N` instances run concurrently when enough runners are available.
+
+- **Scale horizontally:** register multiple runners with the same labels (Helm `replicaCount`, multiple systemd hosts, etc.).
+- **Scale per process:** set `PERTISK_RUNNER_MAX_PARALLEL=4` so one runner process claims and runs up to four jobs at once.
+
+```ini
+PERTISK_RUNNER_MAX_PARALLEL=4
+```
+
+`runs-on: [linux, docker]` requires the runner to have **both** labels (subset match).
 
 ---
 

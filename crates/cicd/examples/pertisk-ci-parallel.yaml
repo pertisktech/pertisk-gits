@@ -1,0 +1,27 @@
+# Example: parallel test shards across multiple runners.
+#
+# With `parallel: 4`, the scheduler creates four job instances:
+#   test [1/4], test [2/4], test [3/4], test [4/4]
+# Each instance receives CI_PARALLEL_INDEX / CI_PARALLEL_TOTAL in step env.
+# Run multiple runner processes (or set PERTISK_RUNNER_MAX_PARALLEL > 1) to execute them concurrently.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: linux
+    parallel: 4
+    steps:
+      - name: Shard
+        run: |
+          echo "Running shard ${CI_PARALLEL_INDEX}/${CI_PARALLEL_TOTAL}"
+          sleep 2
+          echo "Shard ${CI_PARALLEL_INDEX} done"
+
+  report:
+    runs-on: linux
+    needs: [test]
+    steps:
+      - run: echo "All parallel test shards finished"

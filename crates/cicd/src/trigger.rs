@@ -133,6 +133,7 @@ mod tests {
                     }],
                     timeout_minutes: None,
                     artifacts: vec![],
+                    parallel: None,
                 },
             )]),
         }

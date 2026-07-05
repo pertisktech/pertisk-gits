@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::config::{Job, PipelineConfig};
 use crate::job_if::{JobIfMatcher, JobScheduleMode, RunContext};
+use crate::parallel::expand_parallel_jobs;
 use crate::trigger::matches_pipeline_trigger;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,7 +158,7 @@ impl Scheduler {
             }
         }
 
-        Ok(ordered
+        let scheduled = ordered
             .into_iter()
             .map(|job| ScheduledJob {
                 mode: modes
@@ -168,7 +169,9 @@ impl Scheduler {
                 name: job.name,
                 job: job.job,
             })
-            .collect())
+            .collect();
+
+        Ok(expand_parallel_jobs(scheduled))
     }
 
     /// Topological order of jobs respecting `needs` edges.
@@ -297,6 +300,7 @@ use indexmap::IndexMap;
                         steps: vec![step.clone()],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -317,6 +321,7 @@ use indexmap::IndexMap;
                         steps: vec![step],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
             ]),
@@ -352,6 +357,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -374,6 +380,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
             ]),
@@ -644,6 +651,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -671,6 +679,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
             ]),
@@ -703,6 +712,7 @@ use indexmap::IndexMap;
                 steps: vec![],
                 timeout_minutes: None,
                 artifacts: vec![],
+                parallel: None,
             },
             mode: JobScheduleMode::Manual,
             skipped_upstream: false,
@@ -774,6 +784,7 @@ use indexmap::IndexMap;
                     }],
                     timeout_minutes: None,
                     artifacts: vec![],
+                    parallel: None,
                 },
             )]),
         };
@@ -808,6 +819,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -830,6 +842,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
             ]),
@@ -870,6 +883,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -892,6 +906,7 @@ use indexmap::IndexMap;
                         }],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
             ]),
@@ -941,6 +956,7 @@ use indexmap::IndexMap;
                         steps: vec![step.clone()],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -961,6 +977,7 @@ use indexmap::IndexMap;
                         steps: vec![step.clone()],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -981,6 +998,7 @@ use indexmap::IndexMap;
                         steps: vec![step],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
             ]),
@@ -1039,6 +1057,7 @@ use indexmap::IndexMap;
                         steps: vec![step.clone()],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
                 (
@@ -1059,6 +1078,7 @@ use indexmap::IndexMap;
                         steps: vec![step],
                         timeout_minutes: None,
                         artifacts: vec![],
+                        parallel: None,
                     },
                 ),
             ]),
@@ -1079,6 +1099,72 @@ use indexmap::IndexMap;
         assert_eq!(
             jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
             JobScheduleMode::Manual
+        );
+    }
+
+    #[test]
+    fn schedule_for_run_expands_parallel_jobs() {
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: IndexMap::from([
+                (
+                    "test".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: None,
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                        parallel: Some(2),
+                    },
+                ),
+                (
+                    "report".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec!["test".into()],
+                        r#if: None,
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                        parallel: None,
+                    },
+                ),
+            ]),
+        };
+
+        let ctx = RunContext::from_trigger("push", "refs/heads/main");
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+        assert_eq!(jobs.len(), 3);
+        assert!(jobs.iter().any(|job| job.name == "test [1/2]"));
+        assert!(jobs.iter().any(|job| job.name == "test [2/2]"));
+        let report = jobs.iter().find(|job| job.name == "report").unwrap();
+        assert_eq!(
+            report.job.needs,
+            vec!["test [1/2]".to_string(), "test [2/2]".to_string()]
         );
     }
 }
