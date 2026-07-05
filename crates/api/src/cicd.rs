@@ -17,7 +17,7 @@ use pertisk_git::explorer::RefKind;
 use pertisk_cicd::{
     convert_legacy_ci, detect_legacy_ci, effective_job_environment, normalize_environment,
     parse_pipeline_yaml, matches_pipeline_trigger,
-    RunContext, ScheduledJob, Scheduler, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
+    RunContext, RerunReset, ScheduledJob, Scheduler, GITHUB_WORKFLOWS_DIR, CONFIG_PATHS,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -2685,26 +2685,31 @@ async fn materialize_jobs_for_run(
         reset_job_names.push(job.name.clone());
 
         let use_rerun_status = !matches!(mode, MaterializeMode::Fresh);
+        let rerun_reset = match mode {
+            MaterializeMode::RerunAll => RerunReset::PipelineAll,
+            MaterializeMode::RerunFailed | MaterializeMode::RerunJobs(_) => RerunReset::Jobs,
+            MaterializeMode::Fresh => RerunReset::Jobs,
+        };
         let steps_json = serde_json::to_value(&job.job.steps).unwrap_or(Value::Array(vec![]));
         let artifacts_json =
             serde_json::to_value(&job.job.artifacts).unwrap_or(Value::Array(vec![]));
         let status = if use_rerun_status {
-            job.rerun_db_status()
+            job.rerun_db_status(rerun_reset)
         } else {
             job.db_status()
         };
         let initial_log = if use_rerun_status {
-            job.rerun_initial_log()
+            job.rerun_initial_log(rerun_reset)
         } else {
             job.initial_log()
         };
         let finishes_immediately = if use_rerun_status {
-            job.rerun_finishes_immediately()
+            job.rerun_finishes_immediately(rerun_reset)
         } else {
             job.finishes_immediately()
         };
         let (commit_state, commit_description) = if use_rerun_status {
-            job.rerun_commit_status()
+            job.rerun_commit_status(rerun_reset)
         } else {
             job.commit_status()
         };

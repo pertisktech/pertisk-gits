@@ -15,6 +15,15 @@ pub struct ScheduledJob {
     pub skipped_upstream: bool,
 }
 
+/// How a scheduled job should be reset when a pipeline is re-run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RerunReset {
+    /// Re-run all jobs — manual play jobs stay manual (click play again).
+    PipelineAll,
+    /// Re-run failed jobs or a specific job (+ downstream) — manual jobs run immediately.
+    Jobs,
+}
+
 impl ScheduledJob {
     pub fn skipped(&self) -> bool {
         self.mode == JobScheduleMode::Skipped
@@ -51,29 +60,44 @@ impl ScheduledJob {
         }
     }
 
-    /// GitLab-style retry: reset jobs run immediately (`queued`), not back to `manual`.
-    pub fn rerun_db_status(&self) -> &'static str {
-        if self.skipped() {
+    fn rerun_as_skipped(&self, reset: RerunReset) -> bool {
+        match self.mode {
+            JobScheduleMode::Skipped if self.skipped_upstream => reset == RerunReset::PipelineAll,
+            JobScheduleMode::Skipped => true,
+            _ => false,
+        }
+    }
+
+    pub fn rerun_db_status(&self, reset: RerunReset) -> &'static str {
+        if self.rerun_as_skipped(reset) {
             "skipped"
+        } else if self.mode == JobScheduleMode::Manual && reset == RerunReset::PipelineAll {
+            "manual"
         } else {
             "queued"
         }
     }
 
-    pub fn rerun_initial_log(&self) -> &'static str {
-        if self.skipped() {
+    pub fn rerun_initial_log(&self, reset: RerunReset) -> &'static str {
+        if self.mode == JobScheduleMode::Manual && reset == RerunReset::PipelineAll {
+            return self.initial_log();
+        }
+        if self.rerun_as_skipped(reset) {
             self.initial_log()
         } else {
             ""
         }
     }
 
-    pub fn rerun_finishes_immediately(&self) -> bool {
-        self.skipped()
+    pub fn rerun_finishes_immediately(&self, reset: RerunReset) -> bool {
+        self.rerun_as_skipped(reset)
     }
 
-    pub fn rerun_commit_status(&self) -> (&'static str, &'static str) {
-        if self.skipped() {
+    pub fn rerun_commit_status(&self, reset: RerunReset) -> (&'static str, &'static str) {
+        if self.mode == JobScheduleMode::Manual && reset == RerunReset::PipelineAll {
+            return self.commit_status();
+        }
+        if self.rerun_as_skipped(reset) {
             self.commit_status()
         } else {
             ("pending", "Queued")
@@ -753,11 +777,148 @@ use indexmap::IndexMap;
         assert!(!queued.finishes_immediately());
         assert_eq!(queued.commit_status(), ("pending", "Queued"));
 
-        assert_eq!(job.rerun_db_status(), "queued");
-        assert_eq!(job.rerun_initial_log(), "");
-        assert!(!job.rerun_finishes_immediately());
-        assert_eq!(job.rerun_commit_status(), ("pending", "Queued"));
-        assert_eq!(skipped.rerun_db_status(), "skipped");
+        assert_eq!(job.rerun_db_status(RerunReset::Jobs), "queued");
+        assert_eq!(job.rerun_initial_log(RerunReset::Jobs), "");
+        assert!(!job.rerun_finishes_immediately(RerunReset::Jobs));
+        assert_eq!(job.rerun_commit_status(RerunReset::Jobs), ("pending", "Queued"));
+        assert_eq!(job.rerun_db_status(RerunReset::PipelineAll), "manual");
+        assert!(job.rerun_initial_log(RerunReset::PipelineAll).contains("manual trigger"));
+        assert!(!job.rerun_finishes_immediately(RerunReset::PipelineAll));
+        assert_eq!(
+            job.rerun_commit_status(RerunReset::PipelineAll),
+            ("pending", "Manual")
+        );
+        assert_eq!(skipped.rerun_db_status(RerunReset::Jobs), "skipped");
+
+        let downstream = ScheduledJob {
+            name: "health-check-qa".into(),
+            job: job.job.clone(),
+            mode: JobScheduleMode::Skipped,
+            skipped_upstream: true,
+        };
+        assert_eq!(downstream.rerun_db_status(RerunReset::Jobs), "queued");
+        assert_eq!(downstream.rerun_db_status(RerunReset::PipelineAll), "skipped");
+        assert_eq!(downstream.rerun_initial_log(RerunReset::Jobs), "");
+        assert!(!downstream.rerun_finishes_immediately(RerunReset::Jobs));
+        assert_eq!(downstream.rerun_commit_status(RerunReset::Jobs), ("pending", "Queued"));
+    }
+
+    #[test]
+    fn push_manual_deploy_keeps_qa_downstream_skipped_until_play() {
+        use crate::job_if::{IfStringList, JobIfCondition, RunContext};
+
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: IndexMap::from([
+                (
+                    "e2e-dev".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("main".into())),
+                            tag: None,
+                            event: None,
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                        parallel: None,
+                    },
+                ),
+                (
+                    "deploy-qa".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec!["e2e-dev".into()],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("main".into())),
+                            tag: None,
+                            event: Some(IfStringList::One("manual".into())),
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                        parallel: None,
+                    },
+                ),
+                (
+                    "health-check-qa".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec!["deploy-qa".into()],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("main".into())),
+                            tag: None,
+                            event: None,
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![Step {
+                            name: None,
+                            run: "true".into(),
+                            uses: None,
+                            working_directory: None,
+                            env: HashMap::new(),
+                            with: HashMap::new(),
+                        }],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                        parallel: None,
+                    },
+                ),
+            ]),
+        };
+
+        let jobs = Scheduler::schedule_for_run(
+            &config,
+            &RunContext::from_trigger("push", "refs/heads/main"),
+        )
+        .unwrap();
+
+        let deploy_qa = jobs.iter().find(|job| job.name == "deploy-qa").unwrap();
+        let health = jobs
+            .iter()
+            .find(|job| job.name == "health-check-qa")
+            .unwrap();
+
+        assert_eq!(deploy_qa.mode, JobScheduleMode::Manual);
+        assert_eq!(deploy_qa.db_status(), "manual");
+        assert_eq!(health.mode, JobScheduleMode::Skipped);
+        assert!(health.skipped_upstream);
+        assert_eq!(health.db_status(), "skipped");
+
+        assert_eq!(deploy_qa.rerun_db_status(RerunReset::PipelineAll), "manual");
+        assert_eq!(health.rerun_db_status(RerunReset::PipelineAll), "skipped");
+        assert_eq!(deploy_qa.rerun_db_status(RerunReset::Jobs), "queued");
+        assert_eq!(health.rerun_db_status(RerunReset::Jobs), "queued");
     }
 
     #[test]

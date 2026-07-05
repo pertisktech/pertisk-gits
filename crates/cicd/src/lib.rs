@@ -25,7 +25,7 @@ pub use predefined::{build_predefined_vars, PredefinedCiContext, PullRequestCont
 pub use executor::{bench_noop_steps, JobExecutor, ShellExecutor, StepOutput};
 pub use job_if::{JobIfMatcher, JobScheduleMode, RunContext};
 pub use metrics::{JobMetrics, StepTiming};
-pub use schedule::{ScheduledJob, Scheduler};
+pub use schedule::{RerunReset, ScheduledJob, Scheduler};
 pub use script::render_job_script;
 pub use script::{shell_quote, wrap_shell_script_with_env};
 pub use secrets::{
