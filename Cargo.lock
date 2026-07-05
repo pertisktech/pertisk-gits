@@ -4681,6 +4681,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "criterion",
+ "indexmap 2.14.0",
  "libc",
  "serde",
  "serde_json",

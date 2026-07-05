@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use std::collections::HashMap;
 
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
@@ -51,7 +52,7 @@ fn bench_schedule_scaling(c: &mut Criterion) {
 }
 
 fn synthetic_config(job_count: usize) -> PipelineConfig {
-    let mut jobs = HashMap::new();
+    let mut jobs = IndexMap::new();
     for i in 0..job_count {
         let name = format!("job-{i}");
         let needs = if i == 0 {

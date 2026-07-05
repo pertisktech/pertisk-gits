@@ -9,6 +9,7 @@ export interface PipelineGraphJob {
   status?: JobRun['status'] | 'failure_allowed'
   step_count?: number
   job_id?: string
+  manual_play?: boolean
 }
 
 export interface PipelineGraphNodeData extends Record<string, unknown> {
@@ -43,6 +44,22 @@ export function edgeToneForConnection(
   if (targetStatus === 'skipped' || depStatus === 'skipped') return 'skipped'
   if (depStatus === 'success' && targetStatus === 'success') return 'success'
   return 'pending'
+}
+
+function compareGraphJobs(
+  jobs: PipelineGraphJob[],
+  a: PipelineGraphJob,
+  b: PipelineGraphJob,
+): number {
+  const order = new Map(jobs.map((job, index) => [job.name, index]))
+  const manualA = a.manual_play ? 1 : 0
+  const manualB = b.manual_play ? 1 : 0
+  if (manualA !== manualB) return manualA - manualB
+  return (order.get(a.name) ?? 0) - (order.get(b.name) ?? 0)
+}
+
+function sortGraphJobsInColumn(jobs: PipelineGraphJob[], columnJobs: PipelineGraphJob[]) {
+  columnJobs.sort((a, b) => compareGraphJobs(jobs, a, b))
 }
 
 function jobDepths(jobs: PipelineGraphJob[]): Map<string, number> {
@@ -93,7 +110,8 @@ export function layoutPipelineGraph(
 
   const sortedCols = [...colNodes.keys()].sort((a, b) => a - b)
   sortedCols.forEach((col) => {
-    colNodes.get(col)?.sort((a, b) => a.name.localeCompare(b.name))
+    const bucket = colNodes.get(col)
+    if (bucket) sortGraphJobsInColumn(jobs, bucket)
   })
 
   const incoming = new Map<string, string[]>()
@@ -135,7 +153,7 @@ export function layoutPipelineGraph(
       colNodes.get(col)?.sort((a, b) => {
         const baryA = barycenter(incoming.get(a.name) ?? [])
         const baryB = barycenter(incoming.get(b.name) ?? [])
-        if (baryA === baryB) return a.name.localeCompare(b.name)
+        if (baryA === baryB) return compareGraphJobs(jobs, a, b)
         return baryA - baryB
       })
       refreshOrderIndex()
@@ -146,7 +164,7 @@ export function layoutPipelineGraph(
       colNodes.get(col)?.sort((a, b) => {
         const baryA = barycenter(outgoing.get(a.name) ?? [])
         const baryB = barycenter(outgoing.get(b.name) ?? [])
-        if (baryA === baryB) return a.name.localeCompare(b.name)
+        if (baryA === baryB) return compareGraphJobs(jobs, a, b)
         return baryA - baryB
       })
       refreshOrderIndex()

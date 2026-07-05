@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use serde_yaml::{Mapping, Value};
 
@@ -119,7 +120,7 @@ fn convert_gitlab_ci(raw: &str) -> Result<(PipelineConfig, Vec<String>), Convert
         })
         .unwrap_or_default();
 
-    let mut jobs = HashMap::new();
+    let mut jobs = IndexMap::new();
     let mut stage_jobs: HashMap<String, Vec<String>> = HashMap::new();
 
     for (key, value) in map {
@@ -316,7 +317,7 @@ fn apply_gitlab_only(value: &Value, condition: &mut JobIfCondition, warnings: &m
 }
 
 fn apply_gitlab_stage_needs(
-    jobs: &mut HashMap<String, Job>,
+    jobs: &mut IndexMap<String, Job>,
     stages: &[String],
     stage_jobs: &HashMap<String, Vec<String>>,
 ) {
@@ -368,7 +369,7 @@ fn convert_github_actions(raw: &str) -> Result<(PipelineConfig, Vec<String>), Co
         .and_then(|v| v.as_mapping())
         .ok_or(ConvertError::NoJobs)?;
 
-    let mut jobs = HashMap::new();
+    let mut jobs = IndexMap::new();
 
     for (key, value) in jobs_value {
         let Some(name) = key.as_str() else {

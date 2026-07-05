@@ -98,6 +98,7 @@ pub fn pipeline_event_from_ref(event_type: &str, ref_name: &str) -> PipelineEven
 mod tests {
     use std::collections::HashMap;
 
+    use indexmap::IndexMap;
     use super::*;
     use crate::config::{Job, Step, Triggers};
 
@@ -112,7 +113,7 @@ mod tests {
                     branches: Some(vec!["main".into()]),
                 }),
             },
-            jobs: HashMap::from([(
+            jobs: IndexMap::from([(
                 "test".into(),
                 Job {
                     runs_on: "linux".into(),
@@ -192,7 +193,7 @@ mod tests {
                 }),
                 pull_request: None,
             },
-            jobs: HashMap::new(),
+            jobs: IndexMap::new(),
         };
         assert!(TriggerMatcher::matches(
             &cfg,
@@ -262,7 +263,7 @@ mod tests {
                 }),
                 pull_request: None,
             },
-            jobs: HashMap::new(),
+            jobs: IndexMap::new(),
         }
     }
 
@@ -287,7 +288,7 @@ mod tests {
     fn push_without_config_returns_false() {
         let cfg = PipelineConfig {
             on: Triggers::default(),
-            jobs: HashMap::new(),
+            jobs: IndexMap::new(),
         };
         assert!(!TriggerMatcher::matches(
             &cfg,
@@ -321,7 +322,7 @@ mod tests {
                 }),
                 pull_request: None,
             },
-            jobs: HashMap::new(),
+            jobs: IndexMap::new(),
         };
         assert!(!TriggerMatcher::matches(
             &cfg,

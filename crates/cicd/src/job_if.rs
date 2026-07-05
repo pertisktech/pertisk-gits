@@ -286,7 +286,7 @@ impl JobIfMatcher {
         }
     }
 
-    fn requires_manual_event(condition: Option<&JobIfCondition>) -> bool {
+    pub(crate) fn requires_manual_event(condition: Option<&JobIfCondition>) -> bool {
         condition
             .and_then(|c| c.event.as_ref())
             .is_some_and(|event| {

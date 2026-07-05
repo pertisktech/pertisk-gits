@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_yaml::Value;
@@ -10,7 +11,7 @@ use crate::job_if::{deserialize_job_if, JobIfCondition};
 pub struct PipelineConfig {
     #[serde(default, deserialize_with = "deserialize_triggers")]
     pub on: Triggers,
-    pub jobs: HashMap<String, Job>,
+    pub jobs: IndexMap<String, Job>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, Default, PartialEq, Eq)]

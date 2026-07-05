@@ -786,37 +786,43 @@ async fn get_pipeline_config_preview(
         ApiError::from(DomainError::Validation(format!("invalid pipeline config: {e}")))
     })?;
 
-    let mut jobs: Vec<PipelineJobPreview> = config
-        .jobs
+    let scheduled = Scheduler::schedule(&config).map_err(|e| {
+        ApiError::from(DomainError::Validation(format!("invalid pipeline schedule: {e}")))
+    })?;
+
+    let jobs: Vec<PipelineJobPreview> = scheduled
         .into_iter()
-        .map(|(name, job)| PipelineJobPreview {
-            name,
-            runs_on: job.runs_on,
-            image: job.image,
-            environment: job.environment,
-            needs: job.needs.clone(),
-            step_count: job.steps.len(),
-            steps: job
-                .steps
-                .iter()
-                .enumerate()
-                .map(|(index, step)| JobStepResponse {
-                    name: step
-                        .name
-                        .clone()
-                        .or_else(|| step.uses.clone())
-                        .unwrap_or_else(|| format!("step-{index}")),
-                    run: if step.run.trim().is_empty() {
-                        step.uses.clone().unwrap_or_default()
-                    } else {
-                        step.run.clone()
-                    },
-                })
-                .collect(),
-            r#if: job.r#if.clone(),
+        .map(|scheduled_job| {
+            let name = scheduled_job.name;
+            let job = scheduled_job.job;
+            PipelineJobPreview {
+                name,
+                runs_on: job.runs_on,
+                image: job.image,
+                environment: job.environment,
+                needs: job.needs,
+                step_count: job.steps.len(),
+                steps: job
+                    .steps
+                    .iter()
+                    .enumerate()
+                    .map(|(index, step)| JobStepResponse {
+                        name: step
+                            .name
+                            .clone()
+                            .or_else(|| step.uses.clone())
+                            .unwrap_or_else(|| format!("step-{index}")),
+                        run: if step.run.trim().is_empty() {
+                            step.uses.clone().unwrap_or_default()
+                        } else {
+                            step.run.clone()
+                        },
+                    })
+                    .collect(),
+                r#if: job.r#if,
+            }
         })
         .collect();
-    jobs.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(Json(PipelineConfigPreviewResponse {
         config_path,
@@ -2665,7 +2671,7 @@ async fn materialize_jobs_for_run(
     let existing_statuses = fetch_job_status_map(pool, run_id).await?;
     let mut reset_job_names: Vec<String> = Vec::new();
 
-    for job in jobs {
+    for (sort_order, job) in jobs.iter().enumerate() {
         let should_reset =
             job_should_reset(&mode, existing_statuses.get(&job.name).map(String::as_str), &job.name);
         if !should_reset {
@@ -2704,8 +2710,8 @@ async fn materialize_jobs_for_run(
         );
         sqlx::query(
             r#"
-            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, required, status, log_text, finished_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::job_run_status, $13, CASE WHEN $14 THEN NOW() ELSE NULL END)
+            INSERT INTO job_runs (pipeline_run_id, job_name, runs_on, image, dind, steps_json, artifacts_json, needs, timeout_minutes, effective_environment, required, status, log_text, finished_at, sort_order)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::job_run_status, $13, CASE WHEN $14 THEN NOW() ELSE NULL END, $15)
             ON CONFLICT (pipeline_run_id, job_name)
             DO UPDATE SET
                 runs_on = EXCLUDED.runs_on,
@@ -2725,7 +2731,8 @@ async fn materialize_jobs_for_run(
                 started_at = NULL,
                 finished_at = EXCLUDED.finished_at,
                 cancel_requested_at = NULL,
-                cancel_step_name = NULL
+                cancel_step_name = NULL,
+                sort_order = EXCLUDED.sort_order
             "#,
         )
         .bind(run_id)
@@ -2742,6 +2749,7 @@ async fn materialize_jobs_for_run(
         .bind(status)
         .bind(initial_log)
         .bind(finishes_immediately)
+        .bind(i32::try_from(sort_order).unwrap_or(i32::MAX))
         .execute(pool)
         .await?;
 
@@ -3502,7 +3510,7 @@ async fn fetch_job_runs(pool: &PgPool, pipeline_run_id: Uuid) -> Result<Vec<JobR
         SELECT id, job_name, status::text, runs_on, image, needs, required, steps_json, metrics_json, log_text, queued_at, started_at, finished_at
         FROM job_runs
         WHERE pipeline_run_id = $1
-        ORDER BY queued_at ASC
+        ORDER BY sort_order ASC, job_name ASC
         "#,
     )
     .bind(pipeline_run_id)

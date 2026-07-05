@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { CiConvertResult } from '../api/types'
 import type { PipelineGraphJob } from '../lib/pipelineGraphLayout'
-import { pipelineRefName, type CiEnvironment } from '../lib/pipelineSummary'
+import { pipelineRefName, isManualPlayJob, type CiEnvironment } from '../lib/pipelineSummary'
 import {
   isRunInProgress,
   pipelineUrl,
@@ -434,6 +434,7 @@ function PipelineConfigGraph({
         runs_on: job.runs_on,
         needs: job.needs,
         step_count: job.step_count,
+        manual_play: isManualPlayJob(job),
       })),
     [data?.jobs],
   )

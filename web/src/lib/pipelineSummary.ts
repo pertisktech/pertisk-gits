@@ -162,6 +162,25 @@ function jobMatchesPathScope(
   return true
 }
 
+export function isManualPlayJob(job: PipelineJobPreview): boolean {
+  if (!job.if?.event) return false
+  const patterns = listValue(job.if.event)
+  return patterns?.includes('manual') ?? false
+}
+
+function compareJobOrder(
+  jobs: PipelineJobPreview[],
+  a: string,
+  b: string,
+): number {
+  const jobA = jobs.find((entry) => entry.name === a)
+  const jobB = jobs.find((entry) => entry.name === b)
+  const manualA = jobA ? isManualPlayJob(jobA) : false
+  const manualB = jobB ? isManualPlayJob(jobB) : false
+  if (manualA !== manualB) return manualA ? 1 : -1
+  return jobs.findIndex((entry) => entry.name === a) - jobs.findIndex((entry) => entry.name === b)
+}
+
 function topoSortAll(jobs: PipelineJobPreview[]): string[] {
   const byName = new Map(jobs.map((job) => [job.name, job]))
   const indegree = new Map<string, number>()
@@ -176,7 +195,7 @@ function topoSortAll(jobs: PipelineJobPreview[]): string[] {
   const queue = [...indegree.entries()]
     .filter(([, degree]) => degree === 0)
     .map(([name]) => name)
-    .sort()
+    .sort((a, b) => compareJobOrder(jobs, a, b))
 
   const ordered: string[] = []
   while (queue.length > 0) {
@@ -189,7 +208,7 @@ function topoSortAll(jobs: PipelineJobPreview[]): string[] {
       indegree.set(job.name, next)
       if (next === 0) {
         queue.push(job.name)
-        queue.sort()
+        queue.sort((a, b) => compareJobOrder(jobs, a, b))
       }
     }
   }

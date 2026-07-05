@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::config::{Job, PipelineConfig};
@@ -187,7 +188,7 @@ impl Scheduler {
             .iter()
             .filter_map(|(name, &deg)| if deg == 0 { Some(*name) } else { None })
             .collect();
-        queue.make_contiguous().sort_unstable();
+        sort_job_queue(config, &mut queue);
 
         let mut ordered = Vec::new();
         let mut seen = HashSet::new();
@@ -206,7 +207,7 @@ impl Scheduler {
 
             if let Some(children) = dependents.get(name) {
                 let mut next: Vec<&str> = children.clone();
-                next.sort_unstable();
+                sort_job_names(config, &mut next);
                 for child in next {
                     let entry = indegree.get_mut(child).unwrap();
                     *entry -= 1;
@@ -214,6 +215,7 @@ impl Scheduler {
                         queue.push_back(child);
                     }
                 }
+                sort_job_queue(config, &mut queue);
             }
         }
 
@@ -231,19 +233,103 @@ impl Scheduler {
     }
 }
 
+fn compare_job_names(config: &PipelineConfig, a: &str, b: &str) -> Ordering {
+    let job_a = config.jobs.get(a).expect("job in schedule");
+    let job_b = config.jobs.get(b).expect("job in schedule");
+    let manual_a = JobIfMatcher::requires_manual_event(job_a.r#if.as_ref());
+    let manual_b = JobIfMatcher::requires_manual_event(job_b.r#if.as_ref());
+    manual_a
+        .cmp(&manual_b)
+        .then_with(|| {
+            config
+                .jobs
+                .get_index_of(a)
+                .unwrap_or(0)
+                .cmp(&config.jobs.get_index_of(b).unwrap_or(0))
+        })
+}
+
+fn sort_job_names(config: &PipelineConfig, names: &mut [&str]) {
+    names.sort_by(|a, b| compare_job_names(config, a, b));
+}
+
+fn sort_job_queue(config: &PipelineConfig, queue: &mut VecDeque<&str>) {
+    queue.make_contiguous().sort_by(|a, b| compare_job_names(config, a, b));
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+
+use indexmap::IndexMap;
 
     use super::*;
     use crate::config::{Job, Step, Triggers};
     use crate::job_if::{JobIfCondition, IfStringList, RunContext};
 
     #[test]
+    fn manual_root_jobs_sort_after_automatic() {
+        use crate::job_if::{IfStringList, IfTagCondition, JobIfCondition};
+
+        let step = Step {
+            name: None,
+            run: "true".into(),
+            uses: None,
+            working_directory: None,
+            env: HashMap::new(),
+            with: HashMap::new(),
+        };
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: IndexMap::from([
+                (
+                    "scanner-file".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: None,
+                        required: true,
+                        steps: vec![step.clone()],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+                (
+                    "release-tag".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: Some(JobIfCondition {
+                            branch: None,
+                            tag: Some(IfTagCondition::Pattern("*".into())),
+                            event: Some(IfStringList::One("manual".into())),
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![step],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+            ]),
+        };
+
+        let jobs = Scheduler::schedule(&config).unwrap();
+        assert_eq!(jobs[0].name, "scanner-file");
+        assert_eq!(jobs[1].name, "release-tag");
+    }
+
+    #[test]
     fn orders_by_needs() {
         let config = PipelineConfig {
             on: Triggers::default(),
-            jobs: HashMap::from([
+            jobs: IndexMap::from([
                 (
                     "bench".into(),
                     Job {
@@ -535,7 +621,7 @@ mod tests {
 
         let config = PipelineConfig {
             on: Triggers::default(),
-            jobs: HashMap::from([
+            jobs: IndexMap::from([
                 (
                     "build".into(),
                     Job {
@@ -666,7 +752,7 @@ mod tests {
     fn unknown_dependency_errors() {
         let config = PipelineConfig {
             on: Triggers::default(),
-            jobs: HashMap::from([(
+            jobs: IndexMap::from([(
                 "build".into(),
                 Job {
                     runs_on: "linux".into(),
@@ -699,7 +785,7 @@ mod tests {
     fn cycle_detection_errors() {
         let config = PipelineConfig {
             on: Triggers::default(),
-            jobs: HashMap::from([
+            jobs: IndexMap::from([
                 (
                     "a".into(),
                     Job {
@@ -756,7 +842,7 @@ mod tests {
     fn skips_downstream_when_needed_job_skipped() {
         let config = PipelineConfig {
             on: Triggers::default(),
-            jobs: HashMap::from([
+            jobs: IndexMap::from([
                 (
                     "build".into(),
                     Job {
@@ -834,7 +920,7 @@ mod tests {
         };
         let config = PipelineConfig {
             on: Triggers::default(),
-            jobs: HashMap::from([
+            jobs: IndexMap::from([
                 (
                     "e2e-test-dev".into(),
                     Job {
