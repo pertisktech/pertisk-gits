@@ -1724,6 +1724,11 @@ async fn complete_runner_job(
     update_commit_status_for_job(&state.pool, job_id, &final_status, &job_name)
         .await
         .map_err(|e| internal(e.to_string()))?;
+    if final_status == "success" {
+        queue_downstream_jobs_after_success(&state.pool, pipeline_run_id, &job_name)
+            .await
+            .map_err(|e| internal(e.to_string()))?;
+    }
     finalize_pipeline_run_if_done(&state.pool, pipeline_run_id)
         .await
         .map_err(|e| internal(e.to_string()))?;
@@ -3116,6 +3121,71 @@ async fn update_commit_status_for_job(
     Ok(())
 }
 
+/// After a job succeeds, queue downstream jobs that were skipped while waiting on it.
+async fn queue_downstream_jobs_after_success(
+    pool: &PgPool,
+    pipeline_run_id: Uuid,
+    completed_job_name: &str,
+) -> Result<(), sqlx::Error> {
+    let unlocked = sqlx::query_as::<_, (Uuid, String)>(
+        r#"
+        UPDATE job_runs j
+        SET status = 'queued'::job_run_status,
+            log_text = '',
+            queued_at = NOW(),
+            started_at = NULL,
+            finished_at = NULL,
+            runner_id = NULL,
+            metrics_json = NULL
+        WHERE j.pipeline_run_id = $1
+          AND j.status = 'skipped'::job_run_status
+          AND $2 = ANY(j.needs)
+          AND (
+            j.log_text LIKE '%upstream job skipped%'
+            OR j.log_text LIKE '%upstream job failed%'
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM job_runs dep
+            WHERE dep.pipeline_run_id = j.pipeline_run_id
+              AND dep.job_name = ANY(j.needs)
+              AND dep.job_name <> $2
+              AND (
+                dep.status NOT IN ('success', 'skipped')
+                AND NOT (dep.status = 'failure' AND dep.required = FALSE)
+              )
+          )
+        RETURNING j.id, j.job_name
+        "#,
+    )
+    .bind(pipeline_run_id)
+    .bind(completed_job_name)
+    .fetch_all(pool)
+    .await?;
+
+    for (job_id, job_name) in unlocked {
+        sqlx::query(
+            r#"
+            UPDATE commit_statuses cs
+            SET state = 'pending'::commit_status_state,
+                description = 'Queued',
+                updated_at = NOW()
+            FROM job_runs j
+            INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+            WHERE j.id = $1
+              AND cs.pipeline_run_id = p.id
+              AND cs.context = $2
+            "#,
+        )
+        .bind(job_id)
+        .bind(format!("ci/{job_name}"))
+        .execute(pool)
+        .await?;
+    }
+
+    Ok(())
+}
+
 async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> Result<(), sqlx::Error> {
     let pipeline_status = sqlx::query_scalar::<_, String>(
         r#"SELECT status::text FROM pipeline_runs WHERE id = $1"#,
@@ -3194,8 +3264,24 @@ async fn finalize_pipeline_run_if_done(pool: &PgPool, pipeline_run_id: Uuid) -> 
 
     let remaining = sqlx::query_scalar::<_, i64>(
         r#"
-        SELECT COUNT(*) FROM job_runs
-        WHERE pipeline_run_id = $1 AND status IN ('queued', 'running')
+        SELECT COUNT(*) FROM job_runs j
+        WHERE j.pipeline_run_id = $1
+          AND (
+            j.status = 'running'
+            OR (
+              j.status = 'queued'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM job_runs dep
+                WHERE dep.pipeline_run_id = j.pipeline_run_id
+                  AND dep.job_name = ANY(j.needs)
+                  AND (
+                    dep.status NOT IN ('success', 'skipped')
+                    AND NOT (dep.status = 'failure' AND dep.required = FALSE)
+                  )
+              )
+            )
+          )
         "#,
     )
     .bind(pipeline_run_id)
@@ -3268,8 +3354,24 @@ async fn force_finalize_stuck_pipeline(
 
     let active_jobs = sqlx::query_scalar::<_, i64>(
         r#"
-        SELECT COUNT(*) FROM job_runs
-        WHERE pipeline_run_id = $1 AND status IN ('queued', 'running')
+        SELECT COUNT(*) FROM job_runs j
+        WHERE j.pipeline_run_id = $1
+          AND (
+            j.status = 'running'
+            OR (
+              j.status = 'queued'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM job_runs dep
+                WHERE dep.pipeline_run_id = j.pipeline_run_id
+                  AND dep.job_name = ANY(j.needs)
+                  AND (
+                    dep.status NOT IN ('success', 'skipped')
+                    AND NOT (dep.status = 'failure' AND dep.required = FALSE)
+                  )
+              )
+            )
+          )
         "#,
     )
     .bind(pipeline_run_id)
@@ -3377,8 +3479,24 @@ async fn ensure_pipeline_idle(
 
     let active_jobs = sqlx::query_scalar::<_, i64>(
         r#"
-        SELECT COUNT(*) FROM job_runs
-        WHERE pipeline_run_id = $1 AND status IN ('queued', 'running')
+        SELECT COUNT(*) FROM job_runs j
+        WHERE j.pipeline_run_id = $1
+          AND (
+            j.status = 'running'
+            OR (
+              j.status = 'queued'
+              AND NOT EXISTS (
+                SELECT 1
+                FROM job_runs dep
+                WHERE dep.pipeline_run_id = j.pipeline_run_id
+                  AND dep.job_name = ANY(j.needs)
+                  AND (
+                    dep.status NOT IN ('success', 'skipped')
+                    AND NOT (dep.status = 'failure' AND dep.required = FALSE)
+                  )
+              )
+            )
+          )
         "#,
     )
     .bind(run_id)

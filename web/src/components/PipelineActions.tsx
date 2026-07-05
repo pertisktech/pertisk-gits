@@ -6,9 +6,8 @@ import type { DisplayJobStatus } from '../lib/pipelineStatus'
 import { type JobStepView, stepDisplayStatus, stepMeta } from '../lib/pipelineLog'
 import {
   displayJobStatus,
-  displayRunStatusIcon,
+  displayRunStatus,
   formatPipelineIid,
-  hasPendingManualJobs,
   formatRunDuration,
   refLabel,
   shortSha,
@@ -28,21 +27,19 @@ function formatStepDuration(ms?: number): string {
 }
 
 export function ActionsRunSummary({ run }: { run: PipelineRun }) {
-  const status = displayRunStatusIcon(run)
+  const status = displayRunStatus(run)
   const statusLabel =
-    status === 'manual' || hasPendingManualJobs(run)
-      ? 'Waiting for manual'
-      : status === 'success'
-        ? 'Success'
-        : status === 'failure'
-          ? 'Failure'
-          : status === 'cancelled'
-            ? 'Cancelled'
-            : status === 'skipped'
-              ? 'Skipped'
-              : status === 'running'
-                ? 'In progress'
-                : 'Queued'
+    status === 'success'
+      ? 'Success'
+      : status === 'failure'
+        ? 'Failure'
+        : status === 'cancelled'
+          ? 'Cancelled'
+          : status === 'skipped'
+            ? 'Skipped'
+            : status === 'running'
+              ? 'In progress'
+              : 'Queued'
 
   return (
     <div className="gha-summary">

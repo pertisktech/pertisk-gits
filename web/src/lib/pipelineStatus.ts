@@ -55,16 +55,27 @@ export function hasPendingManualJobs(run: PipelineRun): boolean {
   return activeRunJobs(run).some((job) => job.status === 'manual')
 }
 
+function areJobNeedsSatisfied(job: JobRun, jobs: JobRun[]): boolean {
+  const needs = job.needs ?? []
+  if (needs.length === 0) return true
+  return needs.every((name) => {
+    const dep = jobs.find((entry) => entry.job_name === name)
+    if (dep == null) return false
+    return dep.status === 'success' || dep.status === 'skipped' || isAllowedFailure(dep)
+  })
+}
+
 export function hasActiveJobs(run: PipelineRun): boolean {
-  return activeRunJobs(run).some(
-    (job) => job.status === 'queued' || job.status === 'running',
+  const jobs = activeRunJobs(run)
+  return jobs.some(
+    (job) =>
+      job.status === 'running' ||
+      (job.status === 'queued' && areJobNeedsSatisfied(job, run.jobs)),
   )
 }
 
 /** Icon/status string for pipeline list + summary (includes manual waiting). */
 export function displayRunStatusIcon(run: PipelineRun): string {
-  if (hasActiveJobs(run)) return displayRunStatus(run)
-  if (hasPendingManualJobs(run)) return 'manual'
   return displayRunStatus(run)
 }
 

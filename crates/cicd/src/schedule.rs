@@ -142,7 +142,9 @@ impl Scheduler {
                     continue;
                 }
                 for need in &job.job.needs {
-                    if modes.get(need) == Some(&JobScheduleMode::Skipped) {
+                    if modes.get(need) == Some(&JobScheduleMode::Skipped)
+                        || modes.get(need) == Some(&JobScheduleMode::Manual)
+                    {
                         modes.insert(job.name.clone(), JobScheduleMode::Skipped);
                         skipped_upstream.insert(job.name.clone());
                         changed = true;
@@ -903,6 +905,104 @@ use indexmap::IndexMap;
         assert_eq!(
             jobs.iter().find(|job| job.name == "deploy").unwrap().mode,
             JobScheduleMode::Skipped
+        );
+    }
+
+    #[test]
+    fn skips_downstream_when_needed_job_is_manual() {
+        use crate::job_if::{IfStringList, JobIfCondition};
+
+        let step = Step {
+            name: None,
+            run: "true".into(),
+            uses: None,
+            working_directory: None,
+            env: HashMap::new(),
+            with: HashMap::new(),
+        };
+        let config = PipelineConfig {
+            on: Triggers::default(),
+            jobs: IndexMap::from([
+                (
+                    "e2e-dev".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: None,
+                        dind: false,
+                        needs: vec![],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("main".into())),
+                            tag: None,
+                            event: None,
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![step.clone()],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+                (
+                    "deploy-qa".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: Some("qa".into()),
+                        dind: false,
+                        needs: vec!["e2e-dev".into()],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("main".into())),
+                            tag: None,
+                            event: Some(IfStringList::One("manual".into())),
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![step.clone()],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+                (
+                    "health-check-qa".into(),
+                    Job {
+                        runs_on: "linux".into(),
+                        image: None,
+                        environment: Some("qa".into()),
+                        dind: false,
+                        needs: vec!["deploy-qa".into()],
+                        r#if: Some(JobIfCondition {
+                            branch: Some(IfStringList::One("main".into())),
+                            tag: None,
+                            event: None,
+                            environment: None,
+                        }),
+                        required: true,
+                        steps: vec![step],
+                        timeout_minutes: None,
+                        artifacts: vec![],
+                    },
+                ),
+            ]),
+        };
+
+        let ctx = RunContext::from_trigger("push", "refs/heads/main");
+        let jobs = Scheduler::schedule_for_run(&config, &ctx).unwrap();
+
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "deploy-qa").unwrap().mode,
+            JobScheduleMode::Manual
+        );
+        assert_eq!(
+            jobs.iter().find(|job| job.name == "health-check-qa").unwrap().mode,
+            JobScheduleMode::Skipped
+        );
+        assert!(
+            jobs
+                .iter()
+                .find(|job| job.name == "health-check-qa")
+                .unwrap()
+                .skipped_upstream
         );
     }
 
