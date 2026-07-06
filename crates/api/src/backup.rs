@@ -33,6 +33,7 @@ fn pg_tool_path(tool: &str) -> PathBuf {
     let env_key = match tool {
         "pg_dump" => "PG_DUMP_PATH",
         "pg_restore" => "PG_RESTORE_PATH",
+        "psql" => "PSQL_PATH",
         _ => "PG_TOOL_PATH",
     };
     if let Ok(path) = std::env::var(env_key) {
@@ -42,19 +43,33 @@ fn pg_tool_path(tool: &str) -> PathBuf {
 }
 
 fn pg_tool_missing_error(tool: &str, program: &Path) -> anyhow::Error {
+    let env_hint = match tool {
+        "pg_dump" => "PG_DUMP_PATH",
+        "pg_restore" => "PG_RESTORE_PATH",
+        "psql" => "PSQL_PATH",
+        _ => "PG_TOOL_PATH",
+    };
     anyhow::anyhow!(
         "{tool} not found at {}. Install PostgreSQL client tools \
          (Alpine/Debian: postgresql-client, RHEL/AlmaLinux: postgresql) \
-         or set PG_DUMP_PATH / PG_RESTORE_PATH.",
+         or set {env_hint}.",
         program.display()
     )
 }
 
 fn run_pg_tool(tool: &str, args: &[&str]) -> anyhow::Result<Output> {
+    run_pg_tool_with_stdio(tool, args, Stdio::null())
+}
+
+fn run_pg_tool_with_stdio(
+    tool: &str,
+    args: &[&str],
+    stdout: Stdio,
+) -> anyhow::Result<Output> {
     let program = pg_tool_path(tool);
     Command::new(&program)
         .args(args)
-        .stdout(Stdio::null())
+        .stdout(stdout)
         .stderr(Stdio::piped())
         .output()
         .map_err(|error| {
@@ -64,6 +79,62 @@ fn run_pg_tool(tool: &str, args: &[&str]) -> anyhow::Result<Output> {
                 error.into()
             }
         })
+}
+
+fn pg_tool_version(tool: &str) -> Option<String> {
+    let output = run_pg_tool(tool, &["--version"]).ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let line = if !stdout.trim().is_empty() {
+        stdout.trim()
+    } else {
+        stderr.trim()
+    };
+    if line.is_empty() {
+        None
+    } else {
+        Some(line.to_string())
+    }
+}
+
+fn is_custom_pg_dump(path: &Path) -> anyhow::Result<bool> {
+    let mut header = [0_u8; 5];
+    let mut file = std::fs::File::open(path)?;
+    use std::io::Read;
+    let read = file.read(&mut header)?;
+    Ok(read >= 5 && &header == b"PGDMP")
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DbDumpFormat {
+    PlainSql,
+    Custom,
+}
+
+fn resolve_db_dump_path(extract_dir: &Path) -> Option<PathBuf> {
+    for name in ["db.sql", "db.dump"] {
+        let path = extract_dir.join(name);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    None
+}
+
+fn pg_restore_version_mismatch(stderr: &str) -> Option<String> {
+    if !stderr.contains("unsupported version") {
+        return None;
+    }
+    let pg_restore_ver = pg_tool_version("pg_restore").unwrap_or_else(|| "unknown".into());
+    Some(format!(
+        "pg_restore ({pg_restore_ver}) is older than the backup's pg_dump format. \
+         Install PostgreSQL client tools matching the server that created the backup \
+         (e.g. PostgreSQL 17 for format 1.16), set PG_RESTORE_PATH to that pg_restore, \
+         or create a new backup after upgrading — new backups use plain SQL and restore with psql."
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +161,9 @@ struct BackupManifest {
     created_at: DateTime<Utc>,
     components: Vec<BackupComponent>,
     registry_storage: String,
+    /// `plain` (SQL) or `custom` (pg_dump -Fc). Omitted in older archives.
+    db_format: Option<String>,
+    pg_client_version: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -401,7 +475,7 @@ async fn run_backup_job(
 
     for component in &components {
         match component {
-            BackupComponent::Db => backup_db(&database_url, &work.join("db.dump"))
+            BackupComponent::Db => backup_db(&database_url, &work.join("db.sql"))
                 .await
                 .map_err(|e| format!("database backup failed: {e:#}"))?,
             BackupComponent::Registry => backup_registry(&pool, &work.join("registry"))
@@ -419,6 +493,12 @@ async fn run_backup_job(
         created_at: meta.created_at,
         components: components.clone(),
         registry_storage,
+        db_format: if components.contains(&BackupComponent::Db) {
+            Some("plain".into())
+        } else {
+            None
+        },
+        pg_client_version: pg_tool_version("pg_dump"),
     };
     tokio::fs::write(
         work.join("manifest.json"),
@@ -455,10 +535,14 @@ async fn backup_db(database_url: &str, output: &Path) -> anyhow::Result<()> {
     let url = database_url.to_string();
     let dump_file = output.to_path_buf();
     tokio::task::spawn_blocking(move || {
+        // Plain SQL restores with psql across PostgreSQL client versions (custom -Fc needs
+        // pg_restore from the same major version as pg_dump).
         let result = run_pg_tool(
             "pg_dump",
             &[
-                "-Fc",
+                "--format=plain",
+                "--clean",
+                "--if-exists",
                 "--no-owner",
                 "--no-acl",
                 "-f",
@@ -766,9 +850,13 @@ async fn run_restore(
             return Err(format!("backup archive does not contain {component:?}"));
         }
         match component {
-            BackupComponent::Db => restore_db(database_url, &extract_dir.join("db.dump"))
-                .await
-                .map_err(|e| format!("database restore failed: {e:#}"))?,
+            BackupComponent::Db => {
+                let dump_path = resolve_db_dump_path(extract_dir)
+                    .ok_or_else(|| "database dump not found in backup (expected db.sql or db.dump)".to_string())?;
+                restore_db(database_url, &dump_path)
+                    .await
+                    .map_err(|e| format!("database restore failed: {e:#}"))?
+            }
             BackupComponent::Registry => restore_registry(pool, &extract_dir.join("registry"))
                 .await
                 .map_err(|e| format!("registry restore failed: {e:#}"))?,
@@ -797,32 +885,69 @@ async fn extract_tar_gz(archive_path: &Path, dest: &Path) -> anyhow::Result<()> 
 
 async fn restore_db(database_url: &str, dump_path: &Path) -> anyhow::Result<()> {
     if !dump_path.is_file() {
-        anyhow::bail!("db.dump not found in backup");
+        anyhow::bail!("database dump not found at {}", dump_path.display());
     }
+
+    let format = if is_custom_pg_dump(dump_path)? {
+        DbDumpFormat::Custom
+    } else {
+        DbDumpFormat::PlainSql
+    };
+
     let url = database_url.to_string();
     let dump_path = dump_path.to_path_buf();
-    tokio::task::spawn_blocking(move || {
-        let result = run_pg_tool(
-            "pg_restore",
-            &[
-                "--clean",
-                "--if-exists",
-                "--no-owner",
-                "--no-acl",
-                "-d",
-                &url,
-                &dump_path.display().to_string(),
-            ],
-        )?;
-        if !result.status.success() {
-            let stderr = String::from_utf8_lossy(&result.stderr);
-            anyhow::bail!(
-                "pg_restore exited with {}: {}",
-                result.status,
-                stderr.trim()
-            );
+    tokio::task::spawn_blocking(move || match format {
+        DbDumpFormat::PlainSql => {
+            let result = run_pg_tool_with_stdio(
+                "psql",
+                &[
+                    "-v",
+                    "ON_ERROR_STOP=1",
+                    "-d",
+                    &url,
+                    "-f",
+                    &dump_path.display().to_string(),
+                ],
+                Stdio::piped(),
+            )?;
+            if !result.status.success() {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                let stdout = String::from_utf8_lossy(&result.stdout);
+                let detail = if !stderr.trim().is_empty() {
+                    stderr.trim()
+                } else {
+                    stdout.trim()
+                };
+                anyhow::bail!("psql exited with {}: {}", result.status, detail);
+            }
+            Ok(())
         }
-        Ok(())
+        DbDumpFormat::Custom => {
+            let result = run_pg_tool(
+                "pg_restore",
+                &[
+                    "--clean",
+                    "--if-exists",
+                    "--no-owner",
+                    "--no-acl",
+                    "-d",
+                    &url,
+                    &dump_path.display().to_string(),
+                ],
+            )?;
+            if !result.status.success() {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                if let Some(hint) = pg_restore_version_mismatch(&stderr) {
+                    anyhow::bail!("{hint}\n\npg_restore stderr: {}", stderr.trim());
+                }
+                anyhow::bail!(
+                    "pg_restore exited with {}: {}",
+                    result.status,
+                    stderr.trim()
+                );
+            }
+            Ok(())
+        }
     })
     .await??;
     Ok(())

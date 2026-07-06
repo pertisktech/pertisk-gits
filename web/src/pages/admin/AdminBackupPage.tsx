@@ -218,9 +218,9 @@ export function AdminBackupPage() {
           <div className="app-panel-header">Create backup</div>
           <form onSubmit={onCreateBackup} className="app-panel-body space-y-4">
             <p className="text-sm text-text-secondary">
-              Select components to include in a compressed archive. Requires{' '}
-              <code>pg_dump</code> and <code>pg_restore</code> on the server
-              (package <code>postgresql-client</code> on Debian/Alpine,{' '}
+              Select components to include in a compressed archive. Database backups use plain SQL
+              (<code>pg_dump</code> + <code>psql</code> on restore). Install PostgreSQL client tools
+              on the server (package <code>postgresql-client</code> on Debian/Alpine,{' '}
               <code>postgresql</code> on RHEL/AlmaLinux).
             </p>
             <div className="space-y-3">
@@ -260,8 +260,8 @@ export function AdminBackupPage() {
           <form onSubmit={onRestore} className="app-panel-body space-y-4">
             <p className="text-sm text-text-secondary">
               Upload a backup archive created on this platform. Restore overwrites the selected
-              components. Requires <code>pg_restore</code> (same PostgreSQL client package as
-              backup).
+              components. New backups restore with <code>psql</code>; older custom-format archives
+              need <code>pg_restore</code> from the same PostgreSQL major version as the backup.
             </p>
             <label className="block text-sm font-semibold text-text">
               Backup archive (.tar.gz)
