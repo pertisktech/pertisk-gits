@@ -22,7 +22,7 @@ use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::admin::{self, artifacts_root, registry_root};
+use crate::admin::{self, artifacts_root, registry_root, repos_root};
 use crate::system_metrics;
 use crate::{ApiError, AppState, AuthUser};
 use crate::version;
@@ -273,6 +273,7 @@ fn pg_restore_version_mismatch(stderr: &str) -> Option<String> {
 #[serde(rename_all = "snake_case")]
 pub enum BackupComponent {
     Db,
+    Repos,
     Registry,
     Artifacts,
 }
@@ -460,6 +461,15 @@ async fn backup_overview(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
+    let repos_path = repos_root();
+    let repos_path_buf = PathBuf::from(&repos_path);
+    let repos_disk = tokio::task::spawn_blocking({
+        let path = repos_path_buf.clone();
+        move || system_metrics::directory_size_bytes(&path)
+    })
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
     Ok(Json(BackupOverviewResponse {
         backups_root: backups_root().display().to_string(),
         registry_storage: registry_storage.clone(),
@@ -471,6 +481,14 @@ async fn backup_overview(
                 size_bytes: db_size.max(0) as u64,
                 storage: "postgresql".into(),
                 path: "DATABASE_URL".into(),
+            },
+            BackupOverviewComponent {
+                id: BackupComponent::Repos,
+                label: "Git repositories".into(),
+                available: true,
+                size_bytes: repos_disk,
+                storage: "local".into(),
+                path: repos_path,
             },
             BackupOverviewComponent {
                 id: BackupComponent::Registry,
@@ -635,6 +653,9 @@ async fn run_backup_job(
             BackupComponent::Registry => backup_registry(&pool, &work.join("registry"))
                 .await
                 .map_err(|e| format!("registry backup failed: {e:#}"))?,
+            BackupComponent::Repos => backup_repos(&work.join("repos"))
+                .await
+                .map_err(|e| format!("repositories backup failed: {e:#}"))?,
             BackupComponent::Artifacts => backup_artifacts(&work.join("artifacts"))
                 .await
                 .map_err(|e| format!("artifacts backup failed: {e:#}"))?,
@@ -768,6 +789,32 @@ async fn backup_artifacts(dest: &Path) -> anyhow::Result<()> {
     }
     let entry_count = count_backup_data_files(dest)?;
     write_backup_component_marker(dest, "artifacts", entry_count).await
+}
+
+async fn backup_repos(dest: &Path) -> anyhow::Result<()> {
+    tokio::fs::create_dir_all(dest).await?;
+    let source = PathBuf::from(repos_root());
+    if source.exists() {
+        copy_dir_recursive(&source, dest).await?;
+    }
+    let entry_count = count_backup_data_files(dest)?;
+    write_backup_component_marker(dest, "repos", entry_count).await
+}
+
+async fn clear_directory_children(dir: &Path) -> anyhow::Result<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let mut entries = tokio::fs::read_dir(dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        let path = entry.path();
+        if path.is_dir() {
+            tokio::fs::remove_dir_all(&path).await?;
+        } else {
+            tokio::fs::remove_file(&path).await?;
+        }
+    }
+    Ok(())
 }
 
 async fn copy_dir_recursive(source: &Path, dest: &Path) -> anyhow::Result<()> {
@@ -1033,6 +1080,9 @@ async fn run_restore(
             BackupComponent::Registry => restore_registry(pool, &extract_dir.join("registry"))
                 .await
                 .map_err(|e| format!("registry restore failed: {e:#}"))?,
+            BackupComponent::Repos => restore_repos(&extract_dir.join("repos"))
+                .await
+                .map_err(|e| format!("repositories restore failed: {e:#}"))?,
             BackupComponent::Artifacts => restore_artifacts(&extract_dir.join("artifacts"))
                 .await
                 .map_err(|e| format!("artifacts restore failed: {e:#}"))?,
@@ -1212,10 +1262,46 @@ async fn restore_artifacts(source: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn restore_repos(source: &Path) -> anyhow::Result<()> {
+    if !source.exists() {
+        tracing::info!("no repositories directory in backup archive; treating as empty repos");
+        return Ok(());
+    }
+
+    let files: Vec<PathBuf> = walkdir(source)?
+        .into_iter()
+        .filter(|path| !is_backup_component_marker(path))
+        .collect();
+    if files.is_empty() {
+        tracing::info!("repositories backup has no git data; skipping repos restore");
+        return Ok(());
+    }
+
+    let file_count = files.len();
+    let dest = PathBuf::from(repos_root());
+    tokio::fs::create_dir_all(&dest).await?;
+    clear_directory_children(&dest).await?;
+    for file in &files {
+        let rel = file.strip_prefix(source).map_err(|e| anyhow::anyhow!(e))?;
+        let dst_path = dest.join(rel);
+        if let Some(parent) = dst_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::copy(file, &dst_path).await?;
+    }
+    tracing::info!(
+        file_count,
+        dest = %dest.display(),
+        "restored git repositories"
+    );
+    Ok(())
+}
+
 impl std::fmt::Display for BackupComponent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Db => write!(f, "db"),
+            Self::Repos => write!(f, "repos"),
             Self::Registry => write!(f, "registry"),
             Self::Artifacts => write!(f, "artifacts"),
         }

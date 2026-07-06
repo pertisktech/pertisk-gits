@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Database, Download, HardDrive, Loader2, Package, Trash2, Upload } from 'lucide-react'
+import { Database, Download, FolderGit2, HardDrive, Loader2, Package, Trash2, Upload } from 'lucide-react'
 import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../../api/client'
 import type { BackupComponentId, BackupJob } from '../../api/types'
@@ -20,8 +20,14 @@ const COMPONENT_OPTIONS: {
   {
     id: 'db',
     label: 'Database',
-    description: 'PostgreSQL dump (users, repos, registry metadata, CI data)',
+    description: 'PostgreSQL dump (users, groups, issues, CI metadata, registry metadata)',
     icon: Database,
+  },
+  {
+    id: 'repos',
+    label: 'Git repositories',
+    description: 'Bare repos under REPOS_ROOT — required for git clone after restore',
+    icon: FolderGit2,
   },
   {
     id: 'registry',
@@ -59,9 +65,10 @@ function componentLabels(components: BackupComponentId[]) {
 export function AdminBackupPage() {
   const { token } = useAuth()
   const queryClient = useQueryClient()
-  const [selected, setSelected] = useState<BackupComponentId[]>(['db', 'registry', 'artifacts'])
+  const [selected, setSelected] = useState<BackupComponentId[]>(['db', 'repos', 'registry', 'artifacts'])
   const [restoreSelected, setRestoreSelected] = useState<BackupComponentId[]>([
     'db',
+    'repos',
     'registry',
     'artifacts',
   ])

@@ -433,7 +433,7 @@ export type UpdateSmtpSettingsPayload = Partial<{
   notify_pipeline_failure: boolean
 }>
 
-export type BackupComponentId = 'db' | 'registry' | 'artifacts'
+export type BackupComponentId = 'db' | 'repos' | 'registry' | 'artifacts'
 
 export type BackupJobStatus = 'pending' | 'running' | 'completed' | 'failed'
 

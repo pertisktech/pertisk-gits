@@ -273,6 +273,10 @@ pub fn registry_root() -> String {
     std::env::var("REGISTRY_ROOT").unwrap_or_else(|_| "data/registry".into())
 }
 
+pub fn repos_root() -> String {
+    std::env::var("REPOS_ROOT").unwrap_or_else(|_| "data/repos".into())
+}
+
 fn path_exists(path: &str) -> bool {
     Path::new(path).exists()
 }
