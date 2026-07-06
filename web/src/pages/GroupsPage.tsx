@@ -1,33 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
-import { Plus, Search, Users } from 'lucide-react'
+import { Plus, Users } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../api/client'
-import type { Organization } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { GroupListRow } from '../components/GroupListRow'
 import { ImportMenuDropdown } from '../components/ImportMenuDropdown'
+import { ListSearchToolbar } from '../components/ListSearchToolbar'
 import listStyles from '../components/ProjectList.module.css'
 import { EmptyState, LinkButton, PageHeader, TablePagination } from '../components/ui'
 import { useTopLevelGroupStats } from '../hooks/useTopLevelGroupStats'
-import { groupUrlPath } from '../lib/groupPath'
+import {
+  GROUP_SORT_OPTIONS,
+  matchesGroupSearch,
+  sortGroups,
+  type GroupSortOption,
+} from '../lib/listSort'
 import { useClientPagination } from '../lib/pagination'
 import styles from './DashboardPage.module.css'
-
-function matchesSearch(group: Organization, query: string) {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  const path = groupUrlPath(group).toLowerCase()
-  return (
-    group.name.toLowerCase().includes(q) ||
-    group.slug.toLowerCase().includes(q) ||
-    path.includes(q) ||
-    (group.description?.toLowerCase().includes(q) ?? false)
-  )
-}
 
 export function GroupsPage() {
   const { token } = useAuth()
   const [search, setSearch] = useState('')
+  const [sort, setSort] = useState<GroupSortOption>('name_asc')
 
   const { data: groups = [], isLoading, error } = useQuery({
     queryKey: ['organizations'],
@@ -37,10 +31,10 @@ export function GroupsPage() {
 
   const { topLevelGroups, statsByGroupId, isLoading: statsLoading } = useTopLevelGroupStats(groups)
 
-  const filteredGroups = useMemo(
-    () => topLevelGroups.filter((group) => matchesSearch(group, search)),
-    [topLevelGroups, search],
-  )
+  const filteredGroups = useMemo(() => {
+    const filtered = topLevelGroups.filter((group) => matchesGroupSearch(group, search))
+    return sortGroups(filtered, sort)
+  }, [topLevelGroups, search, sort])
 
   const {
     items: pageGroups,
@@ -53,7 +47,7 @@ export function GroupsPage() {
 
   useEffect(() => {
     resetPage()
-  }, [search, resetPage])
+  }, [search, sort, resetPage])
 
   return (
     <>
@@ -80,18 +74,17 @@ export function GroupsPage() {
         </div>
 
         {!isLoading && topLevelGroups.length > 0 && (
-          <div className="p-4 pb-0 border-b border-naturals-n4">
-            <div className={styles.searchWrap}>
-              <Search size={15} className={styles.searchIcon} aria-hidden />
-              <input
-                type="search"
-                className={styles.searchInput}
-                placeholder="Filter by name or path…"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                aria-label="Filter groups"
-              />
-            </div>
+          <div className="p-4 pb-0">
+            <ListSearchToolbar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Filter by name or path…"
+              searchLabel="Filter groups"
+              sort={sort}
+              onSortChange={setSort}
+              sortLabel="Sort groups"
+              sortOptions={GROUP_SORT_OPTIONS}
+            />
           </div>
         )}
 

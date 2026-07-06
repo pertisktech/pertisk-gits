@@ -1,71 +1,29 @@
-import {
-  FolderGit2,
-  Plus,
-  Search,
-} from 'lucide-react'
+import { FolderGit2, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { useEffectiveUser } from '../auth/AuthContext'
+import { ListSearchToolbar } from '../components/ListSearchToolbar'
 import { ProjectListRow } from '../components/ProjectListRow'
 import listStyles from '../components/ProjectList.module.css'
-import { EmptyState, LinkButton, Select, TablePagination } from '../components/ui'
-import { useAllProjects, type DashboardProject } from '../hooks/useAllProjects'
+import { EmptyState, LinkButton, TablePagination } from '../components/ui'
+import { useAllProjects } from '../hooks/useAllProjects'
 import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
+import {
+  matchesProjectSearch,
+  PROJECT_SORT_OPTIONS,
+  sortProjects,
+  type ProjectSortOption,
+} from '../lib/listSort'
 import { DEFAULT_PAGE_SIZE, useClientPagination } from '../lib/pagination'
-import { repositoryActivityMs } from '../lib/repositoryActivity'
 import styles from './DashboardPage.module.css'
-
-type SortOption = 'updated_desc' | 'updated_asc' | 'name_asc' | 'name_desc' | 'group_asc'
-
-function compareText(a: string, b: string) {
-  return a.localeCompare(b, undefined, { sensitivity: 'base' })
-}
-
-function projectUpdatedAt(project: DashboardProject): number {
-  return Math.floor(repositoryActivityMs(project) / 1000)
-}
-
-function sortProjects(projects: DashboardProject[], sort: SortOption): DashboardProject[] {
-  const copy = [...projects]
-  copy.sort((a, b) => {
-    switch (sort) {
-      case 'updated_asc':
-        return projectUpdatedAt(a) - projectUpdatedAt(b)
-      case 'updated_desc':
-        return projectUpdatedAt(b) - projectUpdatedAt(a)
-      case 'name_desc':
-        return compareText(b.name, a.name)
-      case 'group_asc':
-        return (
-          compareText(a.orgSlug, b.orgSlug) ||
-          compareText(a.name, b.name)
-        )
-      case 'name_asc':
-      default:
-        return compareText(a.name, b.name)
-    }
-  })
-  return copy
-}
-
-function matchesSearch(project: DashboardProject, query: string) {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  const path = `${project.orgSlug}/${project.slug}`.toLowerCase()
-  return (
-    project.name.toLowerCase().includes(q) ||
-    project.orgName.toLowerCase().includes(q) ||
-    path.includes(q)
-  )
-}
 
 export function DashboardPage() {
   const user = useEffectiveUser()
   const { projects, isLoading, error } = useAllProjects()
   const [search, setSearch] = useState('')
-  const [sort, setSort] = useState<SortOption>('updated_desc')
+  const [sort, setSort] = useState<ProjectSortOption>('updated_desc')
 
   const filteredProjects = useMemo(() => {
-    const filtered = projects.filter((project) => matchesSearch(project, search))
+    const filtered = projects.filter((project) => matchesProjectSearch(project, search))
     return sortProjects(filtered, sort)
   }, [projects, search, sort])
 
@@ -118,38 +76,20 @@ export function DashboardPage() {
       )}
 
       <div className="app-panel">
-        <div className="p-4 pb-0">
-          <div className={styles.toolbar}>
-            <div className={styles.searchWrap}>
-              <Search size={15} className={styles.searchIcon} aria-hidden />
-              <input
-                type="search"
-                className={styles.searchInput}
-                placeholder="Filter by name or namespace…"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                }}
-                aria-label="Filter projects"
-              />
-            </div>
-            <Select
-              inline
-              className={styles.sortSelect}
-              value={sort}
-              onChange={(e) => {
-                setSort(e.target.value as SortOption)
-              }}
-              aria-label="Sort projects"
-            >
-              <option value="updated_desc">Updated (newest)</option>
-              <option value="updated_asc">Updated (oldest)</option>
-              <option value="name_asc">Name (A–Z)</option>
-              <option value="name_desc">Name (Z–A)</option>
-              <option value="group_asc">Namespace</option>
-            </Select>
+        {!isLoading && projects.length > 0 && (
+          <div className="p-4 pb-0">
+            <ListSearchToolbar
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Filter by name or namespace…"
+              searchLabel="Filter repositories"
+              sort={sort}
+              onSortChange={setSort}
+              sortLabel="Sort repositories"
+              sortOptions={PROJECT_SORT_OPTIONS}
+            />
           </div>
-        </div>
+        )}
 
         {error && (
           <div className="mx-4 mb-4 p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
@@ -200,7 +140,7 @@ export function DashboardPage() {
               pageSize={pageSize}
               total={total}
               onPageChange={setPage}
-              itemLabel="projects"
+              itemLabel="repositories"
             />
           </>
         )}
