@@ -20,7 +20,7 @@ use crate::access::{self, AuthUser};
 use crate::config::repo_disk_path;
 use crate::protocol;
 use crate::refs::{diff_refs, snapshot_refs};
-use crate::storage::ensure_bare_repo;
+use crate::storage::{ensure_bare_repo, ensure_bare_repo_refs_dirs, repo_exists_on_disk};
 
 #[derive(Clone)]
 pub struct GitHttpState {
@@ -153,10 +153,12 @@ async fn info_refs(
         ));
     };
 
+    if !repo_exists_on_disk(&state.repos_root, org_path, &repo.repo_slug) {
+        return Err(GitHttpError::NotFound);
+    }
+
     let disk_path = repo_disk_path(&state.repos_root, org_path, &repo.repo_slug);
-    ensure_bare_repo(&state.repos_root, org_path, &repo.repo_slug)
-        .await
-        .map_err(|e| GitHttpError::Internal(e.to_string()))?;
+    ensure_bare_repo_refs_dirs(&disk_path).map_err(|e| GitHttpError::Internal(e.to_string()))?;
 
     let body = protocol::advertise_refs(&disk_path, service)
         .await
@@ -193,7 +195,13 @@ async fn upload_pack(
         return Err(GitHttpError::Unauthorized);
     }
 
+    if !repo_exists_on_disk(&state.repos_root, org_path, &repo.repo_slug) {
+        return Err(GitHttpError::NotFound);
+    }
+
     let disk_path = repo_disk_path(&state.repos_root, org_path, &repo.repo_slug);
+    ensure_bare_repo_refs_dirs(&disk_path).map_err(|e| GitHttpError::Internal(e.to_string()))?;
+
     let request_body = axum::body::to_bytes(body, 50 * 1024 * 1024)
         .await
         .map_err(|e| GitHttpError::Internal(e.to_string()))?;

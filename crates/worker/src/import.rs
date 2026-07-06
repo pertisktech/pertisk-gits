@@ -250,6 +250,7 @@ impl ImportWorker {
             let repo_path = repo_disk_path(&self.repos_root, &target_org_path, &repo.target_slug);
             let auth_url = authenticated_clone_url(provider, &repo.source_clone_url, token)?;
             mirror_repository(&auth_url, &repo_path).await?;
+            validate_mirrored_repo_has_commits(&repo_path).await?;
 
             default_branch = read_default_branch(&repo_path)
                 .await
@@ -530,6 +531,28 @@ impl ImportWorker {
         .await?;
         Ok(result.rows_affected() > 0)
     }
+}
+
+/// Reject imports that cloned an empty shell (source has no commits on disk).
+async fn validate_mirrored_repo_has_commits(repo_path: &Path) -> anyhow::Result<()> {
+    let repo = repo_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("invalid repository path"))?;
+    if !repo_path.join("HEAD").is_file() {
+        anyhow::bail!(
+            "mirror produced no git data — source repository may be missing on disk (only a database record)"
+        );
+    }
+    let output = tokio::process::Command::new("git")
+        .args(["-C", repo, "rev-list", "--all", "--max-count=1"])
+        .output()
+        .await?;
+    if !output.status.success() || output.stdout.is_empty() {
+        anyhow::bail!(
+            "source repository has no commits — push code to the source repo before importing"
+        );
+    }
+    Ok(())
 }
 
 async fn mirror_repository(auth_url: &str, repo_path: &Path) -> anyhow::Result<()> {
