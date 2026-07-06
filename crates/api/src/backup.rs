@@ -704,7 +704,7 @@ async fn run_backup_job(
 
     let manifest = BackupManifest {
         version: BACKUP_FORMAT_VERSION,
-        app_version: version::APP_VERSION.to_string(),
+        app_version: version::display_version().to_string(),
         created_at: meta.created_at,
         components: components.clone(),
         registry_storage,

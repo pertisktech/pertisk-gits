@@ -1699,6 +1699,9 @@ export const api = {
   listImportCredentials: (token: string, orgSlug: string) =>
     request<ImportCredential[]>(`/organizations/${orgApiPath(orgSlug)}/import/credentials`, {}, token),
 
+  listMyImportCredentials: (token: string) =>
+    request<ImportCredential[]>('/import/credentials', {}, token),
+
   saveImportCredential: (
     token: string,
     orgSlug: string,

@@ -348,7 +348,7 @@ async fn admin_system_info(
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok(Json(AdminSystemInfoResponse {
-        version: version::APP_VERSION,
+        version: version::display_version(),
         rust_version: version::RUSTC_VERSION.to_string(),
         started_at: state.started_at,
         counts: AdminSystemCounts {
@@ -412,7 +412,7 @@ async fn admin_health(
         StatusCode::OK,
         Json(AdminHealthResponse {
             status: if healthy { "ok" } else { "unhealthy" },
-            version: version::APP_VERSION,
+            version: version::display_version(),
             database,
             database_latency_ms,
             database_version,

@@ -107,6 +107,17 @@ export function GroupImportPage() {
     [remoteRepos],
   )
 
+  function selectExistingForReimport() {
+    setOnConflict('override')
+    setSelected((prev) => {
+      const next = { ...prev }
+      for (const repo of remoteRepos) {
+        if (repo.already_exists) next[repo.id] = true
+      }
+      return next
+    })
+  }
+
   const { data: members = [] } = useQuery({
     queryKey: ['org-members', activeOrgPath],
     queryFn: () => api.listOrganizationMembers(token!, activeOrgPath),
@@ -120,10 +131,30 @@ export function GroupImportPage() {
   }, [isGlobalImport, createdOrgPath, members, user?.id])
 
   const { data: credentials = [] } = useQuery({
-    queryKey: ['import-credentials', activeOrgPath],
-    queryFn: () => api.listImportCredentials(token!, activeOrgPath),
-    enabled: Boolean(token && activeOrgPath && canManage),
+    queryKey: ['import-credentials', user?.id],
+    queryFn: () => api.listMyImportCredentials(token!),
+    enabled: Boolean(token && (isGlobalImport || (activeOrgPath && canManage))),
   })
+
+  useEffect(() => {
+    if (!credentialId) return
+    const cred = credentials.find((entry) => entry.id === credentialId)
+    if (!cred?.base_url) return
+    if (cred.provider === 'github' && cred.base_url === 'https://github.com') {
+      setBaseUrl('')
+      return
+    }
+    if (cred.provider === 'gitlab' && cred.base_url === 'https://gitlab.com') {
+      setBaseUrl('')
+      return
+    }
+    setBaseUrl(cred.base_url)
+  }, [credentialId, credentials])
+
+  const matchingCredentials = useMemo(
+    () => credentials.filter((cred) => cred.provider === provider),
+    [credentials, provider],
+  )
 
   const { data: jobs = [] } = useQuery({
     queryKey: ['import-jobs', activeOrgPath],
@@ -262,7 +293,7 @@ export function GroupImportPage() {
           base_url: baseUrl.trim() || undefined,
         })
         setCredentialId(saved.id)
-        queryClient.invalidateQueries({ queryKey: ['import-credentials', org] })
+        queryClient.invalidateQueries({ queryKey: ['import-credentials'] })
         return api.discoverImportRepos(token!, org, {
           ...discoverPayload,
           credential_id: saved.id,
@@ -402,8 +433,8 @@ export function GroupImportPage() {
         title="Import repositories"
         subtitle={
           isGlobalImport
-            ? 'Connect with GitHub or GitLab, pick an organization or group, and import repositories into a matching Pertisk group.'
-            : 'Mirror projects from GitHub or GitLab into this group. Git history is preserved; optionally import issues and open pull/merge requests.'
+            ? 'Connect with GitHub or GitLab, pick an organization or group, and import repositories into a matching Pertisk group. Saved tokens work across all groups on the same instance.'
+            : 'Mirror projects from GitHub or GitLab into this group. Re-import from the same source to refresh mirrors; saved tokens are shared across your groups.'
         }
       />
 
@@ -462,16 +493,21 @@ export function GroupImportPage() {
                 </label>
               )}
 
-              {!isGlobalImport && credentials.length > 0 && (
+              {matchingCredentials.length > 0 && (
                 <Select
-                  label="Saved credential"
+                  label="Saved connection"
+                  hint="Reuse a GitHub or GitLab token you already saved for this instance."
                   value={credentialId ?? ''}
-                  onChange={(event) => setCredentialId(event.target.value || null)}
+                  onChange={(event) => {
+                    setCredentialId(event.target.value || null)
+                    setPat('')
+                  }}
                 >
                   <option value="">Use new token below</option>
-                  {credentials.map((cred) => (
+                  {matchingCredentials.map((cred) => (
                     <option key={cred.id} value={cred.id}>
                       {cred.label ?? cred.provider}
+                      {cred.base_url ? ` · ${cred.base_url}` : ''}
                     </option>
                   ))}
                 </Select>
@@ -739,6 +775,11 @@ export function GroupImportPage() {
                 >
                   Select all
                 </SecondaryButton>
+                {existingRepoCount > 0 && (
+                  <SecondaryButton type="button" onClick={selectExistingForReimport}>
+                    Re-import existing ({existingRepoCount})
+                  </SecondaryButton>
+                )}
                 <SecondaryButton
                   type="button"
                   onClick={() => {

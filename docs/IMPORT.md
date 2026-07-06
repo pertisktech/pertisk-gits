@@ -57,7 +57,8 @@ For self-hosted GitLab, enter the instance URL (e.g. `https://git.example.com`) 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/organizations/{org}/import/credentials` | List saved credentials (no token value) |
+| `GET` | `/import/credentials` | List your saved import connections (all groups) |
+| `GET` | `/organizations/{org}/import/credentials` | Same list (requires group admin) |
 | `POST` | `/organizations/{org}/import/credentials` | Save or update encrypted PAT |
 | `DELETE` | `/organizations/{org}/import/credentials/{id}` | Remove saved credential |
 | `POST` | `/organizations/{org}/import/discover` | List remote repos and orgs/groups (`credential_id`; optional `namespace` + `namespace_kind`) |
@@ -80,11 +81,11 @@ The background processor (in `pertisk-api`, optional `pertisk-worker` backup):
 5. When enabled: imports labels, milestones, issues, and/or **open** pull/merge requests (preserves numbers; skips closed/merged PRs)
 6. Writes audit events
 
-Re-importing the same target slug updates the mirror in place.
+Re-importing the same target slug updates the mirror in place (`on_conflict: override`). Saved tokens are per user and GitHub/GitLab instance — reuse them in any group.
 
 ## Database
 
-- `import_credentials` — encrypted PAT per user/org/provider/base URL
+- `import_credentials` — encrypted PAT per user/provider/instance (shared across groups)
 - `import_jobs` — background job header
 - `import_job_repos` — per-repository import state
 

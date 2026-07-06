@@ -41,6 +41,7 @@ pub fn import_routes() -> Router<AppState> {
     Router::new()
         .route("/import/preview", post(preview_import))
         .route("/import/ensure-group", post(ensure_import_group))
+        .route("/import/credentials", get(list_my_credentials))
         .route(
             "/organizations/{org_path}/import/credentials",
             get(list_credentials).post(save_credential),
@@ -200,6 +201,42 @@ async fn ensure_import_group(
     Ok((StatusCode::OK, Json(org)))
 }
 
+async fn credential_rows_for_user(
+    pool: &sqlx::PgPool,
+    user_id: Uuid,
+) -> Result<Vec<CredentialResponse>, ApiError> {
+    let rows = sqlx::query_as::<_, ImportCredential>(
+        r#"
+        SELECT id, organization_id, user_id, provider, base_url, label, created_at, updated_at
+        FROM import_credentials
+        WHERE user_id = $1
+        ORDER BY updated_at DESC
+        "#,
+    )
+    .bind(user_id)
+    .fetch_all(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| CredentialResponse {
+            id: row.id,
+            provider: row.provider,
+            base_url: row.base_url,
+            label: row.label,
+            created_at: row.created_at,
+        })
+        .collect())
+}
+
+async fn list_my_credentials(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<CredentialResponse>>, ApiError> {
+    Ok(Json(credential_rows_for_user(&state.pool, auth.user_id).await?))
+}
+
 async fn list_credentials(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -207,32 +244,7 @@ async fn list_credentials(
 ) -> Result<Json<Vec<CredentialResponse>>, ApiError> {
     let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
     crate::permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
-
-    let rows = sqlx::query_as::<_, ImportCredential>(
-        r#"
-        SELECT id, organization_id, user_id, provider, base_url, label, created_at, updated_at
-        FROM import_credentials
-        WHERE organization_id = $1 AND user_id = $2
-        ORDER BY created_at DESC
-        "#,
-    )
-    .bind(org.id)
-    .bind(auth.user_id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
-
-    Ok(Json(
-        rows.into_iter()
-            .map(|row| CredentialResponse {
-                id: row.id,
-                provider: row.provider,
-                base_url: row.base_url,
-                label: row.label,
-                created_at: row.created_at,
-            })
-            .collect(),
-    ))
+    Ok(Json(credential_rows_for_user(&state.pool, auth.user_id).await?))
 }
 
 async fn save_credential(
@@ -267,8 +279,9 @@ async fn save_credential(
         r#"
         INSERT INTO import_credentials (organization_id, user_id, provider, base_url, encrypted_token, label)
         VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (organization_id, user_id, provider, base_url)
+        ON CONFLICT (user_id, provider, base_url)
         DO UPDATE SET
+            organization_id = EXCLUDED.organization_id,
             encrypted_token = EXCLUDED.encrypted_token,
             label = EXCLUDED.label,
             updated_at = NOW()
@@ -308,11 +321,10 @@ async fn delete_credential(
     let result = sqlx::query(
         r#"
         DELETE FROM import_credentials
-        WHERE id = $1 AND organization_id = $2 AND user_id = $3
+        WHERE id = $1 AND user_id = $2
         "#,
     )
     .bind(credential_id)
-    .bind(org.id)
     .bind(auth.user_id)
     .execute(&state.pool)
     .await
@@ -405,11 +417,10 @@ async fn create_import_job(
         r#"
         SELECT provider, encrypted_token, base_url
         FROM import_credentials
-        WHERE id = $1 AND organization_id = $2 AND user_id = $3
+        WHERE id = $1 AND user_id = $2
         "#,
     )
     .bind(body.credential_id)
-    .bind(org.id)
     .bind(auth.user_id)
     .fetch_optional(&state.pool)
     .await
@@ -614,11 +625,10 @@ async fn resolve_credential(
             r#"
             SELECT provider, encrypted_token, base_url
             FROM import_credentials
-            WHERE id = $1 AND organization_id = $2 AND user_id = $3
+            WHERE id = $1 AND user_id = $2
             "#,
         )
         .bind(credential_id)
-        .bind(org_id)
         .bind(user_id)
         .fetch_optional(&state.pool)
         .await

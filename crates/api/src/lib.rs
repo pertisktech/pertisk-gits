@@ -70,7 +70,7 @@ mod version;
 mod wiki;
 
 pub use config::Config;
-pub use version::{APP_VERSION, RUSTC_VERSION};
+pub use version::{display_version, init_display_version, APP_VERSION, RUSTC_VERSION};
 
 use chrono::Utc;
 use password::{hash_password, verify_password};
@@ -120,6 +120,8 @@ pub async fn run() -> anyhow::Result<()> {
     observability::init_tracing_subscriber();
 
     let config = Arc::new(Config::from_env()?);
+    version::init_display_version(config.web_dist.as_deref());
+    tracing::info!(version = %version::display_version(), "pertisk-api starting");
     std::fs::create_dir_all(&config.repos_root)?;
     std::fs::create_dir_all(&config.search_index_root)?;
     let pool = db::connect(&config.database_url).await?;
@@ -377,7 +379,7 @@ pub async fn run() -> anyhow::Result<()> {
 async fn root() -> Json<serde_json::Value> {
     Json(serde_json::json!({
         "service": "pertisk-api",
-        "version": version::APP_VERSION,
+        "version": version::display_version(),
         "note": "This is the REST API. Open the web UI at http://localhost:5173",
         "health": "/health",
         "health_live": "/health/live",
@@ -446,7 +448,7 @@ async fn health(State(state): State<AppState>) -> (StatusCode, Json<HealthRespon
         status_code,
         Json(HealthResponse {
             status: if healthy { "ok" } else { "unhealthy" },
-            version: version::APP_VERSION,
+            version: version::display_version(),
             database,
             api_url: state.config.git_public_base_url.clone(),
         }),

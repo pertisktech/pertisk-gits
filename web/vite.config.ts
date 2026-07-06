@@ -1,3 +1,4 @@
+import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,12 +13,25 @@ function workspaceVersion(): string {
   return match?.[1] ?? '0.0.0'
 }
 
+function gitDescribeVersion(): string | null {
+  try {
+    const tag = execSync('git describe --tags --always', {
+      cwd: rootDir,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+    return tag ? tag.replace(/^[vV]/, '') : null
+  } catch {
+    return null
+  }
+}
+
 function appVersion(): string {
   const fromEnv = process.env.VERSION ?? process.env.VITE_APP_VERSION
   if (fromEnv) {
     return fromEnv.replace(/^[vV]/, '')
   }
-  return workspaceVersion()
+  return gitDescribeVersion() ?? workspaceVersion()
 }
 
 // https://vite.dev/config/
