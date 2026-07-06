@@ -63,6 +63,14 @@ export function ImportMenuDropdown({ basePath = '/groups', className }: ImportMe
           >
             Import GitLab
           </Link>
+          <Link
+            to={`${basePath}/import?provider=pertisk`}
+            className="app-action-menu-item"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+          >
+            Import Pertisk Gits
+          </Link>
         </div>
       )}
     </div>

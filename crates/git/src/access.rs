@@ -96,6 +96,44 @@ pub async fn authenticate_basic(
     Ok(Some(AuthUser { id, username }))
 }
 
+fn hash_api_token(token: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    token.hash(&mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+pub async fn authenticate_api_token(pool: &PgPool, token: &str) -> anyhow::Result<Option<AuthUser>> {
+    if token.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let token_hash = hash_api_token(token);
+    let row = sqlx::query_as::<_, (Uuid, String, String)>(
+        r#"
+        SELECT u.id, u.username, u.approval_status::text
+        FROM api_tokens t
+        INNER JOIN users u ON u.id = t.user_id
+        WHERE t.token_hash = $1
+          AND (t.expires_at IS NULL OR t.expires_at > NOW())
+        "#,
+    )
+    .bind(&token_hash)
+    .fetch_optional(pool)
+    .await?;
+
+    let Some((id, username, approval_status)) = row else {
+        return Ok(None);
+    };
+
+    if approval_status != "approved" {
+        return Ok(None);
+    }
+
+    Ok(Some(AuthUser { id, username }))
+}
+
 pub async fn can_read_repo(pool: &PgPool, repo: &RepoRecord, user: Option<&AuthUser>) -> anyhow::Result<bool> {
     match user {
         Some(user) => can_read_repo_principal(pool, repo, &GitPrincipal::User(user.clone())).await,

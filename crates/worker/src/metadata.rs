@@ -56,6 +56,7 @@ pub async fn import_repo_metadata(
             )
             .await
         }
+        ImportProvider::Pertisk => Ok(MetadataStats::default()),
     }
 }
 

@@ -967,7 +967,7 @@ export interface CiSecret {
   updated_at: string
 }
 
-export type ImportProvider = 'github' | 'gitlab'
+export type ImportProvider = 'github' | 'gitlab' | 'pertisk'
 
 export type ImportJobStatus = 'pending' | 'mirroring' | 'metadata' | 'done' | 'failed' | 'skipped'
 

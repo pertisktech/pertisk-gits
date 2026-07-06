@@ -32,6 +32,7 @@ pub async fn import_repo_wiki(
             )
             .await
         }
+        ImportProvider::Pertisk => Ok(0),
     }
 }
 
@@ -291,7 +292,7 @@ fn authenticated_clone_url(
         anyhow::bail!("clone URL already contains credentials");
     }
     let username = match provider {
-        ImportProvider::Github => "x-access-token",
+        ImportProvider::Github | ImportProvider::Pertisk => "x-access-token",
         ImportProvider::Gitlab => "oauth2",
     };
     Ok(format!("{scheme}{username}:{token}@{rest}"))

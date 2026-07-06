@@ -1,10 +1,10 @@
-# Import from GitHub & GitLab
+# Import from GitHub, GitLab & Pertisk Gits
 
 Onboard teams by mirroring existing projects into Pertisk Gits without manual `git clone` + push.
 
 ## Overview
 
-Group owners and admins can import repositories from **GitHub** or **GitLab** (including self-hosted GitLab) via **Group → Import** in the web UI.
+Group owners and admins can import repositories from **GitHub**, **GitLab** (including self-hosted), or **another Pertisk Gits server** via **Group → Import** in the web UI.
 
 MVP scope:
 
@@ -52,6 +52,17 @@ Pertisk calls the GitHub REST API at `https://api.github.com` (not `github.com/a
 Create a PAT with **`read_api`** and **`read_repository`** scopes.
 
 For self-hosted GitLab, enter the instance URL (e.g. `https://git.example.com`) in the import wizard.
+
+### Pertisk Gits (another server)
+
+Use this to mirror git repositories from **Server A** into **Server B** (git only — no issues, PRs, or wiki).
+
+1. On **Server A**, create an **API token** for your user (Profile → API tokens) with access to the groups/repos you need.
+2. On **Server B**, open **Group → Import → Pertisk Gits**.
+3. Enter Server A’s public URL (e.g. `https://git-a.example.com`) and the `pgs_…` token.
+4. Select the source group and repositories, then start the import.
+
+Server B must reach Server A over HTTPS (or set `IMPORT_TLS_INSECURE=true` for private CA in dev). Git clone uses the same API token via smart HTTP (`x-access-token`).
 
 ## API
 

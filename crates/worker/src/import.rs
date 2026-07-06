@@ -491,6 +491,7 @@ impl ImportWorker {
         let provider = match row.0.as_str() {
             "github" => ImportProvider::Github,
             "gitlab" => ImportProvider::Gitlab,
+            "pertisk" => ImportProvider::Pertisk,
             other => anyhow::bail!("unknown provider {other}"),
         };
         let token = decrypt_secret(&self.secrets_key, &row.1)?;
@@ -500,6 +501,7 @@ impl ImportWorker {
             .unwrap_or_else(|| match provider {
                 ImportProvider::Github => "https://github.com".into(),
                 ImportProvider::Gitlab => "https://gitlab.com".into(),
+                ImportProvider::Pertisk => String::new(),
             });
         Ok((provider, token, base_url))
     }
@@ -663,7 +665,7 @@ fn authenticated_clone_url(
         anyhow::bail!("clone URL already contains credentials");
     }
     let username = match provider {
-        ImportProvider::Github => "x-access-token",
+        ImportProvider::Github | ImportProvider::Pertisk => "x-access-token",
         ImportProvider::Gitlab => "oauth2",
     };
     Ok(format!("{scheme}{username}:{token}@{rest}"))

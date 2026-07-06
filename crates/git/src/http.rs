@@ -303,13 +303,39 @@ async fn authenticate(pool: &PgPool, headers: &HeaderMap) -> Result<Option<AuthU
         return Ok(None);
     };
 
+    if let Some(token) = header_value.strip_prefix("Bearer ") {
+        let token = token.trim();
+        if !token.is_empty() {
+            if let Some(user) = access::authenticate_api_token(pool, token)
+                .await
+                .map_err(|e| GitHttpError::Internal(e.to_string()))?
+            {
+                return Ok(Some(user));
+            }
+        }
+    }
+
     let Some((username, password)) = access::parse_basic_auth(header_value) else {
         return Ok(None);
     };
 
-    access::authenticate_basic(pool, &username, &password)
+    if let Some(user) = access::authenticate_basic(pool, &username, &password)
         .await
-        .map_err(|e| GitHttpError::Internal(e.to_string()))
+        .map_err(|e| GitHttpError::Internal(e.to_string()))?
+    {
+        return Ok(Some(user));
+    }
+
+    if username == "x-access-token" || username == "oauth2" || password.starts_with("pgs_") {
+        if let Some(user) = access::authenticate_api_token(pool, &password)
+            .await
+            .map_err(|e| GitHttpError::Internal(e.to_string()))?
+        {
+            return Ok(Some(user));
+        }
+    }
+
+    Ok(None)
 }
 
 #[derive(Debug)]

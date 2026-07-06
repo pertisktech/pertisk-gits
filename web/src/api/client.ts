@@ -41,6 +41,7 @@ import type {
   ImportJob,
   ImportJobDetail,
   ImportOnConflict,
+  ImportProvider,
   RemoteNamespace,
   RemoteRepo,
   RegisterRunnerResponse,
@@ -1706,7 +1707,7 @@ export const api = {
     token: string,
     orgSlug: string,
     payload: {
-      provider: 'github' | 'gitlab'
+      provider: ImportProvider
       token: string
       base_url?: string
       label?: string
@@ -1727,7 +1728,7 @@ export const api = {
   previewImport: (
     token: string,
     payload: {
-      provider: 'github' | 'gitlab'
+      provider: ImportProvider
       token: string
       base_url?: string
     },
@@ -1750,7 +1751,7 @@ export const api = {
     orgSlug: string,
     payload: {
       credential_id?: string
-      provider?: 'github' | 'gitlab'
+      provider?: ImportProvider
       token?: string
       base_url?: string
       namespace?: string

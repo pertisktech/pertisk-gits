@@ -20,7 +20,7 @@ import {
 import { chunkImportRepos, DEFAULT_IMPORT_MAX_REPOS_PER_JOB } from '../lib/importLimits'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
 import { useClientPagination } from '../lib/pagination'
-import { slugify, slugifyPath, remoteNamespaceLabel } from '../lib/slugify'
+import { slugify, slugifyPath, remoteNamespaceLabel, importProviderLabel } from '../lib/slugify'
 
 const fieldClass =
   'w-full px-3 py-2 rounded-lg border border-naturals-n4 bg-surface text-text text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary'
@@ -35,7 +35,13 @@ function jobStatusVariant(status: string) {
 }
 
 function parseImportProvider(value: string | null): ImportProvider {
-  return value === 'gitlab' ? 'gitlab' : 'github'
+  if (value === 'gitlab') return 'gitlab'
+  if (value === 'pertisk') return 'pertisk'
+  return 'github'
+}
+
+function isGitOnlyImport(provider: ImportProvider) {
+  return provider === 'pertisk'
 }
 
 export function GroupImportPage() {
@@ -76,6 +82,13 @@ export function GroupImportPage() {
   useEffect(() => {
     setProvider(parseImportProvider(searchParams.get('provider')))
   }, [searchParams])
+
+  useEffect(() => {
+    if (!isGitOnlyImport(provider)) return
+    setImportIssues(false)
+    setImportPullRequests(false)
+    setImportWiki(false)
+  }, [provider])
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -215,7 +228,9 @@ export function GroupImportPage() {
       throw new Error(
         provider === 'github'
           ? 'Select a GitHub organization before listing repositories'
-          : 'Select a GitLab group before listing repositories',
+          : provider === 'pertisk'
+            ? 'Select a Pertisk group before listing repositories'
+            : 'Select a GitLab group before listing repositories',
       )
     }
 
@@ -249,6 +264,9 @@ export function GroupImportPage() {
   const connect = useMutation({
     mutationFn: async () => {
       if (!pat.trim()) throw new Error('Enter a personal access token')
+      if (provider === 'pertisk' && !baseUrl.trim()) {
+        throw new Error('Enter the source Pertisk Gits server URL')
+      }
       return api.previewImport(token!, {
         provider,
         token: pat,
@@ -285,6 +303,9 @@ export function GroupImportPage() {
 
   const discover = useMutation({
     mutationFn: async () => {
+      if (provider === 'pertisk' && !baseUrl.trim() && !credentialId) {
+        throw new Error('Enter the source Pertisk Gits server URL')
+      }
       const org = await ensureTargetOrg()
       if (pat.trim()) {
         const saved = await api.saveImportCredential(token!, org, {
@@ -433,8 +454,8 @@ export function GroupImportPage() {
         title="Import repositories"
         subtitle={
           isGlobalImport
-            ? 'Connect with GitHub or GitLab, pick an organization or group, and import repositories into a matching Pertisk group. Saved tokens work across all groups on the same instance.'
-            : 'Mirror projects from GitHub or GitLab into this group. Re-import from the same source to refresh mirrors; saved tokens are shared across your groups.'
+            ? 'Connect with GitHub, GitLab, or another Pertisk Gits server, pick a source group, and import repositories. Saved tokens work across all groups on this instance.'
+            : 'Mirror projects from GitHub, GitLab, or another Pertisk Gits server into this group. Re-import from the same source to refresh mirrors; saved tokens are shared across your groups.'
         }
       />
 
@@ -455,7 +476,27 @@ export function GroupImportPage() {
               >
                 <option value="github">GitHub</option>
                 <option value="gitlab">GitLab</option>
+                <option value="pertisk">Pertisk Gits</option>
               </Select>
+
+              {provider === 'pertisk' && (
+                <label className="block text-sm font-medium text-text">
+                  Source server URL
+                  <input
+                    className={`${fieldClass} mt-1 font-mono`}
+                    placeholder="https://git.example.com"
+                    value={baseUrl}
+                    onChange={(event) => setBaseUrl(event.target.value)}
+                    name="pertisk-import-server-url"
+                    autoComplete="off"
+                    readOnly
+                    onFocus={(event) => event.currentTarget.removeAttribute('readonly')}
+                  />
+                  <span className="text-xs text-text-secondary mt-1 block">
+                    Public URL of the other Pertisk Gits instance (Server A).
+                  </span>
+                </label>
+              )}
 
               {provider === 'gitlab' && (
                 <label className="block text-sm font-medium text-text">
@@ -496,7 +537,7 @@ export function GroupImportPage() {
               {matchingCredentials.length > 0 && (
                 <Select
                   label="Saved connection"
-                  hint="Reuse a GitHub or GitLab token you already saved for this instance."
+                  hint={`Reuse a ${importProviderLabel(provider)} token you already saved for this source.`}
                   value={credentialId ?? ''}
                   onChange={(event) => {
                     setCredentialId(event.target.value || null)
@@ -518,7 +559,9 @@ export function GroupImportPage() {
                 <input
                   type="password"
                   className={`${fieldClass} mt-1 font-mono`}
-                  placeholder={provider === 'github' ? 'ghp_…' : 'glpat-…'}
+                  placeholder={
+                    provider === 'github' ? 'ghp_…' : provider === 'pertisk' ? 'pgs_…' : 'glpat-…'
+                  }
                   value={pat}
                   onChange={(event) => setPat(event.target.value)}
                   name="pertisk-import-pat"
@@ -531,7 +574,9 @@ export function GroupImportPage() {
                 <span className="text-xs text-text-secondary mt-1 block">
                   {provider === 'github'
                     ? 'Classic PAT: enable the repo scope. Fine-grained PAT: grant read access to Contents and Metadata for target repositories.'
-                    : 'Needs read_api and read_repository scopes. Stored encrypted; never shown again.'}
+                    : provider === 'pertisk'
+                      ? 'Create an API token on the source server (Profile → API tokens). Needs read access to the groups and repositories you import.'
+                      : 'Needs read_api and read_repository scopes. Stored encrypted; never shown again.'}
                 </span>
               </label>
 
@@ -568,14 +613,16 @@ export function GroupImportPage() {
               {isGlobalImport && previewReady && namespaces.length > 0 && (
                 <Select
                   label={remoteNamespaceLabel(provider)}
-                  hint={`Repositories are listed from this ${provider === 'github' ? 'organization' : 'group'} on ${provider === 'github' ? 'GitHub' : 'GitLab'}.`}
+                  hint={`Repositories are listed from this ${remoteNamespaceLabel(provider)} on ${importProviderLabel(provider)}.`}
                   value={namespacePath}
                   onChange={(event) => {
                     setGroupPathTouched(false)
                     setNamespacePath(event.target.value)
                   }}
                 >
-                  <option value="">Select {provider === 'github' ? 'an organization' : 'a group'}…</option>
+                  <option value="">
+                    Select {provider === 'github' ? 'an organization' : 'a group'}…
+                  </option>
                   {namespaces.map((ns) => (
                     <option key={ns.id} value={ns.path}>
                       {ns.path}
@@ -588,8 +635,7 @@ export function GroupImportPage() {
                 <div className="space-y-3 rounded-lg border border-naturals-n4 bg-surface-hover/40 p-3">
                   <p className="text-sm font-medium text-text">Pertisk group</p>
                   <p className="text-xs text-text-secondary">
-                    Created automatically from the selected{' '}
-                    {provider === 'github' ? 'GitHub organization' : 'GitLab group'}.
+                    Created automatically from the selected {remoteNamespaceLabel(provider)}.
                   </p>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label className="block text-sm font-medium text-text">
@@ -733,7 +779,11 @@ export function GroupImportPage() {
                 value={onConflict}
                 onChange={(event) => setOnConflict(event.target.value as ImportOnConflict)}
               >
-                <option value="override">Re-import (update mirror and metadata)</option>
+                <option value="override">
+                  {isGitOnlyImport(provider)
+                    ? 'Re-import (update mirror)'
+                    : 'Re-import (update mirror and metadata)'}
+                </option>
                 <option value="skip">Skip existing repositories</option>
               </Select>
               {existingRepoCount > 0 && (
@@ -744,24 +794,28 @@ export function GroupImportPage() {
                     : ' Existing ones will be updated from the remote mirror.'}
                 </p>
               )}
-              <Checkbox
-                row
-                label="Import issues, labels, and milestones (open and closed)"
-                checked={importIssues}
-                onChange={(event) => setImportIssues(event.target.checked)}
-              />
-              <Checkbox
-                row
-                label="Import open pull/merge requests (title, body, branches)"
-                checked={importPullRequests}
-                onChange={(event) => setImportPullRequests(event.target.checked)}
-              />
-              <Checkbox
-                row
-                label="Import wiki pages (GitHub wiki git repo or GitLab wiki API)"
-                checked={importWiki}
-                onChange={(event) => setImportWiki(event.target.checked)}
-              />
+              {!isGitOnlyImport(provider) && (
+                <>
+                  <Checkbox
+                    row
+                    label="Import issues, labels, and milestones (open and closed)"
+                    checked={importIssues}
+                    onChange={(event) => setImportIssues(event.target.checked)}
+                  />
+                  <Checkbox
+                    row
+                    label="Import open pull/merge requests (title, body, branches)"
+                    checked={importPullRequests}
+                    onChange={(event) => setImportPullRequests(event.target.checked)}
+                  />
+                  <Checkbox
+                    row
+                    label="Import wiki pages (GitHub wiki git repo or GitLab wiki API)"
+                    checked={importWiki}
+                    onChange={(event) => setImportWiki(event.target.checked)}
+                  />
+                </>
+              )}
               <div className="flex flex-wrap items-center gap-2 text-sm">
                 <SecondaryButton
                   type="button"

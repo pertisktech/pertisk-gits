@@ -31,6 +31,7 @@ pub fn default_base_url(provider: ImportProvider) -> &'static str {
     match provider {
         ImportProvider::Github => "https://github.com",
         ImportProvider::Gitlab => "https://gitlab.com",
+        ImportProvider::Pertisk => "",
     }
 }
 
@@ -70,6 +71,7 @@ pub fn api_base(provider: ImportProvider, base_url: &str) -> String {
     match provider {
         ImportProvider::Github => github_api_base(base_url),
         ImportProvider::Gitlab => format!("{}/api/v4", base_url.trim_end_matches('/')),
+        ImportProvider::Pertisk => pertisk_api_base(base_url),
     }
 }
 
@@ -106,6 +108,7 @@ pub async fn validate_token(
     match provider {
         ImportProvider::Github => validate_github_token(&token, base_url).await,
         ImportProvider::Gitlab => validate_gitlab_token(&token, base_url).await,
+        ImportProvider::Pertisk => validate_pertisk_token(&token, base_url).await,
     }
 }
 
@@ -119,6 +122,7 @@ pub async fn list_remote_namespaces(
     match provider {
         ImportProvider::Github => list_github_namespaces(&token, base_url, account).await,
         ImportProvider::Gitlab => list_gitlab_namespaces(&token, base_url, account).await,
+        ImportProvider::Pertisk => list_pertisk_namespaces(&token, base_url).await,
     }
 }
 
@@ -137,7 +141,170 @@ pub async fn list_remote_repos(
     match provider {
         ImportProvider::Github => list_github_repos(&token, base_url, namespace).await,
         ImportProvider::Gitlab => list_gitlab_repos(&token, base_url, namespace).await,
+        ImportProvider::Pertisk => list_pertisk_repos(&token, base_url, namespace).await,
     }
+}
+
+fn pertisk_api_base(base_url: &str) -> String {
+    format!("{}/api/v1", base_url.trim_end_matches('/'))
+}
+
+fn pertisk_org_api_path(path: &str) -> String {
+    urlencoding::encode(path.trim_matches('/')).to_string()
+}
+
+fn pertisk_get<'a>(client: &'a reqwest::Client, url: &str, token: &str) -> reqwest::RequestBuilder {
+    client
+        .get(url)
+        .header("Authorization", format!("Bearer {token}"))
+}
+
+async fn validate_pertisk_token(token: &str, base_url: &str) -> anyhow::Result<String> {
+    if base_url.trim().is_empty() {
+        anyhow::bail!("Pertisk Gits server URL is required");
+    }
+    let client = http_client()?;
+    let api = pertisk_api_base(base_url);
+    let url = format!("{api}/me");
+    let response = pertisk_get(&client, &url, token)
+        .send()
+        .await
+        .with_context(|| format_import_request_error("Pertisk Gits", &url))?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("invalid Pertisk Gits API token or insufficient permissions");
+    }
+
+    #[derive(Deserialize)]
+    struct MeResponse {
+        user: PertiskUser,
+    }
+
+    #[derive(Deserialize)]
+    struct PertiskUser {
+        username: String,
+    }
+
+    let body: MeResponse = response.json().await.context("parse pertisk me response")?;
+    Ok(body.user.username)
+}
+
+async fn list_pertisk_namespaces(token: &str, base_url: &str) -> anyhow::Result<Vec<RemoteNamespace>> {
+    if base_url.trim().is_empty() {
+        anyhow::bail!("Pertisk Gits server URL is required");
+    }
+    let client = http_client()?;
+    let api = pertisk_api_base(base_url);
+    let url = format!("{api}/organizations");
+    let response = pertisk_get(&client, &url, token)
+        .send()
+        .await
+        .with_context(|| format_import_request_error("Pertisk Gits", &url))?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("failed to list Pertisk Gits groups");
+    }
+
+    let orgs: Vec<PertiskOrganization> = response
+        .json()
+        .await
+        .context("parse pertisk organizations")?;
+
+    let mut namespaces = orgs
+        .into_iter()
+        .map(|org| RemoteNamespace {
+            id: org.id.to_string(),
+            path: org.full_path,
+            name: org.name,
+            kind: "group".into(),
+        })
+        .collect::<Vec<_>>();
+    namespaces.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(namespaces)
+}
+
+async fn list_pertisk_repos(
+    token: &str,
+    base_url: &str,
+    namespace: Option<NamespaceFilter<'_>>,
+) -> anyhow::Result<Vec<RemoteRepo>> {
+    if base_url.trim().is_empty() {
+        anyhow::bail!("Pertisk Gits server URL is required");
+    }
+
+    if let Some(ns) = namespace {
+        return list_pertisk_org_repos(token, base_url, ns.path).await;
+    }
+
+    let namespaces = list_pertisk_namespaces(token, base_url).await?;
+    let mut repos = Vec::new();
+    for ns in namespaces {
+        repos.extend(list_pertisk_org_repos(token, base_url, &ns.path).await?);
+    }
+    repos.sort_by(|a, b| a.full_name.cmp(&b.full_name));
+    Ok(repos)
+}
+
+async fn list_pertisk_org_repos(
+    token: &str,
+    base_url: &str,
+    org_path: &str,
+) -> anyhow::Result<Vec<RemoteRepo>> {
+    let client = http_client()?;
+    let api = pertisk_api_base(base_url);
+    let url = format!(
+        "{api}/organizations/{}/repositories",
+        pertisk_org_api_path(org_path)
+    );
+    let response = pertisk_get(&client, &url, token)
+        .send()
+        .await
+        .with_context(|| format_import_request_error("Pertisk Gits", &url))?;
+
+    if !response.status().is_success() {
+        anyhow::bail!("failed to list repositories for group {org_path}");
+    }
+
+    let page_repos: Vec<PertiskRepository> = response
+        .json()
+        .await
+        .context("parse pertisk repositories")?;
+
+    let base = base_url.trim_end_matches('/');
+    let mut repos = Vec::with_capacity(page_repos.len());
+    for repo in page_repos {
+        let full_name = format!("{org_path}/{}", repo.slug);
+        repos.push(RemoteRepo {
+            id: repo.id.to_string(),
+            full_name,
+            name: repo.name,
+            description: repo.description,
+            visibility: repo.visibility,
+            default_branch: repo.default_branch,
+            clone_url: format!("{base}/{org_path}/{}.git", repo.slug),
+            already_exists: false,
+            existing_path: None,
+        });
+    }
+    repos.sort_by(|a, b| a.full_name.cmp(&b.full_name));
+    Ok(repos)
+}
+
+#[derive(Debug, Deserialize)]
+struct PertiskOrganization {
+    id: uuid::Uuid,
+    name: String,
+    full_path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct PertiskRepository {
+    id: uuid::Uuid,
+    name: String,
+    slug: String,
+    description: Option<String>,
+    visibility: RepoVisibility,
+    default_branch: String,
 }
 
 async fn validate_github_token(token: &str, base_url: &str) -> anyhow::Result<String> {

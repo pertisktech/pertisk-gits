@@ -660,6 +660,7 @@ fn provider_label(provider: ImportProvider) -> &'static str {
     match provider {
         ImportProvider::Github => "GitHub",
         ImportProvider::Gitlab => "GitLab",
+        ImportProvider::Pertisk => "Pertisk Gits",
     }
 }
 

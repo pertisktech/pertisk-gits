@@ -15,6 +15,14 @@ export function slugifyPath(path: string): string {
     .join('/')
 }
 
-export function remoteNamespaceLabel(provider: 'github' | 'gitlab'): string {
-  return provider === 'github' ? 'GitHub organization' : 'GitLab group'
+export function remoteNamespaceLabel(provider: 'github' | 'gitlab' | 'pertisk'): string {
+  if (provider === 'github') return 'GitHub organization'
+  if (provider === 'pertisk') return 'Pertisk group'
+  return 'GitLab group'
+}
+
+export function importProviderLabel(provider: 'github' | 'gitlab' | 'pertisk'): string {
+  if (provider === 'github') return 'GitHub'
+  if (provider === 'pertisk') return 'Pertisk Gits'
+  return 'GitLab'
 }

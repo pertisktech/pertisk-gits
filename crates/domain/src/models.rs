@@ -31,6 +31,7 @@ pub enum AuditEventType {
 pub enum ImportProvider {
     Github,
     Gitlab,
+    Pertisk,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
