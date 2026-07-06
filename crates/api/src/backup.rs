@@ -58,27 +58,118 @@ fn pg_tool_missing_error(tool: &str, program: &Path) -> anyhow::Error {
 }
 
 fn run_pg_tool(tool: &str, args: &[&str]) -> anyhow::Result<Output> {
-    run_pg_tool_with_stdio(tool, args, Stdio::null())
+    run_pg_tool_with_stdio(tool, None, args, Stdio::null())
 }
 
 fn run_pg_tool_with_stdio(
     tool: &str,
+    database_url: Option<&str>,
     args: &[&str],
     stdout: Stdio,
 ) -> anyhow::Result<Output> {
     let program = pg_tool_path(tool);
-    Command::new(&program)
-        .args(args)
-        .stdout(stdout)
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|error| {
-            if error.kind() == io::ErrorKind::NotFound {
-                pg_tool_missing_error(tool, &program)
-            } else {
-                error.into()
-            }
-        })
+    let mut cmd = Command::new(&program);
+    if let Some(url) = database_url {
+        let conn = pg_connection_info(url)?;
+        apply_pg_env(&mut cmd, &conn);
+    }
+    cmd.args(args).stdout(stdout).stderr(Stdio::piped());
+    cmd.output().map_err(|error| {
+        if error.kind() == io::ErrorKind::NotFound {
+            pg_tool_missing_error(tool, &program)
+        } else {
+            error.into()
+        }
+    })
+}
+
+#[derive(Debug, Clone)]
+struct PgConnectionInfo {
+    database: String,
+    host: String,
+    port: String,
+    user: String,
+    password: Option<String>,
+    sslmode: Option<String>,
+}
+
+fn pg_connection_info(database_url: &str) -> anyhow::Result<PgConnectionInfo> {
+    let url = reqwest::Url::parse(database_url)
+        .map_err(|error| anyhow::anyhow!("invalid DATABASE_URL: {error}"))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow::anyhow!("DATABASE_URL missing host"))?
+        .to_string();
+    let port = url.port().unwrap_or(5432).to_string();
+    let database = url.path().trim_start_matches('/');
+    if database.is_empty() {
+        anyhow::bail!("DATABASE_URL missing database name");
+    }
+    let sslmode = url
+        .query_pairs()
+        .find(|(key, _)| key == "sslmode")
+        .map(|(_, value)| value.into_owned());
+    Ok(PgConnectionInfo {
+        database: database.to_string(),
+        host,
+        port,
+        user: url.username().to_string(),
+        password: url.password().map(str::to_string),
+        sslmode,
+    })
+}
+
+fn apply_pg_env(cmd: &mut Command, conn: &PgConnectionInfo) {
+    cmd.env("PGHOST", &conn.host);
+    cmd.env("PGPORT", &conn.port);
+    cmd.env("PGDATABASE", &conn.database);
+    if !conn.user.is_empty() {
+        cmd.env("PGUSER", &conn.user);
+    }
+    if let Some(password) = &conn.password {
+        cmd.env("PGPASSWORD", password);
+    }
+    if let Some(sslmode) = &conn.sslmode {
+        cmd.env("PGSSLMODE", sslmode);
+    }
+}
+
+async fn database_size_bytes(pool: &PgPool) -> anyhow::Result<i64> {
+    sqlx::query_scalar("SELECT pg_database_size(current_database())")
+        .fetch_one(pool)
+        .await
+        .map_err(Into::into)
+}
+
+async fn validate_db_dump(
+    pool: &PgPool,
+    database_url: &str,
+    dump_path: &Path,
+) -> anyhow::Result<u64> {
+    let dump_size = tokio::fs::metadata(dump_path).await?.len();
+    if dump_size < 4_096 {
+        anyhow::bail!(
+            "database dump is only {dump_size} bytes — pg_dump likely connected to the wrong \
+             database or client tools are misconfigured (check DATABASE_URL and PG_DUMP_PATH)"
+        );
+    }
+
+    let db_size = database_size_bytes(pool).await?;
+    if db_size > 1_000_000 && dump_size < 32_768 {
+        let conn = pg_connection_info(database_url)
+            .map(|info| format!("{}:{}/{}", info.host, info.port, info.database))
+            .unwrap_or_else(|_| "could not parse DATABASE_URL".into());
+        anyhow::bail!(
+            "database is {:.1} MiB on disk but pg_dump produced only {} bytes. \
+             pg_dump may not be connecting to the same server as the API ({conn}). \
+             Set PG_DUMP_PATH to the PostgreSQL client matching your server and verify \
+             DATABASE_URL host/port/database.",
+            db_size as f64 / (1024.0 * 1024.0),
+            dump_size
+        );
+    }
+
+    Ok(dump_size)
 }
 
 fn pg_tool_version(tool: &str) -> Option<String> {
@@ -164,6 +255,8 @@ struct BackupManifest {
     /// `plain` (SQL) or `custom` (pg_dump -Fc). Omitted in older archives.
     db_format: Option<String>,
     pg_client_version: Option<String>,
+    db_size_bytes: Option<u64>,
+    db_dump_bytes: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -473,11 +566,26 @@ async fn run_backup_job(
         "local".to_string()
     };
 
+    let mut db_dump_bytes: Option<u64> = None;
+    let db_size_bytes = if components.contains(&BackupComponent::Db) {
+        database_size_bytes(&pool).await.ok().map(|size| size.max(0) as u64)
+    } else {
+        None
+    };
+
     for component in &components {
         match component {
-            BackupComponent::Db => backup_db(&database_url, &work.join("db.sql"))
-                .await
-                .map_err(|e| format!("database backup failed: {e:#}"))?,
+            BackupComponent::Db => {
+                let dump_path = work.join("db.sql");
+                backup_db(&database_url, &dump_path)
+                    .await
+                    .map_err(|e| format!("database backup failed: {e:#}"))?;
+                db_dump_bytes = Some(
+                    validate_db_dump(&pool, &database_url, &dump_path)
+                        .await
+                        .map_err(|e| format!("database backup failed: {e:#}"))?,
+                );
+            }
             BackupComponent::Registry => backup_registry(&pool, &work.join("registry"))
                 .await
                 .map_err(|e| format!("registry backup failed: {e:#}"))?,
@@ -499,6 +607,8 @@ async fn run_backup_job(
             None
         },
         pg_client_version: pg_tool_version("pg_dump"),
+        db_size_bytes,
+        db_dump_bytes,
     };
     tokio::fs::write(
         work.join("manifest.json"),
@@ -528,17 +638,27 @@ async fn run_backup_job(
     if write_meta(&meta).await.is_err() {
         return Err("failed to finalize backup metadata".into());
     }
+    if let Some(dump_bytes) = db_dump_bytes {
+        tracing::info!(
+            backup_id = %id,
+            db_dump_bytes = dump_bytes,
+            archive_size_bytes = archive_size,
+            "backup completed"
+        );
+    }
     Ok(())
 }
 
 async fn backup_db(database_url: &str, output: &Path) -> anyhow::Result<()> {
     let url = database_url.to_string();
     let dump_file = output.to_path_buf();
+    let database = pg_connection_info(&url)?.database;
     tokio::task::spawn_blocking(move || {
-        // Plain SQL restores with psql across PostgreSQL client versions (custom -Fc needs
-        // pg_restore from the same major version as pg_dump).
-        let result = run_pg_tool(
+        // Use libpq env vars (PGHOST, etc.) + -d dbname so pg_dump hits the same server as the API.
+        // A bare postgres:// URI as the last argument is unreliable on some client builds.
+        let result = run_pg_tool_with_stdio(
             "pg_dump",
+            Some(&url),
             &[
                 "--format=plain",
                 "--clean",
@@ -547,8 +667,10 @@ async fn backup_db(database_url: &str, output: &Path) -> anyhow::Result<()> {
                 "--no-acl",
                 "-f",
                 &dump_file.display().to_string(),
-                &url,
+                "-d",
+                &database,
             ],
+            Stdio::null(),
         )?;
         if !result.status.success() {
             let stderr = String::from_utf8_lossy(&result.stderr);
@@ -896,15 +1018,17 @@ async fn restore_db(database_url: &str, dump_path: &Path) -> anyhow::Result<()> 
 
     let url = database_url.to_string();
     let dump_path = dump_path.to_path_buf();
+    let database = pg_connection_info(&url)?.database;
     tokio::task::spawn_blocking(move || match format {
         DbDumpFormat::PlainSql => {
             let result = run_pg_tool_with_stdio(
                 "psql",
+                Some(&url),
                 &[
                     "-v",
                     "ON_ERROR_STOP=1",
                     "-d",
-                    &url,
+                    &database,
                     "-f",
                     &dump_path.display().to_string(),
                 ],
@@ -923,17 +1047,19 @@ async fn restore_db(database_url: &str, dump_path: &Path) -> anyhow::Result<()> 
             Ok(())
         }
         DbDumpFormat::Custom => {
-            let result = run_pg_tool(
+            let result = run_pg_tool_with_stdio(
                 "pg_restore",
+                Some(&url),
                 &[
                     "--clean",
                     "--if-exists",
                     "--no-owner",
                     "--no-acl",
                     "-d",
-                    &url,
+                    &database,
                     &dump_path.display().to_string(),
                 ],
+                Stdio::null(),
             )?;
             if !result.status.success() {
                 let stderr = String::from_utf8_lossy(&result.stderr);
@@ -999,5 +1125,32 @@ impl std::fmt::Display for BackupComponent {
             Self::Registry => write!(f, "registry"),
             Self::Artifacts => write!(f, "artifacts"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_postgres_url_into_connection_info() {
+        let info = pg_connection_info(
+            "postgres://user:secret@10.1.1.233:5432/pertisk_gits?sslmode=require",
+        )
+        .unwrap();
+        assert_eq!(info.host, "10.1.1.233");
+        assert_eq!(info.port, "5432");
+        assert_eq!(info.database, "pertisk_gits");
+        assert_eq!(info.user, "user");
+        assert_eq!(info.password.as_deref(), Some("secret"));
+        assert_eq!(info.sslmode.as_deref(), Some("require"));
+    }
+
+    #[test]
+    fn parses_postgresql_scheme() {
+        let info = pg_connection_info("postgresql://localhost/mydb").unwrap();
+        assert_eq!(info.host, "localhost");
+        assert_eq!(info.port, "5432");
+        assert_eq!(info.database, "mydb");
     }
 }
