@@ -312,6 +312,8 @@ struct BackupJobMeta {
     archive_size_bytes: Option<u64>,
     /// Uncompressed `db.sql` / `db.dump` size when the database was included.
     db_dump_bytes: Option<u64>,
+    /// File count under `repos/` when git repositories were included.
+    repos_entry_count: Option<u64>,
     created_by: Option<Uuid>,
 }
 
@@ -348,6 +350,7 @@ struct BackupJobResponse {
     error: Option<String>,
     archive_size_bytes: Option<u64>,
     db_dump_bytes: Option<u64>,
+    repos_entry_count: Option<u64>,
 }
 
 pub fn backup_routes() -> Router<AppState> {
@@ -399,6 +402,7 @@ fn to_job_response(meta: BackupJobMeta) -> BackupJobResponse {
         error: meta.error,
         archive_size_bytes: meta.archive_size_bytes,
         db_dump_bytes: meta.db_dump_bytes,
+        repos_entry_count: meta.repos_entry_count,
     }
 }
 
@@ -577,6 +581,7 @@ async fn create_backup(
         error: None,
         archive_size_bytes: None,
         db_dump_bytes: None,
+        repos_entry_count: None,
         created_by: Some(auth.user_id),
     };
     write_meta(&meta).await?;
@@ -631,6 +636,7 @@ async fn run_backup_job(
     };
 
     let mut db_dump_bytes: Option<u64> = None;
+    let mut repos_entry_count: Option<u64> = None;
     let db_size_bytes = if components.contains(&BackupComponent::Db) {
         database_size_bytes(&pool).await.ok().map(|size| size.max(0) as u64)
     } else {
@@ -653,9 +659,23 @@ async fn run_backup_job(
             BackupComponent::Registry => backup_registry(&pool, &work.join("registry"))
                 .await
                 .map_err(|e| format!("registry backup failed: {e:#}"))?,
-            BackupComponent::Repos => backup_repos(&work.join("repos"))
-                .await
-                .map_err(|e| format!("repositories backup failed: {e:#}"))?,
+            BackupComponent::Repos => {
+                let repos_dest = work.join("repos");
+                backup_repos(&repos_dest)
+                    .await
+                    .map_err(|e| format!("repositories backup failed: {e:#}"))?;
+                let entry_count = count_backup_data_files(&repos_dest)
+                    .map_err(|e| format!("repositories backup failed: {e:#}"))?;
+                if entry_count == 0 {
+                    let root = repos_root();
+                    return Err(format!(
+                        "repositories backup is empty — no git files under {root}. \
+                         Verify REPOS_ROOT in pertisk-gits.conf (Admin overview should show \
+                         Git repositories size > 0) before including this component."
+                    ));
+                }
+                repos_entry_count = Some(entry_count);
+            }
             BackupComponent::Artifacts => backup_artifacts(&work.join("artifacts"))
                 .await
                 .map_err(|e| format!("artifacts backup failed: {e:#}"))?,
@@ -702,18 +722,18 @@ async fn run_backup_job(
     meta.completed_at = Some(Utc::now());
     meta.archive_size_bytes = Some(archive_size);
     meta.db_dump_bytes = db_dump_bytes;
+    meta.repos_entry_count = repos_entry_count;
     meta.error = None;
     if write_meta(&meta).await.is_err() {
         return Err("failed to finalize backup metadata".into());
     }
-    if let Some(dump_bytes) = db_dump_bytes {
-        tracing::info!(
-            backup_id = %id,
-            db_dump_bytes = dump_bytes,
-            archive_size_bytes = archive_size,
-            "backup completed"
-        );
-    }
+    tracing::info!(
+        backup_id = %id,
+        db_dump_bytes = ?db_dump_bytes,
+        repos_entry_count = ?repos_entry_count,
+        archive_size_bytes = archive_size,
+        "backup completed"
+    );
     Ok(())
 }
 
@@ -1002,6 +1022,7 @@ async fn restore_backup(
         error: None,
         archive_size_bytes: Some(archive_bytes.len() as u64),
         db_dump_bytes: None,
+        repos_entry_count: None,
         created_by: Some(auth.user_id),
     };
     write_meta(&meta).await?;
@@ -1017,6 +1038,7 @@ async fn restore_backup(
 
     let database_url = state.config.database_url.clone();
     let pool = state.pool.clone();
+    let restored_db = components.contains(&BackupComponent::Db);
     match run_restore(&archive_path, &extract_dir, &database_url, &pool, &components).await {
         Ok(()) => {
             let mut completed = meta.clone();
@@ -1024,6 +1046,9 @@ async fn restore_backup(
             completed.completed_at = Some(Utc::now());
             write_meta(&completed).await?;
             let _ = tokio::fs::remove_dir_all(backup_dir(id)).await;
+            if restored_db {
+                crate::db::schedule_restart_after_schema_change("database restore completed");
+            }
             Ok(Json(to_job_response(completed)))
         }
         Err(error) => {
@@ -1080,9 +1105,20 @@ async fn run_restore(
             BackupComponent::Registry => restore_registry(pool, &extract_dir.join("registry"))
                 .await
                 .map_err(|e| format!("registry restore failed: {e:#}"))?,
-            BackupComponent::Repos => restore_repos(&extract_dir.join("repos"))
-                .await
-                .map_err(|e| format!("repositories restore failed: {e:#}"))?,
+            BackupComponent::Repos => {
+                let repos_source = extract_dir.join("repos");
+                if !repos_backup_has_data(&repos_source) {
+                    return Err(
+                        "backup archive has no git repository data (repos/ is empty). \
+                         Create a new backup on the source server with Git repositories selected, \
+                         then restore again with the repos component"
+                            .into(),
+                    );
+                }
+                restore_repos(&repos_source)
+                    .await
+                    .map_err(|e| format!("repositories restore failed: {e:#}"))?
+            }
             BackupComponent::Artifacts => restore_artifacts(&extract_dir.join("artifacts"))
                 .await
                 .map_err(|e| format!("artifacts restore failed: {e:#}"))?,
@@ -1262,32 +1298,31 @@ async fn restore_artifacts(source: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn repos_backup_has_data(source: &Path) -> bool {
+    count_backup_data_files(source)
+        .map(|count| count > 0)
+        .unwrap_or(false)
+}
+
 async fn restore_repos(source: &Path) -> anyhow::Result<()> {
     if !source.exists() {
         tracing::info!("no repositories directory in backup archive; treating as empty repos");
         return Ok(());
     }
 
-    let files: Vec<PathBuf> = walkdir(source)?
-        .into_iter()
-        .filter(|path| !is_backup_component_marker(path))
-        .collect();
-    if files.is_empty() {
+    if !repos_backup_has_data(source) {
         tracing::info!("repositories backup has no git data; skipping repos restore");
         return Ok(());
     }
 
-    let file_count = files.len();
+    let file_count = count_backup_data_files(source)?;
     let dest = PathBuf::from(repos_root());
     tokio::fs::create_dir_all(&dest).await?;
     clear_directory_children(&dest).await?;
-    for file in &files {
-        let rel = file.strip_prefix(source).map_err(|e| anyhow::anyhow!(e))?;
-        let dst_path = dest.join(rel);
-        if let Some(parent) = dst_path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::copy(file, &dst_path).await?;
+    copy_dir_recursive(source, &dest).await?;
+    let marker = dest.join(BACKUP_COMPONENT_MARKER);
+    if marker.is_file() {
+        tokio::fs::remove_file(&marker).await.ok();
     }
     tracing::info!(
         file_count,

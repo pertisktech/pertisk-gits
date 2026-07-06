@@ -715,7 +715,17 @@ pub fn spawn_background_processor(pool: sqlx::PgPool, repos_root: std::path::Pat
             match worker.process_pending_jobs().await {
                 Ok(count) if count > 0 => tracing::info!(processed = count, "import jobs processed"),
                 Ok(_) => {}
-                Err(err) => tracing::warn!("import processing failed: {err:#}"),
+                Err(err) => {
+                    let message = format!("{err:#}");
+                    if message.contains("cached plan must not change result type") {
+                        tracing::warn!(
+                            "import processing failed: {message} \
+                             (restart pertisk-gits after a database restore)"
+                        );
+                    } else {
+                        tracing::warn!("import processing failed: {message}");
+                    }
+                }
             }
             tokio::time::sleep(Duration::from_secs(poll_secs)).await;
         }

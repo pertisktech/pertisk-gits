@@ -184,7 +184,7 @@ export function AdminBackupPage() {
       />
       <PageHeader
         title="Backups & restore"
-        subtitle="Create archives of the database, container registry, and CI artifacts. Restore selected components from a backup file."
+        subtitle="Create archives of the database, git repositories, container registry, and CI artifacts. Include Git repositories for clone/browse to work after restore."
       />
 
       {error && (
@@ -370,6 +370,11 @@ export function AdminBackupPage() {
                     {entry.db_dump_bytes != null && (
                       <div className="text-xs text-muted mt-0.5">
                         DB dump {formatBytes(entry.db_dump_bytes)}
+                      </div>
+                    )}
+                    {entry.repos_entry_count != null && (
+                      <div className="text-xs text-muted mt-0.5">
+                        Repos {entry.repos_entry_count.toLocaleString()} files
                       </div>
                     )}
                   </td>

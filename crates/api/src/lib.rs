@@ -20,7 +20,7 @@ use pertisk_git::{
     explorer::{self, BlameLine, BranchInfo, CommitDetail, CommitInfo, RefKind, RepoBrowser, TagInfo, TreeEntry},
     http::GitHttpState,
     ssh::{GitSshConfig, GitSshState},
-    storage::{ensure_bare_repo, init_bare_repo},
+    storage::{ensure_bare_repo, init_bare_repo, repo_exists_on_disk},
     ssh_keys,
 };
 use serde::{Deserialize, Serialize};
@@ -1913,9 +1913,22 @@ async fn get_repo_browser(
     let (_org, repo, repo_path) =
         load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref()).await?;
 
-    let browser = explorer::repo_browser(&repo_path, &repo.default_branch)
-        .await
-        .map_err(map_explorer_error)?;
+    let browser = if !repo_exists_on_disk(
+        &state.config.repos_root,
+        &_org.full_path,
+        &repo.slug,
+    ) {
+        RepoBrowser {
+            branches: vec![],
+            tags: vec![],
+            default_ref: repo.default_branch.clone(),
+            empty: true,
+        }
+    } else {
+        explorer::repo_browser(&repo_path, &repo.default_branch)
+            .await
+            .map_err(map_explorer_error)?
+    };
 
     Ok(Json(BrowserResponse { browser }))
 }

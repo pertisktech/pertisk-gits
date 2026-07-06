@@ -462,6 +462,8 @@ export interface BackupJob {
   archive_size_bytes: number | null
   /** Uncompressed database dump size when DB was included in the backup. */
   db_dump_bytes: number | null
+  /** File count under repos/ when git repositories were included. */
+  repos_entry_count: number | null
 }
 
 export interface Label {
