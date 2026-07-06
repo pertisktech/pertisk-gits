@@ -28,6 +28,47 @@ use crate::{ApiError, AppState, AuthUser};
 use crate::version;
 
 const BACKUP_FORMAT_VERSION: u32 = 1;
+const BACKUP_COMPONENT_MARKER: &str = ".pertisk-backup-component.json";
+
+#[derive(Debug, Serialize, Deserialize)]
+struct BackupComponentMarker {
+    component: String,
+    entry_count: u64,
+}
+
+fn is_backup_component_marker(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == BACKUP_COMPONENT_MARKER)
+}
+
+async fn write_backup_component_marker(
+    dest: &Path,
+    component: &str,
+    entry_count: u64,
+) -> anyhow::Result<()> {
+    tokio::fs::create_dir_all(dest).await?;
+    let marker = BackupComponentMarker {
+        component: component.to_string(),
+        entry_count,
+    };
+    tokio::fs::write(
+        dest.join(BACKUP_COMPONENT_MARKER),
+        serde_json::to_string(&marker)?,
+    )
+    .await?;
+    Ok(())
+}
+
+fn count_backup_data_files(dir: &Path) -> anyhow::Result<u64> {
+    if !dir.exists() {
+        return Ok(0);
+    }
+    Ok(walkdir(dir)?
+        .into_iter()
+        .filter(|path| !is_backup_component_marker(path))
+        .count() as u64)
+}
 
 fn pg_tool_path(tool: &str) -> PathBuf {
     let env_key = match tool {
@@ -694,27 +735,29 @@ async fn backup_db(database_url: &str, output: &Path) -> anyhow::Result<()> {
 
 async fn backup_registry(pool: &PgPool, dest: &Path) -> anyhow::Result<()> {
     tokio::fs::create_dir_all(dest).await?;
-    if registry_uses_s3_storage() {
+    let entry_count = if registry_uses_s3_storage() {
         let backend = StorageBackend::from_env(&PathBuf::from(registry_root()))?;
         let paths: Vec<String> =
             sqlx::query_scalar("SELECT storage_path FROM container_blobs ORDER BY digest")
                 .fetch_all(pool)
                 .await?;
-        for storage_path in paths {
-            let data = backend.get(&storage_path).await?;
-            let file_path = dest.join(&storage_path);
+        for storage_path in &paths {
+            let data = backend.get(storage_path).await?;
+            let file_path = dest.join(storage_path);
             if let Some(parent) = file_path.parent() {
                 tokio::fs::create_dir_all(parent).await?;
             }
             tokio::fs::write(&file_path, data).await?;
         }
+        paths.len() as u64
     } else {
         let source = PathBuf::from(registry_root()).join("blobs");
         if source.exists() {
             copy_dir_recursive(&source, &dest.join("blobs")).await?;
         }
-    }
-    Ok(())
+        count_backup_data_files(&dest.join("blobs"))?
+    };
+    write_backup_component_marker(dest, "registry", entry_count).await
 }
 
 async fn backup_artifacts(dest: &Path) -> anyhow::Result<()> {
@@ -723,7 +766,8 @@ async fn backup_artifacts(dest: &Path) -> anyhow::Result<()> {
     if source.exists() {
         copy_dir_recursive(&source, dest).await?;
     }
-    Ok(())
+    let entry_count = count_backup_data_files(dest)?;
+    write_backup_component_marker(dest, "artifacts", entry_count).await
 }
 
 async fn copy_dir_recursive(source: &Path, dest: &Path) -> anyhow::Result<()> {
@@ -1088,11 +1132,29 @@ async fn restore_db(database_url: &str, dump_path: &Path) -> anyhow::Result<()> 
 
 async fn restore_registry(pool: &PgPool, source: &Path) -> anyhow::Result<()> {
     if !source.exists() {
-        anyhow::bail!("registry data not found in backup");
+        tracing::info!("no registry directory in backup archive; treating as empty registry");
+        return Ok(());
     }
+
+    let blob_files: Vec<PathBuf> = walkdir(source)?
+        .into_iter()
+        .filter(|path| !is_backup_component_marker(path))
+        .filter(|path| {
+            path.strip_prefix(source)
+                .ok()
+                .map(|rel| rel.components().count() > 0)
+                .unwrap_or(false)
+        })
+        .collect();
+
+    if blob_files.is_empty() {
+        tracing::info!("registry backup has no blob files; skipping blob restore");
+        return Ok(());
+    }
+
     if registry_uses_s3_storage() {
         let backend = StorageBackend::from_env(&PathBuf::from(registry_root()))?;
-        for file in walkdir(source)? {
+        for file in blob_files {
             let rel = file
                 .strip_prefix(source)
                 .map_err(|e| anyhow::anyhow!(e))?;
@@ -1106,10 +1168,17 @@ async fn restore_registry(pool: &PgPool, source: &Path) -> anyhow::Result<()> {
             tokio::fs::remove_dir_all(&dest).await.ok();
         }
         let src_blobs = source.join("blobs");
-        if src_blobs.exists() {
+        if src_blobs.is_dir() {
             copy_dir_recursive(&src_blobs, &dest).await?;
         } else {
-            copy_dir_recursive(source, &dest).await?;
+            for file in blob_files {
+                let rel = file.strip_prefix(source).map_err(|e| anyhow::anyhow!(e))?;
+                let dst_path = dest.join(rel);
+                if let Some(parent) = dst_path.parent() {
+                    tokio::fs::create_dir_all(parent).await?;
+                }
+                tokio::fs::copy(&file, &dst_path).await?;
+            }
         }
     }
     let _ = pool;
@@ -1118,10 +1187,28 @@ async fn restore_registry(pool: &PgPool, source: &Path) -> anyhow::Result<()> {
 
 async fn restore_artifacts(source: &Path) -> anyhow::Result<()> {
     if !source.exists() {
-        anyhow::bail!("artifacts data not found in backup");
+        tracing::info!("no artifacts directory in backup archive; treating as empty artifacts");
+        return Ok(());
     }
+
+    let files: Vec<PathBuf> = walkdir(source)?
+        .into_iter()
+        .filter(|path| !is_backup_component_marker(path))
+        .collect();
+    if files.is_empty() {
+        tracing::info!("artifacts backup has no files; skipping artifacts restore");
+        return Ok(());
+    }
+
     let dest = PathBuf::from(artifacts_root());
-    copy_dir_recursive(source, &dest).await?;
+    for file in files {
+        let rel = file.strip_prefix(source).map_err(|e| anyhow::anyhow!(e))?;
+        let dst_path = dest.join(rel);
+        if let Some(parent) = dst_path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+        tokio::fs::copy(&file, &dst_path).await?;
+    }
     Ok(())
 }
 
