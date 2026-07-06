@@ -4,9 +4,11 @@ import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { EntryLastCommit } from '../api/types'
 import { formatBytes } from '../lib/formatBytes'
+import { isImagePath } from '../lib/imagePreview'
 import { formatRelativeTime } from '../lib/relativeTime'
 import { commitUrl } from './RepoCommits'
 import { CodeFileView } from './CodeFileView'
+import { RepoImagePreview } from './RepoImagePreview'
 import { RepoMarkdownBody } from './RepoMarkdownBody'
 import { PrimaryButton, SecondaryButton } from './ui'
 
@@ -80,7 +82,7 @@ export function RepoFilePreview({
           <span className="font-mono text-sm text-text">{fileName}</span>
           <span className="text-xs text-text-secondary font-mono truncate">
             {path}
-            {sizeBytes != null && !isBinary && (
+            {sizeBytes != null && (
               <span className="ml-2 text-muted">· {formatBytes(sizeBytes)}</span>
             )}
           </span>
@@ -148,6 +150,15 @@ export function RepoFilePreview({
             <Loader2 size={16} className="animate-spin" />
             Loading file…
           </div>
+        ) : isImagePath(path) ? (
+          <RepoImagePreview
+            orgSlug={orgSlug}
+            repoSlug={repoSlug}
+            ref={ref}
+            refKind={refKind}
+            path={path}
+            token={token}
+          />
         ) : isBinary ? (
           <p className="text-sm text-text-secondary p-6">Binary file — preview not available.</p>
         ) : isMarkdown ? (
