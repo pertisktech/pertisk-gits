@@ -268,6 +268,8 @@ struct BackupJobMeta {
     completed_at: Option<DateTime<Utc>>,
     error: Option<String>,
     archive_size_bytes: Option<u64>,
+    /// Uncompressed `db.sql` / `db.dump` size when the database was included.
+    db_dump_bytes: Option<u64>,
     created_by: Option<Uuid>,
 }
 
@@ -303,6 +305,7 @@ struct BackupJobResponse {
     completed_at: Option<DateTime<Utc>>,
     error: Option<String>,
     archive_size_bytes: Option<u64>,
+    db_dump_bytes: Option<u64>,
 }
 
 pub fn backup_routes() -> Router<AppState> {
@@ -353,6 +356,7 @@ fn to_job_response(meta: BackupJobMeta) -> BackupJobResponse {
         completed_at: meta.completed_at,
         error: meta.error,
         archive_size_bytes: meta.archive_size_bytes,
+        db_dump_bytes: meta.db_dump_bytes,
     }
 }
 
@@ -513,6 +517,7 @@ async fn create_backup(
         completed_at: None,
         error: None,
         archive_size_bytes: None,
+        db_dump_bytes: None,
         created_by: Some(auth.user_id),
     };
     write_meta(&meta).await?;
@@ -634,6 +639,7 @@ async fn run_backup_job(
     meta.status = BackupJobStatus::Completed;
     meta.completed_at = Some(Utc::now());
     meta.archive_size_bytes = Some(archive_size);
+    meta.db_dump_bytes = db_dump_bytes;
     meta.error = None;
     if write_meta(&meta).await.is_err() {
         return Err("failed to finalize backup metadata".into());
@@ -904,6 +910,7 @@ async fn restore_backup(
         completed_at: None,
         error: None,
         archive_size_bytes: Some(archive_bytes.len() as u64),
+        db_dump_bytes: None,
         created_by: Some(auth.user_id),
     };
     write_meta(&meta).await?;

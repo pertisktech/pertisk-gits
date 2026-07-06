@@ -460,6 +460,8 @@ export interface BackupJob {
   completed_at: string | null
   error: string | null
   archive_size_bytes: number | null
+  /** Uncompressed database dump size when DB was included in the backup. */
+  db_dump_bytes: number | null
 }
 
 export interface Label {

@@ -341,7 +341,7 @@ export function AdminBackupPage() {
                 <th>Created</th>
                 <th>Components</th>
                 <th>Status</th>
-                <th>Size</th>
+                <th>Archive</th>
                 <th />
               </tr>
             </thead>
@@ -360,6 +360,11 @@ export function AdminBackupPage() {
                     {entry.archive_size_bytes != null
                       ? formatBytes(entry.archive_size_bytes)
                       : '—'}
+                    {entry.db_dump_bytes != null && (
+                      <div className="text-xs text-muted mt-0.5">
+                        DB dump {formatBytes(entry.db_dump_bytes)}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <div className="flex justify-end gap-1">
