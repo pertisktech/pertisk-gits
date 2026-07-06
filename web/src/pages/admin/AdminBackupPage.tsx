@@ -75,6 +75,7 @@ export function AdminBackupPage() {
   const [restoreFile, setRestoreFile] = useState<File | null>(null)
   const [restoreConfirm, setRestoreConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [pollingId, setPollingId] = useState<string | null>(null)
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false)
   const [pendingDelete, setPendingDelete] = useState<BackupJob | null>(null)
@@ -95,8 +96,17 @@ export function AdminBackupPage() {
   useEffect(() => {
     if (!pollingId) return
     const job = backups.find((entry) => entry.id === pollingId)
-    if (job && (job.status === 'completed' || job.status === 'failed')) {
+    if (!job) return
+    if (job.status === 'completed') {
       setPollingId(null)
+      setError(null)
+      setSuccess(
+        `Backup created (${componentLabels(job.components)}). Download it from the history table below.`,
+      )
+    } else if (job.status === 'failed') {
+      setPollingId(null)
+      setSuccess(null)
+      setError(job.error ?? 'Backup failed')
     }
   }, [backups, pollingId])
 
@@ -106,6 +116,7 @@ export function AdminBackupPage() {
       setPollingId(job.id)
       queryClient.invalidateQueries({ queryKey: ['admin-backups'] })
       setError(null)
+      setSuccess(null)
     },
     onError: (err: Error) => setError(err.message),
   })
@@ -123,13 +134,24 @@ export function AdminBackupPage() {
   const restoreBackup = useMutation({
     mutationFn: () =>
       api.restoreBackup(token!, restoreFile!, restoreSelected, restoreConfirm),
-    onSuccess: () => {
+    onSuccess: (job) => {
       setShowRestoreConfirm(false)
       setRestoreFile(null)
       setRestoreConfirm('')
       setError(null)
+      const restored = componentLabels(job.components)
+      if (job.service_restart_scheduled) {
+        setSuccess(
+          `Restore completed (${restored}). pertisk-gits is restarting to refresh the database connection — wait about 10 seconds, then reload this page.`,
+        )
+      } else {
+        setSuccess(`Restore completed (${restored}).`)
+      }
     },
-    onError: (err: Error) => setError(err.message),
+    onError: (err: Error) => {
+      setSuccess(null)
+      setError(err.message)
+    },
   })
 
   function onDownload(backupId: string) {
@@ -154,6 +176,7 @@ export function AdminBackupPage() {
       setError('Select at least one component to back up')
       return
     }
+    setSuccess(null)
     createBackup.mutate()
   }
 
@@ -171,6 +194,7 @@ export function AdminBackupPage() {
       setError('Type RESTORE to confirm')
       return
     }
+    setSuccess(null)
     setShowRestoreConfirm(true)
   }
 
@@ -186,6 +210,12 @@ export function AdminBackupPage() {
         title="Backups & restore"
         subtitle="Create archives of the database, git repositories, container registry, and CI artifacts. Include Git repositories for clone/browse to work after restore."
       />
+
+      {success && (
+        <div className="mb-4 p-3 rounded-lg border border-green-g1/30 bg-dashboard-success-bg text-dashboard-success text-sm">
+          {success}
+        </div>
+      )}
 
       {error && (
         <div className="mb-4 p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
@@ -269,6 +299,8 @@ export function AdminBackupPage() {
               Upload a backup archive created on this platform. Restore overwrites the selected
               components. New backups restore with <code>psql</code>; older custom-format archives
               need <code>pg_restore</code> from the same PostgreSQL major version as the backup.
+              Restoring the <strong>database</strong> restarts pertisk-gits automatically (about 10
+              seconds).
             </p>
             <label className="block text-sm font-semibold text-text">
               Backup archive (.tar.gz)

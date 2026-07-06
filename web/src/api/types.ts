@@ -464,6 +464,8 @@ export interface BackupJob {
   db_dump_bytes: number | null
   /** File count under repos/ when git repositories were included. */
   repos_entry_count: number | null
+  /** True when database restore triggers a brief pertisk-gits service restart. */
+  service_restart_scheduled?: boolean
 }
 
 export interface Label {

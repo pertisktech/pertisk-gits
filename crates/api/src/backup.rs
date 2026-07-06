@@ -352,6 +352,9 @@ struct BackupJobResponse {
     archive_size_bytes: Option<u64>,
     db_dump_bytes: Option<u64>,
     repos_entry_count: Option<u64>,
+    /// Set when a database restore schedules a process restart for a fresh connection pool.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service_restart_scheduled: Option<bool>,
 }
 
 pub fn backup_routes() -> Router<AppState> {
@@ -394,6 +397,13 @@ async fn ensure_backups_root() -> Result<PathBuf, ApiError> {
 }
 
 fn to_job_response(meta: BackupJobMeta) -> BackupJobResponse {
+    to_job_response_with_flags(meta, None)
+}
+
+fn to_job_response_with_flags(
+    meta: BackupJobMeta,
+    service_restart_scheduled: Option<bool>,
+) -> BackupJobResponse {
     BackupJobResponse {
         id: meta.id,
         status: meta.status,
@@ -404,6 +414,7 @@ fn to_job_response(meta: BackupJobMeta) -> BackupJobResponse {
         archive_size_bytes: meta.archive_size_bytes,
         db_dump_bytes: meta.db_dump_bytes,
         repos_entry_count: meta.repos_entry_count,
+        service_restart_scheduled,
     }
 }
 
@@ -1081,7 +1092,10 @@ async fn restore_backup(
             if restored_db {
                 crate::db::schedule_restart_after_schema_change("database restore completed");
             }
-            Ok(Json(to_job_response(completed)))
+            Ok(Json(to_job_response_with_flags(
+                completed,
+                restored_db.then_some(true),
+            )))
         }
         Err(error) => {
             let mut failed = meta;
