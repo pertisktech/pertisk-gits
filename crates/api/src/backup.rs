@@ -23,6 +23,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::admin::{self, artifacts_root, registry_root, repos_root};
+use pertisk_git::storage::repair_all_bare_repo_refs_dirs;
 use crate::system_metrics;
 use crate::{ApiError, AppState, AuthUser};
 use crate::version;
@@ -675,6 +676,14 @@ async fn run_backup_job(
                     ));
                 }
                 repos_entry_count = Some(entry_count);
+                let repaired = repair_all_bare_repo_refs_dirs(&repos_dest)
+                    .map_err(|e| format!("repositories backup failed: {e:#}"))?;
+                if repaired > 0 {
+                    tracing::info!(
+                        repaired,
+                        "ensured refs/heads and refs/tags on bare repos before archiving"
+                    );
+                }
             }
             BackupComponent::Artifacts => backup_artifacts(&work.join("artifacts"))
                 .await
@@ -864,20 +873,43 @@ async fn create_tar_gz(source_dir: &Path, archive_path: &Path) -> anyhow::Result
         let encoder = GzEncoder::new(file, Compression::default());
         let mut builder = Builder::new(encoder);
         builder.mode(tar::HeaderMode::Deterministic);
-        for entry in walkdir(source_dir.as_path())? {
+        for entry in walkdir_dirs_and_files(source_dir.as_path())? {
             let rel = entry
                 .strip_prefix(&source_dir)
                 .map_err(|e| anyhow::anyhow!(e))?;
             if rel.as_os_str().is_empty() {
                 continue;
             }
-            builder.append_path_with_name(&entry, rel)?;
+            if entry.is_dir() {
+                builder.append_dir(rel, &entry)?;
+            } else {
+                builder.append_path_with_name(&entry, rel)?;
+            }
         }
         builder.into_inner()?.finish()?;
         Ok::<(), anyhow::Error>(())
     })
     .await??;
     Ok(())
+}
+
+fn walkdir_dirs_and_files(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    let mut entries = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                entries.push(path.clone());
+                stack.push(path);
+            } else if path.is_file() {
+                entries.push(path);
+            }
+        }
+    }
+    entries.sort();
+    Ok(entries)
 }
 
 fn walkdir(root: &Path) -> anyhow::Result<Vec<PathBuf>> {
@@ -1324,8 +1356,10 @@ async fn restore_repos(source: &Path) -> anyhow::Result<()> {
     if marker.is_file() {
         tokio::fs::remove_file(&marker).await.ok();
     }
+    let repaired = repair_all_bare_repo_refs_dirs(&dest)?;
     tracing::info!(
         file_count,
+        repaired,
         dest = %dest.display(),
         "restored git repositories"
     );

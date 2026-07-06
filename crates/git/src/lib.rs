@@ -16,5 +16,5 @@ pub mod workspace;
 pub use config::GitConfig;
 pub use http::{GitHttpState, PostReceiveHook};
 pub use ssh::{GitSshConfig, GitSshState};
-pub use storage::repo_exists_on_disk;
+pub use storage::{ensure_bare_repo_refs_dirs, repair_all_bare_repo_refs_dirs, repo_exists_on_disk};
 pub use refs::{diff_refs, is_ancestor, snapshot_refs, RefUpdate};

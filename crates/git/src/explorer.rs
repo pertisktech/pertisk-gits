@@ -516,6 +516,7 @@ pub async fn ref_exists_kind(
         RefKind::Tag => format!("refs/tags/{ref_name}"),
     };
 
+    let _ = crate::storage::ensure_bare_repo_refs_dirs(repo_path);
     let result = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
         .args(["rev-parse", "--verify", &full_ref])
@@ -948,6 +949,7 @@ async fn git(repo_path: &Path, args: &[&str]) -> anyhow::Result<String> {
 }
 
 async fn git_bytes(repo_path: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {
+    let _ = crate::storage::ensure_bare_repo_refs_dirs(repo_path);
     let output = Command::new("git")
         .arg(format!("--git-dir={}", repo_path.display()))
         .args(args)
