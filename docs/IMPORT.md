@@ -60,7 +60,7 @@ Use this to mirror git repositories from **Server A** into **Server B** (git onl
 1. On **Server A**, create an **API token** for your user (Profile → API tokens) with access to the groups/repos you need.
 2. On **Server B**, open **Group → Import → Pertisk Gits**.
 3. Enter Server A’s public URL (e.g. `https://git-a.example.com`) and the `pgs_…` token.
-4. Select the source group and repositories, then start the import.
+4. Select the source group and repositories, then start the import. Selecting a parent group includes repositories in all subgroups under it.
 
 Server B must reach Server A over HTTPS (or set `IMPORT_TLS_INSECURE=true` for private CA in dev). Git clone uses the same API token via smart HTTP (`x-access-token`).
 

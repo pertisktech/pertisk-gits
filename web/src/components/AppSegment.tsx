@@ -13,11 +13,14 @@ export function AppSegment({
   active,
   onChange,
   action,
+  actionAlign = 'end',
 }: {
   tabs: AppTab[]
   active: string
   onChange: (id: string) => void
   action?: ReactNode
+  /** `fill` grows action from the tabs to the right edge; `end` pins it to the right. */
+  actionAlign?: 'fill' | 'end'
 }) {
   return (
     <div className="app-segment-bar">
@@ -39,7 +42,17 @@ export function AppSegment({
           )
         })}
       </div>
-      {action}
+      {action ? (
+        <div
+          className={cn(
+            'app-segment-bar-action',
+            actionAlign === 'end' && 'app-segment-bar-action--end',
+            actionAlign === 'fill' && 'app-segment-bar-action--fill',
+          )}
+        >
+          {action}
+        </div>
+      ) : null}
     </div>
   )
 }

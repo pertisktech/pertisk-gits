@@ -232,17 +232,34 @@ async fn list_pertisk_repos(
         anyhow::bail!("Pertisk Gits server URL is required");
     }
 
-    if let Some(ns) = namespace {
-        return list_pertisk_org_repos(token, base_url, ns.path).await;
-    }
-
     let namespaces = list_pertisk_namespaces(token, base_url).await?;
+    let org_paths: Vec<&str> = if let Some(ns) = namespace {
+        let root = ns.path.trim_matches('/');
+        namespaces
+            .iter()
+            .filter(|org| pertisk_path_under_group(root, &org.path))
+            .map(|org| org.path.as_str())
+            .collect()
+    } else {
+        namespaces.iter().map(|org| org.path.as_str()).collect()
+    };
+
     let mut repos = Vec::new();
-    for ns in namespaces {
-        repos.extend(list_pertisk_org_repos(token, base_url, &ns.path).await?);
+    for org_path in org_paths {
+        repos.extend(list_pertisk_org_repos(token, base_url, org_path).await?);
     }
     repos.sort_by(|a, b| a.full_name.cmp(&b.full_name));
     Ok(repos)
+}
+
+/// True when `org_path` is the selected group or a subgroup beneath it.
+fn pertisk_path_under_group(group_path: &str, org_path: &str) -> bool {
+    let group = group_path.trim_matches('/');
+    let org = org_path.trim_matches('/');
+    if group.is_empty() {
+        return true;
+    }
+    org == group || org.starts_with(&format!("{group}/"))
 }
 
 async fn list_pertisk_org_repos(
@@ -944,6 +961,20 @@ mod tests {
             api_base(ImportProvider::Gitlab, "https://gitlab.com"),
             "https://gitlab.com/api/v4"
         );
+        assert_eq!(
+            api_base(ImportProvider::Pertisk, "https://git.example.com"),
+            "https://git.example.com/api/v1"
+        );
+    }
+
+    #[test]
+    fn pertisk_path_under_group_matches_descendants() {
+        assert!(pertisk_path_under_group("acme", "acme"));
+        assert!(pertisk_path_under_group("acme", "acme/team"));
+        assert!(pertisk_path_under_group("acme", "acme/team/project"));
+        assert!(pertisk_path_under_group("acme/team", "acme/team/foo"));
+        assert!(!pertisk_path_under_group("acme", "other/repo"));
+        assert!(!pertisk_path_under_group("acme", "acme-other"));
     }
 }
 

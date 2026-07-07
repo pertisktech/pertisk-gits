@@ -46,3 +46,15 @@
   min-width: 11rem;
   justify-self: end;
 }
+
+.toolbarInline {
+  margin-bottom: 0;
+  width: fit-content;
+  max-width: 100%;
+  grid-template-columns: minmax(16rem, 1fr) auto;
+}
+
+.toolbarInline .sortSelect {
+  min-width: 9.5rem;
+  justify-self: start;
+}

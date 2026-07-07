@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Plus, Settings } from 'lucide-react'
 import { api } from '../api/client'
@@ -8,7 +7,6 @@ import { GroupLandingHero } from '../components/GroupLandingHero'
 import { ImportMenuDropdown } from '../components/ImportMenuDropdown'
 import { Breadcrumbs, LinkButton } from '../components/ui'
 import { useGroupFromRoute } from '../hooks/useGroupFromRoute'
-import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
 
 export function GroupDetailPage() {
@@ -28,20 +26,14 @@ export function GroupDetailPage() {
   })
 
   const { data: projects = [], isLoading, error } = useQuery({
-    queryKey: ['repositories', orgPath],
-    queryFn: () => api.listRepositories(token!, orgPath),
+    queryKey: ['repositories', orgPath, { recursive: true }],
+    queryFn: () => api.listRepositories(token!, orgPath, { recursive: true }),
     enabled: Boolean(token && orgPath),
   })
 
   const canManage =
     members.find((member) => member.user.id === user?.id)?.role === 'owner' ||
     members.find((member) => member.user.id === user?.id)?.role === 'admin'
-
-  const projectRefs = useMemo(
-    () => projects.map((project) => ({ orgSlug: orgPath, slug: project.slug })),
-    [projects, orgPath],
-  )
-  const { getStats, isLoading: statsLoading } = useDashboardProjectStats(projectRefs)
 
   const basePath = `/groups/${orgPath}`
 
@@ -94,8 +86,6 @@ export function GroupDetailPage() {
         projectsLoading={isLoading}
         projectsError={error as Error | null}
         allGroups={groups}
-        getProjectStats={getStats}
-        projectStatsLoading={statsLoading}
         canManage={canManage}
       />
     </>

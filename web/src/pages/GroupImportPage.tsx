@@ -65,6 +65,10 @@ function listingReposLabel(namespacePath: string) {
   return namespacePath ? `Listing repositories in ${namespacePath}…` : 'Listing repositories…'
 }
 
+function pertiskNamespaceHint() {
+  return 'Includes repositories in the selected group and all subgroups beneath it.'
+}
+
 export function GroupImportPage() {
   const { pathname } = useLocation()
   const routeOrgPath = useOrgPathParam()
@@ -647,7 +651,11 @@ export function GroupImportPage() {
               {isGlobalImport && previewReady && namespaces.length > 0 && (
                 <Select
                   label={remoteNamespaceLabel(provider)}
-                  hint={`Repositories are listed from this ${remoteNamespaceLabel(provider)} on ${importProviderLabel(provider)}.`}
+                  hint={
+                    provider === 'pertisk'
+                      ? pertiskNamespaceHint()
+                      : `Repositories are listed from this ${remoteNamespaceLabel(provider)} on ${importProviderLabel(provider)}.`
+                  }
                   value={namespacePath}
                   onChange={(event) => {
                     setGroupPathTouched(false)
@@ -781,7 +789,11 @@ export function GroupImportPage() {
             <div className="mb-3">
               <Select
                 label={remoteNamespaceLabel(provider)}
-                hint="Filter repositories on GitHub/GitLab — not your Pertisk group."
+                hint={
+                  provider === 'pertisk'
+                    ? pertiskNamespaceHint()
+                    : 'Filter repositories on GitHub/GitLab — not your Pertisk group.'
+                }
                 value={namespacePath}
                 onChange={(event) => setNamespacePath(event.target.value)}
                 disabled={formDisabled}

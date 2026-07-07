@@ -1,4 +1,5 @@
 import { Search } from 'lucide-react'
+import { cn } from '../utils/cn'
 import { Select } from './ui'
 import styles from './ListSearchToolbar.module.css'
 
@@ -16,6 +17,8 @@ export function ListSearchToolbar<T extends string>({
   onSortChange,
   sortLabel,
   sortOptions,
+  className,
+  inline = false,
 }: {
   search: string
   onSearchChange: (value: string) => void
@@ -25,9 +28,11 @@ export function ListSearchToolbar<T extends string>({
   onSortChange: (value: T) => void
   sortLabel: string
   sortOptions: SortOption<T>[]
+  className?: string
+  inline?: boolean
 }) {
   return (
-    <div className={styles.toolbar}>
+    <div className={cn(styles.toolbar, inline && styles.toolbarInline, className)}>
       <div className={styles.searchWrap}>
         <Search size={15} className={styles.searchIcon} aria-hidden />
         <input

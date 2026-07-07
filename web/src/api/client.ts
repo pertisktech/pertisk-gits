@@ -566,8 +566,20 @@ export const api = {
       body: JSON.stringify(payload),
     }, token),
 
-  listRepositories: (token: string, orgSlug: string) =>
-    request<Repository[]>(`/organizations/${orgApiPath(orgSlug)}/repositories`, {}, token),
+  listRepositories: (
+    token: string,
+    orgSlug: string,
+    options?: { recursive?: boolean },
+  ) => {
+    const search = new URLSearchParams()
+    if (options?.recursive) search.set('recursive', 'true')
+    const qs = search.toString()
+    return request<Repository[]>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories${qs ? `?${qs}` : ''}`,
+      {},
+      token,
+    )
+  },
 
   createRepository: (
     token: string,

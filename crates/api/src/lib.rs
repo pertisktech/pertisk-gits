@@ -1253,43 +1253,141 @@ async fn update_organization(
     Ok(Json(updated))
 }
 
+#[derive(Debug, Deserialize)]
+struct ListRepositoriesQuery {
+    #[serde(default)]
+    recursive: bool,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct RepositoryListRow {
+    id: Uuid,
+    organization_id: Uuid,
+    name: String,
+    slug: String,
+    description: Option<String>,
+    visibility: RepoVisibility,
+    default_branch: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+    last_commit_at: Option<chrono::DateTime<chrono::Utc>>,
+    organization_path: String,
+}
+
+#[derive(Serialize)]
+struct RepositoryListItem {
+    #[serde(flatten)]
+    repository: Repository,
+    organization_path: String,
+}
+
 async fn list_repositories(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(org_path): Path<String>,
-) -> Result<Json<Vec<Repository>>, ApiError> {
+    Query(query): Query<ListRepositoriesQuery>,
+) -> Result<Json<Vec<RepositoryListItem>>, ApiError> {
     let org_path = crate::org::org_path_from_param(&org_path);
     let org = find_org_for_member(&state.pool, &org_path, auth.user_id).await?;
 
-    let mut repos = sqlx::query_as::<_, Repository>(
-        r#"
-        SELECT id, organization_id, name, slug, description, visibility, default_branch, created_at, updated_at, last_commit_at
-        FROM repositories
-        WHERE organization_id = $1
-        ORDER BY name
-        "#,
-    )
-    .bind(org.id)
-    .fetch_all(&state.pool)
-    .await
+    let mut repos = if query.recursive {
+        sqlx::query_as::<_, RepositoryListRow>(
+            r#"
+            SELECT
+                r.id,
+                r.organization_id,
+                r.name,
+                r.slug,
+                r.description,
+                r.visibility,
+                r.default_branch,
+                r.created_at,
+                r.updated_at,
+                r.last_commit_at,
+                o.full_path AS organization_path
+            FROM repositories r
+            INNER JOIN organizations o ON o.id = r.organization_id
+            WHERE o.full_path = $1 OR o.full_path LIKE $1 || '/%'
+            ORDER BY o.full_path, r.name
+            "#,
+        )
+        .bind(&org_path)
+        .fetch_all(&state.pool)
+        .await
+    } else {
+        sqlx::query_as::<_, RepositoryListRow>(
+            r#"
+            SELECT
+                r.id,
+                r.organization_id,
+                r.name,
+                r.slug,
+                r.description,
+                r.visibility,
+                r.default_branch,
+                r.created_at,
+                r.updated_at,
+                r.last_commit_at,
+                o.full_path AS organization_path
+            FROM repositories r
+            INNER JOIN organizations o ON o.id = r.organization_id
+            WHERE r.organization_id = $1
+            ORDER BY r.name
+            "#,
+        )
+        .bind(org.id)
+        .fetch_all(&state.pool)
+        .await
+    }
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     if repos.iter().any(|repo| repo.last_commit_at.is_none()) {
         let pool = state.pool.clone();
         let repos_root = state.config.repos_root.clone();
-        let org_path = org_path.clone();
         for repo in repos.iter_mut().filter(|repo| repo.last_commit_at.is_none()) {
+            let mut repository = Repository {
+                id: repo.id,
+                organization_id: repo.organization_id,
+                name: repo.name.clone(),
+                slug: repo.slug.clone(),
+                description: repo.description.clone(),
+                visibility: repo.visibility,
+                default_branch: repo.default_branch.clone(),
+                created_at: repo.created_at,
+                updated_at: repo.updated_at,
+                last_commit_at: repo.last_commit_at,
+            };
             repository_activity::backfill_repository_last_commit_at(
                 &pool,
                 &repos_root,
-                &org_path,
-                repo,
+                &repo.organization_path,
+                &mut repository,
             )
             .await;
+            repo.last_commit_at = repository.last_commit_at;
         }
     }
 
-    Ok(Json(repos))
+    Ok(Json(
+        repos
+            .into_iter()
+            .map(|row| RepositoryListItem {
+                repository: Repository {
+                    id: row.id,
+                    organization_id: row.organization_id,
+                    name: row.name,
+                    slug: row.slug,
+                    description: row.description,
+                    visibility: row.visibility,
+                    default_branch: row.default_branch,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                    last_commit_at: row.last_commit_at,
+                },
+                organization_path: row.organization_path,
+            })
+            .collect(),
+    ))
 }
 
 async fn create_repository(

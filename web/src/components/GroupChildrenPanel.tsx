@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { FolderGit2 } from 'lucide-react'
-import type { DashboardProjectStats, Organization, Repository } from '../api/types'
+import type { Organization, Repository } from '../api/types'
+import { useDashboardProjectStats } from '../hooks/useDashboardProjectStats'
 import { useGroupStats } from '../hooks/useGroupStats'
 import {
   coerceGroupSort,
@@ -23,10 +24,11 @@ import { GroupListRow } from './GroupListRow'
 import { ListSearchToolbar } from './ListSearchToolbar'
 import { ProjectListRow } from './ProjectListRow'
 import listStyles from './ProjectList.module.css'
-import { AppSegment } from './AppSegment'
 import { EmptyState, LinkButton, TablePagination } from './ui'
 import { ImportMenuDropdown } from './ImportMenuDropdown'
 import { useClientPagination } from '../lib/pagination'
+import { cn } from '../utils/cn'
+import panelStyles from './GroupChildrenPanel.module.css'
 import styles from '../pages/DashboardPage.module.css'
 
 type ChildFilter = 'all' | 'subgroups' | 'projects'
@@ -41,8 +43,6 @@ export function GroupChildrenPanel({
   projectsLoading,
   projectsError,
   allGroups,
-  getProjectStats,
-  projectStatsLoading,
   canManage = false,
 }: {
   orgPath: string
@@ -53,8 +53,6 @@ export function GroupChildrenPanel({
   projectsLoading: boolean
   projectsError?: Error | null
   allGroups: Organization[]
-  getProjectStats: (ref: { orgSlug: string; slug: string }) => DashboardProjectStats | undefined
-  projectStatsLoading: boolean
   canManage?: boolean
 }) {
   const [filter, setFilter] = useState<ChildFilter>('all')
@@ -118,6 +116,19 @@ export function GroupChildrenPanel({
     total: filteredTotal,
   } = useClientPagination(filteredChildren)
 
+  const pageProjectRefs = useMemo(
+    () =>
+      pageChildren
+        .filter((item) => item.kind === 'project')
+        .map((item) => ({
+          orgSlug: item.project.organization_path ?? orgPath,
+          slug: item.project.slug,
+        })),
+    [pageChildren, orgPath],
+  )
+  const { getStats: getProjectStats, isLoading: projectStatsLoading } =
+    useDashboardProjectStats(pageProjectRefs)
+
   useEffect(() => {
     resetPage()
   }, [filter, search, sort, resetPage])
@@ -166,15 +177,26 @@ export function GroupChildrenPanel({
       </div>
 
       {!isLoading && totalCount > 0 && (
-        <div className="px-4 pt-3">
+        <div className={panelStyles.filterRow}>
           {hasBoth && (
-            <AppSegment
-              tabs={tabs}
-              active={filter}
-              onChange={(id) => setFilter(id as ChildFilter)}
-            />
+            <div className={panelStyles.filterTabs} role="tablist" aria-label={panelTitle}>
+              {tabs.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={filter === tab.id}
+                  className={cn('app-segment-tab', filter === tab.id && 'active')}
+                  onClick={() => setFilter(tab.id as ChildFilter)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           )}
           <ListSearchToolbar
+            inline
+            className={panelStyles.filterToolbar}
             search={search}
             onSearchChange={setSearch}
             searchPlaceholder="Filter by name or path…"
@@ -224,7 +246,19 @@ export function GroupChildrenPanel({
       )}
 
       {!isLoading && totalCount > 0 && filteredChildren.length === 0 && (
-        <div className={styles.emptyHint}>No matches for &ldquo;{search.trim()}&rdquo;</div>
+        <div className={styles.emptyHint}>
+          {search.trim() ? (
+            <>
+              No matches for &ldquo;{search.trim()}&rdquo;
+            </>
+          ) : listMode === 'repositories' ? (
+            'No repositories in this group.'
+          ) : listMode === 'subgroups' ? (
+            'No subgroups in this group.'
+          ) : (
+            'No subgroups or repositories in this group.'
+          )}
+        </div>
       )}
 
       {!isLoading && filteredChildren.length > 0 && (
@@ -241,12 +275,15 @@ export function GroupChildrenPanel({
             ) : (
               <ProjectListRow
                 key={`project-${item.project.id}`}
-                orgSlug={orgPath}
+                orgSlug={item.project.organization_path ?? orgPath}
                 slug={item.project.slug}
                 name={item.project.name}
                 updatedAt={item.project.updated_at}
                 lastCommitAt={item.project.last_commit_at}
-                stats={getProjectStats({ orgSlug: orgPath, slug: item.project.slug })}
+                stats={getProjectStats({
+                  orgSlug: item.project.organization_path ?? orgPath,
+                  slug: item.project.slug,
+                })}
                 statsLoading={projectStatsLoading}
               />
             ),

@@ -59,20 +59,22 @@ export function matchesGroupChildSearch(item: GroupChild, query: string) {
   }
 
   const { project } = item
+  const path = `${project.organization_path ?? ''}/${project.slug}`.toLowerCase()
   return (
     project.name.toLowerCase().includes(q) ||
-    project.slug.toLowerCase().includes(q)
+    project.slug.toLowerCase().includes(q) ||
+    path.includes(q)
   )
 }
 
 export function matchesRepositorySearch(
-  repo: Pick<Repository, 'name' | 'slug'>,
+  repo: Pick<Repository, 'name' | 'slug' | 'organization_path'>,
   orgPath: string,
   query: string,
 ) {
   const q = query.trim().toLowerCase()
   if (!q) return true
-  const path = `${orgPath}/${repo.slug}`.toLowerCase()
+  const path = `${repo.organization_path ?? orgPath}/${repo.slug}`.toLowerCase()
   return (
     repo.name.toLowerCase().includes(q) ||
     repo.slug.toLowerCase().includes(q) ||
