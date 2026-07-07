@@ -44,6 +44,27 @@ function isGitOnlyImport(provider: ImportProvider) {
   return provider === 'pertisk'
 }
 
+function ImportLoadingState({ label }: { label: string }) {
+  return (
+    <div
+      className="flex items-center justify-center gap-2 py-8 text-sm text-text-secondary"
+      role="status"
+      aria-live="polite"
+    >
+      <Loader2 size={16} className="animate-spin shrink-0 text-primary" aria-hidden />
+      <span>{label}</span>
+    </div>
+  )
+}
+
+function loadingGroupsLabel(provider: ImportProvider) {
+  return `Loading ${remoteNamespaceLabel(provider).toLowerCase()} from ${importProviderLabel(provider)}…`
+}
+
+function listingReposLabel(namespacePath: string) {
+  return namespacePath ? `Listing repositories in ${namespacePath}…` : 'Listing repositories…'
+}
+
 export function GroupImportPage() {
   const { pathname } = useLocation()
   const routeOrgPath = useOrgPathParam()
@@ -442,6 +463,9 @@ export function GroupImportPage() {
   const namespaceRequired = isGlobalImport && namespaces.length > 0
   const canListRepos =
     previewReady && (!namespaceRequired || Boolean(namespacePath)) && Boolean(targetGroupPath.trim() || !isGlobalImport)
+  const isLoadingGroups = connect.isPending
+  const isListingRepos = discover.isPending || refreshRepos.isPending
+  const formDisabled = isLoadingGroups || isListingRepos
 
   if (!isGlobalImport && !canManage && members.length > 0) {
     return <Navigate to={`/groups/${routeOrgPath}`} replace />
@@ -473,6 +497,7 @@ export function GroupImportPage() {
                 value={provider}
                 onChange={(event) => setProvider(event.target.value as ImportProvider)}
                 autoComplete="off"
+                disabled={formDisabled}
               >
                 <option value="github">GitHub</option>
                 <option value="gitlab">GitLab</option>
@@ -490,6 +515,7 @@ export function GroupImportPage() {
                     name="pertisk-import-server-url"
                     autoComplete="off"
                     readOnly
+                    disabled={formDisabled}
                     onFocus={(event) => event.currentTarget.removeAttribute('readonly')}
                   />
                   <span className="text-xs text-text-secondary mt-1 block">
@@ -509,6 +535,7 @@ export function GroupImportPage() {
                     name="pertisk-import-gitlab-url"
                     autoComplete="off"
                     readOnly
+                    disabled={formDisabled}
                     onFocus={(event) => event.currentTarget.removeAttribute('readonly')}
                   />
                 </label>
@@ -525,6 +552,7 @@ export function GroupImportPage() {
                     name="pertisk-import-github-url"
                     autoComplete="off"
                     readOnly
+                    disabled={formDisabled}
                     onFocus={(event) => event.currentTarget.removeAttribute('readonly')}
                   />
                   <span className="text-xs text-text-secondary mt-1 block">
@@ -543,6 +571,7 @@ export function GroupImportPage() {
                     setCredentialId(event.target.value || null)
                     setPat('')
                   }}
+                  disabled={formDisabled}
                 >
                   <option value="">Use new token below</option>
                   {matchingCredentials.map((cred) => (
@@ -569,6 +598,7 @@ export function GroupImportPage() {
                   data-1p-ignore
                   data-lpignore="true"
                   readOnly
+                  disabled={formDisabled}
                   onFocus={(event) => event.currentTarget.removeAttribute('readonly')}
                 />
                 <span className="text-xs text-text-secondary mt-1 block">
@@ -604,6 +634,10 @@ export function GroupImportPage() {
                 </>
               )}
 
+              {isGlobalImport && isLoadingGroups && (
+                <ImportLoadingState label={loadingGroupsLabel(provider)} />
+              )}
+
               {isGlobalImport && account && (
                 <p className="text-xs text-text-secondary">
                   Signed in as <span className="font-mono text-text">{account}</span>
@@ -619,6 +653,7 @@ export function GroupImportPage() {
                     setGroupPathTouched(false)
                     setNamespacePath(event.target.value)
                   }}
+                  disabled={formDisabled}
                 >
                   <option value="">
                     Select {provider === 'github' ? 'an organization' : 'a group'}…
@@ -712,12 +747,15 @@ export function GroupImportPage() {
           </div>
         </Card>
 
-        <Card>
+        <Card aria-busy={isListingRepos}>
           <h2 className="text-sm font-semibold text-text mb-3">{selectStep}. Select repositories</h2>
-          {remoteRepos.length === 0 && (
+          {isListingRepos && remoteRepos.length === 0 && (
+            <ImportLoadingState label={listingReposLabel(namespacePath)} />
+          )}
+          {!isListingRepos && remoteRepos.length === 0 && (
             <p className="text-sm text-text-secondary">
               {isGlobalImport
-                ? 'Connect with a token, pick a GitHub organization or GitLab group, then list repositories.'
+                ? 'Connect with a token, pick a source group, then list repositories.'
                 : 'Connect with a token to see repositories you can import.'}
             </p>
           )}
@@ -746,7 +784,7 @@ export function GroupImportPage() {
                 hint="Filter repositories on GitHub/GitLab — not your Pertisk group."
                 value={namespacePath}
                 onChange={(event) => setNamespacePath(event.target.value)}
-                disabled={refreshRepos.isPending}
+                disabled={formDisabled}
               >
                 <option value="">All accessible repositories</option>
                 {namespaces.map((ns) => (
@@ -759,10 +797,17 @@ export function GroupImportPage() {
                 <SecondaryButton
                   type="button"
                   className="mt-2"
-                  disabled={refreshRepos.isPending}
+                  disabled={formDisabled}
                   onClick={() => refreshRepos.mutate()}
                 >
-                  {refreshRepos.isPending ? 'Refreshing…' : 'Refresh list'}
+                  {refreshRepos.isPending ? (
+                    <>
+                      <Loader2 size={14} className="animate-spin" />
+                      Refreshing…
+                    </>
+                  ) : (
+                    'Refresh list'
+                  )}
                 </SecondaryButton>
               )}
             </div>
@@ -773,7 +818,13 @@ export function GroupImportPage() {
             </div>
           )}
           {remoteRepos.length > 0 && (
-            <div className="space-y-3">
+            <div className={isListingRepos ? 'relative' : undefined}>
+              {isListingRepos && (
+                <div className="absolute inset-0 z-10 flex items-start justify-center rounded-lg bg-surface/80 pt-10">
+                  <ImportLoadingState label={listingReposLabel(namespacePath)} />
+                </div>
+              )}
+            <div className={`space-y-3${isListingRepos ? ' pointer-events-none opacity-60' : ''}`}>
               <Select
                 label="If repository already exists"
                 value={onConflict}
@@ -915,6 +966,7 @@ export function GroupImportPage() {
                     ? `Import ${selectedCount} repositories (${importJobCount} jobs)`
                     : `Import ${selectedCount} repositories`}
               </PrimaryButton>
+            </div>
             </div>
           )}
         </Card>
