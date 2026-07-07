@@ -1,4 +1,4 @@
-export type GroupTab = 'repositories' | 'registry' | 'members' | 'teams' | 'roles' | 'machine-users' | 'audit' | 'secrets' | 'import' | 'settings'
+export type GroupTab = 'repositories' | 'members' | 'teams' | 'roles' | 'machine-users' | 'audit' | 'secrets' | 'import' | 'settings'
 
 const GROUP_PATH = /^\/groups\/([^?#]+)/
 
@@ -6,7 +6,6 @@ const GROUP_PATH = /^\/groups\/([^?#]+)/
 export const RESERVED_GROUP_SLUGS = new Set(['new', 'import'])
 
 const TAB_SUFFIXES: { suffix: string; tab: GroupTab }[] = [
-  { suffix: '/registry', tab: 'registry' },
   { suffix: '/members', tab: 'members' },
   { suffix: '/teams', tab: 'teams' },
   { suffix: '/roles', tab: 'roles' },
@@ -17,17 +16,6 @@ const TAB_SUFFIXES: { suffix: string; tab: GroupTab }[] = [
   { suffix: '/settings', tab: 'settings' },
 ]
 
-const REGISTRY_IMAGE_PATH = /^\/groups\/(.+?)\/registry\/([^/]+)\/?$/
-
-export function parseRegistryImageRoute(pathname: string) {
-  const match = pathname.match(REGISTRY_IMAGE_PATH)
-  if (!match) return null
-  return {
-    orgPath: match[1].replace(/\/$/, ''),
-    imageName: decodeURIComponent(match[2]),
-  }
-}
-
 export function parseGroupRoute(pathname: string) {
   const match = pathname.match(GROUP_PATH)
   if (!match) return null
@@ -37,12 +25,6 @@ export function parseGroupRoute(pathname: string) {
 
   // Project URLs are handled by projectRoute.ts
   if (rest.includes('/projects/')) return null
-
-  const registryImage = rest.match(/^(.+)\/registry\/([^/]+)$/)
-  if (registryImage) {
-    const orgPath = registryImage[1].replace(/\/$/, '')
-    return { orgPath, orgSlug: orgPath, tab: 'registry' as GroupTab, basePath: `/groups/${orgPath}` }
-  }
 
   let tab: GroupTab = 'repositories'
   for (const { suffix, tab: tabName } of TAB_SUFFIXES) {

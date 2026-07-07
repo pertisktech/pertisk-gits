@@ -66,6 +66,7 @@ const projectNavItems: {
   { id: 'commits', label: 'Commits', icon: GitCommit },
   { id: 'branches', label: 'Branches', icon: GitBranch },
   { id: 'tags', label: 'Tags', icon: Tag },
+  { id: 'registry', label: 'Registry', icon: Package },
   { id: 'wiki', label: 'Wiki', icon: BookOpen },
   { id: 'pipelines', label: 'Pipelines', icon: Workflow },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -89,7 +90,6 @@ const adminNavItems: { id: AdminTab; label: string; icon: LucideIcon }[] = [
 
 const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'repositories', label: 'Repositories', icon: FolderGit2 },
-  { id: 'registry', label: 'Registry', icon: Package },
   { id: 'members', label: 'Members', icon: Users },
   { id: 'teams', label: 'Teams', icon: UsersRound },
   { id: 'roles', label: 'Custom roles', icon: Shield },
@@ -262,6 +262,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
             {projectNavItems
               .filter((item) => {
                 if (item.id === 'pipelines') return project.showPipelinesTab
+                if (item.id === 'registry') return project.showRegistryTab
                 if (item.id === 'settings') return project.showSettingsTab
                 return true
               })

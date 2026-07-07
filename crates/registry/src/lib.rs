@@ -25,22 +25,40 @@ pub fn router() -> Router<RegistryState> {
         .route("/v2/_catalog", get(routes::v2::get_catalog))
         .route("/v2/{org}/_catalog", get(routes::v2::get_org_catalog))
         .route(
-            "/v2/{org}/{image}/manifests/{reference}",
+            "/v2/{org}/{project}/{image}/manifests/{reference}",
             get(routes::v2::get_manifest)
                 .head(routes::v2::head_manifest)
                 .put(routes::v2::put_manifest),
         )
         .route(
-            "/v2/{org}/{image}/blobs/{digest}",
+            "/v2/{provider}/{org}/{project}/{image}/manifests/{reference}",
+            get(routes::v2::get_manifest_provider)
+                .head(routes::v2::head_manifest_provider)
+                .put(routes::v2::put_manifest_provider),
+        )
+        .route(
+            "/v2/{org}/{project}/{image}/blobs/{digest}",
             get(routes::v2::get_blob).head(routes::v2::head_blob),
         )
         .route(
-            "/v2/{org}/{image}/blobs/uploads/",
+            "/v2/{provider}/{org}/{project}/{image}/blobs/{digest}",
+            get(routes::v2::get_blob_provider).head(routes::v2::head_blob_provider),
+        )
+        .route(
+            "/v2/{org}/{project}/{image}/blobs/uploads/",
             post(routes::v2::start_upload),
         )
         .route(
-            "/v2/{org}/{image}/blobs/uploads/{upload_id}",
+            "/v2/{provider}/{org}/{project}/{image}/blobs/uploads/",
+            post(routes::v2::start_upload_provider),
+        )
+        .route(
+            "/v2/{org}/{project}/{image}/blobs/uploads/{upload_id}",
             patch(routes::v2::patch_upload).put(routes::v2::complete_upload),
+        )
+        .route(
+            "/v2/{provider}/{org}/{project}/{image}/blobs/uploads/{upload_id}",
+            patch(routes::v2::patch_upload_provider).put(routes::v2::complete_upload_provider),
         )
         .layer(DefaultBodyLimit::max(MAX_REGISTRY_BODY_BYTES))
 }

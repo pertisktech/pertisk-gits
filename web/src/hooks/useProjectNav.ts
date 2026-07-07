@@ -31,6 +31,9 @@ export function useProjectNav() {
   if (tab === 'pipelines' && !token) {
     tab = 'code'
   }
+  if (tab === 'registry' && !token) {
+    tab = 'code'
+  }
   if (tab === 'settings' && !token) {
     tab = 'code'
   }
@@ -40,6 +43,7 @@ export function useProjectNav() {
     tab,
     projectName: project?.name ?? route.projectSlug,
     showPipelinesTab,
+    showRegistryTab: Boolean(token),
     showSettingsTab: Boolean(token),
   }
 }

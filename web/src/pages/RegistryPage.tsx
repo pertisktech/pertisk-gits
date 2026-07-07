@@ -1,18 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Loader2, Package, Trash2 } from 'lucide-react'
-import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { CheckCircle2, ChevronDown, DatabaseZap, GitBranch, Loader2, Package, Trash2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ContainerImageSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { useOrgPathParam } from '../hooks/useOrgPathParam'
+import { CopyField } from '../components/RepoClonePushGuide'
+import { useProjectParams } from '../hooks/useProjectParams'
 import { useRegistryImageParam } from '../hooks/useRegistryImageParam'
 import {
   EmptyState,
-  LinkButton,
   PrimaryButton,
   SecondaryButton,
-  Select,
   TablePagination,
 } from '../components/ui'
 import { useClientPagination } from '../lib/pagination'
@@ -27,19 +26,42 @@ function shortDigest(digest: string): string {
   return digest.length > 19 ? `${digest.slice(0, 19)}…` : digest
 }
 
+function buildRegistryImagePath(orgPath: string, repoSlug: string, imageName?: string | null): string {
+  const base = `${orgPath}/${repoSlug}`
+  const raw = (imageName ?? '').trim().replace(/^\/+|\/+$/g, '')
+  if (!raw) return base
+  if (raw === repoSlug) return base
+  if (raw === base) return base
+  if (raw.startsWith(`${base}/`)) return raw
+  if (raw.startsWith(`${orgPath}/`)) return raw
+  return `${base}/${raw}`
+}
+
 export function RegistryPage() {
-  const orgPath = useOrgPathParam()
+  const { orgSlug: orgPath, projectSlug: repoSlug } = useProjectParams()
   const imageName = useRegistryImageParam()
-  const navigate = useNavigate()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
-  const decodedImage = imageName
+  const [gcMessage, setGcMessage] = useState<string | null>(null)
+  const [commandsOpen, setCommandsOpen] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<string | null>(imageName)
+  const [pendingDelete, setPendingDelete] = useState<
+    { kind: 'image'; imageName: string } | { kind: 'tag'; imageName: string; tagName: string } | null
+  >(null)
+  const commandsRef = useRef<HTMLDivElement>(null)
+  const registryHost = typeof window !== 'undefined' ? window.location.host : 'registry.local'
+  const imageNameForCommand = selectedImage || imageName || 'image-name'
+  const imagePath = buildRegistryImagePath(orgPath, repoSlug, imageNameForCommand)
+  const imageRef = `${imagePath}:latest`
+  const loginCommand = `docker login ${registryHost} -u YOUR_USERNAME`
+  const pushCommand = `docker push ${registryHost}/${imageRef}`
+  const pullCommand = `docker pull ${registryHost}/${imageRef}`
 
   const { data: images = [], isLoading: listLoading } = useQuery({
-    queryKey: ['registry-images', orgPath],
-    queryFn: () => api.listContainerImages(token!, orgPath),
-    enabled: Boolean(token && orgPath),
+    queryKey: ['registry-images', orgPath, repoSlug],
+    queryFn: () => api.listContainerImages(token!, orgPath, repoSlug),
+    enabled: Boolean(token && orgPath && repoSlug),
   })
 
   const {
@@ -51,84 +73,142 @@ export function RegistryPage() {
   } = useClientPagination(images)
 
   const { data: detail, isLoading: detailLoading } = useQuery({
-    queryKey: ['registry-image', orgPath, decodedImage],
-    queryFn: () => api.getContainerImage(token!, orgPath, decodedImage!),
-    enabled: Boolean(token && orgPath && decodedImage),
-  })
-
-  const { data: projects = [] } = useQuery({
-    queryKey: ['repositories', orgPath],
-    queryFn: () => api.listRepositories(token!, orgPath),
-    enabled: Boolean(token && orgPath && decodedImage),
+    queryKey: ['registry-image', orgPath, repoSlug, selectedImage],
+    queryFn: () => api.getContainerImage(token!, orgPath, repoSlug, selectedImage!),
+    enabled: Boolean(token && orgPath && repoSlug && selectedImage),
   })
 
   const deleteImage = useMutation({
-    mutationFn: (name: string) => api.deleteContainerImage(token!, orgPath, name),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath] })
+    mutationFn: (name: string) => api.deleteContainerImage(token!, orgPath, repoSlug, name),
+    onSuccess: (_value, name) => {
+      queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath, repoSlug] })
       setError(null)
-      if (decodedImage) navigate(`/groups/${orgPath}/registry`)
+      if (selectedImage === name) {
+        setSelectedImage(null)
+      }
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const deleteTag = useMutation({
-    mutationFn: (tag: string) => api.deleteContainerTag(token!, orgPath, decodedImage!, tag),
+    mutationFn: (payload: { imageName: string; tag: string }) =>
+      api.deleteContainerTag(token!, orgPath, repoSlug, payload.imageName, payload.tag),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, decodedImage] })
-      queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath] })
+      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, repoSlug, selectedImage] })
+      queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath, repoSlug] })
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const runGc = useMutation({
-    mutationFn: () => api.runRegistryGc(token!, orgPath),
+    mutationFn: () => api.runRegistryGc(token!, orgPath, repoSlug),
     onSuccess: (report) => {
       setError(null)
-      alert(
-        `GC complete: ${report.blobs_removed} blob(s) removed, ${report.upload_files_removed} stale upload(s) cleaned.`,
+      setGcMessage(
+        `Garbage collection complete: ${report.blobs_removed} blob(s) removed, ${report.upload_files_removed} stale upload file(s) cleaned.`,
       )
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const updateImage = useMutation({
-    mutationFn: (payload: { description?: string; linked_repository_id?: string | null }) =>
-      api.updateContainerImage(token!, orgPath, decodedImage!, payload),
+    mutationFn: (payload: { description?: string }) =>
+      api.updateContainerImage(token!, orgPath, repoSlug, selectedImage!, payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, decodedImage] })
+      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, repoSlug, selectedImage] })
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
   })
 
-  const registryBase = `/groups/${orgPath}/registry`
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (commandsRef.current && !commandsRef.current.contains(event.target as Node)) {
+        setCommandsOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [])
+
+  useEffect(() => {
+    if (imageName) {
+      setSelectedImage(imageName)
+    }
+  }, [imageName])
+
+  useEffect(() => {
+    if (!selectedImage && images.length > 0) {
+      setSelectedImage(images[0].name)
+    }
+  }, [images, selectedImage])
 
   return (
     <>
       <div className="app-repo-header mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="app-repo-title">
-            <span>{decodedImage ?? 'Container registry'}</span>
+            <span>Container registry</span>
           </h1>
           <p className="app-repo-desc">
-            OCI images for @{orgPath} — push with docker login &amp;&amp; docker push host/{orgPath}/image:tag
+            OCI images for {orgPath}/{repoSlug} — push with docker login &amp;&amp; docker push host/{orgPath}/{repoSlug}:tag
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
+          <div className="app-clone-dropdown" ref={commandsRef}>
+            <PrimaryButton
+              type="button"
+              aria-expanded={commandsOpen}
+              aria-haspopup="dialog"
+              onClick={() => setCommandsOpen((v) => !v)}
+            >
+              <GitBranch size={15} />
+              Registry
+              <ChevronDown size={14} className={`transition-transform ${commandsOpen ? 'rotate-180' : ''}`} />
+            </PrimaryButton>
+            {commandsOpen && (
+              <div className="app-code-dropdown">
+                <div className="app-code-dropdown-body space-y-3">
+                  <CopyField label="Login command" value={loginCommand} />
+                  <CopyField label="Push command" value={pushCommand} />
+                  <CopyField label="Pull command" value={pullCommand} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="app-panel p-4 mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <DatabaseZap size={18} className="text-primary mt-0.5" />
+            <div>
+              <h2 className="text-sm font-semibold text-text">Registry Maintenance</h2>
+              <p className="text-xs text-text-secondary mt-1">
+                Run garbage collection to remove unreferenced blobs and stale uploads.
+              </p>
+            </div>
+          </div>
           <SecondaryButton
             type="button"
             disabled={runGc.isPending}
-            onClick={() => runGc.mutate()}
+            onClick={() => {
+              setGcMessage(null)
+              runGc.mutate()
+            }}
           >
             {runGc.isPending ? <Loader2 size={14} className="animate-spin" /> : null}
-            Run GC
+            {runGc.isPending ? 'Running GC…' : 'Run GC'}
           </SecondaryButton>
-          {decodedImage && (
-            <LinkButton to={registryBase}>All images</LinkButton>
-          )}
         </div>
+        {gcMessage && (
+          <div className="mt-3 inline-flex items-center gap-2 rounded-md border border-green-g1/40 bg-green-g2/20 px-3 py-2 text-xs text-green-g1">
+            <CheckCircle2 size={14} />
+            <span>{gcMessage}</span>
+          </div>
+        )}
       </div>
 
       {error && (
@@ -137,8 +217,7 @@ export function RegistryPage() {
         </div>
       )}
 
-      {!decodedImage && (
-        <div className="app-panel">
+      <div className="app-panel">
           <div className="app-panel-header flex items-center justify-between">
             <span>Images</span>
             <span className="font-normal text-text-secondary">{imageTotal}</span>
@@ -152,7 +231,7 @@ export function RegistryPage() {
             <EmptyState
               icon={<Package size={40} />}
               title="No container images"
-              description={`Push an image to ${orgPath}/my-app:tag after docker login.`}
+              description={`Push an image to ${imagePath}:latest after docker login.`}
             />
           )}
 
@@ -162,7 +241,6 @@ export function RegistryPage() {
                 <tr>
                   <th>Image</th>
                   <th>Tags</th>
-                  <th>Linked repo</th>
                   <th>Updated</th>
                   <th />
                 </tr>
@@ -171,20 +249,18 @@ export function RegistryPage() {
                 {pageImages.map((image: ContainerImageSummary) => (
                   <tr key={image.id}>
                     <td>
-                      <Link
-                        to={`${registryBase}/${encodeURIComponent(image.name)}`}
+                      <button
+                        type="button"
                         className="font-mono text-sm text-primary hover:underline"
+                        onClick={() => setSelectedImage(image.name)}
                       >
-                        {orgPath}/{image.name}
-                      </Link>
+                        {buildRegistryImagePath(orgPath, repoSlug, image.name)}
+                      </button>
                       {image.description && (
                         <div className="text-xs text-text-secondary mt-0.5">{image.description}</div>
                       )}
                     </td>
                     <td className="font-mono text-sm">{image.tag_count}</td>
-                    <td className="font-mono text-sm text-text-secondary">
-                      {image.linked_repository_slug ?? '—'}
-                    </td>
                     <td className="text-sm text-text-secondary">
                       {new Date(image.updated_at).toLocaleString()}
                     </td>
@@ -193,11 +269,7 @@ export function RegistryPage() {
                         type="button"
                         className="text-dashboard-danger hover:underline text-xs"
                         disabled={deleteImage.isPending}
-                        onClick={() => {
-                          if (confirm(`Delete image ${image.name} and all tags?`)) {
-                            deleteImage.mutate(image.name)
-                          }
-                        }}
+                        onClick={() => setPendingDelete({ kind: 'image', imageName: image.name })}
                       >
                         Delete
                       </button>
@@ -217,23 +289,20 @@ export function RegistryPage() {
               itemLabel="images"
             />
           )}
-        </div>
-      )}
+      </div>
 
-      {decodedImage && (
-        <div className="space-y-4">
+      <div className="space-y-4 mt-4">
           <div className="flex items-center gap-2">
-            <Link to={registryBase} className="text-sm text-primary hover:underline">
-              ← All images
-            </Link>
-            <span className="font-mono text-sm text-text">{orgPath}/{decodedImage}</span>
+            <span className="font-mono text-sm text-text">
+              {buildRegistryImagePath(orgPath, repoSlug, selectedImage ?? 'image-name')}
+            </span>
           </div>
 
           {detailLoading && (
             <div className="p-8 text-center text-text-secondary text-sm">Loading…</div>
           )}
 
-          {detail && (
+          {detail && selectedImage && (
             <>
               <div className="app-panel p-4 max-w-xl">
                 <h2 className="text-sm font-semibold text-text mb-4">Metadata</h2>
@@ -256,37 +325,17 @@ export function RegistryPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Select
-                      id="registry-linked-repo"
-                      label="Linked git repository"
-                      className="mono"
-                      value={detail.linked_repository_id ?? ''}
-                      onChange={(e) => {
-                        const value = e.target.value || null
-                        updateImage.mutate({ linked_repository_id: value })
-                      }}
-                    >
-                      <option value="">— none —</option>
-                      {projects.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.slug}
-                        </option>
-                      ))}
-                    </Select>
-                    <p className="text-xs text-text-secondary">
-                      Tag commit links use this repository when a commit SHA is set on push.
-                    </p>
+                    <label className="text-sm font-medium text-text">Image Path</label>
+                    <div className="text-sm font-mono text-text-secondary">
+                      {buildRegistryImagePath(orgPath, repoSlug, selectedImage)}
+                    </div>
                   </div>
                 </div>
                 <div className="flex gap-2 pt-4 mt-4 border-t border-naturals-n4">
                   <PrimaryButton
                     type="button"
                     disabled={deleteImage.isPending}
-                    onClick={() => {
-                      if (confirm(`Delete ${decodedImage} and all tags?`)) {
-                        deleteImage.mutate(decodedImage)
-                      }
-                    }}
+                    onClick={() => setPendingDelete({ kind: 'image', imageName: selectedImage })}
                   >
                     <Trash2 size={14} />
                     Delete image
@@ -322,16 +371,12 @@ export function RegistryPage() {
                           </td>
                           <td className="font-mono text-xs">
                             {tag.commit_sha ? (
-                              detail.linked_repository_slug ? (
-                                <Link
-                                  to={`/groups/${orgPath}/projects/${detail.linked_repository_slug}/commit/${tag.commit_sha}`}
-                                  className="text-primary hover:underline"
-                                >
-                                  {tag.commit_sha.slice(0, 7)}
-                                </Link>
-                              ) : (
-                                tag.commit_sha.slice(0, 7)
-                              )
+                              <Link
+                                to={`/groups/${orgPath}/projects/${repoSlug}/commit/${tag.commit_sha}`}
+                                className="text-primary hover:underline"
+                              >
+                                {tag.commit_sha.slice(0, 7)}
+                              </Link>
                             ) : (
                               '—'
                             )}
@@ -341,18 +386,28 @@ export function RegistryPage() {
                             {new Date(tag.updated_at).toLocaleString()}
                           </td>
                           <td className="text-right">
-                            <button
-                              type="button"
-                              className="text-dashboard-danger hover:underline text-xs"
-                              disabled={deleteTag.isPending}
-                              onClick={() => {
-                                if (confirm(`Delete tag ${tag.name}?`)) {
-                                  deleteTag.mutate(tag.name)
+                            <div className="flex items-center justify-end gap-3">
+                              <button
+                                type="button"
+                                className="text-primary hover:underline text-xs"
+                                onClick={async () => {
+                                  const pull = `docker pull ${registryHost}/${buildRegistryImagePath(orgPath, repoSlug, selectedImage)}:${tag.name}`
+                                  await navigator.clipboard.writeText(pull)
+                                }}
+                              >
+                                Copy pull
+                              </button>
+                              <button
+                                type="button"
+                                className="text-dashboard-danger hover:underline text-xs"
+                                disabled={deleteTag.isPending}
+                                onClick={() =>
+                                  setPendingDelete({ kind: 'tag', imageName: selectedImage, tagName: tag.name })
                                 }
-                              }}
-                            >
-                              Delete
-                            </button>
+                              >
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -362,6 +417,36 @@ export function RegistryPage() {
               </div>
             </>
           )}
+        </div>
+
+      {pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl border border-naturals-n4 bg-surface p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-text">Confirm delete</h3>
+            <p className="mt-2 text-sm text-text-secondary">
+              {pendingDelete.kind === 'image'
+                ? `Delete image ${pendingDelete.imageName} and all tags?`
+                : `Delete tag ${pendingDelete.tagName} from ${pendingDelete.imageName}?`}
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <SecondaryButton type="button" onClick={() => setPendingDelete(null)}>
+                Cancel
+              </SecondaryButton>
+              <PrimaryButton
+                type="button"
+                onClick={() => {
+                  if (pendingDelete.kind === 'image') {
+                    deleteImage.mutate(pendingDelete.imageName)
+                  } else {
+                    deleteTag.mutate({ imageName: pendingDelete.imageName, tag: pendingDelete.tagName })
+                  }
+                  setPendingDelete(null)
+                }}
+              >
+                Delete
+              </PrimaryButton>
+            </div>
+          </div>
         </div>
       )}
     </>

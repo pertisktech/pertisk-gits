@@ -842,8 +842,7 @@ export interface ContainerImageSummary {
   id: string
   name: string
   description: string | null
-  linked_repository_id: string | null
-  linked_repository_slug: string | null
+  provider: string
   tag_count: number
   created_at: string
   updated_at: string
@@ -863,8 +862,9 @@ export interface ContainerImageDetail {
   id: string
   name: string
   description: string | null
-  linked_repository_id: string | null
-  linked_repository_slug: string | null
+  provider: string
+  project_id: string
+  project_slug: string
   created_at: string
   updated_at: string
   tags: ContainerTag[]

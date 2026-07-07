@@ -50,6 +50,13 @@ pub async fn get_token(
         .map_err(|_| (StatusCode::UNAUTHORIZED, www.clone()))?
         .ok_or((StatusCode::UNAUTHORIZED, www))?;
 
+    tracing::info!(
+        user_id = %user.id,
+        service,
+        scopes = ?query.scope,
+        "registry token request"
+    );
+
     let scopes = parse_scope_params(&query.scope);
     let access = if scopes.is_empty() {
         // Docker login probe — credentials validated above; scoped token fetched on pull/push.
@@ -61,8 +68,19 @@ pub async fn get_token(
     };
 
     if !scopes.is_empty() && access.is_empty() {
+        tracing::warn!(
+            user_id = %user.id,
+            requested = ?query.scope,
+            "registry token denied: no scopes granted"
+        );
         return Err((StatusCode::FORBIDDEN, HeaderMap::new()));
     }
+
+    tracing::info!(
+        user_id = %user.id,
+        granted = ?access,
+        "registry token granted"
+    );
 
     let token = issue_registry_token(&state.jwt_secret, user.id, access)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, HeaderMap::new()))?;

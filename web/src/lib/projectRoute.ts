@@ -1,4 +1,14 @@
-export type ProjectTab = 'code' | 'issues' | 'pulls' | 'commits' | 'branches' | 'tags' | 'pipelines' | 'wiki' | 'settings'
+export type ProjectTab =
+  | 'code'
+  | 'issues'
+  | 'pulls'
+  | 'commits'
+  | 'branches'
+  | 'tags'
+  | 'registry'
+  | 'pipelines'
+  | 'wiki'
+  | 'settings'
 
 const PROJECT_PATH = /^\/groups\/(.+?)\/projects\/([^/]+)(?:\/(.*))?$/
 const NEW_PROJECT_PATH = /^\/groups\/(.+?)\/projects\/new\/?$/
@@ -78,6 +88,8 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
     tab = 'branches'
   } else if (rest === 'tags') {
     tab = 'tags'
+  } else if (rest.startsWith('registry')) {
+    tab = 'registry'
   } else if (rest.startsWith('pipelines')) {
     tab = 'pipelines'
   } else if (rest.startsWith('wiki')) {
@@ -92,6 +104,7 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
       requested === 'commits' ||
       requested === 'branches' ||
       requested === 'tags' ||
+      requested === 'registry' ||
       requested === 'pipelines' ||
       requested === 'wiki' ||
       requested === 'settings'

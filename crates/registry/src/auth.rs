@@ -49,6 +49,12 @@ pub fn unauthorized_headers(token_url: &str, service: &str, scope: &str) -> Head
         header::WWW_AUTHENTICATE,
         HeaderValue::from_str(&value).unwrap_or_else(|_| HeaderValue::from_static("Bearer")),
     );
+    // Some Docker clients/intermediaries fail to complete Bearer token exchange.
+    // Offer Basic as a fallback so clients can resend stored login credentials.
+    headers.append(
+        header::WWW_AUTHENTICATE,
+        HeaderValue::from_static("Basic realm=\"Registry\""),
+    );
     headers
 }
 
@@ -156,9 +162,23 @@ pub async fn authorize_scopes(
     user: &AuthUser,
     scopes: &[(String, Vec<String>)],
 ) -> anyhow::Result<Vec<RegistryAccess>> {
+    let is_super_admin = crate::access::is_super_admin_user(pool, user.id).await?;
     let mut granted = Vec::new();
     for (name, actions) in scopes {
         if name == "catalog" {
+            if is_super_admin {
+                granted.push(RegistryAccess {
+                    access_type: "registry".into(),
+                    name: "catalog".into(),
+                    actions: if actions.is_empty() {
+                        vec!["*".into()]
+                    } else {
+                        actions.clone()
+                    },
+                });
+                continue;
+            }
+
             if user_has_catalog_access(pool, user.id).await? {
                 granted.push(RegistryAccess {
                     access_type: "registry".into(),
@@ -173,14 +193,28 @@ pub async fn authorize_scopes(
             continue;
         }
 
-        let Some((org, _image)) = parse_image_name(name) else {
+        let Some(parsed) = parse_image_name(name) else {
             continue;
         };
+
+        if is_super_admin {
+            granted.push(RegistryAccess {
+                access_type: "repository".into(),
+                name: name.clone(),
+                actions: if actions.is_empty() {
+                    vec!["pull".into(), "push".into()]
+                } else {
+                    actions.clone()
+                },
+            });
+            continue;
+        }
+
         let mut allowed_actions = Vec::new();
         for action in actions {
             let ok = match action.as_str() {
-                "pull" => can_pull(pool, org, user.id).await?,
-                "push" => can_push(pool, org, user.id).await?,
+                "pull" => can_pull(pool, &parsed.org_path, &parsed.project_slug, user.id).await?,
+                "push" => can_push(pool, &parsed.org_path, &parsed.project_slug, user.id).await?,
                 _ => false,
             };
             if ok {
@@ -228,17 +262,34 @@ pub async fn authorize_registry(
     allow_anonymous_pull: bool,
 ) -> Result<RegistryAuth, (StatusCode, HeaderMap, String)> {
     if let Some(token) = parse_bearer(headers) {
-        if let Ok(auth) = verify_registry_token(jwt_secret, &token) {
-            if let (Some(repo), Some(act)) = (repo_name, action) {
-                if auth_allows(&auth, repo, act) {
-                    return Ok(auth);
+        match verify_registry_token(jwt_secret, &token) {
+            Ok(auth) => {
+                if let (Some(repo), Some(act)) = (repo_name, action) {
+                    if auth_allows(&auth, repo, act) {
+                        return Ok(auth);
+                    }
+                    tracing::warn!(
+                        user_id = %auth.user_id,
+                        repo = repo,
+                        action = act,
+                        granted = ?auth.access,
+                        "registry bearer token missing required scope"
+                    );
+                    return Err(registry_err(
+                        StatusCode::FORBIDDEN,
+                        "insufficient scope",
+                    ));
                 }
-                return Err(registry_err(
-                    StatusCode::FORBIDDEN,
-                    "insufficient scope",
-                ));
+                return Ok(auth);
             }
-            return Ok(auth);
+            Err(error) => {
+                tracing::warn!(
+                    repo = ?repo_name,
+                    action = ?action,
+                    error = %error,
+                    "registry bearer token verification failed"
+                );
+            }
         }
     }
 
@@ -279,6 +330,14 @@ pub async fn authorize_registry(
         }
     }
 
+    tracing::warn!(
+        repo,
+        action = act,
+        has_bearer = parse_bearer(headers).is_some(),
+        has_auth_header = headers.get(header::AUTHORIZATION).is_some(),
+        "registry authorization failed; returning challenge"
+    );
+
     Err(registry_unauthorized(token_url, service_name, repo, act))
 }
 
@@ -288,7 +347,21 @@ async fn authorize_basic_repo(
     repo_name: &str,
     action: &str,
 ) -> Result<RegistryAuth, (StatusCode, HeaderMap, String)> {
-    let Some((org, _image)) = crate::access::parse_image_name(repo_name) else {
+    if crate::access::is_super_admin_user(pool, user.id)
+        .await
+        .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
+    {
+        return Ok(RegistryAuth {
+            user_id: user.id,
+            access: vec![RegistryAccess {
+                access_type: "repository".into(),
+                name: repo_name.to_string(),
+                actions: vec![action.to_string()],
+            }],
+        });
+    }
+
+    let Some(parsed) = crate::access::parse_image_name(repo_name) else {
         return Err(registry_err(
             StatusCode::BAD_REQUEST,
             "invalid repository name",
@@ -296,10 +369,10 @@ async fn authorize_basic_repo(
     };
 
     let allowed = match action {
-        "pull" => crate::access::can_pull(pool, org, user.id)
+        "pull" => crate::access::can_pull(pool, &parsed.org_path, &parsed.project_slug, user.id)
             .await
             .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?,
-        "push" => crate::access::can_push(pool, org, user.id)
+        "push" => crate::access::can_push(pool, &parsed.org_path, &parsed.project_slug, user.id)
             .await
             .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?,
         _ => false,
@@ -350,7 +423,10 @@ pub fn registry_unauthorized(
     repo_name: &str,
     action: &str,
 ) -> (StatusCode, HeaderMap, String) {
-    let scope = format!("repository:{repo_name}:{action}");
+    // Docker push performs both pull (blob existence checks) and push operations.
+    // Advertise both actions up-front so clients can fetch a single usable token.
+    let requested_actions = if action == "push" { "pull,push" } else { action };
+    let scope = format!("repository:{repo_name}:{requested_actions}");
     (
         StatusCode::UNAUTHORIZED,
         unauthorized_headers(token_url, service_name, &scope),

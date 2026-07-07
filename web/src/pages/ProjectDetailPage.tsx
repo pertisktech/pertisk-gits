@@ -14,6 +14,7 @@ import { RepoPullRequests } from '../components/RepoPullRequests'
 import { RepoPipelines } from '../components/RepoPipelines'
 import { RepoWiki } from '../components/RepoWiki'
 import { RepoHeader } from '../components/RepoHeader'
+import { RegistryPage } from './RegistryPage'
 import { RepoSettings } from '../components/RepoSettings'
 import { Breadcrumbs } from '../components/ui'
 import { useProjectNav } from '../hooks/useProjectNav'
@@ -64,7 +65,17 @@ export function ProjectDetailPage() {
       return
     }
 
-    const legacyTabs: ProjectTab[] = ['issues', 'pulls', 'commits', 'branches', 'tags', 'pipelines', 'wiki', 'settings']
+    const legacyTabs: ProjectTab[] = [
+      'issues',
+      'pulls',
+      'commits',
+      'branches',
+      'tags',
+      'registry',
+      'pipelines',
+      'wiki',
+      'settings',
+    ]
     if (!legacyTabs.includes(requested as ProjectTab)) {
       navigate(basePath, { replace: true })
       return
@@ -176,6 +187,8 @@ export function ProjectDetailPage() {
             defaultBranch={project.default_branch}
           />
         )}
+
+        {tab === 'registry' && token && <RegistryPage />}
 
         {tab === 'pipelines' && token && (
           <RepoPipelines

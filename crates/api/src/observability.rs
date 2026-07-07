@@ -259,7 +259,7 @@ pub async fn http_observability_middleware(request: Request<Body>, next: Next) -
         );
     }
 
-    if settings.error_logging_enabled && status.is_client_error() {
+    if settings.error_logging_enabled && status.is_client_error() && !is_expected_client_error(&method, &path, status) {
         tracing::warn!(
             method = %method,
             path = %path,
@@ -276,6 +276,15 @@ pub async fn http_observability_middleware(request: Request<Body>, next: Next) -
     }
 
     response
+}
+
+fn is_expected_client_error(method: &str, path: &str, status: StatusCode) -> bool {
+    // Docker push preflight often probes blob existence via HEAD and expects 404
+    // before it uploads the missing layer.
+    status == StatusCode::NOT_FOUND
+        && method == "HEAD"
+        && path.starts_with("/v2/")
+        && path.contains("/blobs/sha256:")
 }
 
 async fn get_observability_settings(

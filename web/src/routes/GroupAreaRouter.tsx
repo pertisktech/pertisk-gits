@@ -23,7 +23,6 @@ import { NewProjectPage } from '../pages/NewProjectPage'
 import { PipelineRunDetailPage } from '../pages/PipelineRunDetailPage'
 import { ProjectDetailPage } from '../pages/ProjectDetailPage'
 import { PullRequestDetailPage } from '../pages/PullRequestDetailPage'
-import { RegistryPage } from '../pages/RegistryPage'
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const { token } = useAuth()
@@ -60,9 +59,6 @@ export function GroupAreaRouter() {
 
   let page: ReactNode
   switch (group.tab) {
-    case 'registry':
-      page = <RegistryPage />
-      break
     case 'settings':
       page = <GroupSettingsPage />
       break

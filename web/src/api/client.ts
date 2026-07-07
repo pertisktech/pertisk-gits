@@ -1298,12 +1298,24 @@ export const api = {
       body: JSON.stringify({}),
     }, token),
 
-  listContainerImages: (token: string, orgSlug: string) =>
-    request<ContainerImageSummary[]>(`/organizations/${orgApiPath(orgSlug)}/registry/images`, {}, token),
+  listContainerImages: (token: string, orgSlug: string, repoSlug: string, provider?: string) => {
+    const query = provider ? `?provider=${encodeURIComponent(provider)}` : ''
+    return request<ContainerImageSummary[]>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/registry/images${query}`,
+      {},
+      token,
+    )
+  },
 
-  getContainerImage: (token: string, orgSlug: string, imageName: string) =>
+  getContainerImage: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    imageName: string,
+    provider?: string,
+  ) =>
     request<ContainerImageDetail>(
-      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/registry/images/${encodeURIComponent(imageName)}${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`,
       {},
       token,
     ),
@@ -1311,18 +1323,26 @@ export const api = {
   updateContainerImage: (
     token: string,
     orgSlug: string,
+    repoSlug: string,
     imageName: string,
-    payload: { description?: string; linked_repository_id?: string | null },
+    payload: { description?: string },
+    provider?: string,
   ) =>
     request<ContainerImageDetail>(
-      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/registry/images/${encodeURIComponent(imageName)}${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`,
       { method: 'PATCH', body: JSON.stringify(payload) },
       token,
     ),
 
-  deleteContainerImage: async (token: string, orgSlug: string, imageName: string) => {
+  deleteContainerImage: async (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    imageName: string,
+    provider?: string,
+  ) => {
     await request<void>(
-      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/registry/images/${encodeURIComponent(imageName)}${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`,
       { method: 'DELETE' },
       token,
     )
@@ -1331,19 +1351,21 @@ export const api = {
   deleteContainerTag: async (
     token: string,
     orgSlug: string,
+    repoSlug: string,
     imageName: string,
     tagName: string,
+    provider?: string,
   ) => {
     await request<void>(
-      `/organizations/${orgApiPath(orgSlug)}/registry/images/${encodeURIComponent(imageName)}/tags/${encodeURIComponent(tagName)}`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/registry/images/${encodeURIComponent(imageName)}/tags/${encodeURIComponent(tagName)}${provider ? `?provider=${encodeURIComponent(provider)}` : ''}`,
       { method: 'DELETE' },
       token,
     )
   },
 
-  runRegistryGc: (token: string, orgSlug: string) =>
+  runRegistryGc: (token: string, orgSlug: string, repoSlug: string) =>
     request<RegistryGcReport>(
-      `/organizations/${orgApiPath(orgSlug)}/registry/gc`,
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/registry/gc`,
       { method: 'POST', body: JSON.stringify({}) },
       token,
     ),

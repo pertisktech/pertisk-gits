@@ -1,6 +1,8 @@
 # Phase 5 — Container Registry
 
-OCI Distribution Spec v2 registry scoped per organization: `host/{org}/{image}:{tag}`.
+OCI Distribution Spec v2 registry scoped per project: `host/{org}/{project}:{tag}`.
+
+Optional provider prefix is supported: `host/{provider}/{org}/{project}:{tag}`.
 
 ## Architecture
 
@@ -11,7 +13,7 @@ OCI Distribution Spec v2 registry scoped per organization: `host/{org}/{image}:{
 | Gateway | Routes `/v2/*` and `/service/token` → `REGISTRY_UPSTREAM` |
 | Storage | Local FS (`REGISTRY_ROOT`) or S3/MinIO (`REGISTRY_STORAGE=s3`) |
 | GC | Background loop (`REGISTRY_GC_INTERVAL_SECS`) + manual API trigger |
-| Web UI | `/groups/{org}/registry` — tags, metadata, git repo link |
+| Web UI | `/groups/{org}/projects/{project}/registry` — tags and metadata |
 
 ## Quick start (embedded, single port)
 
@@ -45,8 +47,11 @@ Create the bucket once in the MinIO console (`http://localhost:9001`).
 
 ```bash
 docker login localhost:8080 -u YOUR_USERNAME
-docker tag myapp:latest localhost:8080/my-org/myapp:v1
-docker push localhost:8080/my-org/myapp:v1
+docker tag myapp:latest localhost:8080/my-org/my-project:v1
+docker push localhost:8080/my-org/my-project:v1
+
+# Optional provider namespace
+docker push localhost:8080/harbor/my-org/my-project:v1
 ```
 
 Tag a CI-built image with commit provenance:
@@ -60,12 +65,12 @@ docker push -H "X-Pertisk-Commit-Sha: $CI_COMMIT_SHA" ...
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/v1/organizations/{org}/registry/images` | List images |
-| GET | `/api/v1/organizations/{org}/registry/images/{name}` | Image + tags |
-| PATCH | `/api/v1/organizations/{org}/registry/images/{name}` | Description, link git repo |
-| DELETE | `/api/v1/organizations/{org}/registry/images/{name}` | Delete image |
-| DELETE | `/api/v1/organizations/{org}/registry/images/{name}/tags/{tag}` | Delete tag |
-| POST | `/api/v1/organizations/{org}/registry/gc` | Run garbage collection |
+| GET | `/api/v1/organizations/{org}/repositories/{project}/registry/images` | List images in a project (`?provider=` optional) |
+| GET | `/api/v1/organizations/{org}/repositories/{project}/registry/images/{name}` | Image + tags |
+| PATCH | `/api/v1/organizations/{org}/repositories/{project}/registry/images/{name}` | Update image metadata |
+| DELETE | `/api/v1/organizations/{org}/repositories/{project}/registry/images/{name}` | Delete image |
+| DELETE | `/api/v1/organizations/{org}/repositories/{project}/registry/images/{name}/tags/{tag}` | Delete tag |
+| POST | `/api/v1/organizations/{org}/repositories/{project}/registry/gc` | Run garbage collection |
 
 ## OCI endpoints
 
@@ -75,10 +80,12 @@ docker push -H "X-Pertisk-Commit-Sha: $CI_COMMIT_SHA" ...
 | GET | `/service/token` | Issue Bearer token (Basic auth) |
 | GET | `/v2/_catalog` | List repositories (`org/image`) for authenticated members |
 | GET | `/v2/{org}/_catalog` | List image names within one organization |
-| GET/HEAD | `/v2/{org}/{image}/manifests/{tag\|digest}` | Pull manifest |
-| PUT | `/v2/{org}/{image}/manifests/{tag}` | Push manifest + tag |
-| GET/HEAD | `/v2/{org}/{image}/blobs/{digest}` | Pull blob |
-| POST/PATCH/PUT | `/v2/{org}/{image}/blobs/uploads/…` | Blob upload |
+| GET/HEAD | `/v2/{org}/{project}/manifests/{tag\|digest}` | Pull manifest |
+| PUT | `/v2/{org}/{project}/manifests/{tag}` | Push manifest + tag |
+| GET/HEAD | `/v2/{org}/{project}/blobs/{digest}` | Pull blob |
+| POST/PATCH/PUT | `/v2/{org}/{project}/blobs/uploads/…` | Blob upload |
+| GET/HEAD/PUT | `/v2/{provider}/{org}/{project}/manifests/{tag\|digest}` | Provider-qualified manifest operations |
+| GET/HEAD/POST/PATCH/PUT | `/v2/{provider}/{org}/{project}/blobs/...` | Provider-qualified blob operations |
 
 ## Schema
 
@@ -123,7 +130,7 @@ When `REGISTRY_ALLOW_ANONYMOUS_PULL` is enabled (default `true`; set `0` or `fal
 
 ```bash
 # No docker login required when image is linked to a public project
-docker pull localhost:8080/my-org/myapp:latest
+docker pull localhost:8080/my-org/my-project:latest
 ```
 
 Private or unlinked images still require authentication.

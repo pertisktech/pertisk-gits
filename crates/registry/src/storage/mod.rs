@@ -126,6 +126,12 @@ impl BlobStore {
         Uuid::new_v4()
     }
 
+    pub async fn upload_size(&self, upload_id: &Uuid) -> anyhow::Result<u64> {
+        let path = self.upload_path(upload_id);
+        let meta = tokio::fs::metadata(path).await?;
+        Ok(meta.len())
+    }
+
     pub fn relative_storage_path(&self, key: &str) -> String {
         key.to_string()
     }

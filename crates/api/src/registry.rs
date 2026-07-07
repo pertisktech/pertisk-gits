@@ -1,25 +1,25 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{delete, get, patch, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use pertisk_domain::{models::OrgRole, DomainError};
+use pertisk_domain::DomainError;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use crate::{find_org_for_member, permissions, ApiError, AppState, AuthUser};
+use crate::{ensure_can_write_repo, load_repo_for_read, ApiError, AppState, AuthUser};
 
 pub fn registry_read_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_path}/registry/images",
+            "/organizations/{org_path}/repositories/{repo_slug}/registry/images",
             get(list_container_images),
         )
         .route(
-            "/organizations/{org_path}/registry/images/{image_name}",
+            "/organizations/{org_path}/repositories/{repo_slug}/registry/images/{image_name}",
             get(get_container_image),
         )
 }
@@ -27,17 +27,22 @@ pub fn registry_read_routes() -> Router<AppState> {
 pub fn registry_write_routes() -> Router<AppState> {
     Router::new()
         .route(
-            "/organizations/{org_path}/registry/images/{image_name}",
+            "/organizations/{org_path}/repositories/{repo_slug}/registry/images/{image_name}",
             patch(update_container_image).delete(delete_container_image),
         )
         .route(
-            "/organizations/{org_path}/registry/images/{image_name}/tags/{tag_name}",
+            "/organizations/{org_path}/repositories/{repo_slug}/registry/images/{image_name}/tags/{tag_name}",
             delete(delete_container_tag),
         )
         .route(
-            "/organizations/{org_path}/registry/gc",
+            "/organizations/{org_path}/repositories/{repo_slug}/registry/gc",
             post(run_registry_gc),
         )
+}
+
+#[derive(Deserialize)]
+struct RegistryQuery {
+    provider: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -45,8 +50,7 @@ struct ContainerImageSummary {
     id: Uuid,
     name: String,
     description: Option<String>,
-    linked_repository_id: Option<Uuid>,
-    linked_repository_slug: Option<String>,
+    provider: String,
     tag_count: i64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -68,8 +72,9 @@ struct ContainerImageDetail {
     id: Uuid,
     name: String,
     description: Option<String>,
-    linked_repository_id: Option<Uuid>,
-    linked_repository_slug: Option<String>,
+    provider: String,
+    project_id: Uuid,
+    project_slug: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     tags: Vec<ContainerTagResponse>,
@@ -78,7 +83,6 @@ struct ContainerImageDetail {
 #[derive(Deserialize)]
 struct UpdateContainerImageRequest {
     description: Option<String>,
-    linked_repository_id: Option<Option<Uuid>>,
 }
 
 #[derive(Serialize)]
@@ -90,48 +94,55 @@ struct GcResponse {
 async fn list_container_images(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_path): Path<String>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
+    Query(query): Query<RegistryQuery>,
 ) -> Result<Json<Vec<ContainerImageSummary>>, ApiError> {
-    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
+    let (org, repo, _) = load_repo_for_read(
+        &state,
+        &crate::org::org_path_from_param(&org_path),
+        &repo_slug,
+        Some(&auth),
+    )
+    .await?;
 
-    let rows = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<Uuid>, Option<String>, i64, DateTime<Utc>, DateTime<Utc>)>(
+    let rows = sqlx::query_as::<_, (Uuid, String, Option<String>, String, i64, DateTime<Utc>, DateTime<Utc>)>(
         r#"
         SELECT
             cr.id,
             cr.name,
             cr.description,
-            cr.repository_id,
-            r.slug AS linked_repo_slug,
+            COALESCE(cr.provider, 'pertisk') AS provider,
             (SELECT COUNT(*) FROM container_tags t WHERE t.repository_id = cr.id) AS tag_count,
             cr.created_at,
             cr.updated_at
         FROM container_repositories cr
-        LEFT JOIN repositories r ON r.id = cr.repository_id
         WHERE cr.organization_id = $1
+          AND cr.repository_id = $2
+                    AND ($3::text IS NULL OR COALESCE(cr.provider, 'pertisk') = $3)
         ORDER BY cr.name ASC
         "#,
     )
     .bind(org.id)
+    .bind(repo.id)
+        .bind(query.provider.as_deref())
     .fetch_all(&state.pool)
     .await
     .map_err(sqlx_error)?;
 
     Ok(Json(
-        rows.into_iter()
-            .map(
-                |(id, name, description, linked_repository_id, linked_repository_slug, tag_count, created_at, updated_at)| {
-                    ContainerImageSummary {
-                        id,
-                        name,
-                        description,
-                        linked_repository_id,
-                        linked_repository_slug,
-                        tag_count,
-                        created_at,
-                        updated_at,
-                    }
-                },
-            )
+        rows
+            .into_iter()
+            .map(|(id, name, description, provider, tag_count, created_at, updated_at)| {
+                ContainerImageSummary {
+                    id,
+                    name,
+                    description,
+                    provider,
+                    tag_count,
+                    created_at,
+                    updated_at,
+                }
+            })
             .collect(),
     ))
 }
@@ -139,10 +150,18 @@ async fn list_container_images(
 async fn get_container_image(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_path, image_name)): Path<(String, String)>,
+    Path((org_path, repo_slug, image_name)): Path<(String, String, String)>,
+    Query(query): Query<RegistryQuery>,
 ) -> Result<Json<ContainerImageDetail>, ApiError> {
-    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
-    let repo = load_container_repo(&state.pool, org.id, &image_name)
+    let (_org, repo, _) = load_repo_for_read(
+        &state,
+        &crate::org::org_path_from_param(&org_path),
+        &repo_slug,
+        Some(&auth),
+    )
+    .await?;
+
+    let image = load_container_repo(&state.pool, repo.id, &image_name, query.provider.as_deref())
         .await?
         .ok_or(ApiError::from(DomainError::NotFound))?;
 
@@ -163,19 +182,20 @@ async fn get_container_image(
         ORDER BY t.updated_at DESC
         "#,
     )
-    .bind(repo.id)
+    .bind(image.id)
     .fetch_all(&state.pool)
     .await
     .map_err(sqlx_error)?;
 
     Ok(Json(ContainerImageDetail {
-        id: repo.id,
-        name: repo.name,
-        description: repo.description,
-        linked_repository_id: repo.linked_repository_id,
-        linked_repository_slug: repo.linked_repository_slug,
-        created_at: repo.created_at,
-        updated_at: repo.updated_at,
+        id: image.id,
+        name: image.name,
+        description: image.description,
+        provider: image.provider,
+        project_id: repo.id,
+        project_slug: repo.slug,
+        created_at: image.created_at,
+        updated_at: image.updated_at,
         tags: tags
             .into_iter()
             .map(
@@ -198,13 +218,20 @@ async fn get_container_image(
 async fn update_container_image(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_path, image_name)): Path<(String, String)>,
+    Path((org_path, repo_slug, image_name)): Path<(String, String, String)>,
+    Query(query): Query<RegistryQuery>,
     Json(body): Json<UpdateContainerImageRequest>,
 ) -> Result<Json<ContainerImageDetail>, ApiError> {
-    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
-    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
+    let (org, repo, _) = load_repo_for_read(
+        &state,
+        &crate::org::org_path_from_param(&org_path),
+        &repo_slug,
+        Some(&auth),
+    )
+    .await?;
+    ensure_can_write_repo(&state, &org.full_path, &repo, &auth).await?;
 
-    let repo = load_container_repo(&state.pool, org.id, &image_name)
+    let image = load_container_repo(&state.pool, repo.id, &image_name, query.provider.as_deref())
         .await?
         .ok_or(ApiError::from(DomainError::NotFound))?;
 
@@ -212,57 +239,45 @@ async fn update_container_image(
         sqlx::query(
             "UPDATE container_repositories SET description = $2, updated_at = NOW() WHERE id = $1",
         )
-        .bind(repo.id)
+        .bind(image.id)
         .bind(description)
         .execute(&state.pool)
         .await
         .map_err(sqlx_error)?;
     }
 
-    if let Some(link) = body.linked_repository_id {
-        if let Some(repo_id) = link {
-            let valid = sqlx::query_scalar::<_, bool>(
-                "SELECT EXISTS(SELECT 1 FROM repositories WHERE id = $1 AND organization_id = $2)",
-            )
-            .bind(repo_id)
-            .bind(org.id)
-            .fetch_one(&state.pool)
-            .await
-            .map_err(sqlx_error)?;
-            if !valid {
-                return Err(DomainError::Validation(
-                    "linked repository must belong to this organization".into(),
-                )
-                .into());
-            }
-        }
-        sqlx::query(
-            "UPDATE container_repositories SET repository_id = $2, updated_at = NOW() WHERE id = $1",
-        )
-        .bind(repo.id)
-        .bind(link)
-        .execute(&state.pool)
-        .await
-        .map_err(sqlx_error)?;
-    }
-
-    get_container_image(State(state), auth, Path((org_path, image_name))).await
+    get_container_image(
+        State(state),
+        auth,
+        Path((org_path, repo_slug, image_name)),
+        Query(RegistryQuery {
+            provider: query.provider,
+        }),
+    )
+    .await
 }
 
 async fn delete_container_image(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_path, image_name)): Path<(String, String)>,
+    Path((org_path, repo_slug, image_name)): Path<(String, String, String)>,
+    Query(query): Query<RegistryQuery>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
-    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
+    let (org, repo, _) = load_repo_for_read(
+        &state,
+        &crate::org::org_path_from_param(&org_path),
+        &repo_slug,
+        Some(&auth),
+    )
+    .await?;
+    ensure_can_write_repo(&state, &org.full_path, &repo, &auth).await?;
 
-    let repo = load_container_repo(&state.pool, org.id, &image_name)
+    let image = load_container_repo(&state.pool, repo.id, &image_name, query.provider.as_deref())
         .await?
         .ok_or(ApiError::from(DomainError::NotFound))?;
 
     sqlx::query("DELETE FROM container_repositories WHERE id = $1")
-        .bind(repo.id)
+        .bind(image.id)
         .execute(&state.pool)
         .await
         .map_err(sqlx_error)?;
@@ -277,23 +292,28 @@ async fn delete_container_image(
 async fn delete_container_tag(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path((org_path, image_name, tag_name)): Path<(String, String, String)>,
+    Path((org_path, repo_slug, image_name, tag_name)): Path<(String, String, String, String)>,
+    Query(query): Query<RegistryQuery>,
 ) -> Result<StatusCode, ApiError> {
-    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
-    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
+    let (org, repo, _) = load_repo_for_read(
+        &state,
+        &crate::org::org_path_from_param(&org_path),
+        &repo_slug,
+        Some(&auth),
+    )
+    .await?;
+    ensure_can_write_repo(&state, &org.full_path, &repo, &auth).await?;
 
-    let repo = load_container_repo(&state.pool, org.id, &image_name)
+    let image = load_container_repo(&state.pool, repo.id, &image_name, query.provider.as_deref())
         .await?
         .ok_or(ApiError::from(DomainError::NotFound))?;
 
-    let result = sqlx::query(
-        "DELETE FROM container_tags WHERE repository_id = $1 AND name = $2",
-    )
-    .bind(repo.id)
-    .bind(tag_name)
-    .execute(&state.pool)
-    .await
-    .map_err(sqlx_error)?;
+    let result = sqlx::query("DELETE FROM container_tags WHERE repository_id = $1 AND name = $2")
+        .bind(image.id)
+        .bind(tag_name)
+        .execute(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
 
     if result.rows_affected() == 0 {
         return Err(DomainError::NotFound.into());
@@ -309,10 +329,16 @@ async fn delete_container_tag(
 async fn run_registry_gc(
     State(state): State<AppState>,
     auth: AuthUser,
-    Path(org_path): Path<String>,
+    Path((org_path, repo_slug)): Path<(String, String)>,
 ) -> Result<Json<GcResponse>, ApiError> {
-    let org = find_org_for_member(&state.pool, &crate::org::org_path_from_param(&org_path), auth.user_id).await?;
-    permissions::ensure_can_manage_org_settings(&state.pool, org.id, auth.user_id).await?;
+    let (org, repo, _) = load_repo_for_read(
+        &state,
+        &crate::org::org_path_from_param(&org_path),
+        &repo_slug,
+        Some(&auth),
+    )
+    .await?;
+    ensure_can_write_repo(&state, &org.full_path, &repo, &auth).await?;
 
     let store = blob_store().map_err(|e| DomainError::Internal(e.to_string()))?;
     let report = pertisk_registry::gc::run_gc(&state.pool, &store)
@@ -329,42 +355,43 @@ struct ContainerRepoRow {
     id: Uuid,
     name: String,
     description: Option<String>,
-    linked_repository_id: Option<Uuid>,
-    linked_repository_slug: Option<String>,
+    provider: String,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
 
 async fn load_container_repo(
     pool: &PgPool,
-    org_id: Uuid,
+    project_id: Uuid,
     image_name: &str,
+        provider: Option<&str>,
 ) -> Result<Option<ContainerRepoRow>, ApiError> {
-    let row = sqlx::query_as::<_, (Uuid, String, Option<String>, Option<Uuid>, Option<String>, DateTime<Utc>, DateTime<Utc>)>(
+    let row = sqlx::query_as::<_, (Uuid, String, Option<String>, String, DateTime<Utc>, DateTime<Utc>)>(
         r#"
-        SELECT cr.id, cr.name, cr.description, cr.repository_id, r.slug, cr.created_at, cr.updated_at
+        SELECT cr.id, cr.name, cr.description, COALESCE(cr.provider, 'pertisk'), cr.created_at, cr.updated_at
         FROM container_repositories cr
-        LEFT JOIN repositories r ON r.id = cr.repository_id
-        WHERE cr.organization_id = $1 AND cr.name = $2
+        WHERE cr.repository_id = $1
+          AND cr.name = $2
+                    AND ($3::text IS NULL OR COALESCE(cr.provider, 'pertisk') = $3)
+                ORDER BY cr.updated_at DESC
+                LIMIT 1
         "#,
     )
-    .bind(org_id)
+    .bind(project_id)
     .bind(image_name)
+    .bind(provider)
     .fetch_optional(pool)
     .await
     .map_err(sqlx_error)?;
 
     Ok(row.map(
-        |(id, name, description, linked_repository_id, linked_repository_slug, created_at, updated_at)| {
-            ContainerRepoRow {
-                id,
-                name,
-                description,
-                linked_repository_id,
-                linked_repository_slug,
-                created_at,
-                updated_at,
-            }
+        |(id, name, description, provider, created_at, updated_at)| ContainerRepoRow {
+            id,
+            name,
+            description,
+            provider,
+            created_at,
+            updated_at,
         },
     ))
 }
