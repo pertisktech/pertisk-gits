@@ -10,6 +10,7 @@ mod workspace;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+use std::time::Instant;
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
@@ -40,6 +41,16 @@ struct Cli {
     /// Maximum number of jobs this runner process executes concurrently.
     #[arg(long, env = "PERTISK_RUNNER_MAX_PARALLEL", default_value_t = 1)]
     max_parallel: usize,
+
+    /// Long-poll timeout (seconds) for /api/v1/runner/jobs requests.
+    /// Keep this below reverse-proxy upstream timeouts.
+    #[arg(long, env = "PERTISK_RUNNER_POLL_TIMEOUT_SECS", default_value_t = 20)]
+    poll_timeout_secs: u64,
+
+    /// Exit runner after being idle (no jobs claimed) for this many seconds.
+    /// Set to 0 to disable auto-exit.
+    #[arg(long, env = "PERTISK_RUNNER_EXIT_ON_IDLE_SECS", default_value_t = 0)]
+    exit_on_idle_secs: u64,
 }
 
 #[derive(Subcommand, Clone)]
@@ -74,6 +85,8 @@ async fn main() -> anyhow::Result<()> {
                 repos_root = ?cli.repos_root,
                 executor = %job::runner_executor(),
                 max_parallel = cli.max_parallel,
+                poll_timeout_secs = cli.poll_timeout_secs,
+                exit_on_idle_secs = cli.exit_on_idle_secs,
                 "pertisk-runner starting"
             );
             run_loop(&cli).await
@@ -98,6 +111,7 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
     let max_parallel = cli.max_parallel.max(1);
     let job_slots = Arc::new(Semaphore::new(max_parallel));
     let mut shutdown = false;
+    let mut last_job_claimed_at = Instant::now();
 
     while !shutdown {
         let host = collect_host_info();
@@ -116,8 +130,10 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             break;
         };
 
+        let poll_timeout_secs = cli.poll_timeout_secs.clamp(1, 55);
+
         let poll = tokio::select! {
-            poll = api.poll_job(25) => poll,
+            poll = api.poll_job(poll_timeout_secs) => poll,
             _ = wait_shutdown_signal() => {
                 shutdown = true;
                 drop(permit);
@@ -130,9 +146,9 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             Err(err) if err.to_string().contains("unauthorized") => {
                 drop(permit);
                 tracing::error!(
-                    "invalid runner token (401 Unauthorized); update PERTISK_RUNNER_TOKEN and restart"
+                    "invalid runner token (401 Unauthorized); runner registration is revoked or deleted, shutting down"
                 );
-                tokio::time::sleep(Duration::from_secs(30)).await;
+                shutdown = true;
                 continue;
             }
             Err(err) => return Err(err),
@@ -140,8 +156,25 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
 
         let Some(job) = poll else {
             drop(permit);
+
+            if cli.exit_on_idle_secs > 0 {
+                let idle_for = last_job_claimed_at.elapsed().as_secs();
+                if idle_for >= cli.exit_on_idle_secs {
+                    tracing::info!(
+                        idle_for_secs = idle_for,
+                        exit_on_idle_secs = cli.exit_on_idle_secs,
+                        "runner idle timeout reached; shutting down"
+                    );
+                    shutdown = true;
+                }
+            }
+
+            tokio::time::sleep(Duration::from_secs(2)).await;
+
             continue;
         };
+
+        last_job_claimed_at = Instant::now();
 
         let job_api = api.clone_for_poll();
         let heartbeat_api = api.clone_for_poll();

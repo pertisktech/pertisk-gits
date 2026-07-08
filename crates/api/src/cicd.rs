@@ -904,7 +904,29 @@ async fn delete_pipeline(
     let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
     ensure_can_write_repo(&state, &crate::org::org_path_from_param(&org_path), &repo, &auth).await?;
 
-    ensure_pipeline_idle(&state.pool, repo.id, run_id).await?;
+    let exists = sqlx::query_scalar::<_, bool>(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM pipeline_runs WHERE id = $1 AND repository_id = $2
+        )
+        "#,
+    )
+    .bind(run_id)
+    .bind(repo.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(sqlx_error)?;
+
+    if !exists {
+        return Err(DomainError::NotFound.into());
+    }
+
+    // Pipeline delete should be self-contained: cancel any active jobs first,
+    // then remove artifacts and delete the run.
+    match cancel_pipeline_run(&state.pool, repo.id, run_id).await {
+        Ok(()) | Err(CancelError::NotCancellable) => {}
+        Err(CancelError::NotFound) => return Err(DomainError::NotFound.into()),
+    }
 
     delete_pipeline_artifact_files(&state.pool, &state.artifacts, run_id)
         .await
@@ -1542,84 +1564,81 @@ async fn poll_runner_job(
     if let Err(err) = mark_stale_runners_offline(&state.pool).await {
         tracing::warn!(%err, "failed to mark stale runners offline during poll");
     }
-    let timeout = query.timeout_secs.unwrap_or(25).min(60);
-    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(timeout);
+    let _timeout_secs = query.timeout_secs;
 
-    loop {
-        if let Some(job) = claim_next_job(&state.pool, runner_id).await.map_err(|e| internal(e.to_string()))? {
-            let meta = sqlx::query_as::<_, JobPollRow>(
-                r#"
-                SELECT
-                    j.id,
-                    j.pipeline_run_id,
-                    j.job_name,
-                    j.steps_json,
-                    j.artifacts_json,
-                    j.timeout_minutes,
-                    j.image,
-                    j.dind,
-                    j.effective_environment,
-                    p.repository_id,
-                    p.commit_sha,
-                    p.ref_name,
-                    p.event_type::text AS event_type,
-                    p.target_environment,
-                    p.config_path,
-                    p.created_at AS pipeline_created_at,
-                    p.pull_request_number,
-                    (
-                        SELECT COUNT(*)::bigint
-                        FROM pipeline_runs pr2
-                        WHERE pr2.repository_id = r.id
-                          AND pr2.created_at <= p.created_at
-                    ) AS pipeline_iid,
-                    o.slug AS org_slug,
-                    r.name AS repo_name,
-                    r.slug AS repo_slug,
-                    r.default_branch
-                FROM job_runs j
-                INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
-                INNER JOIN repositories r ON r.id = p.repository_id
-                INNER JOIN organizations o ON o.id = r.organization_id
-                WHERE j.id = $1
-                "#,
-            )
-            .bind(job)
-            .fetch_one(&state.pool)
-            .await
-            .map_err(|e| internal(e.to_string()))?;
+    if let Some(job) = claim_next_job(&state.pool, runner_id)
+        .await
+        .map_err(|e| internal(e.to_string()))?
+    {
+        let meta = sqlx::query_as::<_, JobPollRow>(
+            r#"
+            SELECT
+                j.id,
+                j.pipeline_run_id,
+                j.job_name,
+                j.steps_json,
+                j.artifacts_json,
+                j.timeout_minutes,
+                j.image,
+                j.dind,
+                j.effective_environment,
+                p.repository_id,
+                p.commit_sha,
+                p.ref_name,
+                p.event_type::text AS event_type,
+                p.target_environment,
+                p.config_path,
+                p.created_at AS pipeline_created_at,
+                p.pull_request_number,
+                (
+                    SELECT COUNT(*)::bigint
+                    FROM pipeline_runs pr2
+                    WHERE pr2.repository_id = r.id
+                      AND pr2.created_at <= p.created_at
+                ) AS pipeline_iid,
+                o.slug AS org_slug,
+                r.name AS repo_name,
+                r.slug AS repo_slug,
+                r.default_branch
+            FROM job_runs j
+            INNER JOIN pipeline_runs p ON p.id = j.pipeline_run_id
+            INNER JOIN repositories r ON r.id = p.repository_id
+            INNER JOIN organizations o ON o.id = r.organization_id
+            WHERE j.id = $1
+            "#,
+        )
+        .bind(job)
+        .fetch_one(&state.pool)
+        .await
+        .map_err(|e| internal(e.to_string()))?;
 
-            return Ok(Json(Some(PollJobResponse {
-                job_id: meta.id,
-                pipeline_run_id: meta.pipeline_run_id,
-                job_name: meta.job_name,
-                repository_id: meta.repository_id,
-                org_slug: meta.org_slug,
-                repo_slug: meta.repo_slug,
-                repo_name: meta.repo_name,
-                commit_sha: meta.commit_sha,
-                ref_name: meta.ref_name,
-                event_type: meta.event_type,
-                pipeline_iid: meta.pipeline_iid,
-                pipeline_created_at: meta.pipeline_created_at,
-                config_path: meta.config_path,
-                target_environment: meta.target_environment,
-                effective_environment: meta.effective_environment,
-                default_branch: meta.default_branch,
-                pull_request_number: meta.pull_request_number,
-                steps: meta.steps_json,
-                artifacts: meta.artifacts_json,
-                timeout_minutes: meta.timeout_minutes,
-                image: meta.image,
-                dind: meta.dind,
-            })));
-        }
-
-        if tokio::time::Instant::now() >= deadline {
-            return Ok(Json(None));
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        return Ok(Json(Some(PollJobResponse {
+            job_id: meta.id,
+            pipeline_run_id: meta.pipeline_run_id,
+            job_name: meta.job_name,
+            repository_id: meta.repository_id,
+            org_slug: meta.org_slug,
+            repo_slug: meta.repo_slug,
+            repo_name: meta.repo_name,
+            commit_sha: meta.commit_sha,
+            ref_name: meta.ref_name,
+            event_type: meta.event_type,
+            pipeline_iid: meta.pipeline_iid,
+            pipeline_created_at: meta.pipeline_created_at,
+            config_path: meta.config_path,
+            target_environment: meta.target_environment,
+            effective_environment: meta.effective_environment,
+            default_branch: meta.default_branch,
+            pull_request_number: meta.pull_request_number,
+            steps: meta.steps_json,
+            artifacts: meta.artifacts_json,
+            timeout_minutes: meta.timeout_minutes,
+            image: meta.image,
+            dind: meta.dind,
+        })));
     }
+
+    Ok(Json(None))
 }
 
 async fn start_runner_job(

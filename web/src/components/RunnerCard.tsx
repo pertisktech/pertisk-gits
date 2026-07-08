@@ -49,6 +49,14 @@ function k8sPhaseVariant(phase: string) {
   return 'gray' as const
 }
 
+function looksLikeK8sPodName(name: string): boolean {
+  const parts = name.split('-')
+  if (parts.length < 3) return false
+  const hash = parts.at(-2)
+  if (!hash) return false
+  return hash.length >= 8 && /^[a-z0-9]+$/i.test(hash)
+}
+
 function MetricItem({
   icon,
   label,
@@ -71,12 +79,14 @@ function MetricItem({
 
 function RunnerInstancesSection({ instances }: { instances: RunnerInstance[] }) {
   if (instances.length === 0) return null
+  const allK8sManagers = instances.every((instance) => looksLikeK8sPodName(instance.instance_id))
+  const sectionTitle = allK8sManagers ? 'Manager pods' : 'Host instances'
 
   return (
     <div className="runner-pods-section">
       <div className="runner-pods-title">
         <Boxes size={13} />
-        <span>Manager pods ({instances.length})</span>
+        <span>{sectionTitle} ({instances.length})</span>
       </div>
       <ul className="runner-pods-list">
         {instances.map((instance) => {
@@ -153,8 +163,15 @@ export function RunnerCard({
       : '—'
 
   const instances = runner.instances ?? []
+  const visibleInstances = instances.filter((instance) => {
+    const sameAsHost = runner.host_name && instance.instance_id === runner.host_name
+    if (sameAsHost && !looksLikeK8sPodName(instance.instance_id)) {
+      return false
+    }
+    return true
+  })
   const k8sPods = runner.k8s_pods ?? []
-  const showPodSections = instances.length > 0 || k8sPods.length > 0
+  const showPodSections = visibleInstances.length > 0 || k8sPods.length > 0
 
   return (
     <li className="runner-card">
@@ -235,7 +252,7 @@ export function RunnerCard({
 
       {showPodSections ? (
         <>
-          <RunnerInstancesSection instances={instances} />
+          <RunnerInstancesSection instances={visibleInstances} />
           <RunnerK8sPodsSection pods={k8sPods} />
         </>
       ) : null}
