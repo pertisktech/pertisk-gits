@@ -241,6 +241,7 @@ export function RegistryPage() {
               <thead>
                 <tr>
                   <th>Image</th>
+                  <th>Arch</th>
                   <th>Tags</th>
                   <th>Updated</th>
                   <th />
@@ -260,6 +261,17 @@ export function RegistryPage() {
                       {image.description && (
                         <div className="text-xs text-text-secondary mt-0.5">{image.description}</div>
                       )}
+                    </td>
+                    <td>
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+                          image.has_multi_arch
+                            ? 'bg-green-g2/25 text-green-g1 border border-green-g1/30'
+                            : 'bg-naturals-n3 text-text-secondary border border-naturals-n4'
+                        }`}
+                      >
+                        {image.has_multi_arch ? 'multi-arch' : 'single-arch'}
+                      </span>
                     </td>
                     <td className="font-mono text-sm">{image.tag_count}</td>
                     <td className="text-sm text-text-secondary">
@@ -357,6 +369,7 @@ export function RegistryPage() {
                       <tr>
                         <th>Tag</th>
                         <th>Digest</th>
+                        <th>Platforms</th>
                         <th>Commit</th>
                         <th>Compressed size</th>
                         <th>Updated</th>
@@ -369,6 +382,9 @@ export function RegistryPage() {
                           <td className="font-mono text-sm">{tag.name}</td>
                           <td className="font-mono text-xs text-text-secondary" title={tag.manifest_digest}>
                             {shortDigest(tag.manifest_digest)}
+                          </td>
+                          <td className="text-sm text-text-secondary">
+                            {tag.platforms.length > 0 ? tag.platforms.join(', ') : 'single-arch'}
                           </td>
                           <td className="font-mono text-xs">
                             {tag.commit_sha ? (

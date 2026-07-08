@@ -29,6 +29,42 @@ pub fn image_total_size_bytes(payload: &[u8]) -> i64 {
     }
 }
 
+/// Platforms declared in a Docker/OCI manifest index payload.
+///
+/// For single-image manifests (without a `manifests` array), returns an empty list.
+pub fn index_platforms(payload: &[u8]) -> Vec<String> {
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(payload) else {
+        return Vec::new();
+    };
+
+    let Some(entries) = value.get("manifests").and_then(|m| m.as_array()) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for entry in entries {
+        let Some(platform) = entry.get("platform") else {
+            continue;
+        };
+        let Some(os) = platform.get("os").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let Some(arch) = platform.get("architecture").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let mut label = format!("{os}/{arch}");
+        if let Some(variant) = platform.get("variant").and_then(|v| v.as_str()) {
+            label.push('/');
+            label.push_str(variant);
+        }
+        if !out.iter().any(|v| v == &label) {
+            out.push(label);
+        }
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -55,5 +91,41 @@ mod tests {
     #[test]
     fn invalid_json_uses_payload_length() {
         assert_eq!(image_total_size_bytes(b"not-json"), 8);
+    }
+
+    #[test]
+    fn extracts_index_platforms() {
+        let payload = br#"{
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [
+                {
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                    "digest": "sha256:a",
+                    "size": 123,
+                    "platform": { "os": "linux", "architecture": "amd64" }
+                },
+                {
+                    "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                    "digest": "sha256:b",
+                    "size": 123,
+                    "platform": { "os": "linux", "architecture": "arm64" }
+                }
+            ]
+        }"#;
+
+        assert_eq!(index_platforms(payload), vec!["linux/amd64", "linux/arm64"]);
+    }
+
+    #[test]
+    fn single_manifest_has_no_index_platforms() {
+        let payload = br#"{
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": { "size": 1234 },
+            "layers": [{ "size": 5678 }]
+        }"#;
+
+        assert!(index_platforms(payload).is_empty());
     }
 }

@@ -845,8 +845,9 @@ async fn complete_upload_inner(
     .await
     .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
-    // Docker should publish a manifest in a later step; some clients abort there
-    // (short copy). Keep UI usable by upserting a minimal fallback latest tag.
+    // Docker should publish a manifest in a later step; some clients abort there.
+    // Keep a minimal fallback manifest so blob GC/accounting can still work,
+    // but do not create synthetic tags (for example "latest").
     let fallback_payload = serde_json::json!({
         "schemaVersion": 2,
         "mediaType": "application/vnd.oci.image.manifest.v1+json",
@@ -877,21 +878,6 @@ async fn complete_upload_inner(
     .bind(size)
     .bind(fallback_payload.as_bytes())
     .bind((auth.user_id != Uuid::nil()).then_some(auth.user_id))
-    .execute(&state.pool)
-    .await
-    .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
-
-    sqlx::query(
-        r#"
-        INSERT INTO container_tags (repository_id, name, manifest_digest)
-        VALUES ($1, 'latest', $2)
-        ON CONFLICT (repository_id, name) DO UPDATE
-        SET manifest_digest = EXCLUDED.manifest_digest,
-            updated_at = NOW()
-        "#,
-    )
-    .bind(repo.id)
-    .bind(&digest)
     .execute(&state.pool)
     .await
     .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;

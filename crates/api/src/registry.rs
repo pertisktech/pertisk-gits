@@ -52,6 +52,7 @@ struct ContainerImageSummary {
     description: Option<String>,
     provider: String,
     tag_count: i64,
+    has_multi_arch: bool,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
 }
@@ -62,6 +63,7 @@ struct ContainerTagResponse {
     manifest_digest: String,
     commit_sha: Option<String>,
     media_type: String,
+    platforms: Vec<String>,
     size_bytes: i64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -105,7 +107,7 @@ async fn list_container_images(
     )
     .await?;
 
-    let rows = sqlx::query_as::<_, (Uuid, String, Option<String>, String, i64, DateTime<Utc>, DateTime<Utc>)>(
+    let rows = sqlx::query_as::<_, (Uuid, String, Option<String>, String, i64, bool, DateTime<Utc>, DateTime<Utc>)>(
         r#"
         SELECT
             cr.id,
@@ -113,6 +115,18 @@ async fn list_container_images(
             cr.description,
             COALESCE(cr.provider, 'pertisk') AS provider,
             (SELECT COUNT(*) FROM container_tags t WHERE t.repository_id = cr.id) AS tag_count,
+            EXISTS (
+                SELECT 1
+                FROM container_tags t
+                INNER JOIN container_manifests m
+                    ON m.repository_id = t.repository_id
+                   AND m.digest = t.manifest_digest
+                WHERE t.repository_id = cr.id
+                  AND m.media_type IN (
+                      'application/vnd.oci.image.index.v1+json',
+                      'application/vnd.docker.distribution.manifest.list.v2+json'
+                  )
+            ) AS has_multi_arch,
             cr.created_at,
             cr.updated_at
         FROM container_repositories cr
@@ -132,13 +146,14 @@ async fn list_container_images(
     Ok(Json(
         rows
             .into_iter()
-            .map(|(id, name, description, provider, tag_count, created_at, updated_at)| {
+            .map(|(id, name, description, provider, tag_count, has_multi_arch, created_at, updated_at)| {
                 ContainerImageSummary {
                     id,
                     name,
                     description,
                     provider,
                     tag_count,
+                    has_multi_arch,
                     created_at,
                     updated_at,
                 }
@@ -205,6 +220,7 @@ async fn get_container_image(
                         manifest_digest,
                         commit_sha,
                         media_type,
+                        platforms: pertisk_registry::manifest::index_platforms(&payload),
                         size_bytes: pertisk_registry::manifest::image_total_size_bytes(&payload),
                         created_at,
                         updated_at,

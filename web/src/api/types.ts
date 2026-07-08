@@ -844,6 +844,7 @@ export interface ContainerImageSummary {
   description: string | null
   provider: string
   tag_count: number
+  has_multi_arch: boolean
   created_at: string
   updated_at: string
 }
@@ -853,6 +854,7 @@ export interface ContainerTag {
   manifest_digest: string
   commit_sha: string | null
   media_type: string
+  platforms: string[]
   size_bytes: number
   created_at: string
   updated_at: string
