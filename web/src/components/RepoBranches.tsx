@@ -250,7 +250,9 @@ function BranchRow({
   onDelete: () => void
 }) {
   const isDefault = branch.name === defaultBranch
-  const codePath = `/groups/${orgSlug}/projects/${repoSlug}`
+  const codePath = isDefault
+    ? `/groups/${orgSlug}/projects/${repoSlug}`
+    : `/groups/${orgSlug}/projects/${repoSlug}?ref=${encodeURIComponent(branch.name)}`
 
   return (
     <li className="commit-history-row">

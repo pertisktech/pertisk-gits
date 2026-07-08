@@ -288,17 +288,20 @@ function TagRow({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const codePath = `/groups/${orgSlug}/projects/${repoSlug}?ref=${encodeURIComponent(tag.name)}&ref_kind=tag`
+
   return (
     <li className="commit-history-row">
-      <Link
-        to={commitUrl(orgSlug, repoSlug, tag.sha)}
-        className="commit-history-row-link"
-      >
+      <div className="commit-history-row-link">
         <Tag size={16} className="commit-history-row-icon shrink-0" aria-hidden />
         <div className="commit-history-row-main">
           <div className="commit-history-row-title">
-            <span className="commit-history-subject font-medium">{tag.name}</span>
-            <code className="commit-history-sha">{tag.short_sha}</code>
+            <Link to={codePath} className="commit-history-subject font-medium">
+              {tag.name}
+            </Link>
+            <Link to={commitUrl(orgSlug, repoSlug, tag.sha)} className="commit-history-sha">
+              {tag.short_sha}
+            </Link>
           </div>
           {tag.message && (
             <p className="commit-history-body">{tag.message}</p>
@@ -308,7 +311,7 @@ function TagRow({
             {formatRelativeTime(tag.tagged_at)}
           </p>
         </div>
-      </Link>
+      </div>
       <PipelineRunStatusLink run={pipelineRun} orgSlug={orgSlug} repoSlug={repoSlug} />
       <CopyShaButton sha={tag.sha} label={`Copy commit SHA for ${tag.name}`} />
       {canManage && (
