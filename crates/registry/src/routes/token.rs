@@ -6,8 +6,8 @@ use axum::{
 use chrono::Utc;
 
 use crate::auth::{
-    authenticate_basic, authorize_scopes, issue_registry_token, parse_scope_params,
-    unauthorized_headers, TokenResponse,
+    authenticate_basic_principal, authorize_scopes, issue_registry_token, parse_scope_params,
+    unauthorized_headers, BasicPrincipal, RegistryAccess, TokenResponse,
 };
 use crate::routes::v2::RegistryState;
 
@@ -45,31 +45,34 @@ pub async fn get_token(
     let scope_display = query.scope.join(",");
     let www = unauthorized_headers(&state.token_url, service, &scope_display);
 
-    let user = authenticate_basic(&state.pool, &headers)
+    let principal = authenticate_basic_principal(&state.pool, &state.jwt_secret, &headers)
         .await
         .map_err(|_| (StatusCode::UNAUTHORIZED, www.clone()))?
         .ok_or((StatusCode::UNAUTHORIZED, www))?;
 
-    tracing::info!(
-        user_id = %user.id,
-        service,
-        scopes = ?query.scope,
-        "registry token request"
-    );
+    let actor = match &principal {
+        BasicPrincipal::User(user) => user.id.to_string(),
+        BasicPrincipal::Ci(ci) => format!("ci:{}", ci.job_id),
+    };
+
+    tracing::info!(actor = %actor, service, scopes = ?query.scope, "registry token request");
 
     let scopes = parse_scope_params(&query.scope);
     let access = if scopes.is_empty() {
         // Docker login probe — credentials validated above; scoped token fetched on pull/push.
         vec![]
     } else {
-        authorize_scopes(&state.pool, &user, &scopes)
-            .await
-            .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, HeaderMap::new()))?
+        match &principal {
+            BasicPrincipal::User(user) => authorize_scopes(&state.pool, user, &scopes)
+                .await
+                .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, HeaderMap::new()))?,
+            BasicPrincipal::Ci(ci) => ci_granted_scopes(ci.repository.as_str(), &scopes),
+        }
     };
 
     if !scopes.is_empty() && access.is_empty() {
         tracing::warn!(
-            user_id = %user.id,
+            actor = %actor,
             requested = ?query.scope,
             "registry token denied: no scopes granted"
         );
@@ -77,12 +80,17 @@ pub async fn get_token(
     }
 
     tracing::info!(
-        user_id = %user.id,
+        actor = %actor,
         granted = ?access,
         "registry token granted"
     );
 
-    let token = issue_registry_token(&state.jwt_secret, user.id, access)
+    let subject = match &principal {
+        BasicPrincipal::User(user) => user.id,
+        BasicPrincipal::Ci(_) => uuid::Uuid::nil(),
+    };
+
+    let token = issue_registry_token(&state.jwt_secret, subject, access)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, HeaderMap::new()))?;
 
     Ok(Json(TokenResponse {
@@ -90,6 +98,32 @@ pub async fn get_token(
         expires_in: crate::auth::REGISTRY_TOKEN_TTL_SECS,
         issued_at: Some(Utc::now().to_rfc3339()),
     }))
+}
+
+fn ci_granted_scopes(
+    allowed_repository: &str,
+    scopes: &[(String, Vec<String>)],
+) -> Vec<RegistryAccess> {
+    let mut granted = Vec::new();
+    for (name, actions) in scopes {
+        if name != allowed_repository {
+            continue;
+        }
+        let actions: Vec<String> = actions
+            .iter()
+            .filter(|action| action.as_str() == "pull" || action.as_str() == "push")
+            .cloned()
+            .collect();
+        if actions.is_empty() {
+            continue;
+        }
+        granted.push(RegistryAccess {
+            access_type: "repository".into(),
+            name: name.clone(),
+            actions,
+        });
+    }
+    granted
 }
 
 #[cfg(test)]

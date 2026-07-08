@@ -591,6 +591,7 @@ pub async fn load_job_secrets_for_runner(
     job_id: Uuid,
     runner_id: Uuid,
     server_url: &str,
+    jwt_secret: &str,
 ) -> Result<RunnerJobSecretsResponse, (StatusCode, String)> {
     #[derive(sqlx::FromRow)]
     struct JobSecretsContextRow {
@@ -678,6 +679,9 @@ pub async fn load_job_secrets_for_runner(
         None
     };
 
+    let org_slug = context.org_slug.clone();
+    let repo_slug = context.repo_slug.clone();
+
     let predefined_ctx = PredefinedCiContext {
         server_url: server_url.trim_end_matches('/').to_string(),
         pipeline_run_id: context.pipeline_run_id.to_string(),
@@ -737,6 +741,52 @@ pub async fn load_job_secrets_for_runner(
             )
         })
         .collect();
+
+    if ci_auto_registry_credentials_enabled() {
+        let registry = server_host(server_url);
+        let registry_image = format!("{}/{}/{}", registry, org_slug, repo_slug);
+        let repository = format!("{}/{}", org_slug, repo_slug);
+        let ttl_secs = ci_auto_registry_credentials_ttl_secs();
+        let password = pertisk_registry::auth::issue_ci_registry_basic_token(
+            jwt_secret,
+            job_id,
+            &repository,
+            ttl_secs,
+        )
+        .map_err(|e| internal(e.to_string()))?;
+
+        merged.insert(
+            "CI_REGISTRY".into(),
+            (
+                CiSecretKind::Variable,
+                CiConfigScope::Secret,
+                registry,
+                false,
+            ),
+        );
+        merged.insert(
+            "CI_REGISTRY_IMAGE".into(),
+            (
+                CiSecretKind::Variable,
+                CiConfigScope::Secret,
+                registry_image,
+                false,
+            ),
+        );
+        merged.insert(
+            "CI_REGISTRY_USER".into(),
+            (
+                CiSecretKind::Variable,
+                CiConfigScope::Secret,
+                pertisk_registry::auth::CI_REGISTRY_BASIC_USER.into(),
+                false,
+            ),
+        );
+        merged.insert(
+            "CI_REGISTRY_PASSWORD".into(),
+            (CiSecretKind::Variable, CiConfigScope::Secret, password, true),
+        );
+    }
 
     for (name, kind, scope, masked, environment, blob) in org_rows {
         if !environment.matches_job(job_environment) {
@@ -862,4 +912,33 @@ fn sqlx_error(err: sqlx::Error) -> ApiError {
 fn internal(msg: String) -> (StatusCode, String) {
     tracing::error!("ci secrets error: {msg}");
     (StatusCode::INTERNAL_SERVER_ERROR, msg)
+}
+
+fn ci_auto_registry_credentials_enabled() -> bool {
+    match std::env::var("CI_AUTO_REGISTRY_CREDENTIALS_ENABLED") {
+        Ok(value) => {
+            let value = value.trim().to_ascii_lowercase();
+            !matches!(value.as_str(), "0" | "false" | "off" | "no")
+        }
+        Err(_) => true,
+    }
+}
+
+fn ci_auto_registry_credentials_ttl_secs() -> i64 {
+    std::env::var("CI_AUTO_REGISTRY_CREDENTIALS_TTL_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(3600)
+}
+
+fn server_host(url: &str) -> String {
+    let url = url.trim_end_matches('/');
+    url.strip_prefix("https://")
+        .or_else(|| url.strip_prefix("http://"))
+        .unwrap_or(url)
+        .split('/')
+        .next()
+        .unwrap_or(url)
+        .to_string()
 }

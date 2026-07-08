@@ -4111,6 +4111,7 @@ async fn runner_job_secrets(
         job_id,
         runner_id,
         &state.config.git_public_base_url,
+        &state.config.jwt_secret,
     )
     .await?;
     Ok(Json(secrets))

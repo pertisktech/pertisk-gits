@@ -255,8 +255,17 @@ pub struct ParsedImageName {
 
 pub fn parse_image_name(full_name: &str) -> Option<ParsedImageName> {
     let parts: Vec<&str> = full_name.split('/').filter(|s| !s.is_empty()).collect();
-    if parts.len() < 3 {
+    if parts.len() < 2 {
         return None;
+    }
+
+    if parts.len() == 2 {
+        return Some(ParsedImageName {
+            provider: "pertisk".to_string(),
+            org_path: parts[0].to_string(),
+            project_slug: parts[1].to_string(),
+            image_name: parts[1].to_string(),
+        });
     }
 
     if parts.len() == 3 {
@@ -383,6 +392,12 @@ mod tests {
 
     #[test]
     fn parse_image_name_valid() {
+        let parsed = parse_image_name("acme/widget").unwrap();
+        assert_eq!(parsed.provider, "pertisk");
+        assert_eq!(parsed.org_path, "acme");
+        assert_eq!(parsed.project_slug, "widget");
+        assert_eq!(parsed.image_name, "widget");
+
         let parsed = parse_image_name("acme/widget/travela").unwrap();
         assert_eq!(parsed.provider, "pertisk");
         assert_eq!(parsed.org_path, "acme");
@@ -402,7 +417,6 @@ mod tests {
         assert!(parse_image_name("noseparator").is_none());
         assert!(parse_image_name("/image").is_none());
         assert!(parse_image_name("org/").is_none());
-        assert!(parse_image_name("org/a").is_none());
     }
 
     #[test]

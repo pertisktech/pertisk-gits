@@ -29,6 +29,12 @@ fn manifest_media_type(media_type: &str) -> &str {
 }
 
 fn provider_repo_name(provider: &str, org: &str, project: &str, image: &str) -> String {
+    if image == project {
+        if provider == DEFAULT_PROVIDER {
+            return format!("{org}/{project}");
+        }
+        return format!("{provider}/{org}/{project}");
+    }
     if provider == DEFAULT_PROVIDER {
         format!("{org}/{project}/{image}")
     } else {
@@ -37,10 +43,16 @@ fn provider_repo_name(provider: &str, org: &str, project: &str, image: &str) -> 
 }
 
 fn provider_upload_location(provider: &str, org: &str, project: &str, image: &str, upload_id: Uuid) -> String {
+    if image == project {
+        if provider == DEFAULT_PROVIDER {
+            return format!("/v2/{org}/{project}/blobs/uploads/{upload_id}");
+        }
+        return format!("/v2/providers/{provider}/{org}/{project}/blobs/uploads/{upload_id}");
+    }
     if provider == DEFAULT_PROVIDER {
         format!("/v2/{org}/{project}/{image}/blobs/uploads/{upload_id}")
     } else {
-        format!("/v2/{provider}/{org}/{project}/{image}/blobs/uploads/{upload_id}")
+        format!("/v2/providers/{provider}/{org}/{project}/{image}/blobs/uploads/{upload_id}")
     }
 }
 
@@ -51,18 +63,30 @@ fn provider_manifest_location(
     image: &str,
     reference: &str,
 ) -> String {
+    if image == project {
+        if provider == DEFAULT_PROVIDER {
+            return format!("/v2/{org}/{project}/manifests/{reference}");
+        }
+        return format!("/v2/providers/{provider}/{org}/{project}/manifests/{reference}");
+    }
     if provider == DEFAULT_PROVIDER {
         format!("/v2/{org}/{project}/{image}/manifests/{reference}")
     } else {
-        format!("/v2/{provider}/{org}/{project}/{image}/manifests/{reference}")
+        format!("/v2/providers/{provider}/{org}/{project}/{image}/manifests/{reference}")
     }
 }
 
 fn provider_blob_location(provider: &str, org: &str, project: &str, image: &str, digest: &str) -> String {
+    if image == project {
+        if provider == DEFAULT_PROVIDER {
+            return format!("/v2/{org}/{project}/blobs/{digest}");
+        }
+        return format!("/v2/providers/{provider}/{org}/{project}/blobs/{digest}");
+    }
     if provider == DEFAULT_PROVIDER {
         format!("/v2/{org}/{project}/{image}/blobs/{digest}")
     } else {
-        format!("/v2/{provider}/{org}/{project}/{image}/blobs/{digest}")
+        format!("/v2/providers/{provider}/{org}/{project}/{image}/blobs/{digest}")
     }
 }
 
@@ -208,6 +232,22 @@ pub async fn get_manifest(
     get_manifest_inner(&state, DEFAULT_PROVIDER, &org, &project, &image, &reference, &headers).await
 }
 
+pub async fn get_manifest_short(
+    State(state): State<RegistryState>,
+    Path((org, project, reference)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_manifest_inner(&state, DEFAULT_PROVIDER, &org, &project, &project, &reference, &headers).await
+}
+
+pub async fn get_manifest_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, reference)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_manifest_inner(&state, &provider, &org, &project, &project, &reference, &headers).await
+}
+
 pub async fn get_manifest_provider(
     State(state): State<RegistryState>,
     Path((provider, org, project, image, reference)): Path<(String, String, String, String, String)>,
@@ -284,6 +324,22 @@ pub async fn head_manifest(
     headers: HeaderMap,
 ) -> RegistryResult<Response> {
     head_manifest_inner(&state, DEFAULT_PROVIDER, &org, &project, &image, &reference, &headers).await
+}
+
+pub async fn head_manifest_short(
+    State(state): State<RegistryState>,
+    Path((org, project, reference)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    head_manifest_inner(&state, DEFAULT_PROVIDER, &org, &project, &project, &reference, &headers).await
+}
+
+pub async fn head_manifest_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, reference)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    head_manifest_inner(&state, &provider, &org, &project, &project, &reference, &headers).await
 }
 
 pub async fn head_manifest_provider(
@@ -364,6 +420,44 @@ pub async fn put_manifest(
         &org,
         &project,
         &image,
+        &reference,
+        &headers,
+        body,
+    )
+    .await
+}
+
+pub async fn put_manifest_short(
+    State(state): State<RegistryState>,
+    Path((org, project, reference)): Path<(String, String, String)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    put_manifest_inner(
+        &state,
+        DEFAULT_PROVIDER,
+        &org,
+        &project,
+        &project,
+        &reference,
+        &headers,
+        body,
+    )
+    .await
+}
+
+pub async fn put_manifest_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, reference)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    put_manifest_inner(
+        &state,
+        &provider,
+        &org,
+        &project,
+        &project,
         &reference,
         &headers,
         body,
@@ -519,6 +613,22 @@ pub async fn get_blob(
     get_blob_inner(&state, DEFAULT_PROVIDER, &org, &project, &image, &digest, &headers).await
 }
 
+pub async fn get_blob_short(
+    State(state): State<RegistryState>,
+    Path((org, project, digest)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_blob_inner(&state, DEFAULT_PROVIDER, &org, &project, &project, &digest, &headers).await
+}
+
+pub async fn get_blob_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, digest)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_blob_inner(&state, &provider, &org, &project, &project, &digest, &headers).await
+}
+
 pub async fn get_blob_provider(
     State(state): State<RegistryState>,
     Path((provider, org, project, image, digest)): Path<(String, String, String, String, String)>,
@@ -568,6 +678,22 @@ pub async fn head_blob(
     headers: HeaderMap,
 ) -> RegistryResult<Response> {
     head_blob_inner(&state, DEFAULT_PROVIDER, &org, &project, &image, &digest, &headers).await
+}
+
+pub async fn head_blob_short(
+    State(state): State<RegistryState>,
+    Path((org, project, digest)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    head_blob_inner(&state, DEFAULT_PROVIDER, &org, &project, &project, &digest, &headers).await
+}
+
+pub async fn head_blob_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, digest)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    head_blob_inner(&state, &provider, &org, &project, &project, &digest, &headers).await
 }
 
 pub async fn head_blob_provider(
@@ -628,6 +754,26 @@ pub async fn start_upload(
     body: Bytes,
 ) -> RegistryResult<Response> {
     start_upload_inner(&state, DEFAULT_PROVIDER, &org, &project, &image, query, &headers, body).await
+}
+
+pub async fn start_upload_short(
+    State(state): State<RegistryState>,
+    Path((org, project)): Path<(String, String)>,
+    Query(query): Query<UploadQuery>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    start_upload_inner(&state, DEFAULT_PROVIDER, &org, &project, &project, query, &headers, body).await
+}
+
+pub async fn start_upload_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project)): Path<(String, String, String)>,
+    Query(query): Query<UploadQuery>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    start_upload_inner(&state, &provider, &org, &project, &project, query, &headers, body).await
 }
 
 pub async fn start_upload_provider(
@@ -701,6 +847,24 @@ pub async fn patch_upload(
     patch_upload_inner(&state, DEFAULT_PROVIDER, &org, &project, &image, upload_id, &headers, body).await
 }
 
+pub async fn patch_upload_short(
+    State(state): State<RegistryState>,
+    Path((org, project, upload_id)): Path<(String, String, Uuid)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    patch_upload_inner(&state, DEFAULT_PROVIDER, &org, &project, &project, upload_id, &headers, body).await
+}
+
+pub async fn patch_upload_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, upload_id)): Path<(String, String, String, Uuid)>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    patch_upload_inner(&state, &provider, &org, &project, &project, upload_id, &headers, body).await
+}
+
 pub async fn patch_upload_provider(
     State(state): State<RegistryState>,
     Path((provider, org, project, image, upload_id)): Path<(String, String, String, String, Uuid)>,
@@ -769,6 +933,48 @@ pub async fn complete_upload(
         &org,
         &project,
         &image,
+        upload_id,
+        query,
+        &headers,
+        body,
+    )
+    .await
+}
+
+pub async fn complete_upload_short(
+    State(state): State<RegistryState>,
+    Path((org, project, upload_id)): Path<(String, String, Uuid)>,
+    Query(query): Query<UploadQuery>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    complete_upload_inner(
+        &state,
+        DEFAULT_PROVIDER,
+        &org,
+        &project,
+        &project,
+        upload_id,
+        query,
+        &headers,
+        body,
+    )
+    .await
+}
+
+pub async fn complete_upload_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, upload_id)): Path<(String, String, String, Uuid)>,
+    Query(query): Query<UploadQuery>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> RegistryResult<Response> {
+    complete_upload_inner(
+        &state,
+        &provider,
+        &org,
+        &project,
+        &project,
         upload_id,
         query,
         &headers,

@@ -8,6 +8,28 @@ use uuid::Uuid;
 use crate::access::{can_pull, can_push, parse_image_name};
 
 pub const REGISTRY_TOKEN_TTL_SECS: i64 = 300;
+pub const CI_REGISTRY_BASIC_USER: &str = "gitlab-ci-token";
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CiRegistryBasicClaims {
+    pub sub: String,
+    pub job_id: String,
+    pub repository: String,
+    pub exp: i64,
+    pub iat: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CiRegistryBasicAuth {
+    pub job_id: Uuid,
+    pub repository: String,
+}
+
+#[derive(Debug, Clone)]
+pub enum BasicPrincipal {
+    User(AuthUser),
+    Ci(CiRegistryBasicAuth),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryAccess {
@@ -84,6 +106,47 @@ pub fn issue_registry_token(
         &claims,
         &EncodingKey::from_secret(jwt_secret.as_bytes()),
     )?)
+}
+
+pub fn issue_ci_registry_basic_token(
+    jwt_secret: &str,
+    job_id: Uuid,
+    repository: &str,
+    ttl_secs: i64,
+) -> anyhow::Result<String> {
+    let now = chrono::Utc::now().timestamp();
+    let ttl_secs = ttl_secs.max(60);
+    let claims = CiRegistryBasicClaims {
+        sub: "ci-registry-basic".into(),
+        job_id: job_id.to_string(),
+        repository: repository.to_string(),
+        iat: now,
+        exp: now + ttl_secs,
+    };
+    Ok(encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(jwt_secret.as_bytes()),
+    )?)
+}
+
+pub fn verify_ci_registry_basic_token(
+    jwt_secret: &str,
+    token: &str,
+) -> anyhow::Result<CiRegistryBasicAuth> {
+    let data = decode::<CiRegistryBasicClaims>(
+        token,
+        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+        &Validation::default(),
+    )?;
+    if data.claims.sub != "ci-registry-basic" {
+        anyhow::bail!("invalid ci registry token subject");
+    }
+    let job_id = Uuid::parse_str(&data.claims.job_id)?;
+    Ok(CiRegistryBasicAuth {
+        job_id,
+        repository: data.claims.repository,
+    })
 }
 
 pub fn verify_registry_token(jwt_secret: &str, token: &str) -> anyhow::Result<RegistryAuth> {
@@ -293,14 +356,37 @@ pub async fn authorize_registry(
         }
     }
 
-    if let Ok(Some(user)) = authenticate_basic(pool, headers).await {
-        if let (Some(repo), Some(act)) = (repo_name, action) {
-            return authorize_basic_repo(pool, user, repo, act).await;
+    if let Ok(Some(principal)) = authenticate_basic_principal(pool, jwt_secret, headers).await {
+        match principal {
+            BasicPrincipal::User(user) => {
+                if let (Some(repo), Some(act)) = (repo_name, action) {
+                    return authorize_basic_repo(pool, user, repo, act).await;
+                }
+                return Ok(RegistryAuth {
+                    user_id: user.id,
+                    access: vec![],
+                });
+            }
+            BasicPrincipal::Ci(ci) => {
+                if let (Some(repo), Some(act)) = (repo_name, action) {
+                    if repo == ci.repository && (act == "pull" || act == "push") {
+                        return Ok(RegistryAuth {
+                            user_id: Uuid::nil(),
+                            access: vec![RegistryAccess {
+                                access_type: "repository".into(),
+                                name: ci.repository,
+                                actions: vec![act.to_string()],
+                            }],
+                        });
+                    }
+                    return Err(registry_err(StatusCode::FORBIDDEN, "insufficient scope"));
+                }
+                return Ok(RegistryAuth {
+                    user_id: Uuid::nil(),
+                    access: vec![],
+                });
+            }
         }
-        return Ok(RegistryAuth {
-            user_id: user.id,
-            access: vec![],
-        });
     }
 
     let (repo, act) = match (repo_name, action) {
@@ -409,6 +495,32 @@ pub async fn authenticate_basic(
         return Ok(None);
     };
     access::authenticate_basic(pool, &user, &pass).await
+}
+
+pub async fn authenticate_basic_principal(
+    pool: &PgPool,
+    jwt_secret: &str,
+    headers: &HeaderMap,
+) -> anyhow::Result<Option<BasicPrincipal>> {
+    let header = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+    let Some(header) = header else {
+        return Ok(None);
+    };
+    let Some((user, pass)) = access::parse_basic_auth(header) else {
+        return Ok(None);
+    };
+
+    if user == CI_REGISTRY_BASIC_USER {
+        if let Ok(ci) = verify_ci_registry_basic_token(jwt_secret, &pass) {
+            return Ok(Some(BasicPrincipal::Ci(ci)));
+        }
+    }
+
+    Ok(access::authenticate_basic(pool, &user, &pass)
+        .await?
+        .map(BasicPrincipal::User))
 }
 
 pub type RegistryResult<T> = Result<T, (StatusCode, HeaderMap, String)>;
@@ -525,5 +637,16 @@ mod tests {
         assert_eq!(merged.len(), 1);
         assert!(merged[0].1.contains(&"pull".to_string()));
         assert!(merged[0].1.contains(&"push".to_string()));
+    }
+
+    #[test]
+    fn ci_registry_basic_token_round_trip() {
+        let secret = "registry-jwt-secret";
+        let job_id = Uuid::new_v4();
+        let repo = "acme/widget";
+        let token = issue_ci_registry_basic_token(secret, job_id, repo, 3600).unwrap();
+        let auth = verify_ci_registry_basic_token(secret, &token).unwrap();
+        assert_eq!(auth.job_id, job_id);
+        assert_eq!(auth.repository, repo);
     }
 }
