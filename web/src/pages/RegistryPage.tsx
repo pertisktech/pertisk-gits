@@ -40,7 +40,7 @@ function buildRegistryImagePath(orgPath: string, repoSlug: string, imageName?: s
 export function RegistryPage() {
   const { orgSlug: orgPath, projectSlug: repoSlug } = useProjectParams()
   const imageName = useRegistryImageParam()
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
   const [gcMessage, setGcMessage] = useState<string | null>(null)
@@ -51,10 +51,11 @@ export function RegistryPage() {
   >(null)
   const commandsRef = useRef<HTMLDivElement>(null)
   const registryHost = typeof window !== 'undefined' ? window.location.host : 'registry.local'
-  const imageNameForCommand = selectedImage || imageName || 'image-name'
+  const currentUsername = user?.username?.trim() || 'CURRENT_USERNAME'
+  const imageNameForCommand = selectedImage || imageName || null
   const imagePath = buildRegistryImagePath(orgPath, repoSlug, imageNameForCommand)
   const imageRef = `${imagePath}:latest`
-  const loginCommand = `docker login ${registryHost} -u YOUR_USERNAME`
+  const loginCommand = `docker login ${registryHost} -u ${currentUsername}`
   const pushCommand = `docker push ${registryHost}/${imageRef}`
   const pullCommand = `docker pull ${registryHost}/${imageRef}`
 
@@ -294,7 +295,7 @@ export function RegistryPage() {
       <div className="space-y-4 mt-4">
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm text-text">
-              {buildRegistryImagePath(orgPath, repoSlug, selectedImage ?? 'image-name')}
+              {buildRegistryImagePath(orgPath, repoSlug, selectedImage)}
             </span>
           </div>
 
