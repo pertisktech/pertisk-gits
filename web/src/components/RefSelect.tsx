@@ -87,26 +87,28 @@ export function RefSelect({
     const menuHeight = menuRef.current?.offsetHeight ?? 280
     const gap = 6
     const pad = 8
+    const desiredMaxHeight = Math.min(420, window.innerHeight - pad * 2)
 
     let left = rect.left
     left = Math.max(pad, Math.min(left, window.innerWidth - menuWidth - pad))
 
     const spaceBelow = window.innerHeight - rect.bottom - gap - pad
     const spaceAbove = rect.top - gap - pad
-    const fitsBelow = menuHeight <= spaceBelow
-    const fitsAbove = menuHeight <= spaceAbove
+    const availableBelow = Math.max(120, Math.min(desiredMaxHeight, spaceBelow))
+    const availableAbove = Math.max(120, Math.min(desiredMaxHeight, spaceAbove))
+    const effectiveMenuHeight = Math.min(menuHeight, desiredMaxHeight)
+    const fitsBelow = effectiveMenuHeight <= spaceBelow
+    const fitsAbove = effectiveMenuHeight <= spaceAbove
 
     let top: number
-    let maxHeight: number | undefined
+    let maxHeight: number
 
     if (fitsBelow || (!fitsAbove && spaceBelow >= spaceAbove)) {
       top = rect.bottom + gap
-      if (!fitsBelow) {
-        maxHeight = Math.max(120, spaceBelow)
-      }
+      maxHeight = availableBelow
     } else {
-      maxHeight = Math.max(120, spaceAbove)
-      top = rect.top - Math.min(menuHeight, maxHeight) - gap
+      maxHeight = availableAbove
+      top = rect.top - maxHeight - gap
       top = Math.max(pad, top)
     }
 
@@ -116,7 +118,7 @@ export function RefSelect({
       width: menuWidth,
       minWidth: rect.width,
       maxWidth: Math.min(352, window.innerWidth - pad * 2),
-      ...(maxHeight !== undefined ? { maxHeight, overflowY: 'auto' as const } : {}),
+      maxHeight,
     })
   }
 
@@ -165,6 +167,12 @@ export function RefSelect({
       setQuery('')
     }
   }, [open, searchable])
+
+  useEffect(() => {
+    if (!open) return
+    const active = menuRef.current?.querySelector<HTMLButtonElement>('.app-ref-select-option--active')
+    active?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex, open])
 
   function selectOption(option: RefOption) {
     onChange(option.kind, option.name)
