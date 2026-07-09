@@ -39,6 +39,15 @@ sudo pertisk-backup create
 sudo pertisk-backup restore BACKUP=<backup_id> CONFIRM=RESTORE
 ```
 
+`pertisk-backup` automatically loads variables from `/etc/pertisk-gits/pertisk-gits.conf` when present,
+so `DATABASE_URL`, `REPOS_ROOT`, `REGISTRY_ROOT`, `ARTIFACTS_ROOT`, and `BACKUPS_ROOT` can be managed in one place.
+
+To use a different config file path:
+
+```bash
+sudo PERTISK_CONFIG_FILE=/path/to/pertisk-gits.conf pertisk-backup create
+```
+
 ## GitLab-style examples
 
 Create and skip repositories:

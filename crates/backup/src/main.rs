@@ -16,6 +16,9 @@ use tar::{Archive, Builder};
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
+const DEFAULT_CONFIG_FILE: &str = "/etc/pertisk-gits/pertisk-gits.conf";
+const CONFIG_FILE_ENV: &str = "PERTISK_CONFIG_FILE";
+
 #[derive(Parser)]
 #[command(name = "pertisk-backup", about = "GitLab-style backup/restore helper for Pertisk")]
 struct Cli {
@@ -86,6 +89,7 @@ struct ManifestComponents {
 }
 
 fn main() -> Result<()> {
+    preload_config_env();
     let cli = Cli::parse();
     match cli.command {
         Commands::Create { kv } => {
@@ -108,14 +112,91 @@ fn main() -> Result<()> {
     }
 }
 
+fn preload_config_env() {
+    let config_path = std::env::var(CONFIG_FILE_ENV)
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from(DEFAULT_CONFIG_FILE));
+
+    if let Err(err) = load_env_file_if_exists(&config_path) {
+        log(&format!(
+            "Failed to load config file {}: {err}",
+            config_path.display()
+        ));
+    }
+}
+
+fn load_env_file_if_exists(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    let contents = fs::read_to_string(path)
+        .with_context(|| format!("read config file {}", path.display()))?;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+
+        let raw = trimmed.strip_prefix("export ").unwrap_or(trimmed);
+        let Some((raw_key, raw_value)) = raw.split_once('=') else {
+            continue;
+        };
+
+        let key = raw_key.trim();
+        if key.is_empty() || std::env::var_os(key).is_some() {
+            continue;
+        }
+
+        let value = strip_wrapping_quotes(raw_value.trim());
+        std::env::set_var(key, value);
+    }
+
+    Ok(())
+}
+
+fn strip_wrapping_quotes(value: &str) -> String {
+    if value.len() >= 2 {
+        let starts_ends_with_double = value.starts_with('"') && value.ends_with('"');
+        let starts_ends_with_single = value.starts_with('\'') && value.ends_with('\'');
+        if starts_ends_with_double || starts_ends_with_single {
+            return value[1..value.len() - 1].to_string();
+        }
+    }
+    value.to_string()
+}
+
+fn infer_data_root_from_repos_root(repos_root: &str) -> Option<PathBuf> {
+    let repos_path = Path::new(repos_root);
+    if !repos_path.is_absolute() {
+        return None;
+    }
+
+    let parent = repos_path.parent()?;
+    if parent.file_name().and_then(|s| s.to_str()) == Some("data") {
+        Some(parent.to_path_buf())
+    } else {
+        Some(parent.join("data"))
+    }
+}
+
+fn default_from_data_root(data_root: Option<&Path>, suffix: &str, fallback: &str) -> String {
+    data_root
+        .map(|root| root.join(suffix).to_string_lossy().to_string())
+        .unwrap_or_else(|| fallback.to_string())
+}
+
 impl Config {
     fn from_overrides(overrides: &HashMap<String, String>) -> Result<Self> {
-        let backups_root = get_value(overrides, "BACKUPS_ROOT").unwrap_or_else(|| "data/backups".into());
         let repos_root = get_value(overrides, "REPOS_ROOT").unwrap_or_else(|| "data/repos".into());
-        let registry_root =
-            get_value(overrides, "REGISTRY_ROOT").unwrap_or_else(|| "data/registry".into());
-        let artifacts_root =
-            get_value(overrides, "ARTIFACTS_ROOT").unwrap_or_else(|| "data/artifacts".into());
+        let data_root = infer_data_root_from_repos_root(&repos_root);
+        let backups_root = get_value(overrides, "BACKUPS_ROOT")
+            .unwrap_or_else(|| default_from_data_root(data_root.as_deref(), "backups", "data/backups"));
+        let registry_root = get_value(overrides, "REGISTRY_ROOT")
+            .unwrap_or_else(|| default_from_data_root(data_root.as_deref(), "registry", "data/registry"));
+        let artifacts_root = get_value(overrides, "ARTIFACTS_ROOT")
+            .unwrap_or_else(|| default_from_data_root(data_root.as_deref(), "artifacts", "data/artifacts"));
         let backup_storage =
             get_value(overrides, "BACKUP_STORAGE").unwrap_or_else(|| "local".to_string());
         let s3_prefix =
