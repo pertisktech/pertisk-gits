@@ -18,6 +18,7 @@ use pertisk_registry::storage::{registry_uses_s3_storage, StorageBackend};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use tar::{Archive, Builder};
+use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use uuid::Uuid;
 use validator::Validate;
@@ -30,6 +31,14 @@ use crate::version;
 
 const BACKUP_FORMAT_VERSION: u32 = 1;
 const BACKUP_COMPONENT_MARKER: &str = ".pertisk-backup-component.json";
+
+fn backup_restore_max_upload_bytes() -> usize {
+    std::env::var("BACKUP_RESTORE_MAX_UPLOAD_BYTES")
+        .ok()
+        .and_then(|value| value.trim().parse::<usize>().ok())
+        .filter(|value| *value >= 1024 * 1024)
+        .unwrap_or(pertisk_registry::MAX_REGISTRY_BODY_BYTES)
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 struct BackupComponentMarker {
@@ -367,7 +376,7 @@ pub fn backup_routes() -> Router<AppState> {
         )
         .route("/admin/backups/{backup_id}/download", get(download_backup))
         .route("/admin/backups/restore", post(restore_backup))
-        .layer(DefaultBodyLimit::max(1024 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(backup_restore_max_upload_bytes()))
 }
 
 fn backups_root() -> PathBuf {
@@ -1003,24 +1012,50 @@ async fn restore_backup(
 ) -> Result<Json<BackupJobResponse>, ApiError> {
     admin::ensure_super_admin(&state.pool, auth.user_id).await?;
 
-    let mut archive_bytes: Option<Vec<u8>> = None;
+    let id = Uuid::new_v4();
+    let upload_dir = backup_dir(id);
+    tokio::fs::create_dir_all(&upload_dir)
+        .await
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+    let archive_path = upload_dir.join("upload.tar.gz");
+
+    let mut archive_size_bytes: Option<u64> = None;
     let mut components: Option<Vec<BackupComponent>> = None;
     let mut confirm: Option<String> = None;
+    let upload_limit = backup_restore_max_upload_bytes();
 
     while let Some(field) = multipart
         .next_field()
         .await
-        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?
+        .map_err(|e| {
+            ApiError::from(DomainError::Validation(format!(
+                "invalid multipart upload (backup may exceed {} MiB limit): {e}",
+                upload_limit / (1024 * 1024)
+            )))
+        })?
     {
         match field.name() {
             Some("archive") => {
-                archive_bytes = Some(
-                    field
-                        .bytes()
+                let mut file = tokio::fs::File::create(&archive_path)
+                    .await
+                    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+                let mut written = 0_u64;
+                let mut field = field;
+                while let Some(chunk) = field
+                    .chunk()
+                    .await
+                    .map_err(|e| {
+                        ApiError::from(DomainError::Validation(format!(
+                            "failed to read backup upload data: {e}"
+                        )))
+                    })?
+                {
+                    written += chunk.len() as u64;
+                    file.write_all(&chunk)
                         .await
-                        .map_err(|e| ApiError::from(DomainError::Validation(e.to_string())))?
-                        .to_vec(),
-                );
+                        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+                }
+                archive_size_bytes = Some(written);
             }
             Some("components") => {
                 let raw = field
@@ -1044,8 +1079,8 @@ async fn restore_backup(
         }
     }
 
-    let archive_bytes =
-        archive_bytes.ok_or_else(|| DomainError::Validation("archive file is required".into()))?;
+    let archive_size_bytes = archive_size_bytes
+        .ok_or_else(|| DomainError::Validation("archive file is required".into()))?;
     let components = components
         .ok_or_else(|| DomainError::Validation("components are required".into()))?;
     if components.is_empty() {
@@ -1055,7 +1090,6 @@ async fn restore_backup(
         return Err(DomainError::Validation("type RESTORE to confirm".into()).into());
     }
 
-    let id = Uuid::new_v4();
     let meta = BackupJobMeta {
         id,
         status: BackupJobStatus::Running,
@@ -1063,7 +1097,7 @@ async fn restore_backup(
         created_at: Utc::now(),
         completed_at: None,
         error: None,
-        archive_size_bytes: Some(archive_bytes.len() as u64),
+        archive_size_bytes: Some(archive_size_bytes),
         db_dump_bytes: None,
         repos_entry_count: None,
         created_by: Some(auth.user_id),
@@ -1072,10 +1106,6 @@ async fn restore_backup(
 
     let extract_dir = backup_dir(id).join("restore");
     tokio::fs::create_dir_all(&extract_dir)
-        .await
-        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
-    let archive_path = backup_dir(id).join("upload.tar.gz");
-    tokio::fs::write(&archive_path, &archive_bytes)
         .await
         .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
