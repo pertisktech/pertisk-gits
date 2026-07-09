@@ -4676,6 +4676,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "pertisk-backup"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap 4.6.1",
+ "flate2",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "walkdir",
+]
+
+[[package]]
 name = "pertisk-cicd"
 version = "0.1.0"
 dependencies = [

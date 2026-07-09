@@ -6,6 +6,7 @@
 	release release-amd release-arm \
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm deploy-rpm-arm64 \
 	install-runner deploy-runner-rpm deploy-runner-rpm-arm64 \
+	backup-cli-build backup-create backup-restore backup-list \
 	runner-image runner-image-push runner-image-arm64 runner-image-multi runner-compose-up runner-compose-down \
 	pertisk-gits-image pertisk-gits-image-push pertisk-gits-image-arm64 pertisk-gits-image-multi \
 	helm-runner-lint helm-runner-template helm-runner-install helm-runner-upgrade \
@@ -76,6 +77,29 @@ test-api:
 
 test-coverage:
 	./scripts/coverage.sh
+
+backup-cli-build:
+	$(CARGO) build --release -p pertisk-backup
+
+backup-create:
+	$(CARGO) run -p pertisk-backup -- create \
+	SKIP='$(SKIP)' BACKUP='$(BACKUP)' BACKUPS_ROOT='$(BACKUPS_ROOT)' DATABASE_URL='$(DATABASE_URL)' \
+	REPOS_ROOT='$(REPOS_ROOT)' REGISTRY_ROOT='$(REGISTRY_ROOT)' ARTIFACTS_ROOT='$(ARTIFACTS_ROOT)' \
+	BACKUP_STORAGE='$(BACKUP_STORAGE)' BACKUP_S3_URI='$(BACKUP_S3_URI)' S3_ENDPOINT='$(S3_ENDPOINT)' \
+	S3_BUCKET='$(S3_BUCKET)' S3_PREFIX='$(S3_PREFIX)' S3_ACCESS_KEY='$(S3_ACCESS_KEY)' \
+	S3_SECRET_KEY='$(S3_SECRET_KEY)'
+
+backup-restore:
+	$(CARGO) run -p pertisk-backup -- restore \
+	SKIP='$(SKIP)' BACKUP='$(BACKUP)' BACKUPS_ROOT='$(BACKUPS_ROOT)' DATABASE_URL='$(DATABASE_URL)' \
+	REPOS_ROOT='$(REPOS_ROOT)' REGISTRY_ROOT='$(REGISTRY_ROOT)' ARTIFACTS_ROOT='$(ARTIFACTS_ROOT)' \
+	BACKUP_STORAGE='$(BACKUP_STORAGE)' BACKUP_S3_URI='$(BACKUP_S3_URI)' S3_ENDPOINT='$(S3_ENDPOINT)' \
+	S3_BUCKET='$(S3_BUCKET)' S3_PREFIX='$(S3_PREFIX)' S3_ACCESS_KEY='$(S3_ACCESS_KEY)' \
+	S3_SECRET_KEY='$(S3_SECRET_KEY)' ASSUME_YES='$(ASSUME_YES)' CONFIRM='$(CONFIRM)' \
+	DB_RESTORE_CLEAN='$(DB_RESTORE_CLEAN)'
+
+backup-list:
+	$(CARGO) run -p pertisk-backup -- list BACKUPS_ROOT='$(BACKUPS_ROOT)'
 
 run:
 	$(CARGO) run -p pertisk-api
@@ -245,7 +269,8 @@ dev-serve: dev
 # make package-amd64        — amd64 only
 
 package-clean:
-	rm -f pertisk-gits-linux-amd64 pertisk-gits-linux-arm64
+	rm -f pertisk-gits-linux-amd64 pertisk-gits-linux-arm64 pertisk-backup-linux-amd64 pertisk-backup-linux-arm64 pertisk-worker-linux-amd64 pertisk-worker-linux-arm64
+	rm -f pertisk-gits-linux-amd64.version pertisk-gits-linux-arm64.version
 	@$(MAKE) fix-web-dist-owner
 	rm -f web/dist/.app-version
 	@echo "Removed Linux binaries; next package build will rebuild via Docker."

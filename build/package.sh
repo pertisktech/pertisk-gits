@@ -50,6 +50,8 @@ esac
 HOST_OS="$(uname -s)"
 
 artifact="${PACKAGE_NAME}-linux-${ARCH}"
+worker_artifact="pertisk-worker-linux-${ARCH}"
+backup_artifact="pertisk-backup-linux-${ARCH}"
 
 expected_file_pattern() {
   case "$1" in
@@ -73,10 +75,11 @@ is_valid_linux_binary() {
 
 build_native() {
   echo "Using native cargo build for $PACKAGE_NAME (linux/$ARCH, version $VERSION)..."
-  CARGO_BUILD_JOBS="${CARGO_JOBS:-4}" PERTISK_VERSION="$VERSION" cargo build --release --locked -p "$CARGO_BIN" -p pertisk-worker
+  CARGO_BUILD_JOBS="${CARGO_JOBS:-4}" PERTISK_VERSION="$VERSION" cargo build --release --locked -p "$CARGO_BIN" -p pertisk-worker -p pertisk-backup
   cp "target/release/$CARGO_BIN" "./${artifact}"
-  cp "target/release/pertisk-worker" "./pertisk-worker-linux-${ARCH}"
-  chmod +x "./${artifact}" "./pertisk-worker-linux-${ARCH}"
+  cp "target/release/pertisk-worker" "./${worker_artifact}"
+  cp "target/release/pertisk-backup" "./${backup_artifact}"
+  chmod +x "./${artifact}" "./${worker_artifact}" "./${backup_artifact}"
 }
 
 build_binary_docker() {
@@ -92,8 +95,9 @@ build_binary_docker() {
     "$out_dir"
 
   cp "${out_dir}/pertisk-gits" "./${artifact}"
-  cp "${out_dir}/pertisk-worker" "./pertisk-worker-linux-${ARCH}"
-  chmod +x "./${artifact}" "./pertisk-worker-linux-${ARCH}"
+  cp "${out_dir}/pertisk-worker" "./${worker_artifact}"
+  cp "${out_dir}/pertisk-backup" "./${backup_artifact}"
+  chmod +x "./${artifact}" "./${worker_artifact}" "./${backup_artifact}"
   rm -rf "$out_dir"
 }
 
@@ -108,6 +112,19 @@ if [ ! -f "$artifact" ]; then
 elif [ ! -f "$version_stamp" ] || [ "$(cat "$version_stamp")" != "$VERSION" ]; then
   echo "Rebuilding $artifact (version ${VERSION}, was $(cat "$version_stamp" 2>/dev/null || echo missing))..."
   rm -f "$artifact" "$version_stamp"
+  need_rebuild=1
+fi
+if [ -f "$worker_artifact" ] && ! is_valid_linux_binary "$worker_artifact" "$ARCH"; then
+  echo "Removing stale $worker_artifact (not Linux/$ARCH)..."
+  rm -f "$worker_artifact"
+  need_rebuild=1
+fi
+if [ -f "$backup_artifact" ] && ! is_valid_linux_binary "$backup_artifact" "$ARCH"; then
+  echo "Removing stale $backup_artifact (not Linux/$ARCH)..."
+  rm -f "$backup_artifact"
+  need_rebuild=1
+fi
+if [ ! -f "$worker_artifact" ] || [ ! -f "$backup_artifact" ]; then
   need_rebuild=1
 fi
 
@@ -132,14 +149,19 @@ if ! is_valid_linux_binary "$artifact" "$ARCH"; then
   command -v file >/dev/null 2>&1 && file "$artifact" >&2 || true
   exit 1
 fi
-worker_artifact="pertisk-worker-linux-${ARCH}"
 if [ -f "$worker_artifact" ] && ! is_valid_linux_binary "$worker_artifact" "$ARCH"; then
   echo "Error: $worker_artifact is not a valid Linux/$ARCH executable" >&2
   command -v file >/dev/null 2>&1 && file "$worker_artifact" >&2 || true
   exit 1
 fi
+if [ -f "$backup_artifact" ] && ! is_valid_linux_binary "$backup_artifact" "$ARCH"; then
+  echo "Error: $backup_artifact is not a valid Linux/$ARCH executable" >&2
+  command -v file >/dev/null 2>&1 && file "$backup_artifact" >&2 || true
+  exit 1
+fi
 mkdir -p "$RELEASE_DIR"
 cp "$artifact" "$RELEASE_DIR/"
+cp "$backup_artifact" "$RELEASE_DIR/"
 
 cat > build/pertisk-gits.service << 'SVC'
 [Unit]
@@ -217,8 +239,9 @@ mkdir -p "pkg-${PACKAGE_NAME}/usr/bin" \
   "pkg-${PACKAGE_NAME}/lib/systemd/system"
 
 cp "$artifact" "pkg-${PACKAGE_NAME}/usr/bin/${PACKAGE_NAME}"
-cp "pertisk-worker-linux-${ARCH}" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-worker"
-chmod +x "pkg-${PACKAGE_NAME}/usr/bin/${PACKAGE_NAME}" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-worker"
+cp "$worker_artifact" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-worker"
+cp "$backup_artifact" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-backup"
+chmod +x "pkg-${PACKAGE_NAME}/usr/bin/${PACKAGE_NAME}" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-worker" "pkg-${PACKAGE_NAME}/usr/bin/pertisk-backup"
 cp build/pertisk-gits.conf "pkg-${PACKAGE_NAME}/etc/pertisk-gits/pertisk-gits.conf"
 cp build/pertisk-gits.service "pkg-${PACKAGE_NAME}/lib/systemd/system/pertisk-gits.service"
 cp build/pertisk-worker.service "pkg-${PACKAGE_NAME}/lib/systemd/system/pertisk-worker.service"

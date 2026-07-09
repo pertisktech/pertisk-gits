@@ -212,3 +212,4 @@ Full configuration and quick start: [HTTP3.md](./HTTP3.md).
 - [HTTP3.md](./HTTP3.md) — QUIC edge gateway
 - [REGISTRY.md](./REGISTRY.md) — embedded vs standalone registry
 - [RUNNERS.md](./RUNNERS.md) — CI runners and SSH
+- [BACKUP.md](./BACKUP.md) — server-side backup/restore CLI (GitLab-style)

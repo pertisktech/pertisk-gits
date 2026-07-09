@@ -1,0 +1,19 @@
+[package]
+name = "pertisk-backup"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "pertisk-backup"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+flate2 = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tar = "0.4"
+tempfile = "3"
+walkdir = "2"

@@ -74,6 +74,7 @@ Private projects require authentication for clone and push.
 ## Packaging & deploy
 
 See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for reverse proxy, gateway, and HTTP/3 setup.
+For production backup/restore (GitLab-style CLI, S3/MinIO/RustFS), see [docs/BACKUP.md](docs/BACKUP.md).
 
 Like [pertisk-proxy](https://github.com/pertisktech/pertisk-proxy), packages are built with Docker cross-compile + fpm (DEB/RPM).
 

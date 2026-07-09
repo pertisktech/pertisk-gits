@@ -62,9 +62,10 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
       BUILD_FLAGS="--release --locked"; \
       TARGET_DIR="/app/target/release"; \
     fi; \
-    cargo build ${BUILD_FLAGS} -p pertisk-api -p pertisk-worker; \
+    cargo build ${BUILD_FLAGS} -p pertisk-api -p pertisk-worker -p pertisk-backup; \
     cp "${TARGET_DIR}/pertisk-api" /app/out/pertisk-gits; \
     cp "${TARGET_DIR}/pertisk-worker" /app/out/pertisk-worker; \
+    cp "${TARGET_DIR}/pertisk-backup" /app/out/pertisk-backup; \
     case "${TARGETARCH}" in \
       amd64) file /app/out/pertisk-gits | grep -Eq 'x86-64' ;; \
       arm64) file /app/out/pertisk-gits | grep -Eq 'aarch64' ;; \
@@ -74,3 +75,4 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked,id=pertis
 FROM scratch AS export
 COPY --from=builder /app/out/pertisk-gits /pertisk-gits
 COPY --from=builder /app/out/pertisk-worker /pertisk-worker
+COPY --from=builder /app/out/pertisk-backup /pertisk-backup
