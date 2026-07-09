@@ -31,3 +31,5 @@ preremove.sh
 .buildx-out-gits-arm64/
 *.profraw
 deploy/certs/
+pertisk-backup-linux-amd64
+pertisk-backup-linux-arm64
