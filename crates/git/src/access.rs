@@ -334,20 +334,30 @@ pub async fn can_admin_repo(
         return Ok(true);
     }
 
-    let membership = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
+    let memberships = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
         r#"
+        WITH RECURSIVE ancestors AS (
+            SELECT id, parent_id
+            FROM organizations
+            WHERE id = $1
+            UNION ALL
+            SELECT o.id, o.parent_id
+            FROM organizations o
+            INNER JOIN ancestors a ON o.id = a.parent_id
+        )
         SELECT m.role, cr.permissions
         FROM organization_members m
         LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
-        WHERE m.organization_id = $1 AND m.user_id = $2
+        WHERE m.organization_id IN (SELECT id FROM ancestors)
+          AND m.user_id = $2
         "#,
     )
     .bind(org_id)
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
 
-    if let Some((org_role, custom_permissions)) = membership {
+    for (org_role, custom_permissions) in memberships {
         if matches!(org_role, OrgRole::Owner | OrgRole::Admin) {
             return Ok(true);
         }
@@ -365,32 +375,46 @@ pub async fn org_member_has_permission(
     pool: &PgPool,
     org_id: Uuid,
     user_id: Uuid,
-    check: impl FnOnce(&CustomRolePermissions) -> bool,
+    check: impl Fn(&CustomRolePermissions) -> bool + Copy,
 ) -> anyhow::Result<bool> {
-    let membership = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
+    let memberships = sqlx::query_as::<_, (OrgRole, Option<sqlx::types::Json<CustomRolePermissions>>)>(
         r#"
+        WITH RECURSIVE ancestors AS (
+            SELECT id, parent_id
+            FROM organizations
+            WHERE id = $1
+            UNION ALL
+            SELECT o.id, o.parent_id
+            FROM organizations o
+            INNER JOIN ancestors a ON o.id = a.parent_id
+        )
         SELECT m.role, cr.permissions
         FROM organization_members m
         LEFT JOIN organization_custom_roles cr ON cr.id = m.custom_role_id
-        WHERE m.organization_id = $1 AND m.user_id = $2
+        WHERE m.organization_id IN (SELECT id FROM ancestors)
+          AND m.user_id = $2
         "#,
     )
     .bind(org_id)
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_all(pool)
     .await?;
 
-    let Some((org_role, custom_permissions)) = membership else {
-        return Ok(false);
-    };
+    for (org_role, custom_permissions) in memberships {
+        if matches!(org_role, OrgRole::Owner | OrgRole::Admin) {
+            return Ok(true);
+        }
 
-    if matches!(org_role, OrgRole::Owner | OrgRole::Admin) {
-        return Ok(true);
+        if custom_permissions
+            .as_ref()
+            .map(|permissions| check(&permissions.0))
+            .unwrap_or(false)
+        {
+            return Ok(true);
+        }
     }
 
-    Ok(custom_permissions
-        .map(|permissions| check(&permissions.0))
-        .unwrap_or(false))
+    Ok(false)
 }
 
 pub fn parse_basic_auth(header: &str) -> Option<(String, String)> {

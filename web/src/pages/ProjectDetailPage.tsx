@@ -115,6 +115,7 @@ export function ProjectDetailPage() {
       />
 
       <RepoHeader
+        orgPath={orgSlug}
         repoName={project.name}
         repoSlug={project.slug}
         description={project.description}

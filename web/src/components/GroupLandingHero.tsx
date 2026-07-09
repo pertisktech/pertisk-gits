@@ -2,17 +2,19 @@ import { FolderGit2, FolderTree, Loader2 } from 'lucide-react'
 import { projectInitial } from '../lib/projectInitial'
 import styles from './GroupLandingHero.module.css'
 
+interface HeroStatProps {
+  readonly icon: React.ReactNode
+  readonly label: string
+  readonly value: number
+  readonly loading?: boolean
+}
+
 function HeroStat({
   icon,
   label,
   value,
   loading,
-}: {
-  icon: React.ReactNode
-  label: string
-  value: number
-  loading?: boolean
-}) {
+}: HeroStatProps) {
   return (
     <div className={styles.stat} title={`${value} ${label}`} aria-label={`${value} ${label}`}>
       {loading ? (
@@ -37,7 +39,7 @@ export function GroupLandingHero({
   subgroupCount,
   projectCount,
   statsLoading,
-}: {
+}: Readonly<{
   name: string
   slug: string
   path: string
@@ -45,7 +47,7 @@ export function GroupLandingHero({
   subgroupCount: number
   projectCount: number
   statsLoading?: boolean
-}) {
+}>) {
   return (
     <div className="app-panel mb-4">
       <div className={styles.hero}>
@@ -54,7 +56,7 @@ export function GroupLandingHero({
         </div>
         <div className={styles.main}>
           <h1 className={styles.title}>{name}</h1>
-          <p className={styles.path}>@{path}</p>
+          <p className={styles.path}>{path}</p>
           {description && <p className={styles.description}>{description}</p>}
         </div>
         <div className={styles.stats}>

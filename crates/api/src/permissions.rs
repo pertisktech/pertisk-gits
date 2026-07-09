@@ -445,7 +445,7 @@ pub(crate) async fn ensure_org_permission(
     pool: &PgPool,
     org_id: Uuid,
     user_id: Uuid,
-    check: impl FnOnce(&pertisk_domain::permissions::CustomRolePermissions) -> bool,
+    check: impl Fn(&pertisk_domain::permissions::CustomRolePermissions) -> bool + Copy,
 ) -> Result<(), ApiError> {
     if org_member_has_permission(pool, org_id, user_id, check).await? {
         Ok(())
@@ -458,7 +458,7 @@ async fn org_member_has_permission(
     pool: &PgPool,
     org_id: Uuid,
     user_id: Uuid,
-    check: impl FnOnce(&pertisk_domain::permissions::CustomRolePermissions) -> bool,
+    check: impl Fn(&pertisk_domain::permissions::CustomRolePermissions) -> bool + Copy,
 ) -> Result<bool, ApiError> {
     access::org_member_has_permission(pool, org_id, user_id, check)
         .await
@@ -487,11 +487,33 @@ pub(crate) async fn ensure_org_owner(
     org_id: Uuid,
     user_id: Uuid,
 ) -> Result<(), ApiError> {
-    let role = get_org_member_role(pool, org_id, user_id)
-        .await?
-        .ok_or(DomainError::Forbidden)?;
+    let is_owner: bool = sqlx::query_scalar(
+        r#"
+        WITH RECURSIVE ancestors AS (
+            SELECT id, parent_id
+            FROM organizations
+            WHERE id = $1
+            UNION ALL
+            SELECT o.id, o.parent_id
+            FROM organizations o
+            INNER JOIN ancestors a ON o.id = a.parent_id
+        )
+        SELECT EXISTS (
+            SELECT 1
+            FROM organization_members m
+            WHERE m.organization_id IN (SELECT id FROM ancestors)
+              AND m.user_id = $2
+              AND m.role = 'owner'
+        )
+        "#,
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    if role == OrgRole::Owner {
+    if is_owner {
         Ok(())
     } else {
         Err(DomainError::Forbidden.into())

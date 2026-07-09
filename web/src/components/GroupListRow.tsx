@@ -11,12 +11,12 @@ function GroupStat({
   label,
   value,
   loading,
-}: {
+}: Readonly<{
   icon: React.ReactNode
   label: string
   value: number
   loading?: boolean
-}) {
+}>) {
   const title = `${value} ${label}`
 
   return (
@@ -40,12 +40,12 @@ export function GroupListRow({
   subgroupCount,
   projectCount,
   statsLoading,
-}: {
+}: Readonly<{
   group: Organization
   subgroupCount: number
   projectCount: number
   statsLoading?: boolean
-}) {
+}>) {
   const path = groupUrlPath(group)
 
   return (
@@ -57,7 +57,8 @@ export function GroupListRow({
         <Link to={groupBaseUrl(group)} className={styles.pathLink}>
           {group.name}
         </Link>
-        <div className="text-xs text-muted font-mono mt-0.5">{path}</div>
+        <div className="text-xs text-text-secondary mt-0.5">Subgroup path</div>
+        <div className="text-xs text-muted font-mono">{path}</div>
         {group.description && (
           <p className="text-sm text-text-secondary mt-1 mb-0 line-clamp-2">{group.description}</p>
         )}

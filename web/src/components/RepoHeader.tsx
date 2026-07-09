@@ -3,19 +3,23 @@ import { displayRepoName, projectInitial } from '../lib/projectInitial'
 import { StatusBadge, visibilityVariant } from './StatusBadge'
 import styles from './RepoHeader.module.css'
 
+interface RepoHeaderProps {
+  readonly orgPath: string
+  readonly repoName: string
+  readonly repoSlug: string
+  readonly description?: string | null
+  readonly visibility?: 'public' | 'private'
+  readonly action?: ReactNode
+}
+
 export function RepoHeader({
+  orgPath,
   repoName,
   repoSlug,
   description,
   visibility,
   action,
-}: {
-  repoName: string
-  repoSlug: string
-  description?: string | null
-  visibility?: 'public' | 'private'
-  action?: ReactNode
-}) {
+}: RepoHeaderProps) {
   const title = displayRepoName(repoName, repoSlug)
 
   return (
@@ -33,6 +37,9 @@ export function RepoHeader({
               </StatusBadge>
             )}
           </h1>
+          <p className={styles.description}>
+            <span className="font-mono text-text-secondary">{orgPath}/{repoSlug}</span>
+          </p>
           {description && <p className={styles.description}>{description}</p>}
         </div>
       </div>

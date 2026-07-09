@@ -30,34 +30,41 @@ pub async fn find_org_for_member(
     user_id: Uuid,
 ) -> Result<Organization, ApiError> {
     let org_path = org_path_from_param(org_path);
-    sqlx::query_as::<_, Organization>(&format!(
+    let org = find_org_by_full_path(pool, &org_path)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(DomainError::NotFound)?;
+
+    let is_member: bool = sqlx::query_scalar(
         r#"
         WITH RECURSIVE ancestors AS (
-            SELECT id, parent_id, full_path
+            SELECT id, parent_id
             FROM organizations
-            WHERE full_path = $1
+            WHERE id = $1
             UNION ALL
-            SELECT o.id, o.parent_id, o.full_path
+            SELECT o.id, o.parent_id
             FROM organizations o
             INNER JOIN ancestors a ON o.id = a.parent_id
         )
-        SELECT {ORG_COLUMNS}
-        FROM organizations o
-        WHERE o.full_path = $1
-          AND EXISTS (
+        SELECT EXISTS (
             SELECT 1
             FROM organization_members m
             WHERE m.user_id = $2
               AND m.organization_id IN (SELECT id FROM ancestors)
-          )
-        "#
-    ))
-    .bind(&org_path)
+        )
+        "#,
+    )
+    .bind(org.id)
     .bind(user_id)
-    .fetch_optional(pool)
+    .fetch_one(pool)
     .await
-    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?
-    .ok_or(DomainError::Forbidden.into())
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    if !is_member {
+        return Err(DomainError::Forbidden.into());
+    }
+
+    Ok(org)
 }
 
 pub async fn list_subgroups(

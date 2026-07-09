@@ -15,7 +15,7 @@ export function ProjectListRow({
   lastCommitAt,
   stats,
   statsLoading,
-}: {
+}: Readonly<{
   orgSlug: string
   slug: string
   name: string
@@ -23,7 +23,7 @@ export function ProjectListRow({
   lastCommitAt?: string | null
   stats?: DashboardProjectStats
   statsLoading?: boolean
-}) {
+}>) {
   const shortName = displayRepoName(name, slug)
   const activityAt = repositoryActivityAt({
     last_commit_at: lastCommitAt,
@@ -44,6 +44,8 @@ export function ProjectListRow({
           <span className={styles.pathSep}>/</span>
           <span>{shortName}</span>
         </Link>
+        <div className="text-xs text-text-secondary mt-0.5">Repository path</div>
+        <div className="text-xs text-muted font-mono">{orgSlug}/{slug}</div>
       </div>
       <DashboardProjectAside
         orgSlug={orgSlug}

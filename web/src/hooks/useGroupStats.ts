@@ -10,7 +10,7 @@ export function useGroupStats(groups: Organization[], allGroups: Organization[])
 
   const repoQueries = useQueries({
     queries: groups.map((group) => ({
-      queryKey: ['repositories', groupUrlPath(group)],
+      queryKey: ['repositories', groupUrlPath(group), { recursive: true }],
       queryFn: () => api.listRepositories(token!, groupUrlPath(group), { recursive: true }),
       enabled: Boolean(token && groups.length > 0),
     })),
