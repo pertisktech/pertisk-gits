@@ -56,6 +56,7 @@ struct Config {
     artifacts_root: PathBuf,
     database_url: Option<String>,
     backup_storage: String,
+    aws_cli_bin: Option<String>,
     s3_endpoint: Option<String>,
     s3_bucket: Option<String>,
     s3_prefix: String,
@@ -213,6 +214,7 @@ impl Config {
             artifacts_root: PathBuf::from(artifacts_root),
             database_url: get_value(overrides, "DATABASE_URL"),
             backup_storage,
+            aws_cli_bin: get_value(overrides, "AWS_CLI_BIN"),
             s3_endpoint: get_value(overrides, "S3_ENDPOINT"),
             s3_bucket: get_value(overrides, "S3_BUCKET"),
             s3_prefix,
@@ -627,19 +629,20 @@ fn run_list(cfg: &Config) -> Result<()> {
 }
 
 fn run_aws_cp(cfg: &Config, src: &Path, dst: &str) -> Result<()> {
-    let mut cmd = aws_base_command(cfg);
+    let mut cmd = aws_base_command(cfg)?;
     cmd.arg("s3").arg("cp").arg(src).arg(dst);
     run_cmd(cmd, "aws s3 cp upload")
 }
 
 fn run_aws_cp_down(cfg: &Config, src: &str, dst: &Path) -> Result<()> {
-    let mut cmd = aws_base_command(cfg);
+    let mut cmd = aws_base_command(cfg)?;
     cmd.arg("s3").arg("cp").arg(src).arg(dst);
     run_cmd(cmd, "aws s3 cp download")
 }
 
-fn aws_base_command(cfg: &Config) -> Command {
-    let mut cmd = Command::new("aws");
+fn aws_base_command(cfg: &Config) -> Result<Command> {
+    let aws_bin = resolve_aws_cli_bin(cfg)?;
+    let mut cmd = Command::new(&aws_bin);
 
     if let Some(endpoint) = &cfg.s3_endpoint {
         cmd.arg("--endpoint-url").arg(endpoint);
@@ -652,7 +655,45 @@ fn aws_base_command(cfg: &Config) -> Command {
         cmd.env("AWS_SECRET_ACCESS_KEY", secret);
     }
 
-    cmd
+    Ok(cmd)
+}
+
+fn resolve_aws_cli_bin(cfg: &Config) -> Result<String> {
+    if let Some(bin) = &cfg.aws_cli_bin {
+        if binary_exists(bin) {
+            return Ok(bin.clone());
+        }
+        bail!(
+            "AWS_CLI_BIN is set but not executable/found: {}",
+            bin
+        );
+    }
+
+    for candidate in ["aws", "/usr/local/bin/aws", "/usr/bin/aws"] {
+        if binary_exists(candidate) {
+            return Ok(candidate.to_string());
+        }
+    }
+
+    bail!(
+        "aws CLI not found. Install awscli or set AWS_CLI_BIN in /etc/pertisk-gits/pertisk-gits.conf (for example AWS_CLI_BIN=/usr/local/bin/aws)"
+    );
+}
+
+fn binary_exists(binary: &str) -> bool {
+    let path = Path::new(binary);
+    if path.components().count() > 1 {
+        return path.is_file();
+    }
+
+    std::env::var_os("PATH")
+        .map(|path_var| {
+            std::env::split_paths(&path_var).any(|dir| {
+                let candidate = dir.join(binary);
+                candidate.is_file()
+            })
+        })
+        .unwrap_or(false)
 }
 
 #[allow(dead_code)]

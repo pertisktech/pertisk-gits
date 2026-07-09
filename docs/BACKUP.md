@@ -82,6 +82,27 @@ sudo pertisk-backup restore BACKUP=<backup_id> SKIP=registry CONFIRM=RESTORE
 
 The helper uses S3-compatible APIs through AWS CLI.
 
+You can keep all backup configuration in one place (`/etc/pertisk-gits/pertisk-gits.conf`):
+
+```ini
+BACKUP_STORAGE=s3
+S3_ENDPOINT=http://127.0.0.1:9000
+S3_BUCKET=pertisk-backup
+S3_PREFIX=prod
+S3_ACCESS_KEY=pertisk
+S3_SECRET_KEY=pertisksecret
+# Optional: set explicit aws binary path when sudo PATH does not include it
+# AWS_CLI_BIN=/usr/local/bin/aws
+```
+
+Then run normally (no extra `export` needed):
+
+```bash
+sudo pertisk-backup create
+sudo pertisk-backup list
+sudo pertisk-backup restore BACKUP=<backup_id> CONFIRM=RESTORE
+```
+
 ```bash
 export BACKUP_STORAGE=s3
 export S3_ENDPOINT=http://127.0.0.1:9000      # MinIO/RustFS endpoint, optional for AWS
@@ -113,6 +134,10 @@ sudo -E pertisk-backup restore BACKUP=<backup_id> CONFIRM=RESTORE
 - `pg_dump` for DB backup (unless `SKIP=db`)
 - `psql` for DB restore (unless `SKIP=db`)
 - `aws` CLI for remote object storage
+
+If you get `No such file or directory (os error 2)` during `aws s3 cp`, the AWS CLI binary is not found by
+the runtime environment (often `sudo` secure path). Install `awscli` and/or set `AWS_CLI_BIN` in
+`/etc/pertisk-gits/pertisk-gits.conf`.
 
 ## Important restore prerequisites
 
