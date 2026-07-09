@@ -18,6 +18,18 @@ type SearchResult =
       fullPath: string
     }
 
+  function resultKey(result: SearchResult) {
+    if (result.type === 'group') return `g-${result.orgPath}`
+    if (result.type === 'repo') return `r-${result.fullPath}`
+    return `c-${result.fullPath}`
+  }
+
+  function resultIcon(result: SearchResult) {
+    if (result.type === 'group') return <Users size={14} className="text-primary shrink-0 mt-0.5" />
+    if (result.type === 'repo') return <FolderGit2 size={14} className="text-primary shrink-0 mt-0.5" />
+    return <FileCode2 size={14} className="text-primary shrink-0 mt-0.5" />
+  }
+
 function resultUrl(result: SearchResult) {
   if (result.type === 'group') return `/groups/${result.orgPath}`
   if (result.type === 'repo') return `/groups/${result.orgSlug}/projects/${result.slug}`
@@ -165,51 +177,35 @@ export function GlobalSearch() {
         placeholder="Search groups, repositories, and code…"
         className="w-full pl-8 pr-3 py-1.5 rounded-md border border-naturals-n4 bg-bg text-sm text-text placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/40"
         aria-label="Search groups and repositories"
-        aria-expanded={showDropdown}
         aria-autocomplete="list"
-        role="combobox"
       />
 
       {showDropdown && (
-        <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-naturals-n4 bg-surface shadow-lg overflow-hidden"
-          role="listbox"
-        >
+        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-naturals-n4 bg-surface shadow-lg overflow-hidden">
           {combinedResults.length === 0 ? (
             <div className="px-3 py-2.5 text-sm text-text-secondary">No results for “{trimmedQuery}”</div>
           ) : (
             <ul className="max-h-72 overflow-y-auto py-1">
               {combinedResults.map((result) => (
-                <li
-                  key={
-                    result.type === 'group'
-                      ? `g-${result.orgPath}`
-                      : result.type === 'repo'
-                        ? `r-${result.fullPath}`
-                        : `c-${result.fullPath}`
-                  }
-                >
+                <li key={resultKey(result)}>
                   <button
                     type="button"
-                    role="option"
                     className="w-full px-3 py-2 text-left hover:bg-hover flex items-start gap-2"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => goTo(result)}
                   >
-                    {result.type === 'group' ? (
-                      <Users size={14} className="text-primary shrink-0 mt-0.5" />
-                    ) : result.type === 'repo' ? (
-                      <FolderGit2 size={14} className="text-primary shrink-0 mt-0.5" />
-                    ) : (
-                      <FileCode2 size={14} className="text-primary shrink-0 mt-0.5" />
-                    )}
+                    {resultIcon(result)}
                     <span className="min-w-0">
                       <span className="block text-sm text-text truncate">
                         {result.type === 'code' ? result.path : result.name}
                       </span>
-                      <span className="block text-xs text-muted font-mono truncate">
-                        {result.type === 'code' ? result.fullPath : result.type === 'group' ? result.orgPath : result.fullPath}
-                      </span>
+                      {result.type !== 'repo' && (
+                        <span className="block text-xs text-muted font-mono truncate">
+                          {result.type === 'code'
+                            ? result.fullPath
+                            : result.orgPath}
+                        </span>
+                      )}
                       {result.type === 'code' ? (
                         <span className="block text-xs text-text-secondary font-mono truncate mt-0.5">
                           {result.snippet}

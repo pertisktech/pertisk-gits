@@ -9,22 +9,29 @@ import styles from './ProjectList.module.css'
 
 export function ProjectListRow({
   orgSlug,
+  orgName,
   slug,
   name,
   updatedAt,
   lastCommitAt,
   stats,
   statsLoading,
+  showFullPath = false,
+  displayLabel,
 }: Readonly<{
   orgSlug: string
+  orgName?: string
   slug: string
   name: string
   updatedAt: string
   lastCommitAt?: string | null
   stats?: DashboardProjectStats
   statsLoading?: boolean
+  showFullPath?: boolean
+  displayLabel?: string
 }>) {
   const shortName = displayRepoName(name, slug)
+  const displayText = displayLabel ?? (showFullPath ? `${orgName ?? orgSlug}/${shortName}` : shortName)
   const activityAt = repositoryActivityAt({
     last_commit_at: lastCommitAt,
     updated_at: updatedAt,
@@ -40,7 +47,7 @@ export function ProjectListRow({
           to={`/groups/${orgSlug}/projects/${slug}`}
           className={styles.pathLink}
         >
-          <span>{shortName}</span>
+          <span>{displayText}</span>
         </Link>
       </div>
       <DashboardProjectAside

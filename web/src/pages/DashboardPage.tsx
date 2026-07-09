@@ -13,12 +13,14 @@ import {
   sortProjects,
   type ProjectSortOption,
 } from '../lib/listSort'
+import { groupBreadcrumbItems } from '../lib/groupRoute'
+import { displayRepoName } from '../lib/projectInitial'
 import { DEFAULT_PAGE_SIZE, useClientPagination } from '../lib/pagination'
 import styles from './DashboardPage.module.css'
 
 export function DashboardPage() {
   const user = useEffectiveUser()
-  const { projects, isLoading, error } = useAllProjects()
+  const { projects, groups, isLoading, error } = useAllProjects()
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<ProjectSortOption>('updated_desc')
 
@@ -122,16 +124,27 @@ export function DashboardPage() {
           <>
             <ul className={listStyles.list}>
               {pageProjects.map((project) => (
+                (() => {
+                  const groupLabels = groupBreadcrumbItems(project.orgSlug, groups)
+                    .slice(1)
+                    .map((item) => item.label)
+                  const displayLabel = [...groupLabels, displayRepoName(project.name, project.slug)].join('/')
+
+                  return (
                 <ProjectListRow
                   key={project.id}
                   orgSlug={project.orgSlug}
+                  orgName={project.orgName}
                   slug={project.slug}
                   name={project.name}
                   updatedAt={project.updated_at}
                   lastCommitAt={project.last_commit_at}
                   stats={getStats(project)}
                   statsLoading={statsLoading}
+                  displayLabel={displayLabel}
                 />
+                  )
+                })()
               ))}
             </ul>
 

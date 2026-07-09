@@ -49,5 +49,5 @@ export function useAllProjects() {
 
   const error = groupsError ?? repoQueries.find((query) => query.error)?.error ?? null
 
-  return { projects, isLoading, error }
+  return { projects, groups, isLoading, error }
 }
