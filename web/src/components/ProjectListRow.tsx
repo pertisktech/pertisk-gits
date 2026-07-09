@@ -40,12 +40,8 @@ export function ProjectListRow({
           to={`/groups/${orgSlug}/projects/${slug}`}
           className={styles.pathLink}
         >
-          <span className={styles.pathGroup}>{orgSlug}</span>
-          <span className={styles.pathSep}>/</span>
           <span>{shortName}</span>
         </Link>
-        <div className="text-xs text-text-secondary mt-0.5">Repository path</div>
-        <div className="text-xs text-muted font-mono">{orgSlug}/{slug}</div>
       </div>
       <DashboardProjectAside
         orgSlug={orgSlug}
