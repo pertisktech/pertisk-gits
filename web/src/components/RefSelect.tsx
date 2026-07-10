@@ -31,6 +31,8 @@ export function RefSelect({
   tags,
   fallbackRef,
   onChange,
+  alwaysMenu,
+  placeholder,
   disabled,
   className,
   id,
@@ -42,13 +44,15 @@ export function RefSelect({
   tags: string[]
   fallbackRef: string
   onChange: (kind: 'branch' | 'tag', name: string) => void
+  alwaysMenu?: boolean
+  placeholder?: string
   disabled?: boolean
   className?: string
   id?: string
   'aria-label'?: string
 }) {
   const branchList = branches.length > 0 ? branches : [fallbackRef]
-  const searchable = branchList.length + tags.length > REF_SEARCH_THRESHOLD
+  const searchable = Boolean(alwaysMenu) || branchList.length + tags.length > REF_SEARCH_THRESHOLD
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -72,6 +76,7 @@ export function RefSelect({
   const hasSelected =
     (refKind === 'branch' && branchList.includes(refName)) ||
     (refKind === 'tag' && tags.includes(refName))
+  const triggerLabel = hasSelected ? refName : (placeholder ?? refName)
   const nativeValue = hasSelected
     ? encodeRef(refKind, refName)
     : refKind === 'tag' && tags.length > 0
@@ -151,7 +156,7 @@ export function RefSelect({
     function onDocumentClick(event: MouseEvent) {
       const target = event.target as Node
       if (wrapRef.current?.contains(target)) return
-      if (document.getElementById('ref-select-menu-portal')?.contains(target)) return
+      if (menuRef.current?.contains(target)) return
       setOpen(false)
       setQuery('')
     }
@@ -223,7 +228,6 @@ export function RefSelect({
   const menu = open
     ? createPortal(
         <div
-          id="ref-select-menu-portal"
           ref={menuRef}
           className="app-ref-select-menu app-ref-select-menu--portal"
           style={menuStyle}
@@ -315,7 +319,7 @@ export function RefSelect({
         onClick={toggleOpen}
       >
         <KindIcon size={14} className="shrink-0 text-primary" aria-hidden />
-        <span className="app-ref-select-trigger-label">{refName}</span>
+        <span className="app-ref-select-trigger-label">{triggerLabel}</span>
         <ChevronDown size={14} className="shrink-0 text-muted" aria-hidden />
       </button>
       {menu}

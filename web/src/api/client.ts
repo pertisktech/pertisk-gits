@@ -15,6 +15,7 @@ import type {
   RegistrationInfo,
   CommitDetail,
   CommitInfo,
+  CompareResult,
   CommitStatus,
   IssueCommentDetail,
   IssueDetail,
@@ -813,6 +814,52 @@ export const api = {
       {},
       token,
     ),
+
+  getRepoCompare: (
+    orgSlug: string,
+    repoSlug: string,
+    params: {
+      base: string
+      head: string
+      base_kind?: 'branch' | 'tag' | 'revision'
+      head_kind?: 'branch' | 'tag' | 'revision'
+    },
+    token?: string | null,
+  ) => {
+    const search = new URLSearchParams({
+      base: params.base,
+      head: params.head,
+    })
+    if (params.base_kind) search.set('base_kind', params.base_kind)
+    if (params.head_kind) search.set('head_kind', params.head_kind)
+    const path = `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/compare?${search}`
+    return authFetch(path, {}, token).then(async (response) => {
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        const message = typeof body.error === 'string' ? body.error : 'Request failed'
+        if (response.status === 404) {
+          const lower = message.toLowerCase()
+          const likelyDomain404 =
+            lower.includes('not found')
+            || lower.includes('unknown')
+            || lower.includes('bad revision')
+            || lower.includes('branch')
+            || lower.includes('tag')
+            || lower.includes('revision')
+            || lower.includes('reference')
+            || lower.includes('repository')
+
+          if (!likelyDomain404) {
+            throw new Error(
+              'Compare API is not available on this server yet. Please restart/update pertisk-api to a build that includes /repositories/{repo_slug}/compare.',
+            )
+          }
+        }
+        throw new Error(message)
+      }
+      return body as CompareResult
+    })
+  },
 
   listLabels: (orgSlug: string, repoSlug: string, token?: string | null) =>
     request<Label[]>(`/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/labels`, {}, token),

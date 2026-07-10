@@ -1,5 +1,6 @@
 export type ProjectTab =
   | 'code'
+  | 'compare'
   | 'issues'
   | 'pulls'
   | 'commits'
@@ -78,7 +79,9 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
   const basePath = `/groups/${orgSlug}/projects/${projectSlug}`
 
   let tab: ProjectTab = 'code'
-  if (rest.startsWith('issues')) {
+  if (rest === 'compare') {
+    tab = 'compare'
+  } else if (rest.startsWith('issues')) {
     tab = 'issues'
   } else if (rest.startsWith('pulls')) {
     tab = 'pulls'
@@ -99,6 +102,7 @@ export function parseProjectRoute(pathname: string, searchParams: URLSearchParam
   } else if (!rest) {
     const requested = searchParams.get('tab')
     if (
+      requested === 'compare' ||
       requested === 'issues' ||
       requested === 'pulls' ||
       requested === 'commits' ||

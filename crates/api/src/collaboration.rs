@@ -24,6 +24,10 @@ use crate::{
 pub fn collaboration_read_routes() -> Router<AppState> {
     Router::new()
         .route(
+            "/organizations/{org_path}/repositories/{repo_slug}/compare",
+            get(get_repository_compare),
+        )
+        .route(
             "/organizations/{org_path}/repositories/{repo_slug}/labels",
             get(list_labels),
         )
@@ -175,6 +179,37 @@ struct IssueListQuery {
 #[derive(Deserialize)]
 struct PullRequestListQuery {
     state: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct CompareRefsQuery {
+    base: String,
+    head: String,
+    base_kind: Option<String>,
+    head_kind: Option<String>,
+}
+
+fn normalize_compare_ref(raw: &str, kind: Option<&str>) -> Result<String, ApiError> {
+    let name = raw.trim();
+    if name.is_empty() {
+        return Err(DomainError::Validation("compare ref is required".into()).into());
+    }
+
+    let normalized = match kind {
+        Some("branch") => format!("refs/heads/{name}"),
+        Some("tag") => format!("refs/tags/{name}"),
+        Some("revision") | None => name.to_string(),
+        Some(other) => {
+            return Err(
+                DomainError::Validation(format!(
+                    "invalid compare ref kind '{other}' (use branch, tag, or revision)"
+                ))
+                .into(),
+            )
+        }
+    };
+
+    Ok(normalized)
 }
 
 async fn load_repo_db(
@@ -908,6 +943,26 @@ async fn get_pull_request_compare(
     let pull = get_pull_by_number(&state.pool, repo.id, pull_number).await?;
 
     let compare = explorer::compare_branches(&repo_path, &pull.target_branch, &pull.source_branch)
+        .await
+        .map_err(map_explorer_error)?;
+
+    Ok(Json(compare))
+}
+
+async fn get_repository_compare(
+    State(state): State<AppState>,
+    OptionalAuth(auth): OptionalAuth,
+    Path((org_path, repo_slug)): Path<(String, String)>,
+    Query(query): Query<CompareRefsQuery>,
+) -> Result<Json<CompareResult>, ApiError> {
+    let (_, repo_path) =
+        load_repo_db(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, auth.as_ref())
+            .await?;
+
+    let base_ref = normalize_compare_ref(&query.base, query.base_kind.as_deref())?;
+    let head_ref = normalize_compare_ref(&query.head, query.head_kind.as_deref())?;
+
+    let compare = explorer::compare_refs(&repo_path, &base_ref, &head_ref)
         .await
         .map_err(map_explorer_error)?;
 

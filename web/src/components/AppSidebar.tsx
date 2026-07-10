@@ -6,6 +6,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Code2,
+  GitCompare,
   CircleDot,
   Download,
   FolderGit2,
@@ -61,6 +62,7 @@ const projectNavItems: {
   icon: LucideIcon
 }[] = [
   { id: 'code', label: 'Code', icon: Code2 },
+  { id: 'compare', label: 'Compare', icon: GitCompare },
   { id: 'issues', label: 'Issues', icon: CircleDot },
   { id: 'pulls', label: 'Pull requests', icon: GitPullRequest },
   { id: 'commits', label: 'Commits', icon: GitCommit },

@@ -1041,37 +1041,41 @@ pub struct CompareResult {
     pub mergeable: bool,
 }
 
-pub async fn compare_branches(
+pub async fn compare_refs(
     repo_path: &Path,
-    base_branch: &str,
-    head_branch: &str,
+    base_ref: &str,
+    head_ref: &str,
 ) -> anyhow::Result<CompareResult> {
-    if !ref_exists(repo_path, base_branch).await? {
-        anyhow::bail!("branch '{base_branch}' not found");
+    let base_ref = base_ref.trim();
+    let head_ref = head_ref.trim();
+
+    if base_ref.is_empty() {
+        anyhow::bail!("base ref is required");
     }
-    if !ref_exists(repo_path, head_branch).await? {
-        anyhow::bail!("branch '{head_branch}' not found");
+    if head_ref.is_empty() {
+        anyhow::bail!("head ref is required");
     }
 
-    let base_ref = format!("refs/heads/{base_branch}");
-    let head_ref = format!("refs/heads/{head_branch}");
+    let base_commit = resolve_commit_target(repo_path, base_ref).await?;
+    let head_commit = resolve_commit_target(repo_path, head_ref).await?;
 
-    let merge_base = git(
-        repo_path,
-        &["merge-base", &base_ref, &head_ref],
-    )
-    .await?;
+    let merge_base = git(repo_path, &["merge-base", &base_commit, &head_commit]).await?;
 
     let diff = git(
         repo_path,
-        &["diff", "--patch", "--no-color", &format!("{merge_base}...{head_ref}")],
+        &[
+            "diff",
+            "--patch",
+            "--no-color",
+            &format!("{merge_base}...{head_commit}"),
+        ],
     )
     .await
     .unwrap_or_default();
 
     let shortstat = git(
         repo_path,
-        &["diff", "--shortstat", &format!("{merge_base}...{head_ref}")],
+        &["diff", "--shortstat", &format!("{merge_base}...{head_commit}")],
     )
     .await
     .unwrap_or_default();
@@ -1081,7 +1085,7 @@ pub async fn compare_branches(
         repo_path,
         &[
             "log",
-            &format!("{merge_base}..{head_ref}"),
+            &format!("{merge_base}..{head_commit}"),
             "--format=%H%x1f%an%x1f%ae%x1f%at%x1f%s",
         ],
     )
@@ -1108,11 +1112,11 @@ pub async fn compare_branches(
         })
         .collect();
 
-    let mergeable = is_mergeable_write_tree(repo_path, &base_ref, &head_ref).await?;
+    let mergeable = is_mergeable_write_tree(repo_path, &base_commit, &head_commit).await?;
 
     Ok(CompareResult {
-        base: base_branch.to_string(),
-        head: head_branch.to_string(),
+        base: base_ref.to_string(),
+        head: head_ref.to_string(),
         merge_base,
         diff,
         commits,
@@ -1121,6 +1125,27 @@ pub async fn compare_branches(
         deletions,
         mergeable,
     })
+}
+
+pub async fn compare_branches(
+    repo_path: &Path,
+    base_branch: &str,
+    head_branch: &str,
+) -> anyhow::Result<CompareResult> {
+    if !ref_exists(repo_path, base_branch).await? {
+        anyhow::bail!("branch '{base_branch}' not found");
+    }
+    if !ref_exists(repo_path, head_branch).await? {
+        anyhow::bail!("branch '{head_branch}' not found");
+    }
+
+    let base_ref = format!("refs/heads/{base_branch}");
+    let head_ref = format!("refs/heads/{head_branch}");
+
+    let mut result = compare_refs(repo_path, &base_ref, &head_ref).await?;
+    result.base = base_branch.to_string();
+    result.head = head_branch.to_string();
+    Ok(result)
 }
 
 pub async fn merge_branches(

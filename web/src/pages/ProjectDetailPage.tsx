@@ -14,6 +14,7 @@ import { RepoPullRequests } from '../components/RepoPullRequests'
 import { RepoPipelines } from '../components/RepoPipelines'
 import { RepoWiki } from '../components/RepoWiki'
 import { RepoHeader } from '../components/RepoHeader'
+import { RepoCompare } from '../components/RepoCompare'
 import { RegistryPage } from './RegistryPage'
 import { RepoSettings } from '../components/RepoSettings'
 import { Breadcrumbs } from '../components/ui'
@@ -66,6 +67,7 @@ export function ProjectDetailPage() {
     }
 
     const legacyTabs: ProjectTab[] = [
+      'compare',
       'issues',
       'pulls',
       'commits',
@@ -147,6 +149,15 @@ export function ProjectDetailPage() {
               cloneUrlSsh={cloneUrlSsh}
               isPrivate={project.visibility === 'private'}
             />
+        )}
+
+        {tab === 'compare' && (
+          <RepoCompare
+            token={token}
+            orgSlug={orgSlug}
+            repoSlug={projectSlug}
+            defaultBranch={project.default_branch}
+          />
         )}
 
         {tab === 'issues' && (
