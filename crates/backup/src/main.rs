@@ -285,12 +285,36 @@ fn is_falsey(value: Option<&str>) -> bool {
     matches!(value.map(|v| v.to_lowercase()), Some(v) if v == "0" || v == "false" || v == "no")
 }
 
+fn sanitize_backup_id_token(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+}
+
+fn normalize_version_input(value: &str) -> String {
+    value.trim().trim_start_matches(['v', 'V']).to_string()
+}
+
 fn backup_id_now() -> String {
     let now = Utc::now();
     let app_ver = std::env::var("PERTISK_VERSION")
         .or_else(|_| std::env::var("APP_VERSION"))
-        .unwrap_or_else(|_| now.format("%H%M%S").to_string())
-        .replace(' ', "_");
+        .map(|value| normalize_version_input(&value))
+        .unwrap_or_else(|_| env!("PERTISK_APP_VERSION").to_string());
+    let app_ver = sanitize_backup_id_token(&app_ver);
+    let app_ver = if app_ver.trim_matches('_').is_empty() {
+        env!("PERTISK_APP_VERSION").to_string()
+    } else {
+        app_ver
+    };
     format!("{}_{}_{}", now.timestamp(), now.format("%Y_%m_%d"), app_ver)
 }
 
