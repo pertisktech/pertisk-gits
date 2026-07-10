@@ -196,6 +196,8 @@ export function RepoPipelines({
     },
   })
 
+  const runningRuns = useMemo(() => runs.filter((run) => isRunInProgress(run)), [runs])
+
   const triggerPipelineRun = async ({ refKind, refName, environment }: RunPipelineParams) => {
     const commits = await api.getRepoCommits(
       orgSlug,
@@ -376,8 +378,13 @@ jobs:
             <h2 className="text-base font-semibold text-text">Workflow runs</h2>
             <p className="text-sm text-text-secondary mt-0.5">
               CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
-              {!contentLoading && runs.length > 0 && (
-                <span className="text-muted"> · {runs.length} run{runs.length === 1 ? '' : 's'}</span>
+              {!contentLoading && (
+                <span className="text-muted">
+                  {' '}
+                  · {runs.length} run{runs.length === 1 ? '' : 's'}
+                  {' '}
+                  ({runningRuns.length} running)
+                </span>
               )}
             </p>
           </div>

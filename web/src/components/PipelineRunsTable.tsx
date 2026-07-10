@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import type { PipelineRun } from '../api/types'
-import { formatRelativeTime, parseIsoTimestamp } from '../lib/relativeTime'
+import { formatRelativeTimeFromIso } from '../lib/relativeTime'
 import { filterRunJobsForList, filterRunJobsForManualDeploy } from '../lib/pipelineSummary'
 import {
   canRerunFailed,
@@ -11,6 +12,7 @@ import {
   formatRunDuration,
   formatPipelineIid,
   blocksPipelineRerun,
+  isRunInProgress,
   refLabel,
   shortSha,
   type RerunScope,
@@ -27,6 +29,7 @@ export function PipelineRunsTable({
   onOpenRun,
   onRerun,
   rerunningRunId,
+  emptyMessage,
 }: {
   runs: PipelineRun[]
   orgSlug: string
@@ -34,6 +37,7 @@ export function PipelineRunsTable({
   onOpenRun: (runId: string) => void
   onRerun?: (runId: string, scope: RerunScope) => void
   rerunningRunId?: string | null
+  emptyMessage?: string
 }) {
   const {
     items: pageRuns,
@@ -42,12 +46,27 @@ export function PipelineRunsTable({
     pageSize,
     total,
   } = useClientPagination(runs)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const hasInProgressRuns = runs.some((run) => isRunInProgress(run))
+
+  useEffect(() => {
+    if (!hasInProgressRuns) return
+    const timer = window.setInterval(() => {
+      setNowMs(Date.now())
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [hasInProgressRuns])
 
   if (runs.length === 0) {
     return (
       <div className="gha-runs-empty">
-        No workflow runs yet. Add <code className="font-mono text-xs">.pertisk-ci.yaml</code> and
-        push to start a pipeline.
+        {emptyMessage ?? (
+          <>
+            No workflow runs yet. Add{' '}
+            <code className="font-mono text-xs">.pertisk-ci.yaml</code> and push to start a
+            pipeline.
+          </>
+        )}
       </div>
     )
   }
@@ -64,6 +83,7 @@ export function PipelineRunsTable({
             onOpen={() => onOpenRun(run.id)}
             onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
             rerunLoading={rerunningRunId === run.id}
+            nowMs={nowMs}
           />
         ))}
       </div>
@@ -87,6 +107,7 @@ function PipelineRunRow({
   onOpen,
   onRerun,
   rerunLoading,
+  nowMs,
 }: {
   run: PipelineRun
   orgSlug: string
@@ -94,15 +115,24 @@ function PipelineRunRow({
   onOpen: () => void
   onRerun?: (scope: RerunScope) => void
   rerunLoading?: boolean
+  nowMs: number
 }) {
   const status = displayRunStatusIcon(run)
+  const inProgress = isRunInProgress(run)
   const visibleJobs =
     run.event_type === 'manual' && run.target_environment
       ? filterRunJobsForManualDeploy(run)
       : filterRunJobsForList(run)
   const summary = failureSummary(visibleJobs)
-  const startedAt = run.started_at ?? run.created_at
-  const relative = formatRelativeTime(parseIsoTimestamp(startedAt))
+  const timeReference = run.finished_at ?? run.started_at ?? run.created_at
+  const relative = formatRelativeTimeFromIso(timeReference)
+  let relativeLabel = relative
+  if (run.finished_at) {
+    relativeLabel = `finished ${relative}`
+  } else if (inProgress) {
+    relativeLabel = `started ${relative}`
+  }
+  const durationLabel = formatRunDuration(run, nowMs)
 
   return (
     <div className="gha-run-row-wrap">
@@ -154,8 +184,8 @@ function PipelineRunRow({
           </div>
         </div>
         <div className="gha-run-row-meta">
-          <span>{formatRunDuration(run)}</span>
-          <span>{relative}</span>
+          <span>{durationLabel}</span>
+          <span>{relativeLabel}</span>
         </div>
       </button>
       {onRerun && (

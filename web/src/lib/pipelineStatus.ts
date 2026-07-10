@@ -186,12 +186,13 @@ export function refLabel(refName: string) {
   return refName.replace(/^refs\/heads\//, '').replace(/^refs\/tags\//, 'tag:')
 }
 
-export function formatRunDuration(run: PipelineRun): string {
+export function formatRunDuration(run: PipelineRun, nowMs?: number): string {
   const startMs = new Date(run.started_at ?? run.created_at).getTime()
-  const endMs = run.finished_at ? new Date(run.finished_at).getTime() : Date.now()
-  if (!run.finished_at && isRunInProgress(run)) return '…'
+  const inProgress = !run.finished_at && isRunInProgress(run)
+  const endMs = run.finished_at ? new Date(run.finished_at).getTime() : (nowMs ?? Date.now())
 
   const ms = Math.max(0, endMs - startMs)
+  if (inProgress && ms < 1000) return '0s'
   if (ms < 1000) return `${ms}ms`
   if (ms < 60_000) return `${Math.round(ms / 1000)}s`
   const minutes = Math.floor(ms / 60_000)
