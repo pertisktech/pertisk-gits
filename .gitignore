@@ -33,3 +33,4 @@ preremove.sh
 deploy/certs/
 pertisk-backup-linux-amd64
 pertisk-backup-linux-arm64
+data/search

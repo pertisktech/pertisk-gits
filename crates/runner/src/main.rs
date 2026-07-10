@@ -12,7 +12,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use anyhow::Context;
 use clap::{Parser, Subcommand};
 use pertisk_cicd::{bench_noop_steps, ShellExecutor};
 use tempfile::TempDir;
@@ -103,10 +102,12 @@ async fn run_bench(iterations: u32) -> anyhow::Result<()> {
 }
 
 async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
-    let token = cli
-        .token
-        .clone()
-        .context("set PERTISK_RUNNER_TOKEN or pass --token")?;
+    let Some(token) = cli.token.clone() else {
+        tracing::warn!(
+            "runner token not configured (set PERTISK_RUNNER_TOKEN); runner will stay idle to avoid restart loops"
+        );
+        return hold_until_shutdown().await;
+    };
     let api = RunnerApi::new(&cli.api_url, token);
     let max_parallel = cli.max_parallel.max(1);
     let job_slots = Arc::new(Semaphore::new(max_parallel));
@@ -146,12 +147,16 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
             Err(err) if err.to_string().contains("unauthorized") => {
                 drop(permit);
                 tracing::error!(
-                    "invalid runner token (401 Unauthorized); runner registration is revoked or deleted, shutting down"
+                    "invalid runner token (401 Unauthorized); runner registration is revoked or deleted; runner will stay idle to avoid restart loops"
                 );
-                shutdown = true;
+                return hold_until_shutdown().await;
+            }
+            Err(err) => {
+                drop(permit);
+                tracing::warn!("poll job failed (will retry): {err:#}");
+                tokio::time::sleep(Duration::from_secs(3)).await;
                 continue;
             }
-            Err(err) => return Err(err),
         };
 
         let Some(job) = poll else {
@@ -208,6 +213,19 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
         tracing::warn!("deregister instance failed: {err:#}");
     }
     tracing::info!(host = %host.host_name, "runner shutting down");
+    Ok(())
+}
+
+async fn hold_until_shutdown() -> anyhow::Result<()> {
+    loop {
+        tokio::select! {
+            _ = wait_shutdown_signal() => break,
+            _ = tokio::time::sleep(Duration::from_secs(60)) => {
+                tracing::warn!("runner is idle (missing/invalid token); update configuration and restart service");
+            }
+        }
+    }
+    tracing::info!("runner shutting down");
     Ok(())
 }
 

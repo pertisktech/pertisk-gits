@@ -3687,6 +3687,37 @@ select.app-field:disabled,
   line-height: 1.5;
 }
 
+.ci-log-viewer-shell {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.ci-log-follow-button {
+  position: absolute;
+  right: 1rem;
+  bottom: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 32%, var(--color-border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  color: var(--color-primary);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.16);
+  backdrop-filter: blur(6px);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 1;
+}
+
+.ci-log-follow-button:hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
+}
+
 .ci-log-row {
   display: flex;
   align-items: flex-start;

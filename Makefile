@@ -242,17 +242,18 @@ dev-stop:
 	@echo "Stopped dev processes (if any were running)."
 
 DEV_PREFIX = build/dev-prefix-log.sh
+DEV_API_WATCH_IGNORES = -i web -i data -i target -i release -i pkg-pertisk-gits -i pkg-pertisk-runner
 
 # Single-port dev: API serves web/dist. Default DB: DEV_DATABASE_URL (remote).
 # Local Postgres: make dev DEV_USE_LOCAL_DB=1
 dev: web-dist dev-stop dev-infra
 	chmod +x $(DEV_PREFIX)
-	$(DEV_EXPORT_ENV) $(CARGO) watch -i web -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api
+	$(DEV_EXPORT_ENV) $(CARGO) watch $(DEV_API_WATCH_IGNORES) -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api
 
 # Hot-reload UI on :5173, API on DEV_API_PORT (Vite proxies /api/v1).
 dev-vite: web-dist dev-stop dev-infra
 	chmod +x $(DEV_PREFIX)
-	$(DEV_EXPORT_ENV) $(CARGO) watch -i web -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api & \
+	$(DEV_EXPORT_ENV) $(CARGO) watch $(DEV_API_WATCH_IGNORES) -x 'run -p pertisk-api' 2>&1 | $(DEV_PREFIX) api & \
 	(cd web && $(RUN_AS_USER)npm run dev 2>&1 | $(DEV_PREFIX) vite) & \
 	wait
 
