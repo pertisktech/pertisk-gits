@@ -3693,10 +3693,15 @@ select.app-field:disabled,
   min-height: 0;
 }
 
+.ci-log-follow-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.5rem 1rem 0.8rem;
+  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+}
+
 .ci-log-follow-button {
-  position: absolute;
-  right: 1rem;
-  bottom: 0.9rem;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
@@ -3711,7 +3716,6 @@ select.app-field:disabled,
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
-  z-index: 1;
 }
 
 .ci-log-follow-button:hover {
@@ -3741,6 +3745,14 @@ select.app-field:disabled,
   padding-right: 1rem;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.ci-log-bottom-spacer {
+  height: 1rem;
+}
+
+.ci-log-bottom-spacer--with-jump {
+  height: 2.5rem;
 }
 
 .ci-log-line {

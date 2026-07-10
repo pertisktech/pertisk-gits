@@ -146,7 +146,7 @@ export function PipelineRunDetailPage() {
   }, [activeJob, run, activeStepKey])
 
   useEffect(() => {
-    if (!activeJob || !run || userPinnedStep.current) return
+    if (!activeJob || !run) return
     if (displayJobStatus(activeJob, run.status) !== 'running') return
     const running = inferRunningStepName(activeJob, run.status)
     if (running && running !== activeStepKey) {
@@ -470,7 +470,6 @@ export function PipelineRunDetailPage() {
                 title={activeStep ? stepLogTitle(activeStep, activeJob.job_name) : activeJob.job_name}
                 subtitle={activeStep ? stepLogSubtitle(activeStep) : undefined}
                 viewerKey={`${activeJob.id}-${jobLogSession}-${activeStepKey ?? ''}`}
-                followOutput={activeJobDisplayStatus === 'running'}
                 actions={
                   canCancelStep ? (
                     <SecondaryButton
