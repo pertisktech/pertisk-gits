@@ -90,26 +90,28 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
 
   return (
     <div className="space-y-4">
-      <div className="app-segment-bar">
-        <div className="app-segment">
+      <div className="repo-list-header">
+        <div className="repo-list-header-segment">
           {(['open', 'closed', 'all'] as const).map((state) => (
             <button
               key={state}
               type="button"
-              className={`app-segment-tab ${stateFilter === state ? 'active' : ''}`}
+              className={`repo-list-tab ${stateFilter === state ? 'active' : ''}`}
               onClick={() => setStateFilter(state)}
             >
               {state === 'open' && `${data?.open_count ?? 0} Open`}
-              {state === 'closed' && `${(data?.closed_count ?? 0)} Closed`}
+              {state === 'closed' && `${data?.closed_count ?? 0} Closed`}
               {state === 'all' && 'All'}
             </button>
           ))}
         </div>
         {token && (
-          <PrimaryButton type="button" onClick={() => setShowNew((v) => !v)}>
-            <Plus size={14} />
-            New pull request
-          </PrimaryButton>
+          <div className="repo-list-header-actions">
+            <PrimaryButton type="button" className="whitespace-nowrap" onClick={() => setShowNew((v) => !v)}>
+              <Plus size={14} />
+              New pull request
+            </PrimaryButton>
+          </div>
         )}
       </div>
 

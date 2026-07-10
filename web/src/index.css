@@ -1272,6 +1272,110 @@ body,
   font-weight: 600;
 }
 
+.repo-list-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  margin-bottom: 1rem;
+}
+
+.repo-list-header-segment {
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  border-bottom: none;
+}
+
+.repo-list-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  margin-left: auto;
+  min-width: 0;
+}
+
+.repo-list-tab {
+  padding: 0.65rem 1rem;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.repo-list-tab:hover {
+  color: var(--color-text);
+}
+
+.repo-list-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+  font-weight: 600;
+}
+
+.repo-list-header-actions .app-field--inline {
+  flex: 0 1 auto;
+  max-width: min(16rem, 45vw);
+}
+
+.repo-list-header-actions button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Defensive fix for older Issues/PR header markup still using AppSegment. */
+.app-segment-bar:has(.app-field--inline) {
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.app-segment-bar:has(.app-field--inline) .app-segment-bar-action {
+  border-bottom: none;
+  padding-bottom: 0;
+  align-items: flex-start;
+}
+
+.app-segment-bar:has(.app-field--inline) .app-segment-bar-action--end {
+  margin-left: 0.5rem;
+}
+
+.app-segment-bar:has(.app-field--inline) > .app-segment {
+  border-bottom: none;
+}
+
+.app-segment-bar:has(.app-field--inline) > .app-segment + :not(.app-segment-bar-action) {
+  margin-left: 0.5rem;
+  margin-bottom: 0;
+  align-self: flex-start;
+}
+
+@media (max-width: 900px) {
+  .repo-list-header {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .repo-list-header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
 .app-panel {
   background: var(--color-naturals-n2);
   border: 1px solid var(--color-naturals-n4);

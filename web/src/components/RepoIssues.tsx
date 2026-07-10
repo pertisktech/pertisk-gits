@@ -112,13 +112,13 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="app-segment inline-flex !mb-0 !border-b-0">
+      <div className="repo-list-header">
+        <div className="repo-list-header-segment">
           {(['open', 'closed', 'all'] as const).map((state) => (
             <button
               key={state}
               type="button"
-              className={`app-segment-tab ${stateFilter === state ? 'active' : ''}`}
+              className={`repo-list-tab ${stateFilter === state ? 'active' : ''}`}
               onClick={() => setStateFilter(state)}
             >
               {state === 'open' && `${data?.open_count ?? 0} Open`}
@@ -127,19 +127,21 @@ export function RepoIssues({ token, orgSlug, repoSlug }: RepoIssuesProps) {
             </button>
           ))}
         </div>
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search issues…"
-          className="app-field max-w-xs !py-1.5 !text-sm"
-        />
-        {token && (
-          <PrimaryButton type="button" className="ml-auto" onClick={() => setShowNew((v) => !v)}>
-            <Plus size={14} />
-            New issue
-          </PrimaryButton>
-        )}
+        <div className="repo-list-header-actions">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search issues…"
+            className="app-field app-field--inline w-56 sm:w-64 !py-1.5 !text-sm"
+          />
+          {token && (
+            <PrimaryButton type="button" className="whitespace-nowrap" onClick={() => setShowNew((v) => !v)}>
+              <Plus size={14} />
+              New issue
+            </PrimaryButton>
+          )}
+        </div>
       </div>
 
       {token && (
