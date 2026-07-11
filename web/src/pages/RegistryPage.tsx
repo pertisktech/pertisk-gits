@@ -2,8 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle2, ChevronDown, DatabaseZap, GitBranch, Loader2, Package, Trash2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { api } from '../api/client'
-import type { ContainerImageSummary } from '../api/types'
+import { ApiRequestError, api } from '../api/client'
+import type { ContainerImageDetail, ContainerImageSummary } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { CopyField } from '../components/RepoClonePushGuide'
 import { useProjectParams } from '../hooks/useProjectParams'
@@ -26,9 +26,20 @@ function shortDigest(digest: string): string {
   return digest.length > 19 ? `${digest.slice(0, 19)}…` : digest
 }
 
+function trimSlashes(value: string): string {
+  let result = value
+  while (result.startsWith('/')) {
+    result = result.slice(1)
+  }
+  while (result.endsWith('/')) {
+    result = result.slice(0, -1)
+  }
+  return result
+}
+
 function buildRegistryImagePath(orgPath: string, repoSlug: string, imageName?: string | null): string {
   const base = `${orgPath}/${repoSlug}`
-  const raw = (imageName ?? '').trim().replace(/^\/+|\/+$/g, '')
+  const raw = trimSlashes((imageName ?? '').trim())
   if (!raw) return base
   if (raw === repoSlug) return base
   if (raw === base) return base
@@ -46,8 +57,11 @@ export function RegistryPage() {
   const [gcMessage, setGcMessage] = useState<string | null>(null)
   const [commandsOpen, setCommandsOpen] = useState(false)
   const [selectedImage, setSelectedImage] = useState<string | null>(imageName)
+  const [selectedProvider, setSelectedProvider] = useState<string | null>(null)
   const [pendingDelete, setPendingDelete] = useState<
-    { kind: 'image'; imageName: string } | { kind: 'tag'; imageName: string; tagName: string } | null
+    { kind: 'image'; imageName: string; provider?: string }
+    | { kind: 'tag'; imageName: string; tagName: string; provider?: string }
+    | null
   >(null)
   const commandsRef = useRef<HTMLDivElement>(null)
   const registryHost = typeof window !== 'undefined' ? window.location.host : 'registry.local'
@@ -73,29 +87,61 @@ export function RegistryPage() {
     total: imageTotal,
   } = useClientPagination(images)
 
-  const { data: detail, isLoading: detailLoading } = useQuery({
-    queryKey: ['registry-image', orgPath, repoSlug, selectedImage],
-    queryFn: () => api.getContainerImage(token!, orgPath, repoSlug, selectedImage!),
+  const { data: detail, isLoading: detailLoading, error: detailError } = useQuery({
+    queryKey: ['registry-image', orgPath, repoSlug, selectedImage, selectedProvider],
+    queryFn: () =>
+      api.getContainerImage(
+        token!,
+        orgPath,
+        repoSlug,
+        selectedImage!,
+        selectedProvider ?? undefined,
+      ),
     enabled: Boolean(token && orgPath && repoSlug && selectedImage),
+    retry: (failureCount, err) => {
+      if (err instanceof ApiRequestError && err.status === 404) {
+        return false
+      }
+      return failureCount < 3
+    },
   })
 
   const deleteImage = useMutation({
-    mutationFn: (name: string) => api.deleteContainerImage(token!, orgPath, repoSlug, name),
-    onSuccess: (_value, name) => {
+    mutationFn: (payload: { imageName: string; provider?: string }) =>
+      api.deleteContainerImage(
+        token!,
+        orgPath,
+        repoSlug,
+        payload.imageName,
+        payload.provider,
+      ),
+    onSuccess: (_value, payload) => {
       queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath, repoSlug] })
+      queryClient.removeQueries({ queryKey: ['registry-image', orgPath, repoSlug, payload.imageName] })
       setError(null)
-      if (selectedImage === name) {
+      if (selectedImage === payload.imageName) {
         setSelectedImage(null)
+        setSelectedProvider(null)
       }
     },
     onError: (err: Error) => setError(err.message),
   })
 
   const deleteTag = useMutation({
-    mutationFn: (payload: { imageName: string; tag: string }) =>
-      api.deleteContainerTag(token!, orgPath, repoSlug, payload.imageName, payload.tag),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, repoSlug, selectedImage] })
+    mutationFn: (payload: { imageName: string; tag: string; provider?: string }) =>
+      api.deleteContainerTag(token!, orgPath, repoSlug, payload.imageName, payload.tag, payload.provider),
+    onSuccess: (_value, payload) => {
+      queryClient.setQueryData<ContainerImageDetail | undefined>(
+        ['registry-image', orgPath, repoSlug, payload.imageName, payload.provider ?? null],
+        (current) =>
+          current
+            ? {
+                ...current,
+                tags: current.tags.filter((t) => t.name !== payload.tag),
+              }
+            : current,
+      )
+      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, repoSlug] })
       queryClient.invalidateQueries({ queryKey: ['registry-images', orgPath, repoSlug] })
       setError(null)
     },
@@ -115,9 +161,16 @@ export function RegistryPage() {
 
   const updateImage = useMutation({
     mutationFn: (payload: { description?: string }) =>
-      api.updateContainerImage(token!, orgPath, repoSlug, selectedImage!, payload),
+      api.updateContainerImage(
+        token!,
+        orgPath,
+        repoSlug,
+        selectedImage!,
+        payload,
+        selectedProvider ?? undefined,
+      ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, repoSlug, selectedImage] })
+      queryClient.invalidateQueries({ queryKey: ['registry-image', orgPath, repoSlug] })
       setError(null)
     },
     onError: (err: Error) => setError(err.message),
@@ -140,10 +193,35 @@ export function RegistryPage() {
   }, [imageName])
 
   useEffect(() => {
-    if (!selectedImage && images.length > 0) {
+    if (selectedImage) {
+      return
+    }
+    if (images.length > 0) {
       setSelectedImage(images[0].name)
+      setSelectedProvider(images[0].provider)
     }
   }, [images, selectedImage])
+
+  useEffect(() => {
+    if (!selectedImage || selectedProvider) {
+      return
+    }
+    const match = images.find((image) => image.name === selectedImage)
+    if (match) {
+      setSelectedProvider(match.provider)
+    }
+  }, [images, selectedImage, selectedProvider])
+
+  useEffect(() => {
+    if (!(detailError instanceof ApiRequestError) || detailError.status !== 404) {
+      return
+    }
+    if (!selectedImage) {
+      return
+    }
+    setSelectedImage(null)
+    setSelectedProvider(null)
+  }, [detailError, selectedImage])
 
   return (
     <>
@@ -254,7 +332,10 @@ export function RegistryPage() {
                       <button
                         type="button"
                         className="font-mono text-sm text-primary hover:underline"
-                        onClick={() => setSelectedImage(image.name)}
+                        onClick={() => {
+                          setSelectedImage(image.name)
+                          setSelectedProvider(image.provider)
+                        }}
                       >
                         {buildRegistryImagePath(orgPath, repoSlug, image.name)}
                       </button>
@@ -282,7 +363,13 @@ export function RegistryPage() {
                         type="button"
                         className="text-dashboard-danger hover:underline text-xs"
                         disabled={deleteImage.isPending}
-                        onClick={() => setPendingDelete({ kind: 'image', imageName: image.name })}
+                        onClick={() =>
+                          setPendingDelete({
+                            kind: 'image',
+                            imageName: image.name,
+                            provider: image.provider,
+                          })
+                        }
                       >
                         Delete
                       </button>
@@ -338,7 +425,7 @@ export function RegistryPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium text-text">Image Path</label>
+                    <div className="text-sm font-medium text-text">Image Path</div>
                     <div className="text-sm font-mono text-text-secondary">
                       {buildRegistryImagePath(orgPath, repoSlug, selectedImage)}
                     </div>
@@ -348,7 +435,13 @@ export function RegistryPage() {
                   <PrimaryButton
                     type="button"
                     disabled={deleteImage.isPending}
-                    onClick={() => setPendingDelete({ kind: 'image', imageName: selectedImage })}
+                    onClick={() =>
+                      setPendingDelete({
+                        kind: 'image',
+                        imageName: selectedImage,
+                        provider: selectedProvider ?? undefined,
+                      })
+                    }
                   >
                     <Trash2 size={14} />
                     Delete image
@@ -419,7 +512,12 @@ export function RegistryPage() {
                                 className="text-dashboard-danger hover:underline text-xs"
                                 disabled={deleteTag.isPending}
                                 onClick={() =>
-                                  setPendingDelete({ kind: 'tag', imageName: selectedImage, tagName: tag.name })
+                                  setPendingDelete({
+                                    kind: 'tag',
+                                    imageName: selectedImage,
+                                    tagName: tag.name,
+                                    provider: selectedProvider ?? undefined,
+                                  })
                                 }
                               >
                                 Delete
@@ -453,9 +551,16 @@ export function RegistryPage() {
                 type="button"
                 onClick={() => {
                   if (pendingDelete.kind === 'image') {
-                    deleteImage.mutate(pendingDelete.imageName)
+                    deleteImage.mutate({
+                      imageName: pendingDelete.imageName,
+                      provider: pendingDelete.provider,
+                    })
                   } else {
-                    deleteTag.mutate({ imageName: pendingDelete.imageName, tag: pendingDelete.tagName })
+                    deleteTag.mutate({
+                      imageName: pendingDelete.imageName,
+                      tag: pendingDelete.tagName,
+                      provider: pendingDelete.provider,
+                    })
                   }
                   setPendingDelete(null)
                 }}

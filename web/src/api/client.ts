@@ -80,6 +80,16 @@ import { handleUnauthorizedResponse } from '../auth/session'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
+export class ApiRequestError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiRequestError'
+    this.status = status
+  }
+}
+
 function triggerBrowserDownload(url: string, filename?: string) {
   const link = document.createElement('a')
   link.href = url
@@ -133,7 +143,7 @@ async function request<T>(
 
   if (!response.ok) {
     const message = typeof body.error === 'string' ? body.error : 'Request failed'
-    throw new Error(message)
+    throw new ApiRequestError(message, response.status)
   }
 
   return body as T
