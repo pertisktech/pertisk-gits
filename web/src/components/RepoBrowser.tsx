@@ -27,7 +27,7 @@ import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoEntryIcon } from './RepoEntryIcon'
 import { RepoPathBreadcrumb } from './RepoPathBreadcrumb'
 import { RepoReadme } from './RepoReadme'
-import { RepoRefHeadSummary } from './RepoRefHeadSummary'
+import { RepoRefHeadCommitRow } from './RepoRefHeadCommitRow'
 import { SecondaryButton, RefSelect, Toolbar, ToolbarActions, ToolbarButtonGroup, ToolbarCommitRow, ToolbarGroup, ToolbarIconButton, ToolbarRow } from './ui'
 import { cn } from '../utils/cn'
 
@@ -599,7 +599,14 @@ export function RepoBrowser({
 
       {headCommit && (
         <ToolbarCommitRow>
-          <RepoRefHeadSummary orgSlug={orgSlug} repoSlug={repoSlug} commit={headCommit} />
+          <RepoRefHeadCommitRow
+            orgSlug={orgSlug}
+            repoSlug={repoSlug}
+            token={token}
+            refKind={refKind}
+            activeRef={activeRef}
+            commit={headCommit}
+          />
         </ToolbarCommitRow>
       )}
     </Toolbar>

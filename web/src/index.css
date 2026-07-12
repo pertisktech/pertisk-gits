@@ -1753,6 +1753,10 @@ body,
 }
 
 .app-toolbar-commit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   padding: 0.45rem 0.85rem;
   border-top: 1px solid var(--color-naturals-n4);
   background: var(--color-naturals-n3);
@@ -1762,8 +1766,44 @@ body,
 .app-toolbar-commit-row .app-ref-head-commit {
   justify-content: flex-start;
   text-align: left;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   max-width: 100%;
+}
+
+.app-ref-head-pipeline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-shrink: 0;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--color-naturals-n4);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  font-size: var(--text-xs);
+  white-space: nowrap;
+  transition:
+    background var(--transition-fast),
+    border-color var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.app-ref-head-pipeline:hover {
+  background: var(--color-hover);
+  border-color: var(--color-naturals-n3);
+  color: var(--color-text);
+}
+
+.app-ref-head-pipeline-label {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.app-toolbar--repo .app-ref-head-pipeline .app-status-badge {
+  font-size: 0.625rem;
+  padding: 0.1rem 0.35rem;
 }
 
 .app-branch-select {
