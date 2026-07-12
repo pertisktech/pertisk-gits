@@ -86,16 +86,21 @@ fn parse_android(ua: &str) -> Option<AndroidDevice> {
         return None;
     }
 
-    let version = extract_after_token(ua, "Android ")
+    let platform = android_platform_segment(ua).unwrap_or(ua);
+
+    let version = extract_after_token(platform, "Android ")
+        .or_else(|| extract_after_token(ua, "Android "))
         .and_then(|s| s.split(';').next())
         .map(str::trim)
+        .filter(|value| !value.is_empty())
         .unwrap_or("Unknown");
 
-    let model = ua
+    let model = platform
         .split(';')
         .nth(2)
         .map(str::trim)
-        .filter(|part| !part.is_empty() && !part.starts_with("Build/"))
+        .map(|part| part.trim_end_matches(')'))
+        .filter(|part| is_plausible_android_model(part))
         .unwrap_or("Android device");
 
     let manufacturer = guess_manufacturer(model);
@@ -106,9 +111,30 @@ fn parse_android(ua: &str) -> Option<AndroidDevice> {
     };
 
     Some(AndroidDevice {
-        device_label: format!("{model} (Android{version})"),
+        device_label: format!("{model} (Android {version})"),
         device_info,
     })
+}
+
+fn android_platform_segment(ua: &str) -> Option<&str> {
+    let start = ua.find('(')?;
+    let end = ua[start..].find(')')? + start;
+    let inner = &ua[start + 1..end];
+    if inner.contains("Android") {
+        Some(inner)
+    } else {
+        None
+    }
+}
+
+fn is_plausible_android_model(part: &str) -> bool {
+    !part.is_empty()
+        && part.len() >= 2
+        && !part.starts_with("Build/")
+        && !part.contains("AppleWebKit")
+        && !part.contains("KHTML")
+        && !part.contains("like Gecko")
+        && !part.eq_ignore_ascii_case("wv")
 }
 
 struct AppleDevice {
@@ -258,8 +284,18 @@ mod tests {
         let ua = "Mozilla/5.0 (Linux; Android 16; OPD2415 Build/UKQ1.231108.001; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/138.0.7204.67 Mobile Safari/537.36";
         let parsed = parse_user_agent(Some(ua));
         assert!(parsed.device_label.contains("OPD2415"));
-        assert!(parsed.device_label.contains("Android16"));
+        assert!(parsed.device_label.contains("Android 16"));
         assert!(parsed.device_info.contains("OnePlus"));
+        assert!(parsed.is_mobile);
+    }
+
+    #[test]
+    fn parses_privacy_reduced_android_user_agent() {
+        let ua = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/150.0.0.0 Mobile Safari/537.36";
+        let parsed = parse_user_agent(Some(ua));
+        assert!(parsed.device_label.contains("Android device"));
+        assert!(parsed.device_label.contains("Android 10"));
+        assert!(!parsed.device_label.contains("AppleWebKit"));
         assert!(parsed.is_mobile);
     }
 }
