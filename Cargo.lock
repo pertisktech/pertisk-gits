@@ -4729,6 +4729,7 @@ dependencies = [
  "bytes",
  "dotenvy",
  "pingora-core",
+ "pingora-http",
  "pingora-proxy",
  "tracing",
  "tracing-subscriber",

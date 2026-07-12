@@ -202,26 +202,8 @@ fn extract_after_token<'a>(value: &'a str, token: &str) -> Option<&'a str> {
         .map(|(_, rest)| rest.split(';').next().unwrap_or(rest).trim())
 }
 
-pub fn is_private_ip(ip: &str) -> bool {
-    let ip = ip.trim();
-    ip == "::1"
-        || ip == "127.0.0.1"
-        || ip.starts_with("10.")
-        || ip.starts_with("192.168.")
-        || ip.starts_with("172.16.")
-        || ip.starts_with("172.17.")
-        || ip.starts_with("172.18.")
-        || ip.starts_with("172.19.")
-        || ip.starts_with("172.2")
-        || ip.starts_with("172.30.")
-        || ip.starts_with("172.31.")
-        || ip.starts_with("fc")
-        || ip.starts_with("fd")
-        || ip.starts_with("fe80:")
-}
-
 pub async fn lookup_ip_location(ip: &str) -> Option<String> {
-    if is_private_ip(ip) {
+    if crate::request_context::is_private_ip(ip) {
         return None;
     }
 

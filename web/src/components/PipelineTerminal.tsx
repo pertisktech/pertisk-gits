@@ -1,7 +1,10 @@
-import { ChevronRight, Terminal } from 'lucide-react'
+import { ArrowDown, ChevronRight, Terminal } from 'lucide-react'
 import type { ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { PipelineStatusDot } from './PipelineStatus'
 import { cn } from '../utils/cn'
+
+const SCROLL_BOTTOM_THRESHOLD_PX = 48
 
 export function CiTerminal({
   title,
@@ -92,28 +95,96 @@ function lineClass(line: string) {
   return 'ci-log-line'
 }
 
+function isNearBottom(element: HTMLElement) {
+  return (
+    element.scrollHeight - element.scrollTop - element.clientHeight <=
+    SCROLL_BOTTOM_THRESHOLD_PX
+  )
+}
+
 export function CiLogViewer({
   text,
   emptyMessage = '(waiting for output…)',
   className,
   maxHeight,
+  followTail = false,
 }: {
   text: string
   emptyMessage?: string
   className?: string
   maxHeight?: string
+  /** When true, stick to the bottom while streaming until the user scrolls up. */
+  followTail?: boolean
 }) {
   const trimmed = text.trim()
   const lines = trimmed ? trimmed.split('\n') : []
   const lineNumWidth = Math.max(2, String(lines.length || 1).length)
+  const scrollRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const [isFollowing, setIsFollowing] = useState(followTail)
+  const isFollowingRef = useRef(isFollowing)
+
+  useEffect(() => {
+    isFollowingRef.current = isFollowing
+  }, [isFollowing])
+
+  const scrollToBottom = useCallback(() => {
+    const element = scrollRef.current
+    if (!element) return
+    element.scrollTop = element.scrollHeight
+  }, [])
+
+  useEffect(() => {
+    setIsFollowing(followTail)
+    isFollowingRef.current = followTail
+  }, [followTail])
+
+  useLayoutEffect(() => {
+    if (!followTail || !isFollowingRef.current) return
+    scrollToBottom()
+    const frame = requestAnimationFrame(scrollToBottom)
+    return () => cancelAnimationFrame(frame)
+  }, [followTail, isFollowing, text, scrollToBottom])
+
+  useEffect(() => {
+    if (!followTail) return
+    const content = contentRef.current
+    if (!content || typeof ResizeObserver === 'undefined') return
+
+    const observer = new ResizeObserver(() => {
+      if (isFollowingRef.current) {
+        scrollToBottom()
+      }
+    })
+    observer.observe(content)
+    return () => observer.disconnect()
+  }, [followTail, scrollToBottom])
+
+  const handleScroll = useCallback(() => {
+    if (!followTail) return
+    const element = scrollRef.current
+    if (!element) return
+    const next = isNearBottom(element)
+    isFollowingRef.current = next
+    setIsFollowing(next)
+  }, [followTail])
+
+  const resumeFollowing = useCallback(() => {
+    isFollowingRef.current = true
+    setIsFollowing(true)
+    scrollToBottom()
+    requestAnimationFrame(scrollToBottom)
+  }, [scrollToBottom])
 
   return (
     <div className="ci-log-viewer-shell">
       <div
+        ref={scrollRef}
         className={cn('ci-log-viewer', className)}
         style={maxHeight ? { maxHeight } : undefined}
+        onScroll={handleScroll}
       >
-        <div>
+        <div ref={contentRef}>
           {lines.length === 0 ? (
             <div className="ci-log-line ci-log-line-muted">{emptyMessage}</div>
           ) : (
@@ -132,6 +203,18 @@ export function CiLogViewer({
           )}
         </div>
       </div>
+      {followTail && !isFollowing && (
+        <div className="ci-log-follow-row">
+          <button
+            type="button"
+            className="ci-log-follow-button"
+            onClick={resumeFollowing}
+          >
+            <ArrowDown size={14} aria-hidden />
+            Jump to latest
+          </button>
+        </div>
+      )}
     </div>
   )
 }

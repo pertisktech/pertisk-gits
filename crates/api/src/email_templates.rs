@@ -52,7 +52,7 @@ impl EmailContent {
         Self {
             headline: "We Noticed a New Login".into(),
             paragraphs: vec![
-                "We noticed a login from a device you don't usually use.".into(),
+                "We noticed a new sign-in to your account.".into(),
                 "If this was you, you can safely disregard this email. If this wasn't you, contact your administrator to secure your account.".into(),
             ],
             action_label: None,

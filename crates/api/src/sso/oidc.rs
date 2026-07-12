@@ -1,8 +1,9 @@
 use axum::{
-    extract::{Path, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
     response::IntoResponse,
     Json,
 };
+use std::net::SocketAddr;
 use base64::Engine;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use pertisk_domain::models::{AuditEventType, AuthProvider, AuthProviderType, AuthResponse};
@@ -172,10 +173,11 @@ pub async fn oidc_logout(
 
 pub async fn oidc_callback(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Query(query): Query<OidcCallbackQuery>,
 ) -> impl IntoResponse {
-    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    let login_ctx = crate::request_context::LoginContext::from_parts(&headers, Some(peer_addr));
     match oidc_callback_inner(&state, query, login_ctx).await {
         Ok(page) => page.into_response(),
         Err(err) => browser_login_error_response(&state, &err.user_message()).into_response(),
@@ -297,6 +299,7 @@ async fn oidc_callback_inner(
 
 pub async fn oidc_session(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Path(provider_id): Path<Uuid>,
     Json(body): Json<OidcSessionRequest>,
@@ -333,7 +336,7 @@ pub async fn oidc_session(
     )
     .await?;
 
-    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    let login_ctx = crate::request_context::LoginContext::from_parts(&headers, Some(peer_addr));
     Ok(Json(
         issue_auth_response(&state, user, "oidc", login_ctx).await?,
     ))

@@ -77,6 +77,8 @@ Enable TLS (ACME) for that host. Do **not** split UI and API into different upst
 
 **Registry pushes:** In site settings, set **max request body size** to **0** (unlimited) or at least **5 GiB**. Without this, `docker push` fails around 1–10 MiB with `413 Payload Too Large`.
 
+**Login notifications:** Enable **forward client IP** (or equivalent) so the upstream receives `X-Forwarded-For`. Without it, security emails show `Unknown` for IP and location.
+
 ---
 
 ## Kubernetes / nginx ingress

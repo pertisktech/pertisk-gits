@@ -1,7 +1,8 @@
 use axum::{
-    extract::{Form, Path, State},
+    extract::{ConnectInfo, Form, Path, State},
     response::{IntoResponse, Response},
 };
+use std::net::SocketAddr;
 use base64::Engine;
 use flate2::read::DeflateDecoder;
 use pertisk_domain::{models::AuthProviderType, DomainError};
@@ -69,6 +70,7 @@ pub async fn saml_login(
 
 pub async fn saml_acs(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Path(provider_id): Path<Uuid>,
     Form(form): Form<SamlAcsForm>,
@@ -127,7 +129,7 @@ pub async fn saml_acs(
     )
     .await?;
 
-    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    let login_ctx = crate::request_context::LoginContext::from_parts(&headers, Some(peer_addr));
     let auth = issue_auth_response(&state, user, "saml", login_ctx).await?;
     Ok(browser_session_response(&state, &auth).into_response())
 }

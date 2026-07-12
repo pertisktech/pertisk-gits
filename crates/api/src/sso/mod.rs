@@ -1,6 +1,6 @@
 use axum::{
     http::{header, HeaderMap, HeaderValue},
-    response::{Html, IntoResponse},
+    response::Html,
 };
 use chrono::{Duration, Utc};
 use pertisk_domain::{models::*, DomainError};

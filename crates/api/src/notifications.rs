@@ -16,7 +16,7 @@ use uuid::Uuid;
 use validator::Validate;
 
 use crate::email_templates::{self, EmailContent, LoginEmailDetails};
-use crate::request_context::LoginContext;
+use crate::request_context::{self, LoginContext};
 use crate::secrets_crypto::SecretsCrypto;
 use crate::user_agent::{format_login_method, lookup_ip_location, parse_user_agent};
 use crate::{admin, ApiError, AppState, AuthUser};
@@ -493,7 +493,7 @@ pub fn notify_login(
             .unwrap_or_else(|| "Unknown".into());
         let location = lookup_ip_location(&ip_address)
             .await
-            .unwrap_or_else(|| "Unknown".into());
+            .unwrap_or_else(|| request_context::location_label(&ip_address));
         let signed_in_at = chrono::Utc::now().format("%a %b %d %H:%M:%S GMT %Y").to_string();
 
         let subject = "We Noticed a New Login";

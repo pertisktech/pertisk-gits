@@ -3,6 +3,7 @@ use bytes::Bytes;
 use pingora_core::server::Server;
 use pingora_core::upstreams::peer::HttpPeer;
 use pingora_core::Result;
+use pingora_http::RequestHeader;
 use pingora_proxy::{ProxyHttp, Session};
 
 struct GatewayProxy {
@@ -29,6 +30,29 @@ impl ProxyHttp for GatewayProxy {
             return Ok(true);
         }
         Ok(false)
+    }
+
+    async fn upstream_request_filter(
+        &self,
+        session: &mut Session,
+        upstream_request: &mut RequestHeader,
+        _ctx: &mut Self::CTX,
+    ) -> Result<()> {
+        if upstream_request.headers.get("X-Forwarded-For").is_none() {
+            if let Some(client_ip) = session
+                .client_addr()
+                .map(|addr| addr.to_string())
+                .filter(|addr| !addr.is_empty())
+            {
+                upstream_request
+                    .insert_header("X-Forwarded-For", client_ip)
+                    .map_err(|err| pingora_core::Error::explain(
+                        pingora_core::ErrorType::InternalError,
+                        err.to_string(),
+                    ))?;
+            }
+        }
+        Ok(())
     }
 
     async fn upstream_peer(

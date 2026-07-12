@@ -1,7 +1,8 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use axum::{
-    extract::{DefaultBodyLimit, Path, Query, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, Query, State},
     http::{header, Method, Request, StatusCode},
     middleware::{from_fn_with_state, Next},
     response::{Html, IntoResponse, Response},
@@ -373,7 +374,11 @@ pub async fn run() -> anyhow::Result<()> {
     tracing::info!("pertisk-api listening on {addr}");
 
     let listener = tokio::net::TcpListener::bind(&addr).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }
@@ -543,6 +548,7 @@ async fn register(
 
 async fn login(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
@@ -599,7 +605,7 @@ async fn login(
         state.secrets_crypto.clone(),
         user.id,
         "password",
-        request_context::LoginContext::from_headers(&headers),
+        request_context::LoginContext::from_parts(&headers, Some(peer_addr)),
     );
 
     let is_super_admin = admin::is_super_admin(&state.pool, user.id).await?;

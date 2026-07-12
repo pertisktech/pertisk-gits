@@ -3798,11 +3798,17 @@ select.app-field:disabled,
 }
 
 .ci-log-follow-row {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  left: 0.75rem;
   display: flex;
   justify-content: flex-end;
-  padding: 0.5rem 1rem 0.8rem;
-  background: color-mix(in srgb, var(--color-surface) 92%, transparent);
-  border-top: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  padding: 0;
+  background: transparent;
+  border-top: none;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .ci-log-follow-button {
@@ -3820,6 +3826,7 @@ select.app-field:disabled,
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
+  pointer-events: auto;
 }
 
 .ci-log-follow-button:hover {
@@ -4944,6 +4951,8 @@ select.app-field:disabled,
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .gha-job-header {
@@ -5034,6 +5043,15 @@ select.app-field:disabled,
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+}
+
+.gha-log-panel .ci-log-viewer-shell {
+  flex: 1;
+  min-height: 14rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 .gha-log-panel-header {
@@ -5070,8 +5088,10 @@ select.app-field:disabled,
 
 .gha-log-viewer {
   flex: 1;
-  min-height: 14rem;
+  min-height: 0;
   max-height: none;
+  overflow-x: auto;
+  overflow-y: auto;
   background: var(--color-naturals-n0);
   color: var(--color-naturals-n12);
 }

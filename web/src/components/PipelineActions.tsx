@@ -237,6 +237,7 @@ export function ActionsLogPanel({
   emptyMessage,
   footer,
   viewerKey,
+  followTail = false,
 }: {
   title: string
   subtitle?: string
@@ -245,6 +246,7 @@ export function ActionsLogPanel({
   emptyMessage?: string
   footer?: ReactNode
   viewerKey?: string
+  followTail?: boolean
 }) {
   return (
     <div className="gha-log-panel">
@@ -260,6 +262,7 @@ export function ActionsLogPanel({
         className="gha-log-viewer"
         text={logText}
         emptyMessage={emptyMessage ?? '(no output)'}
+        followTail={followTail}
       />
       {footer}
     </div>

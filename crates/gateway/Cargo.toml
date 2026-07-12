@@ -12,6 +12,7 @@ async-trait = { workspace = true }
 bytes = "1"
 dotenvy = { workspace = true }
 pingora-core = "0.6"
+pingora-http = "0.6"
 pingora-proxy = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }

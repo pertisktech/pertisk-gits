@@ -1,9 +1,10 @@
 use axum::{
-    extract::{Path, State},
+    extract::{ConnectInfo, Path, State},
     http::StatusCode,
     routing::{delete, get, patch, post},
     Json, Router,
 };
+use std::net::SocketAddr;
 use chrono::Utc;
 use pertisk_domain::{models::*, DomainError};
 use serde::Serialize;
@@ -579,6 +580,7 @@ async fn oidc_login(
 
 async fn ldap_login(
     State(state): State<AppState>,
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Path(provider_id): Path<Uuid>,
     Json(body): Json<LdapLoginRequest>,
@@ -622,7 +624,7 @@ async fn ldap_login(
     )
     .await?;
 
-    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    let login_ctx = crate::request_context::LoginContext::from_parts(&headers, Some(peer_addr));
     Ok(Json(
         issue_auth_response(&state, user, "ldap", login_ctx).await?,
     ))
