@@ -579,6 +579,7 @@ async fn oidc_login(
 
 async fn ldap_login(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Path(provider_id): Path<Uuid>,
     Json(body): Json<LdapLoginRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
@@ -621,5 +622,8 @@ async fn ldap_login(
     )
     .await?;
 
-    Ok(Json(issue_auth_response(&state, user, "ldap").await?))
+    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    Ok(Json(
+        issue_auth_response(&state, user, "ldap", login_ctx).await?,
+    ))
 }

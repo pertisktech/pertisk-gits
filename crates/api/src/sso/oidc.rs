@@ -172,9 +172,11 @@ pub async fn oidc_logout(
 
 pub async fn oidc_callback(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Query(query): Query<OidcCallbackQuery>,
 ) -> impl IntoResponse {
-    match oidc_callback_inner(&state, query).await {
+    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    match oidc_callback_inner(&state, query, login_ctx).await {
         Ok(page) => page.into_response(),
         Err(err) => browser_login_error_response(&state, &err.user_message()).into_response(),
     }
@@ -183,6 +185,7 @@ pub async fn oidc_callback(
 async fn oidc_callback_inner(
     state: &AppState,
     query: OidcCallbackQuery,
+    login_ctx: crate::request_context::LoginContext,
 ) -> Result<SsoHtmlPage, ApiError> {
     if let Some(error) = query.error {
         let message = query
@@ -288,12 +291,13 @@ async fn oidc_callback_inner(
     )
     .await?;
 
-    let auth = issue_auth_response(state, user, "oidc").await?;
+    let auth = issue_auth_response(state, user, "oidc", login_ctx).await?;
     Ok(browser_session_response(state, &auth))
 }
 
 pub async fn oidc_session(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Path(provider_id): Path<Uuid>,
     Json(body): Json<OidcSessionRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
@@ -329,7 +333,10 @@ pub async fn oidc_session(
     )
     .await?;
 
-    Ok(Json(issue_auth_response(&state, user, "oidc").await?))
+    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    Ok(Json(
+        issue_auth_response(&state, user, "oidc", login_ctx).await?,
+    ))
 }
 
 /// Extract the OIDC host from issuer_url (e.g. `dev-xxx.auth0.com`).

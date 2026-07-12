@@ -504,6 +504,7 @@ pub async fn issue_auth_response(
     state: &AppState,
     user: User,
     method: &str,
+    login_ctx: crate::request_context::LoginContext,
 ) -> Result<pertisk_domain::models::AuthResponse, ApiError> {
     crate::admin::ensure_user_record_approved(&user)?;
 
@@ -522,6 +523,7 @@ pub async fn issue_auth_response(
         state.secrets_crypto.clone(),
         user.id,
         method,
+        login_ctx,
     );
 
     Ok(pertisk_domain::models::AuthResponse {

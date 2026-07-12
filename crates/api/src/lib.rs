@@ -53,6 +53,8 @@ mod gitops;
 mod import;
 mod email_templates;
 mod notifications;
+mod request_context;
+mod user_agent;
 mod observability;
 mod org;
 mod password;
@@ -541,6 +543,7 @@ async fn register(
 
 async fn login(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<LoginRequest>,
 ) -> Result<Json<AuthResponse>, ApiError> {
     body.validate()
@@ -596,6 +599,7 @@ async fn login(
         state.secrets_crypto.clone(),
         user.id,
         "password",
+        request_context::LoginContext::from_headers(&headers),
     );
 
     let is_super_admin = admin::is_super_admin(&state.pool, user.id).await?;

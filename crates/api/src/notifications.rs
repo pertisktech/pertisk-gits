@@ -15,8 +15,10 @@ use sqlx::PgPool;
 use uuid::Uuid;
 use validator::Validate;
 
-use crate::email_templates::{self, EmailContent};
+use crate::email_templates::{self, EmailContent, LoginEmailDetails};
+use crate::request_context::LoginContext;
 use crate::secrets_crypto::SecretsCrypto;
+use crate::user_agent::{format_login_method, lookup_ip_location, parse_user_agent};
 use crate::{admin, ApiError, AppState, AuthUser};
 
 pub struct NotificationContext {
@@ -464,7 +466,13 @@ async fn should_send(pool: &PgPool, flag: fn(&SmtpSettingsRow) -> bool) -> bool 
     }
 }
 
-pub fn notify_login(pool: PgPool, crypto: Arc<SecretsCrypto>, user_id: Uuid, method: &str) {
+pub fn notify_login(
+    pool: PgPool,
+    crypto: Arc<SecretsCrypto>,
+    user_id: Uuid,
+    method: &str,
+    login_ctx: LoginContext,
+) {
     let method = method.to_string();
     tokio::spawn(async move {
         if !should_send(&pool, |s| s.notify_login).await {
@@ -477,14 +485,30 @@ pub fn notify_login(pool: PgPool, crypto: Arc<SecretsCrypto>, user_id: Uuid, met
         else {
             return;
         };
-        let subject = "New sign-in to Pertisk Gits";
-        let content = EmailContent::simple(
-            "New sign-in detected",
-            vec![
-                format!("Your account was used to sign in via {method}."),
-                "If this was not you, change your password immediately.".into(),
-            ],
-        );
+
+        let parsed = parse_user_agent(login_ctx.user_agent.as_deref());
+        let ip_address = login_ctx
+            .ip_address
+            .clone()
+            .unwrap_or_else(|| "Unknown".into());
+        let location = lookup_ip_location(&ip_address)
+            .await
+            .unwrap_or_else(|| "Unknown".into());
+        let signed_in_at = chrono::Utc::now().format("%a %b %d %H:%M:%S GMT %Y").to_string();
+
+        let subject = "We Noticed a New Login";
+        let content = EmailContent::login_notification(LoginEmailDetails {
+            greeting: "Hi,".into(),
+            device_label: parsed.device_label,
+            device_info: parsed.device_info,
+            browser: parsed.browser,
+            ip_address,
+            location,
+            signed_in_at,
+            sign_in_method: format_login_method(&method).to_string(),
+            is_mobile: parsed.is_mobile,
+        });
+
         if let Err(err) = send_email(&pool, &crypto, &email, subject, content, true).await {
             tracing::warn!("login notification email to {email} failed: {err:#}");
         }

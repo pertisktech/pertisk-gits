@@ -69,6 +69,7 @@ pub async fn saml_login(
 
 pub async fn saml_acs(
     State(state): State<AppState>,
+    headers: axum::http::HeaderMap,
     Path(provider_id): Path<Uuid>,
     Form(form): Form<SamlAcsForm>,
 ) -> Result<Response, ApiError> {
@@ -126,7 +127,8 @@ pub async fn saml_acs(
     )
     .await?;
 
-    let auth = issue_auth_response(&state, user, "saml").await?;
+    let login_ctx = crate::request_context::LoginContext::from_headers(&headers);
+    let auth = issue_auth_response(&state, user, "saml", login_ctx).await?;
     Ok(browser_session_response(&state, &auth).into_response())
 }
 
