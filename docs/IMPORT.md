@@ -114,8 +114,8 @@ Migration: `migrations/20250709100000_phase65_import.sql`, `migrations/202507101
 |---------|--------|
 | Job stays `pending` | Restart `pertisk-gits` after upgrade (API runs the import processor). Also check `sudo systemctl status pertisk-worker` if you use the separate worker service. |
 | `git clone --mirror failed` | Token scopes, network egress, private repo access |
-| Import **done** but repo **empty** | Source project has no commits on disk (UI shell only), or source returned an empty bare repo. On the **source** server: `git -C REPOS_ROOT/.../repo.git rev-list --all --max-count=1` must print a SHA. Re-import after pushing to source. |
-| `source repository has no commits` | Same as above — import now fails instead of creating an empty mirror |
+| Import **done** but repo **empty** | Source had no commits yet — the mirror succeeded and you can push to the new repo, or re-import after pushing to the source to pull history. |
+| `mirror produced no git data` | Source project exists only as a database record with no bare repo on disk. Create/push to the source repo first, or fix `REPOS_ROOT` on the source server. |
 | `invalid GitHub/GitLab token` | Token expired or wrong instance URL for GitLab |
 | `GitHub API request to … failed` | Server cannot reach GitHub (firewall/proxy), bad instance URL, or TLS trust issue on self-hosted GitHub — set `IMPORT_TLS_INSECURE=true` only for dev/GHE with a private CA |
 | Slug conflict | Target slug already exists in the group — pick a different name or delete the existing repo |

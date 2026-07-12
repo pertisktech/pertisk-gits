@@ -8,6 +8,7 @@ use aes_gcm::{
 use pertisk_domain::models::{ImportOnConflict, ImportProvider, OrgRole, RepoVisibility};
 use pertisk_domain::org_groups::{ensure_org_chain, import_target_org_path};
 use pertisk_git::config::repo_disk_path;
+use pertisk_git::ensure_bare_repo_refs_dirs;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use tokio::process::Command;
@@ -250,7 +251,14 @@ impl ImportWorker {
             let repo_path = repo_disk_path(&self.repos_root, &target_org_path, &repo.target_slug);
             let auth_url = authenticated_clone_url(provider, &repo.source_clone_url, token)?;
             mirror_repository(&auth_url, &repo_path).await?;
-            validate_mirrored_repo_has_commits(&repo_path).await?;
+            validate_mirrored_repo_git_data(&repo_path).await?;
+            if !mirrored_repo_has_commits(&repo_path).await? {
+                ensure_bare_repo_refs_dirs(&repo_path)?;
+                tracing::info!(
+                    repo = %repo.source_full_name,
+                    "imported empty repository — mirror has no commits yet"
+                );
+            }
 
             default_branch = read_default_branch(&repo_path)
                 .await
@@ -533,26 +541,25 @@ impl ImportWorker {
     }
 }
 
-/// Reject imports that cloned an empty shell (source has no commits on disk).
-async fn validate_mirrored_repo_has_commits(repo_path: &Path) -> anyhow::Result<()> {
-    let repo = repo_path
-        .to_str()
-        .ok_or_else(|| anyhow::anyhow!("invalid repository path"))?;
+/// Reject imports where the mirror step produced no git repository on disk.
+async fn validate_mirrored_repo_git_data(repo_path: &Path) -> anyhow::Result<()> {
     if !repo_path.join("HEAD").is_file() {
         anyhow::bail!(
             "mirror produced no git data — source repository may be missing on disk (only a database record)"
         );
     }
+    Ok(())
+}
+
+async fn mirrored_repo_has_commits(repo_path: &Path) -> anyhow::Result<bool> {
+    let repo = repo_path
+        .to_str()
+        .ok_or_else(|| anyhow::anyhow!("invalid repository path"))?;
     let output = tokio::process::Command::new("git")
         .args(["-C", repo, "rev-list", "--all", "--max-count=1"])
         .output()
         .await?;
-    if !output.status.success() || output.stdout.is_empty() {
-        anyhow::bail!(
-            "source repository has no commits — push code to the source repo before importing"
-        );
-    }
-    Ok(())
+    Ok(output.status.success() && !output.stdout.is_empty())
 }
 
 async fn mirror_repository(auth_url: &str, repo_path: &Path) -> anyhow::Result<()> {
