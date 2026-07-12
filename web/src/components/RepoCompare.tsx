@@ -1,10 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRightLeft, GitCompare, Loader2 } from 'lucide-react'
+import { GitCompare, Loader2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { parseUnifiedDiff, type DiffFile, fileStatusLabel } from '../lib/unifiedDiff'
-import { DiffViewer } from './DiffViewer'
-import { EmptyState, PrimaryButton, RefSelect } from './ui'
+import { CompareDiffPanel } from './CompareDiffPanel'
+import { CompareRevisionBar, type AppliedCompare, type CompareRefKind } from './CompareRevisionBar'
+import { CompareSummaryStats } from './CompareSummaryStats'
+import { CompareCommitList } from './CompareCommitList'
+import { RepoDetailTabs } from './RepoDetailTabs'
+import { EmptyState } from './ui'
 
 interface RepoCompareProps {
   token?: string | null
@@ -13,56 +17,28 @@ interface RepoCompareProps {
   defaultBranch: string
 }
 
-type RefKind = 'branch' | 'tag'
+type RefKind = CompareRefKind
 
-function fileToUnifiedDiff(file: DiffFile): string {
-  const oldPath = file.oldPath ?? file.path
-  const newPath = file.path
-  const lines: string[] = [
-    `diff --git a/${oldPath} b/${newPath}`,
-  ]
-
-  if (file.status === 'added') {
-    lines.push('new file mode 100644')
-    lines.push('--- /dev/null')
-    lines.push(`+++ b/${newPath}`)
-  } else if (file.status === 'deleted') {
-    lines.push('deleted file mode 100644')
-    lines.push(`--- a/${oldPath}`)
-    lines.push('+++ /dev/null')
-  } else if (file.status === 'renamed') {
-    lines.push(`rename from ${oldPath}`)
-    lines.push(`rename to ${newPath}`)
-    lines.push(`--- a/${oldPath}`)
-    lines.push(`+++ b/${newPath}`)
-  } else {
-    lines.push(`--- a/${oldPath}`)
-    lines.push(`+++ b/${newPath}`)
-  }
-
-  for (const line of file.lines) {
-    if (line.kind === 'hunk') lines.push(line.text)
-    else if (line.kind === 'add') lines.push(`+${line.text}`)
-    else if (line.kind === 'del') lines.push(`-${line.text}`)
-    else lines.push(` ${line.text}`)
-  }
-
-  return lines.join('\n')
+function parseRefKind(value: string | null): RefKind {
+  if (value === 'tag' || value === 'revision') return value
+  return 'branch'
 }
 
 export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCompareProps) {
+  const [searchParams] = useSearchParams()
+  const urlBase = searchParams.get('base')
+  const urlHead = searchParams.get('head')
+  const urlBaseKind = parseRefKind(searchParams.get('base_kind'))
+  const urlHeadKind = parseRefKind(searchParams.get('head_kind'))
+  const hasUrlCompare = Boolean(urlBase && urlHead)
+
   const [baseKind, setBaseKind] = useState<RefKind>('branch')
   const [baseRef, setBaseRef] = useState('')
   const [headKind, setHeadKind] = useState<RefKind>('branch')
   const [headRef, setHeadRef] = useState(defaultBranch)
   const [refsInitialized, setRefsInitialized] = useState(false)
-  const [appliedCompare, setAppliedCompare] = useState<{
-    baseKind: RefKind
-    baseRef: string
-    headKind: RefKind
-    headRef: string
-  } | null>(null)
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+  const [appliedCompare, setAppliedCompare] = useState<AppliedCompare | null>(null)
+  const [activeTab, setActiveTab] = useState<'changes' | 'commits'>('changes')
 
   const { data: browserData, isLoading: browserLoading, error: browserError } = useQuery({
     queryKey: ['repo-browser', orgSlug, repoSlug, token ?? 'public'],
@@ -104,6 +80,21 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
   }, [orgSlug, repoSlug])
 
   useEffect(() => {
+    if (hasUrlCompare && urlBase && urlHead) {
+      setBaseKind(urlBaseKind)
+      setBaseRef(urlBase)
+      setHeadKind(urlHeadKind)
+      setHeadRef(urlHead)
+      setAppliedCompare({
+        baseKind: urlBaseKind,
+        baseRef: urlBase,
+        headKind: urlHeadKind,
+        headRef: urlHead,
+      })
+      setRefsInitialized(true)
+      return
+    }
+
     if (branchesLoading || tagsLoading) return
     if (refsInitialized) return
     if (!hasAnyRefs) {
@@ -122,6 +113,11 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
     setHeadRef(nextHead)
     setRefsInitialized(true)
   }, [
+    hasUrlCompare,
+    urlBase,
+    urlHead,
+    urlBaseKind,
+    urlHeadKind,
     branchesLoading,
     tagsLoading,
     refsInitialized,
@@ -132,15 +128,16 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
   ])
 
   useEffect(() => {
-    if (!refsInitialized) return
+    if (!refsInitialized || hasUrlCompare) return
 
     const nextHeadIsValid =
-      (headKind === 'branch' && branches.includes(headRef))
+      headKind === 'revision'
+      || (headKind === 'branch' && branches.includes(headRef))
       || (headKind === 'tag' && tags.includes(headRef))
     const nextBaseIsValid =
       !baseRef
-      ||
-      (baseKind === 'branch' && branches.includes(baseRef))
+      || baseKind === 'revision'
+      || (baseKind === 'branch' && branches.includes(baseRef))
       || (baseKind === 'tag' && tags.includes(baseRef))
 
     if (!nextHeadIsValid) {
@@ -156,10 +153,10 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
       setBaseKind('branch')
       setBaseRef('')
     }
-  }, [refsInitialized, headKind, headRef, baseKind, baseRef, branches, tags, defaultBranch])
+  }, [refsInitialized, hasUrlCompare, headKind, headRef, baseKind, baseRef, branches, tags, defaultBranch])
 
   const compareEnabled = Boolean(
-    refsInitialized && hasAnyRefs && baseRef && headRef,
+    refsInitialized && (hasUrlCompare || hasAnyRefs) && baseRef && headRef,
   )
   const isSameRevision = Boolean(
     appliedCompare
@@ -201,6 +198,9 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
 
   const effectiveCompare = appliedCompare && isSameRevision
     ? {
+        base: appliedCompare.baseRef,
+        head: appliedCompare.headRef,
+        merge_base: appliedCompare.baseRef,
         files_changed: 0,
         insertions: 0,
         deletions: 0,
@@ -210,37 +210,7 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
       }
     : compare
 
-  const summaryText = useMemo(() => {
-    if (!effectiveCompare) return null
-    return `${effectiveCompare.files_changed} files changed, +${effectiveCompare.insertions} / -${effectiveCompare.deletions}`
-  }, [effectiveCompare])
-
-  const compareFiles = useMemo(
-    () => (effectiveCompare?.diff ? parseUnifiedDiff(effectiveCompare.diff) : []),
-    [effectiveCompare?.diff],
-  )
-
-  useEffect(() => {
-    if (compareFiles.length === 0) {
-      setSelectedPath(null)
-      return
-    }
-
-    if (!selectedPath || !compareFiles.some((file) => file.path === selectedPath)) {
-      setSelectedPath(compareFiles[0].path)
-    }
-  }, [compareFiles, selectedPath])
-
-  const selectedFile = useMemo(
-    () => compareFiles.find((file) => file.path === selectedPath) ?? compareFiles[0],
-    [compareFiles, selectedPath],
-  )
-  const selectedFileDiff = useMemo(
-    () => (selectedFile ? fileToUnifiedDiff(selectedFile) : ''),
-    [selectedFile],
-  )
-
-  if (branchesLoading || tagsLoading || (browserLoading && !hasAnyRefs)) {
+  if (branchesLoading || tagsLoading || (browserLoading && !hasAnyRefs && !hasUrlCompare)) {
     return (
       <div className="app-panel">
         <div className="app-panel-body flex items-center gap-2 text-text-secondary text-sm">
@@ -251,7 +221,7 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
     )
   }
 
-  if (!hasAnyRefs) {
+  if (!hasAnyRefs && !hasUrlCompare) {
     return (
       <div className="app-panel">
         <EmptyState
@@ -273,72 +243,38 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
       <div className="app-panel">
         <div className="app-panel-header">Compare revisions</div>
         <div className="app-panel-body space-y-3">
-          <div className="flex flex-nowrap items-center gap-2 overflow-x-auto">
-            <span className="text-xs text-text-secondary whitespace-nowrap">Source</span>
-            <RefSelect
-              refKind={headKind}
-              refName={headRef}
-              branches={branches}
-              tags={tags}
-              fallbackRef={defaultBranch}
-              alwaysMenu
-              onChange={(kind, name) => {
-                setHeadKind(kind)
-                setHeadRef(name)
-              }}
-              aria-label="Source revision"
-              className="w-44 flex-none"
-            />
-
-            <span className="text-xs text-text-secondary whitespace-nowrap">Target</span>
-
-            <RefSelect
-              refKind={baseKind}
-              refName={baseRef}
-              branches={branches}
-              tags={tags}
-              fallbackRef={defaultBranch}
-              alwaysMenu
-              placeholder="Select target"
-              onChange={(kind, name) => {
-                setBaseKind(kind)
-                setBaseRef(name)
-              }}
-              aria-label="Target revision"
-              className="w-44 flex-none"
-            />
-
-            <PrimaryButton
-              type="button"
-              className="px-3"
-              onClick={() => {
-                setBaseKind(headKind)
-                setBaseRef(headRef)
-                setHeadKind(baseKind)
-                setHeadRef(baseRef)
-              }}
-              aria-label="Swap source and target"
-              title="Swap"
-            >
-              <ArrowRightLeft size={14} />
-            </PrimaryButton>
-
-            <PrimaryButton
-              type="button"
-              className="px-3"
-              disabled={!compareEnabled}
-              onClick={() => {
-                setAppliedCompare({
-                  baseKind,
-                  baseRef,
-                  headKind,
-                  headRef,
-                })
-              }}
-            >
-              Compare
-            </PrimaryButton>
-          </div>
+          <CompareRevisionBar
+            baseKind={baseKind}
+            baseRef={baseRef}
+            headKind={headKind}
+            headRef={headRef}
+            branches={branches}
+            tags={tags}
+            defaultBranch={defaultBranch}
+            onBaseChange={(kind, ref) => {
+              setBaseKind(kind)
+              setBaseRef(ref)
+            }}
+            onHeadChange={(kind, ref) => {
+              setHeadKind(kind)
+              setHeadRef(ref)
+            }}
+            onSwap={() => {
+              setBaseKind(headKind)
+              setBaseRef(headRef)
+              setHeadKind(baseKind)
+              setHeadRef(baseRef)
+            }}
+            onCompare={() => {
+              setAppliedCompare({
+                baseKind,
+                baseRef,
+                headKind,
+                headRef,
+              })
+            }}
+            compareEnabled={compareEnabled}
+          />
 
           {compareFetching && (
             <p className="text-xs text-text-secondary">Refreshing comparison…</p>
@@ -350,72 +286,70 @@ export function RepoCompare({ token, orgSlug, repoSlug, defaultBranch }: RepoCom
             </p>
           )}
 
-          {effectiveCompare && (
-            <div className="text-xs text-text-secondary flex flex-wrap items-center gap-x-3 gap-y-1">
-              <span>{summaryText}</span>
-              <span>{effectiveCompare.mergeable ? 'Mergeable' : 'Has conflicts'}</span>
-            </div>
-          )}
+          {effectiveCompare && <CompareSummaryStats compare={effectiveCompare} />}
         </div>
       </div>
 
-      <div className="app-panel">
-        <div className="app-panel-body">
-          {!appliedCompare ? (
+      {!appliedCompare ? (
+        <div className="app-panel">
+          <div className="app-panel-body">
             <EmptyState
               icon={<GitCompare size={40} />}
               title="Ready to compare"
               description="Select source and target revisions, then press Compare."
             />
-          ) : compareLoading ? (
-            <div className="flex items-center gap-2 text-text-secondary text-sm">
-              <Loader2 size={16} className="animate-spin" />
-              Comparing revisions…
-            </div>
-          ) : compareError ? (
-            <div className="text-sm text-dashboard-danger">{(compareError as Error).message}</div>
-          ) : effectiveCompare?.diff?.trim() ? (
-            compareFiles.length > 0 && selectedFile ? (
-              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[16rem_minmax(0,1fr)]">
-                <aside className="rounded-lg border border-naturals-n4 bg-surface-elevated p-2 max-h-[70vh] overflow-auto">
-                  <p className="px-2 py-1 text-xs font-semibold text-text-secondary">Changed files</p>
-                  <ul className="space-y-1">
-                    {compareFiles.map((file) => (
-                      <li key={file.path}>
-                        <button
-                          type="button"
-                          className={`w-full rounded-md px-2 py-1.5 text-left text-xs ${selectedFile.path === file.path ? 'bg-hover text-text' : 'text-text-secondary hover:bg-hover hover:text-text'}`}
-                          onClick={() => setSelectedPath(file.path)}
-                        >
-                          <div className="truncate font-mono">{file.path}</div>
-                          <div className="mt-0.5 flex items-center justify-between text-[11px]">
-                            <span>{fileStatusLabel(file.status)}</span>
-                            <span>
-                              <span className="text-dashboard-success">+{file.insertions}</span>{' '}
-                              <span className="text-dashboard-danger">-{file.deletions}</span>
-                            </span>
-                          </div>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </aside>
-                <div className="min-w-0">
-                  <DiffViewer diff={selectedFileDiff} />
-                </div>
-              </div>
-            ) : (
-              <DiffViewer diff={effectiveCompare.diff} />
-            )
-          ) : (
-            <EmptyState
-              icon={<GitCompare size={40} />}
-              title="No diff"
-              description="These references point to the same content."
-            />
-          )}
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <RepoDetailTabs
+            tabs={[
+              {
+                id: 'changes',
+                label: effectiveCompare
+                  ? `Changes (${effectiveCompare.files_changed})`
+                  : 'Changes',
+              },
+              {
+                id: 'commits',
+                label: effectiveCompare
+                  ? `Commits (${effectiveCompare.commits.length})`
+                  : 'Commits',
+              },
+            ]}
+            active={activeTab}
+            onChange={(id) => setActiveTab(id as 'changes' | 'commits')}
+          />
+
+          <div className="app-panel">
+            <div className="app-panel-body flush">
+              {activeTab === 'commits' ? (
+                compareLoading ? (
+                  <div className="flex items-center gap-2 text-text-secondary text-sm p-4">
+                    <Loader2 size={16} className="animate-spin" />
+                    Loading commits…
+                  </div>
+                ) : (
+                  <div className="p-4">
+                    <CompareCommitList
+                      commits={effectiveCompare?.commits ?? []}
+                      orgSlug={orgSlug}
+                      repoSlug={repoSlug}
+                    />
+                  </div>
+                )
+              ) : compareLoading ? (
+                <CompareDiffPanel loading />
+              ) : (
+                <CompareDiffPanel
+                  diff={effectiveCompare?.diff}
+                  error={compareError ? (compareError as Error).message : null}
+                />
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

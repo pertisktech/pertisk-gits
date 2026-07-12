@@ -1,7 +1,8 @@
-import { ChevronRight, File, Folder } from 'lucide-react'
+import { Columns2, Rows3, ChevronRight, File, Folder } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   buildDiffFileTree,
+  buildSplitRows,
   collectFolderPaths,
   diffFileAnchorId,
   fileStatusLabel,
@@ -9,19 +10,35 @@ import {
   type DiffFile,
   type DiffLine,
   type DiffTreeNode,
+  type SplitDiffRow,
 } from '../lib/unifiedDiff'
 import { cn } from '../utils/cn'
+
+export type DiffViewMode = 'unified' | 'split'
+
+const DIFF_VIEW_MODE_KEY = 'pertisk-diff-view-mode'
 
 export interface DiffLineRenderContext {
   file: DiffFile
   line: DiffLine
   index: number
+  side?: 'left' | 'right'
 }
 
 interface DiffViewerProps {
   diff: string
   renderLineActions?: (context: DiffLineRenderContext) => ReactNode
   renderAfterLine?: (context: DiffLineRenderContext) => ReactNode
+}
+
+function readStoredViewMode(): DiffViewMode {
+  try {
+    const stored = localStorage.getItem(DIFF_VIEW_MODE_KEY)
+    if (stored === 'split' || stored === 'unified') return stored
+  } catch {
+    // ignore
+  }
+  return 'unified'
 }
 
 function ChangeStats({
@@ -40,6 +57,39 @@ function ChangeStats({
       {insertions > 0 && <span className="diff-view-stats-add">+{insertions}</span>}
       {deletions > 0 && <span className="diff-view-stats-del">−{deletions}</span>}
     </span>
+  )
+}
+
+function DiffViewModeToggle({
+  viewMode,
+  onChange,
+}: {
+  viewMode: DiffViewMode
+  onChange: (mode: DiffViewMode) => void
+}) {
+  return (
+    <div className="diff-view-mode-toggle" role="group" aria-label="Diff view mode">
+      <button
+        type="button"
+        className={cn('diff-view-mode-btn', viewMode === 'unified' && 'diff-view-mode-btn--active')}
+        onClick={() => onChange('unified')}
+        title="Unified view"
+        aria-pressed={viewMode === 'unified'}
+      >
+        <Rows3 size={14} />
+        Unified
+      </button>
+      <button
+        type="button"
+        className={cn('diff-view-mode-btn', viewMode === 'split' && 'diff-view-mode-btn--active')}
+        onClick={() => onChange('split')}
+        title="Split view"
+        aria-pressed={viewMode === 'split'}
+      >
+        <Columns2 size={14} />
+        Split
+      </button>
+    </div>
   )
 }
 
@@ -108,15 +158,177 @@ function DiffTreeItem({
   )
 }
 
-function DiffFilePanel({
+function UnifiedDiffLine({
   file,
+  line,
+  index,
   renderLineActions,
   renderAfterLine,
 }: {
   file: DiffFile
+  line: DiffLine
+  index: number
   renderLineActions?: (context: DiffLineRenderContext) => ReactNode
   renderAfterLine?: (context: DiffLineRenderContext) => ReactNode
 }) {
+  const prefix =
+    line.kind === 'hunk'
+      ? ''
+      : line.kind === 'add'
+        ? '+'
+        : line.kind === 'del'
+          ? '-'
+          : ' '
+
+  const context: DiffLineRenderContext = { file, line, index }
+
+  return (
+    <div>
+      <div
+        className={cn(
+          'diff-view-line',
+          renderLineActions && 'diff-view-line--with-actions',
+          line.kind === 'add' && 'diff-view-line--add',
+          line.kind === 'del' && 'diff-view-line--del',
+          line.kind === 'hunk' && 'diff-view-line--hunk',
+        )}
+      >
+        <span className="diff-view-line-old">
+          {line.kind === 'del' || line.kind === 'ctx' || line.kind === 'hunk'
+            ? (line.oldLine ?? '')
+            : ''}
+        </span>
+        <span className="diff-view-line-new">
+          {line.kind === 'add' || line.kind === 'ctx' || line.kind === 'hunk'
+            ? (line.newLine ?? '')
+            : ''}
+        </span>
+        <span
+          className={cn(
+            'diff-view-line-text',
+            line.kind === 'add' && 'diff-view-line-text--add',
+            line.kind === 'del' && 'diff-view-line-text--del',
+          )}
+        >
+          {line.kind === 'hunk' ? line.text : `${prefix}${line.text}`}
+        </span>
+        {renderLineActions?.(context)}
+      </div>
+      {renderAfterLine?.(context)}
+    </div>
+  )
+}
+
+function SplitDiffCell({
+  file,
+  line,
+  index,
+  side,
+  renderLineActions,
+}: {
+  file: DiffFile
+  line?: DiffLine
+  index: number
+  side: 'left' | 'right'
+  renderLineActions?: (context: DiffLineRenderContext) => ReactNode
+}) {
+  if (!line) {
+    return (
+      <div className={cn('diff-view-split-cell', 'diff-view-split-cell--empty')}>
+        <span className="diff-view-split-line-num" />
+        <span className="diff-view-split-text" />
+      </div>
+    )
+  }
+
+  const context: DiffLineRenderContext = { file, line, index, side }
+  const lineNum = side === 'left' ? line.oldLine : line.newLine
+  const isDel = line.kind === 'del'
+  const isAdd = line.kind === 'add'
+
+  return (
+    <div
+      className={cn(
+        'diff-view-split-cell',
+        isDel && 'diff-view-split-cell--del',
+        isAdd && 'diff-view-split-cell--add',
+        renderLineActions && 'diff-view-split-cell--with-actions',
+      )}
+    >
+      <span className="diff-view-split-line-num">{lineNum ?? ''}</span>
+      <span
+        className={cn(
+          'diff-view-split-text',
+          isDel && 'diff-view-split-text--del',
+          isAdd && 'diff-view-split-text--add',
+        )}
+      >
+        {line.text}
+      </span>
+      {side === 'right' && renderLineActions?.(context)}
+    </div>
+  )
+}
+
+function SplitDiffRowView({
+  file,
+  row,
+  rowIndex,
+  renderLineActions,
+  renderAfterLine,
+}: {
+  file: DiffFile
+  row: SplitDiffRow
+  rowIndex: number
+  renderLineActions?: (context: DiffLineRenderContext) => ReactNode
+  renderAfterLine?: (context: DiffLineRenderContext) => ReactNode
+}) {
+  if (row.type === 'hunk' && row.hunk) {
+    return (
+      <div className="diff-view-split-hunk">{row.hunk.text}</div>
+    )
+  }
+
+  const commentLine = row.right ?? row.left
+  const commentContext = commentLine
+    ? { file, line: commentLine, index: rowIndex, side: (row.right ? 'right' : 'left') as 'left' | 'right' }
+    : null
+
+  return (
+    <div>
+      <div className="diff-view-split-row">
+        <SplitDiffCell
+          file={file}
+          line={row.left}
+          index={rowIndex}
+          side="left"
+        />
+        <SplitDiffCell
+          file={file}
+          line={row.right}
+          index={rowIndex}
+          side="right"
+          renderLineActions={renderLineActions}
+        />
+      </div>
+      {commentContext && renderAfterLine?.(commentContext)}
+    </div>
+  )
+}
+
+function DiffFilePanel({
+  file,
+  viewMode,
+  renderLineActions,
+  renderAfterLine,
+}: {
+  file: DiffFile
+  viewMode: DiffViewMode
+  renderLineActions?: (context: DiffLineRenderContext) => ReactNode
+  renderAfterLine?: (context: DiffLineRenderContext) => ReactNode
+}) {
+  const splitRows = useMemo(() => buildSplitRows(file.lines), [file.lines])
+
   return (
     <section id={diffFileAnchorId(file.path)} className="diff-view-file">
       <header className="diff-view-file-header">
@@ -139,53 +351,30 @@ function DiffFilePanel({
         </div>
       </header>
 
-      <div className="diff-view-lines">
-        {file.lines.map((line, index) => {
-          const prefix =
-            line.kind === 'hunk'
-              ? ''
-              : line.kind === 'add'
-                ? '+'
-                : line.kind === 'del'
-                  ? '-'
-                  : ' '
-
-          return (
-            <div key={`${file.path}:${index}`}>
-              <div
-                className={cn(
-                  'diff-view-line',
-                  renderLineActions && 'diff-view-line--with-actions',
-                  line.kind === 'add' && 'diff-view-line--add',
-                  line.kind === 'del' && 'diff-view-line--del',
-                  line.kind === 'hunk' && 'diff-view-line--hunk',
-                )}
-              >
-                <span className="diff-view-line-old">
-                  {line.kind === 'del' || line.kind === 'ctx' || line.kind === 'hunk'
-                    ? (line.oldLine ?? '')
-                    : ''}
-                </span>
-                <span className="diff-view-line-new">
-                  {line.kind === 'add' || line.kind === 'ctx' || line.kind === 'hunk'
-                    ? (line.newLine ?? '')
-                    : ''}
-                </span>
-                <span
-                  className={cn(
-                    'diff-view-line-text',
-                    line.kind === 'add' && 'diff-view-line-text--add',
-                    line.kind === 'del' && 'diff-view-line-text--del',
-                  )}
-                >
-                  {line.kind === 'hunk' ? line.text : `${prefix}${line.text}`}
-                </span>
-                {renderLineActions?.({ file, line, index })}
-              </div>
-              {renderAfterLine?.({ file, line, index })}
-            </div>
-          )
-        })}
+      <div className={cn('diff-view-lines', viewMode === 'split' && 'diff-view-lines--split')}>
+        {viewMode === 'split' ? (
+          splitRows.map((row, index) => (
+            <SplitDiffRowView
+              key={`${file.path}:split:${index}`}
+              file={file}
+              row={row}
+              rowIndex={index}
+              renderLineActions={renderLineActions}
+              renderAfterLine={renderAfterLine}
+            />
+          ))
+        ) : (
+          file.lines.map((line, index) => (
+            <UnifiedDiffLine
+              key={`${file.path}:${index}`}
+              file={file}
+              line={line}
+              index={index}
+              renderLineActions={renderLineActions}
+              renderAfterLine={renderAfterLine}
+            />
+          ))
+        )}
       </div>
     </section>
   )
@@ -196,11 +385,20 @@ export function DiffViewer({ diff, renderLineActions, renderAfterLine }: DiffVie
   const tree = useMemo(() => buildDiffFileTree(files), [files])
   const [selectedPath, setSelectedPath] = useState<string | null>(files[0]?.path ?? null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(collectFolderPaths(tree)))
+  const [viewMode, setViewMode] = useState<DiffViewMode>(() => readStoredViewMode())
 
   useEffect(() => {
     setSelectedPath(files[0]?.path ?? null)
     setExpanded(new Set(collectFolderPaths(tree)))
   }, [files, tree])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(DIFF_VIEW_MODE_KEY, viewMode)
+    } catch {
+      // ignore
+    }
+  }, [viewMode])
 
   const totalInsertions = files.reduce((sum, file) => sum + file.insertions, 0)
   const totalDeletions = files.reduce((sum, file) => sum + file.deletions, 0)
@@ -235,6 +433,7 @@ export function DiffViewer({ diff, renderLineActions, renderAfterLine }: DiffVie
           </span>
           <ChangeStats insertions={totalInsertions} deletions={totalDeletions} />
         </div>
+        <DiffViewModeToggle viewMode={viewMode} onChange={setViewMode} />
         <nav className="diff-view-tree" aria-label="Changed files">
           {tree.map((node) => (
             <DiffTreeItem
@@ -255,6 +454,7 @@ export function DiffViewer({ diff, renderLineActions, renderAfterLine }: DiffVie
           <DiffFilePanel
             key={file.path}
             file={file}
+            viewMode={viewMode}
             renderLineActions={renderLineActions}
             renderAfterLine={renderAfterLine}
           />

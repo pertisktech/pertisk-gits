@@ -1,12 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Check, GitPullRequest, Loader2, Pencil, X } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
-import type { PullRequest, PullRequestReviewDetail } from '../api/types'
+import type { CompareResult, PullRequest, PullRequestReviewDetail } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
 import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
+import { RepoDetailTabs } from '../components/RepoDetailTabs'
+import { CompareCommitList } from '../components/CompareCommitList'
+import { CompareDiffPanel } from '../components/CompareDiffPanel'
+import { CompareSummaryStats } from '../components/CompareSummaryStats'
 import { PullRequestDiff } from '../components/PullRequestDiff'
 import { CommitStatuses } from '../components/CommitStatuses'
 import { StatusBadge } from '../components/StatusBadge'
@@ -17,6 +21,8 @@ import { displayRepoName } from '../lib/projectInitial'
 import { projectTabPath } from '../lib/projectRoute'
 import { branchMatchesPattern } from '../lib/branchProtection'
 import { cn } from '../utils/cn'
+
+type PrTab = 'overview' | 'commits' | 'changes'
 
 function prStateVariant(state: PullRequest['state']) {
   if (state === 'open') return 'yellow' as const
@@ -43,6 +49,11 @@ function reviewLabel(state: PullRequestReviewDetail['review']['state']) {
   return 'Pending'
 }
 
+function parsePrTab(value: string | null): PrTab {
+  if (value === 'commits' || value === 'changes' || value === 'overview') return value
+  return 'overview'
+}
+
 export function PullRequestDetailPage() {
   const { orgSlug, projectSlug } = useProjectParams()
   const projectSub = useProjectSubRoute()
@@ -50,6 +61,7 @@ export function PullRequestDetailPage() {
   const number = Number(pullNumber)
   const { token, user } = useAuth()
   const queryClient = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [comment, setComment] = useState('')
   const [reviewMessage, setReviewMessage] = useState<string | null>(null)
   const [reviewError, setReviewError] = useState<string | null>(null)
@@ -59,6 +71,14 @@ export function PullRequestDetailPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editBody, setEditBody] = useState('')
   const [updateError, setUpdateError] = useState<string | null>(null)
+
+  function setActiveTab(tab: PrTab) {
+    const next = new URLSearchParams(searchParams)
+    if (tab === 'overview') next.delete('view')
+    else next.set('view', tab)
+    next.delete('tab')
+    setSearchParams(next, { replace: true })
+  }
 
   const { data: groups = [] } = useQuery({
     queryKey: ['organizations'],
@@ -78,7 +98,23 @@ export function PullRequestDetailPage() {
     enabled: Boolean(orgSlug && projectSlug && number),
   })
 
-  const headCommitSha = data?.compare?.commits.at(-1)?.sha ?? null
+  const embeddedCompare = data?.compare ?? null
+  const needsCompareFetch = Boolean(data && !embeddedCompare)
+
+  const {
+    data: fetchedCompare,
+    isLoading: compareLoading,
+    error: compareError,
+  } = useQuery({
+    queryKey: ['pull-compare', orgSlug, projectSlug, number, token ?? 'public'],
+    queryFn: () => api.getPullRequestCompare(orgSlug, projectSlug, number, token),
+    enabled: needsCompareFetch,
+    retry: false,
+  })
+
+  const compare: CompareResult | null = embeddedCompare ?? fetchedCompare ?? null
+
+  const headCommitSha = compare?.commits.at(-1)?.sha ?? null
 
   const { data: ciStatuses = [] } = useQuery({
     queryKey: ['commit-statuses', orgSlug, projectSlug, headCommitSha, token ?? ''],
@@ -183,7 +219,7 @@ export function PullRequestDetailPage() {
 
   const targetBranch = data?.pull_request.target_branch ?? ''
   const prState = data?.pull_request.state
-  const mergeable = data?.compare?.mergeable ?? false
+  const mergeable = compare?.mergeable ?? false
   const approvedCount = data?.review_summary.approved_count ?? 0
   const hasChangesRequested = (data?.review_summary.changes_requested_count ?? 0) > 0
 
@@ -224,9 +260,24 @@ export function PullRequestDetailPage() {
     )
   }
 
-  const { pull_request: pr, author, compare } = data
+  const { pull_request: pr, author } = data
   const repo = repoData?.repository
   const repoName = repo ? displayRepoName(repo.name, repo.slug) : projectSlug
+  const commitCount = compare?.commits.length ?? 0
+  const filesChanged = compare?.files_changed ?? 0
+  const activeTab = parsePrTab(searchParams.get('view') ?? searchParams.get('tab'))
+
+  const segmentTabs = [
+    { id: 'overview', label: 'Overview' },
+    {
+      id: 'commits',
+      label: compareLoading && needsCompareFetch ? 'Commits' : `Commits (${commitCount})`,
+    },
+    {
+      id: 'changes',
+      label: compareLoading && needsCompareFetch ? 'Changes' : `Changes (${filesChanged})`,
+    },
+  ]
 
   return (
     <>
@@ -317,18 +368,17 @@ export function PullRequestDetailPage() {
                         </StatusBadge>
                       )}
                     </div>
-                    {pr.state === 'open' && approvedCount > 0 && !canMerge && !approvalsBlocking && !changesBlocking && (
-                      <p className="text-xs text-text-secondary mt-2">
-                        Approval recorded. The pull request stays <strong className="text-text">Open</strong> until merge checks pass.
-                      </p>
-                    )}
-                    {pr.state === 'open' && canMerge && approvedCount > 0 && (
-                      <p className="text-xs text-text-secondary mt-2">
-                        Approved and ready to merge.
-                      </p>
-                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-naturals-n4 bg-surface px-2 py-0.5 font-mono text-xs text-text">
+                        {pr.source_branch}
+                      </span>
+                      <span className="text-muted" aria-hidden>→</span>
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-naturals-n4 bg-surface px-2 py-0.5 font-mono text-xs text-text">
+                        {pr.target_branch}
+                      </span>
+                    </div>
                     <p className="text-sm text-text-secondary mt-1">
-                      {pr.source_branch} → {pr.target_branch} · {author.username} · {formatDateTime(pr.created_at)}
+                      {author.username} · {formatDateTime(pr.created_at)}
                     </p>
                   </>
                 )}
@@ -430,15 +480,19 @@ export function PullRequestDetailPage() {
             </p>
           )}
 
-          {compare && (
-            <div className="text-xs text-text-secondary flex flex-wrap gap-3">
-              <span>{compare.commits.length} commits</span>
-              <span>{compare.files_changed} files changed</span>
-              <span className="text-dashboard-success">+{compare.insertions}</span>
-              <span className="text-dashboard-danger">−{compare.deletions}</span>
-              {reviews.length > 0 && <span>{approvedCount} approval{approvedCount === 1 ? '' : 's'}</span>}
-            </div>
+          {pr.state === 'open' && approvedCount > 0 && !canMerge && !approvalsBlocking && !changesBlocking && (
+            <p className="text-xs text-text-secondary">
+              Approval recorded. The pull request stays <strong className="text-text">Open</strong> until merge checks pass.
+            </p>
           )}
+
+          {pr.state === 'open' && canMerge && approvedCount > 0 && (
+            <p className="text-xs text-text-secondary">
+              Approved and ready to merge.
+            </p>
+          )}
+
+          {compare && <CompareSummaryStats compare={compare} />}
 
           {headCommitSha && (
             <CommitStatuses
@@ -448,144 +502,198 @@ export function PullRequestDetailPage() {
               token={token}
             />
           )}
+        </div>
+      </div>
 
+      <div className="space-y-4">
+        <RepoDetailTabs
+          tabs={segmentTabs}
+          active={activeTab}
+          onChange={(id) => setActiveTab(id as PrTab)}
+        />
+
+        {activeTab === 'overview' && (
+        <>
           {!isEditing && pr.body && (
-            <div className="markdown-viewer border-t border-naturals-n4 pt-4">
-              <MarkdownBody content={pr.body} orgSlug={orgSlug} repoSlug={projectSlug} />
+            <div className="app-panel mb-4">
+              <div className="app-panel-header">Description</div>
+              <div className="app-panel-body markdown-viewer">
+                <MarkdownBody content={pr.body} orgSlug={orgSlug} repoSlug={projectSlug} />
+              </div>
             </div>
           )}
 
           {latestReviews.length > 0 && (
-            <div className="border-t border-naturals-n4 pt-4 space-y-2">
-              <h2 className="text-sm font-medium text-text">Reviews</h2>
-              <ul className="space-y-2">
-                {latestReviews.map(({ review, reviewer }) => (
-                  <li
-                    key={review.id}
-                    className="flex flex-wrap items-center gap-2 text-sm"
-                  >
-                    <span className="font-medium text-text">@{reviewer.username}</span>
-                    <StatusBadge variant={reviewVariant(review.state)}>{reviewLabel(review.state)}</StatusBadge>
-                    <span className="text-xs text-text-secondary">{formatDateTime(review.created_at)}</span>
-                  </li>
-                ))}
-              </ul>
+            <div className="app-panel mb-4">
+              <div className="app-panel-header">Reviews</div>
+              <div className="app-panel-body">
+                <ul className="space-y-2">
+                  {latestReviews.map(({ review, reviewer }) => (
+                    <li
+                      key={review.id}
+                      className="flex flex-wrap items-center gap-2 text-sm"
+                    >
+                      <span className="font-medium text-text">@{reviewer.username}</span>
+                      <StatusBadge variant={reviewVariant(review.state)}>{reviewLabel(review.state)}</StatusBadge>
+                      <span className="text-xs text-text-secondary">{formatDateTime(review.created_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
 
           {token && pr.state === 'open' && (
-            <div className="border-t border-naturals-n4 pt-4 space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
-                    myLatestReview?.review.state === 'approved'
-                      ? 'border-green-g1/40 bg-dashboard-success-bg text-dashboard-success'
-                      : 'border-naturals-n4 hover:bg-hover',
-                  )}
-                  onClick={() => reviewMutation.mutate('approved')}
-                  disabled={reviewMutation.isPending}
-                >
-                  {reviewMutation.isPending ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <Check size={14} />
-                  )}
-                  {myLatestReview?.review.state === 'approved' ? 'Approved' : 'Approve'}
-                </button>
-                <button
-                  type="button"
-                  className={cn(
-                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
-                    myLatestReview?.review.state === 'changes_requested'
-                      ? 'border-red-r1/40 bg-dashboard-danger-bg text-dashboard-danger'
-                      : 'border-naturals-n4 hover:bg-hover',
-                  )}
-                  onClick={() => reviewMutation.mutate('changes_requested')}
-                  disabled={reviewMutation.isPending}
-                >
-                  {reviewMutation.isPending ? (
-                    <Loader2 size={14} className="animate-spin" />
-                  ) : (
-                    <X size={14} />
-                  )}
-                  {myLatestReview?.review.state === 'changes_requested' ? 'Changes requested' : 'Request changes'}
-                </button>
+            <div className="app-panel mb-4">
+              <div className="app-panel-header">Review</div>
+              <div className="app-panel-body space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
+                      myLatestReview?.review.state === 'approved'
+                        ? 'border-green-g1/40 bg-dashboard-success-bg text-dashboard-success'
+                        : 'border-naturals-n4 hover:bg-hover',
+                    )}
+                    onClick={() => reviewMutation.mutate('approved')}
+                    disabled={reviewMutation.isPending}
+                  >
+                    {reviewMutation.isPending ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <Check size={14} />
+                    )}
+                    {myLatestReview?.review.state === 'approved' ? 'Approved' : 'Approve'}
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-sm',
+                      myLatestReview?.review.state === 'changes_requested'
+                        ? 'border-red-r1/40 bg-dashboard-danger-bg text-dashboard-danger'
+                        : 'border-naturals-n4 hover:bg-hover',
+                    )}
+                    onClick={() => reviewMutation.mutate('changes_requested')}
+                    disabled={reviewMutation.isPending}
+                  >
+                    {reviewMutation.isPending ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <X size={14} />
+                    )}
+                    {myLatestReview?.review.state === 'changes_requested' ? 'Changes requested' : 'Request changes'}
+                  </button>
+                </div>
+
+                {reviewMessage && (
+                  <div className="p-3 rounded-md border border-green-g1/30 bg-dashboard-success-bg text-dashboard-success text-sm">
+                    {reviewMessage}
+                  </div>
+                )}
+
+                {reviewError && (
+                  <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+                    {reviewError}
+                  </div>
+                )}
               </div>
-
-              {reviewMessage && (
-                <div className="p-3 rounded-md border border-green-g1/30 bg-dashboard-success-bg text-dashboard-success text-sm">
-                  {reviewMessage}
-                </div>
-              )}
-
-              {reviewError && (
-                <div className="p-3 rounded-md border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-                  {reviewError}
-                </div>
-              )}
             </div>
           )}
-        </div>
-      </div>
 
-      {compare?.diff && (
-        <div className="app-panel mb-4">
-          <div className="app-panel-header">Changes</div>
-          <div className="app-panel-body flush">
-            <PullRequestDiff
-              token={token}
-              orgSlug={orgSlug}
-              repoSlug={projectSlug}
-              pullNumber={number}
-              diff={compare.diff}
-              comments={comments}
-            />
+          <div className="app-panel">
+            <div className="app-panel-header">{generalComments.length} comments</div>
+            <div className="app-panel-body space-y-4">
+              {generalComments.map(({ comment: c, author: commentAuthor }) => (
+                <div key={c.id} className="border-b border-naturals-n4 pb-4 last:border-0 last:pb-0">
+                  <div className="text-xs text-text-secondary mb-2">
+                    <span className="font-medium text-text">{commentAuthor.username}</span>
+                    {' · '}
+                    {formatDateTime(c.created_at)}
+                  </div>
+                  <MarkdownBody content={c.body} orgSlug={orgSlug} repoSlug={projectSlug} />
+                </div>
+              ))}
+
+              {token ? (
+                <form
+                  className="space-y-2 pt-2"
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    commentMutation.mutate()
+                  }}
+                >
+                  <textarea
+                    value={comment}
+                    onChange={(e) => setComment(e.target.value)}
+                    placeholder="Leave a comment"
+                    rows={4}
+                    className="app-field resize-y"
+                    required
+                  />
+                  <PrimaryButton type="submit" disabled={commentMutation.isPending || !comment.trim()}>
+                    Comment
+                  </PrimaryButton>
+                </form>
+              ) : (
+                <p className="text-sm text-text-secondary">
+                  <Link to="/login" className="text-primary hover:underline">Sign in</Link> to comment.
+                </p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {activeTab === 'commits' && (
+        <div className="app-panel">
+          <div className="app-panel-body">
+            {compareLoading ? (
+              <div className="flex items-center gap-2 text-text-secondary text-sm py-6">
+                <Loader2 size={16} className="animate-spin" />
+                Loading commits…
+              </div>
+            ) : compareError ? (
+              <div className="text-sm text-dashboard-danger py-4">
+                {(compareError as Error).message}
+              </div>
+            ) : compare ? (
+              <CompareCommitList
+                commits={compare.commits}
+                orgSlug={orgSlug}
+                repoSlug={projectSlug}
+              />
+            ) : (
+              <p className="text-sm text-text-secondary py-4">No comparison available.</p>
+            )}
           </div>
         </div>
       )}
 
-      <div className="app-panel">
-        <div className="app-panel-header">{generalComments.length} comments</div>
-        <div className="app-panel-body space-y-4">
-          {generalComments.map(({ comment: c, author: commentAuthor }) => (
-            <div key={c.id} className="border-b border-naturals-n4 pb-4 last:border-0 last:pb-0">
-              <div className="text-xs text-text-secondary mb-2">
-                <span className="font-medium text-text">{commentAuthor.username}</span>
-                {' · '}
-                {formatDateTime(c.created_at)}
+      {activeTab === 'changes' && (
+        <div className="app-panel">
+          <div className="app-panel-body flush">
+            {compareLoading ? (
+              <CompareDiffPanel loading />
+            ) : compareError ? (
+              <div className="p-4 text-sm text-dashboard-danger">
+                {(compareError as Error).message}
               </div>
-              <MarkdownBody content={c.body} orgSlug={orgSlug} repoSlug={projectSlug} />
-            </div>
-          ))}
-
-          {token ? (
-            <form
-              className="space-y-2 pt-2"
-              onSubmit={(e) => {
-                e.preventDefault()
-                commentMutation.mutate()
-              }}
-            >
-              <textarea
-                value={comment}
-                onChange={(e) => setComment(e.target.value)}
-                placeholder="Leave a comment"
-                rows={4}
-                className="app-field resize-y"
-                required
+            ) : compare?.diff && token && pr.state === 'open' ? (
+              <PullRequestDiff
+                token={token}
+                orgSlug={orgSlug}
+                repoSlug={projectSlug}
+                pullNumber={number}
+                diff={compare.diff}
+                comments={comments}
               />
-              <PrimaryButton type="submit" disabled={commentMutation.isPending || !comment.trim()}>
-                Comment
-              </PrimaryButton>
-            </form>
-          ) : (
-            <p className="text-sm text-text-secondary">
-              <Link to="/login" className="text-primary hover:underline">Sign in</Link> to comment.
-            </p>
-          )}
+            ) : (
+              <CompareDiffPanel diff={compare?.diff} />
+            )}
+          </div>
         </div>
+      )}
       </div>
     </>
   )

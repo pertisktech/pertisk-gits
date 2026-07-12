@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { pullUrl } from '../lib/collaboration'
-import { EmptyState, PrimaryButton, Select, TablePagination } from './ui'
+import { EmptyState, PrimaryButton, RefSelect, TablePagination } from './ui'
 import { useClientPagination } from '../lib/pagination'
 
 interface RepoPullRequestsProps {
@@ -69,6 +69,17 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
     resetPage()
   }, [stateFilter, resetPage])
 
+  useEffect(() => {
+    setTargetBranch(defaultBranch)
+  }, [defaultBranch])
+
+  useEffect(() => {
+    if (!showNew || branches.length === 0) return
+    if (sourceBranch && branches.includes(sourceBranch)) return
+    const candidate = branches.find((branch) => branch !== targetBranch) ?? branches[0] ?? ''
+    setSourceBranch(candidate)
+  }, [showNew, branches, sourceBranch, targetBranch])
+
   if (isLoading) {
     return (
       <div className="app-panel">
@@ -125,31 +136,32 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
               createMutation.mutate()
             }}
           >
-            <div className="flex flex-wrap gap-2 items-center text-sm">
-              <Select
-                value={sourceBranch}
-                onChange={(e) => setSourceBranch(e.target.value)}
-                className="app-branch-select"
-                required
+            <div className="app-pr-branch-row">
+              <span className="app-pr-branch-label">Source</span>
+              <RefSelect
+                refKind="branch"
+                refName={sourceBranch}
+                branches={branches}
+                tags={[]}
+                fallbackRef={defaultBranch}
+                alwaysMenu
+                onChange={(_, name) => setSourceBranch(name)}
                 aria-label="Source branch"
-              >
-                <option value="">Source branch</option>
-                {branches.map((b) => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </Select>
-              <span className="text-muted">→</span>
-              <Select
-                value={targetBranch}
-                onChange={(e) => setTargetBranch(e.target.value)}
-                className="app-branch-select"
-                required
+                className="app-pr-branch-select"
+              />
+              <span className="app-pr-branch-arrow" aria-hidden>→</span>
+              <span className="app-pr-branch-label">Target</span>
+              <RefSelect
+                refKind="branch"
+                refName={targetBranch}
+                branches={branches}
+                tags={[]}
+                fallbackRef={defaultBranch}
+                alwaysMenu
+                onChange={(_, name) => setTargetBranch(name)}
                 aria-label="Target branch"
-              >
-                {branches.map((b) => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </Select>
+                className="app-pr-branch-select"
+              />
             </div>
             <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" required className="app-field" />
             <textarea

@@ -1,20 +1,37 @@
 import { useQuery } from '@tanstack/react-query'
-import { GitCommit, Loader2 } from 'lucide-react'
+import { GitCommit, GitPullRequest, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
+import { useCommitPullRequest } from '../hooks/useCommitPullRequest'
 import { useProjectParams } from '../hooks/useProjectParams'
 import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
 import { commitUrl } from '../components/RepoCommits'
 import { CommitStatuses } from '../components/CommitStatuses'
-import { DiffViewer } from '../components/DiffViewer'
-import { Breadcrumbs } from '../components/ui'
+import { CompareDiffPanel } from '../components/CompareDiffPanel'
+import { PullRequestDiff } from '../components/PullRequestDiff'
+import { Breadcrumbs, LinkButton } from '../components/ui'
 import { projectBreadcrumbItems } from '../lib/groupRoute'
 import { displayRepoName } from '../lib/projectInitial'
 import { projectTabPath } from '../lib/projectRoute'
 
 function formatDate(ts: number) {
   return new Date(ts * 1000).toLocaleString()
+}
+
+function compareWithParentUrl(orgSlug: string, projectSlug: string, commitSha: string, parentSha: string) {
+  const base = projectTabPath(`/groups/${orgSlug}/projects/${projectSlug}`, 'compare')
+  const params = new URLSearchParams({
+    base: parentSha,
+    base_kind: 'revision',
+    head: commitSha,
+    head_kind: 'revision',
+  })
+  return `${base}?${params}`
+}
+
+function pullRequestUrl(orgSlug: string, projectSlug: string, pullNumber: number) {
+  return `/groups/${orgSlug}/projects/${projectSlug}/pulls/${pullNumber}`
 }
 
 export function CommitDetailPage() {
@@ -41,9 +58,23 @@ export function CommitDetailPage() {
     enabled: Boolean(orgSlug && projectSlug && commitSha),
   })
 
+  const { data: relatedPull, isLoading: relatedPullLoading } = useCommitPullRequest(
+    orgSlug,
+    projectSlug,
+    commitSha,
+    token,
+  )
+
+  const { data: pullComments = [] } = useQuery({
+    queryKey: ['pull-comments', orgSlug, projectSlug, relatedPull?.pullNumber, token ?? ''],
+    queryFn: () => api.listPullRequestComments(orgSlug, projectSlug, relatedPull!.pullNumber, token),
+    enabled: Boolean(token && relatedPull?.pullNumber),
+  })
+
   const commit = data?.commit
   const repo = repoData?.repository
   const repoName = repo ? displayRepoName(repo.name, repo.slug) : projectSlug
+  const parentSha = commit?.parents[0]
 
   if (isLoading) {
     return (
@@ -83,7 +114,7 @@ export function CommitDetailPage() {
         <div className="app-panel-body space-y-4">
           <div className="flex items-start gap-3">
             <GitCommit size={20} className="text-primary shrink-0 mt-0.5" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <h1 className="text-lg font-semibold text-text whitespace-pre-wrap">{commit.message}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
                 <span className="font-mono text-primary">{commit.sha}</span>
@@ -106,7 +137,7 @@ export function CommitDetailPage() {
                 </div>
               )}
               {commit.parents.length > 0 && (
-                <div className="mt-3 text-xs text-text-secondary">
+                <div className="mt-2 text-xs text-text-secondary">
                   <span className="text-muted mr-2">Parents</span>
                   {commit.parents.map((parent, i) => (
                     <span key={parent}>
@@ -119,6 +150,13 @@ export function CommitDetailPage() {
                       </Link>
                     </span>
                   ))}
+                </div>
+              )}
+              {parentSha && (
+                <div className="mt-3">
+                  <LinkButton to={compareWithParentUrl(orgSlug, projectSlug, commit.sha, parentSha)}>
+                    Compare with parent
+                  </LinkButton>
                 </div>
               )}
             </div>
@@ -139,18 +177,74 @@ export function CommitDetailPage() {
         </div>
       </div>
 
-      {commit.diff ? (
-        <div className="app-panel">
-          <div className="app-panel-header">Changes</div>
-          <div className="app-panel-body flush">
-            <DiffViewer diff={commit.diff} />
-          </div>
+      <div className="app-panel">
+        <div className="app-panel-header">
+          Changes
+          {commit.files_changed > 0 && (
+            <span className="text-muted font-normal ml-2">({commit.files_changed})</span>
+          )}
         </div>
-      ) : (
-        <div className="app-panel">
-          <div className="app-panel-body text-sm text-text-secondary">No file changes in this commit.</div>
+        <div className="app-panel-body flush">
+          {(relatedPullLoading || relatedPull || token) && (
+            <div className="border-b border-naturals-n4 px-4 py-3">
+              {relatedPullLoading && token && (
+                <div className="flex items-center gap-2 text-xs text-text-secondary">
+                  <Loader2 size={14} className="animate-spin" />
+                  Checking open merge requests…
+                </div>
+              )}
+
+              {relatedPull && (
+                <div className="flex flex-wrap items-start gap-3 rounded-md border border-primary-p4/30 bg-primary-p4/5 px-3 py-2.5 text-sm">
+                  <GitPullRequest size={16} className="text-primary shrink-0 mt-0.5" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-text">
+                      This commit is part of open merge request{' '}
+                      <Link
+                        to={pullRequestUrl(orgSlug, projectSlug, relatedPull.pullNumber)}
+                        className="text-primary font-medium hover:underline"
+                      >
+                        #{relatedPull.pullNumber}
+                      </Link>
+                      {': '}
+                      <span className="text-text-secondary">{relatedPull.title}</span>
+                    </p>
+                    <p className="text-xs text-text-secondary mt-1">
+                      {relatedPull.sourceBranch} → {relatedPull.targetBranch}
+                      {token && ' · Line comments are saved on the merge request.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {!relatedPull && !relatedPullLoading && token && (
+                <p className="text-xs text-text-secondary">
+                  Open a merge request that includes this commit to leave inline review comments.
+                </p>
+              )}
+            </div>
+          )}
+
+          {commit.diff ? (
+            token && relatedPull ? (
+              <PullRequestDiff
+                token={token}
+                orgSlug={orgSlug}
+                repoSlug={projectSlug}
+                pullNumber={relatedPull.pullNumber}
+                diff={commit.diff}
+                comments={pullComments}
+              />
+            ) : (
+              <CompareDiffPanel diff={commit.diff} />
+            )
+          ) : (
+            <div className="p-4 text-sm text-text-secondary">
+              No file changes in this commit.
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </>
   )
 }

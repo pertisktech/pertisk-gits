@@ -215,3 +215,61 @@ export function fileStatusLabel(status: DiffFileStatus): string {
       return 'Modified'
   }
 }
+
+export type SplitDiffRowType = 'hunk' | 'context' | 'change'
+
+export interface SplitDiffRow {
+  type: SplitDiffRowType
+  hunk?: DiffLine
+  left?: DiffLine
+  right?: DiffLine
+}
+
+export function buildSplitRows(lines: DiffLine[]): SplitDiffRow[] {
+  const rows: SplitDiffRow[] = []
+  let index = 0
+
+  while (index < lines.length) {
+    const line = lines[index]
+
+    if (line.kind === 'hunk') {
+      rows.push({ type: 'hunk', hunk: line })
+      index += 1
+      continue
+    }
+
+    if (line.kind === 'ctx') {
+      rows.push({ type: 'context', left: line, right: line })
+      index += 1
+      continue
+    }
+
+    if (line.kind === 'del' || line.kind === 'add') {
+      const dels: DiffLine[] = []
+      const adds: DiffLine[] = []
+
+      while (index < lines.length && lines[index].kind === 'del') {
+        dels.push(lines[index])
+        index += 1
+      }
+      while (index < lines.length && lines[index].kind === 'add') {
+        adds.push(lines[index])
+        index += 1
+      }
+
+      const count = Math.max(dels.length, adds.length)
+      for (let pair = 0; pair < count; pair += 1) {
+        rows.push({
+          type: 'change',
+          left: dels[pair],
+          right: adds[pair],
+        })
+      }
+      continue
+    }
+
+    index += 1
+  }
+
+  return rows
+}

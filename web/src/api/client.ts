@@ -1087,6 +1087,13 @@ export const api = {
       token,
     ),
 
+  getPullRequestCompare: (orgSlug: string, repoSlug: string, pullNumber: number, token?: string | null) =>
+    request<CompareResult>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pulls/${pullNumber}/compare`,
+      {},
+      token,
+    ),
+
   createPullRequest: (
     token: string,
     orgSlug: string,
