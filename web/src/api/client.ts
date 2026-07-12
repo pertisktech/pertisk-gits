@@ -260,6 +260,9 @@ export const api = {
   listOrganizations: (token: string) =>
     request<Organization[]>('/organizations', {}, token),
 
+  listAccessibleRepositories: (token: string) =>
+    request<Repository[]>('/repositories/accessible', {}, token),
+
   getDashboardProjectStats: (
     token: string,
     projects: { org_path: string; slug: string }[],

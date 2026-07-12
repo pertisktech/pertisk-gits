@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { FolderGit2, Search, Users, FileCode2 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -50,15 +50,10 @@ export function GlobalSearch() {
     enabled: Boolean(token),
   })
 
-  const repoQueries = useQueries({
-    queries: groups.map((group) => {
-      const orgPath = groupUrlPath(group)
-      return {
-        queryKey: ['repositories', orgPath],
-        queryFn: () => api.listRepositories(token!, orgPath),
-        enabled: Boolean(token),
-      }
-    }),
+  const { data: accessibleRepos = [] } = useQuery({
+    queryKey: ['accessible-repositories'],
+    queryFn: () => api.listAccessibleRepositories(token!),
+    enabled: Boolean(token),
   })
 
   const trimmedQuery = query.trim()
@@ -89,29 +84,31 @@ export function GlobalSearch() {
       }
     }
 
-    groups.forEach((group, index) => {
-      const orgPath = groupUrlPath(group)
-      const repos = repoQueries[index]?.data ?? []
-      for (const repo of repos) {
-        const fullPath = `${orgPath}/${repo.slug}`
-        if (
-          repo.name.toLowerCase().includes(q) ||
-          repo.slug.toLowerCase().includes(q) ||
-          fullPath.toLowerCase().includes(q)
-        ) {
-          items.push({
-            type: 'repo',
-            orgSlug: orgPath,
-            slug: repo.slug,
-            name: repo.name,
-            fullPath,
-          })
-        }
+    const seenRepos = new Set<string>()
+
+    for (const repo of accessibleRepos) {
+      const orgPath = repo.organization_path ?? ''
+      if (!orgPath) continue
+      const fullPath = `${orgPath}/${repo.slug}`
+      if (seenRepos.has(fullPath)) continue
+      if (
+        repo.name.toLowerCase().includes(q) ||
+        repo.slug.toLowerCase().includes(q) ||
+        fullPath.toLowerCase().includes(q)
+      ) {
+        seenRepos.add(fullPath)
+        items.push({
+          type: 'repo',
+          orgSlug: orgPath,
+          slug: repo.slug,
+          name: repo.name,
+          fullPath,
+        })
       }
-    })
+    }
 
     return items.slice(0, 12)
-  }, [trimmedQuery, groups, repoQueries])
+  }, [trimmedQuery, groups, accessibleRepos])
 
   const codeHits = useMemo(() => {
     const hits = codeResults?.hits ?? []

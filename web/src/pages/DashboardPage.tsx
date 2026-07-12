@@ -20,7 +20,7 @@ import styles from './DashboardPage.module.css'
 
 export function DashboardPage() {
   const user = useEffectiveUser()
-  const { projects, groups, isLoading, error } = useAllProjects()
+  const { projects, isLoading, error } = useAllProjects()
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState<ProjectSortOption>('updated_desc')
 
@@ -50,7 +50,7 @@ export function DashboardPage() {
         <div>
           <h1 className="text-xl font-semibold text-text m-0">Projects</h1>
           <p className="text-sm text-text-secondary mt-1 mb-0">
-            {user?.display_name ?? user?.username} · all repositories you can access
+            {user?.display_name ?? user?.username} · public repositories and projects in your groups
           </p>
         </div>
         <div className="flex gap-2">
@@ -123,29 +123,27 @@ export function DashboardPage() {
         {!isLoading && pageProjects.length > 0 && (
           <>
             <ul className={listStyles.list}>
-              {pageProjects.map((project) => (
-                (() => {
-                  const groupLabels = groupBreadcrumbItems(project.orgSlug, groups)
-                    .slice(1)
-                    .map((item) => item.label)
-                  const displayLabel = [...groupLabels, displayRepoName(project.name, project.slug)].join('/')
+              {pageProjects.map((project) => {
+                const groupLabels = groupBreadcrumbItems(project.orgSlug)
+                  .slice(1)
+                  .map((item) => item.label)
+                const displayLabel = [...groupLabels, displayRepoName(project.name, project.slug)].join('/')
 
-                  return (
-                <ProjectListRow
-                  key={project.id}
-                  orgSlug={project.orgSlug}
-                  orgName={project.orgName}
-                  slug={project.slug}
-                  name={project.name}
-                  updatedAt={project.updated_at}
-                  lastCommitAt={project.last_commit_at}
-                  stats={getStats(project)}
-                  statsLoading={statsLoading}
-                  displayLabel={displayLabel}
-                />
-                  )
-                })()
-              ))}
+                return (
+                  <ProjectListRow
+                    key={project.id}
+                    orgSlug={project.orgSlug}
+                    orgName={project.orgName}
+                    slug={project.slug}
+                    name={project.name}
+                    updatedAt={project.updated_at}
+                    lastCommitAt={project.last_commit_at}
+                    stats={getStats(project)}
+                    statsLoading={statsLoading}
+                    displayLabel={displayLabel}
+                  />
+                )
+              })}
             </ul>
 
             <TablePagination

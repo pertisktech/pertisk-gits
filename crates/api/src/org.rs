@@ -35,6 +35,14 @@ pub async fn find_org_for_member(
         .map_err(ApiError::from)?
         .ok_or(DomainError::NotFound)?;
 
+    if !is_org_member(pool, org.id, user_id).await? {
+        return Err(DomainError::Forbidden.into());
+    }
+
+    Ok(org)
+}
+
+pub async fn is_org_member(pool: &PgPool, org_id: Uuid, user_id: Uuid) -> Result<bool, ApiError> {
     let is_member: bool = sqlx::query_scalar(
         r#"
         WITH RECURSIVE ancestors AS (
@@ -54,17 +62,13 @@ pub async fn find_org_for_member(
         )
         "#,
     )
-    .bind(org.id)
+    .bind(org_id)
     .bind(user_id)
     .fetch_one(pool)
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    if !is_member {
-        return Err(DomainError::Forbidden.into());
-    }
-
-    Ok(org)
+    Ok(is_member)
 }
 
 pub async fn list_subgroups(

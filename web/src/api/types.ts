@@ -35,6 +35,7 @@ export interface Repository {
   id: string
   organization_id: string
   organization_path?: string
+  organization_name?: string
   name: string
   slug: string
   description: string | null

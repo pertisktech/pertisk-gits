@@ -914,6 +914,12 @@ async fn list_organizations(
                 OR o.full_path LIKE member_org.full_path || '/%'
               )
         )
+        OR EXISTS (
+            SELECT 1
+            FROM repositories r
+            WHERE r.organization_id = o.id
+              AND r.visibility = 'public'
+        )
         ORDER BY o.full_path
         "#,
     )
@@ -1298,7 +1304,8 @@ async fn list_repositories(
     Query(query): Query<ListRepositoriesQuery>,
 ) -> Result<Json<Vec<RepositoryListItem>>, ApiError> {
     let org_path = crate::org::org_path_from_param(&org_path);
-    let org = find_org_for_member(&state.pool, &org_path, auth.user_id).await?;
+    let org = crate::org::find_org_by_path(&state.pool, &org_path).await?;
+    let is_member = crate::org::is_org_member(&state.pool, org.id, auth.user_id).await?;
 
     let mut repos = if query.recursive {
         sqlx::query_as::<_, RepositoryListRow>(
@@ -1317,11 +1324,13 @@ async fn list_repositories(
                 o.full_path AS organization_path
             FROM repositories r
             INNER JOIN organizations o ON o.id = r.organization_id
-            WHERE o.full_path = $1 OR o.full_path LIKE $1 || '/%'
+            WHERE (o.full_path = $1 OR o.full_path LIKE $1 || '/%')
+              AND ($2 OR r.visibility = 'public')
             ORDER BY o.full_path, r.name
             "#,
         )
         .bind(&org_path)
+        .bind(is_member)
         .fetch_all(&state.pool)
         .await
     } else {
@@ -1342,10 +1351,12 @@ async fn list_repositories(
             FROM repositories r
             INNER JOIN organizations o ON o.id = r.organization_id
             WHERE r.organization_id = $1
+              AND ($2 OR r.visibility = 'public')
             ORDER BY r.name
             "#,
         )
         .bind(org.id)
+        .bind(is_member)
         .fetch_all(&state.pool)
         .await
     }
