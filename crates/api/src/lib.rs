@@ -899,10 +899,28 @@ async fn delete_ssh_key(
 async fn list_organizations(
     State(state): State<AppState>,
     auth: AuthUser,
-) -> Result<Json<Vec<Organization>>, ApiError> {
-    let orgs = sqlx::query_as::<_, Organization>(
+) -> Result<Json<Vec<OrganizationListItem>>, ApiError> {
+    let rows = sqlx::query_as::<_, OrganizationListRow>(
         r#"
-        SELECT DISTINCT o.id, o.slug, o.name, o.description, o.parent_id, o.full_path, o.created_at, o.updated_at
+        SELECT DISTINCT
+            o.id,
+            o.slug,
+            o.name,
+            o.description,
+            o.parent_id,
+            o.full_path,
+            o.created_at,
+            o.updated_at,
+            EXISTS (
+                SELECT 1
+                FROM organization_members m
+                INNER JOIN organizations member_org ON member_org.id = m.organization_id
+                WHERE m.user_id = $1
+                  AND (
+                    o.full_path = member_org.full_path
+                    OR o.full_path LIKE member_org.full_path || '/%'
+                  )
+            ) AS is_member
         FROM organizations o
         WHERE EXISTS (
             SELECT 1
@@ -928,7 +946,43 @@ async fn list_organizations(
     .await
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
-    Ok(Json(orgs))
+    Ok(Json(
+        rows.into_iter()
+            .map(|row| OrganizationListItem {
+                organization: Organization {
+                    id: row.id,
+                    slug: row.slug,
+                    name: row.name,
+                    description: row.description,
+                    parent_id: row.parent_id,
+                    full_path: row.full_path,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                },
+                is_member: row.is_member,
+            })
+            .collect(),
+    ))
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct OrganizationListRow {
+    id: Uuid,
+    slug: String,
+    name: String,
+    description: Option<String>,
+    parent_id: Option<Uuid>,
+    full_path: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+    updated_at: chrono::DateTime<chrono::Utc>,
+    is_member: bool,
+}
+
+#[derive(Serialize)]
+struct OrganizationListItem {
+    #[serde(flatten)]
+    organization: Organization,
+    is_member: bool,
 }
 
 async fn list_organization_subgroups(
@@ -936,8 +990,12 @@ async fn list_organization_subgroups(
     auth: AuthUser,
     Path(org_path): Path<String>,
 ) -> Result<Json<Vec<Organization>>, ApiError> {
-    let org =
-        find_org_for_member(&state.pool, &org::org_path_from_param(&org_path), auth.user_id).await?;
+    let org = crate::org::find_org_for_browse(
+        &state.pool,
+        &org::org_path_from_param(&org_path),
+        auth.user_id,
+    )
+    .await?;
     let subgroups = org::list_subgroups(&state.pool, org.id).await?;
     Ok(Json(subgroups))
 }

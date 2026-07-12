@@ -13,3 +13,7 @@ export function findGroupByPath(groups: Organization[], path: string): Organizat
   const normalized = path.replace(/^\/+|\/+$/g, '')
   return groups.find((g) => (g.full_path || g.slug) === normalized)
 }
+
+export function isOrganizationMember(group?: Pick<Organization, 'is_member'>): boolean {
+  return group?.is_member === true
+}

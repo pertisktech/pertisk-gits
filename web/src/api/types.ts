@@ -29,6 +29,8 @@ export interface Organization {
   full_path: string
   created_at: string
   updated_at: string
+  /** True when the signed-in user is a member of this group (or an ancestor). */
+  is_member?: boolean
 }
 
 export interface Repository {

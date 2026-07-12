@@ -71,6 +71,68 @@ pub async fn is_org_member(pool: &PgPool, org_id: Uuid, user_id: Uuid) -> Result
     Ok(is_member)
 }
 
+pub async fn org_has_browsable_repos(
+    pool: &PgPool,
+    org_id: Uuid,
+    user_id: Uuid,
+) -> Result<bool, ApiError> {
+    let has_repos: bool = sqlx::query_scalar(
+        r#"
+        WITH RECURSIVE subtree AS (
+            SELECT id FROM organizations WHERE id = $1
+            UNION ALL
+            SELECT o.id FROM organizations o
+            INNER JOIN subtree s ON o.parent_id = s.id
+        )
+        SELECT EXISTS (
+            SELECT 1
+            FROM repositories r
+            WHERE r.organization_id IN (SELECT id FROM subtree)
+              AND (
+                r.visibility = 'public'
+                OR EXISTS (
+                    SELECT 1
+                    FROM repository_permissions rp
+                    WHERE rp.repository_id = r.id
+                      AND rp.user_id = $2
+                )
+              )
+        )
+        "#,
+    )
+    .bind(org_id)
+    .bind(user_id)
+    .fetch_one(pool)
+    .await
+    .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    Ok(has_repos)
+}
+
+pub async fn can_browse_org(pool: &PgPool, org_id: Uuid, user_id: Uuid) -> Result<bool, ApiError> {
+    Ok(is_org_member(pool, org_id, user_id).await?
+        || org_has_browsable_repos(pool, org_id, user_id).await?)
+}
+
+/// Member or can read public (or shared) repositories in this group or its subgroups.
+pub async fn find_org_for_browse(
+    pool: &PgPool,
+    org_path: &str,
+    user_id: Uuid,
+) -> Result<Organization, ApiError> {
+    let org_path = org_path_from_param(org_path);
+    let org = find_org_by_full_path(pool, &org_path)
+        .await
+        .map_err(ApiError::from)?
+        .ok_or(DomainError::NotFound)?;
+
+    if !can_browse_org(pool, org.id, user_id).await? {
+        return Err(DomainError::Forbidden.into());
+    }
+
+    Ok(org)
+}
+
 pub async fn list_subgroups(
     pool: &PgPool,
     parent_id: Uuid,

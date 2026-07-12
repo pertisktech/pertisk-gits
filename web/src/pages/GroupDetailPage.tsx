@@ -8,15 +8,18 @@ import { ImportMenuDropdown } from '../components/ImportMenuDropdown'
 import { Breadcrumbs, LinkButton } from '../components/ui'
 import { useGroupFromRoute } from '../hooks/useGroupFromRoute'
 import { groupBreadcrumbItems } from '../lib/groupRoute'
+import { isOrganizationMember } from '../lib/groupPath'
 
 export function GroupDetailPage() {
   const { token, user } = useAuth()
   const { orgPath, group, groups } = useGroupFromRoute()
+  const isMember = isOrganizationMember(group)
 
   const { data: members = [] } = useQuery({
     queryKey: ['org-members', orgPath],
     queryFn: () => api.listOrganizationMembers(token!, orgPath),
-    enabled: Boolean(token && orgPath),
+    enabled: Boolean(token && orgPath && isMember),
+    retry: false,
   })
 
   const { data: subgroups = [], isLoading: subgroupsLoading } = useQuery({
@@ -71,10 +74,12 @@ export function GroupDetailPage() {
             New subgroup
           </LinkButton>
         )}
-        <LinkButton to={`${basePath}/projects/new`} primary>
-          <Plus size={14} />
-          New repository
-        </LinkButton>
+        {isMember && (
+          <LinkButton to={`${basePath}/projects/new`} primary>
+            <Plus size={14} />
+            New repository
+          </LinkButton>
+        )}
       </div>
 
       <GroupChildrenPanel
