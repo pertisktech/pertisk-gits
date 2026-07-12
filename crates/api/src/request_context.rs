@@ -22,7 +22,28 @@ impl LoginContext {
 }
 
 pub fn client_ip(headers: &HeaderMap, peer_addr: Option<SocketAddr>) -> Option<String> {
-    client_ip_from_headers(headers).or_else(|| peer_addr.map(format_socket_ip))
+    if let Some(ip) = client_ip_from_headers(headers) {
+        if !is_loopback_ip(&ip) {
+            return Some(ip);
+        }
+    }
+
+    peer_addr
+        .map(|addr| addr.ip())
+        .filter(|ip| !ip.is_loopback() && !is_private_socket_ip(ip))
+        .map(|ip| ip.to_string())
+}
+
+fn is_loopback_ip(ip: &str) -> bool {
+    let ip = ip.trim();
+    ip == "::1" || ip == "127.0.0.1"
+}
+
+fn is_private_socket_ip(ip: &IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_private() || v4.is_link_local(),
+        IpAddr::V6(v6) => v6.is_unique_local() || v6.is_unicast_link_local(),
+    }
 }
 
 fn client_ip_from_headers(headers: &HeaderMap) -> Option<String> {
@@ -30,6 +51,7 @@ fn client_ip_from_headers(headers: &HeaderMap) -> Option<String> {
         "cf-connecting-ip",
         "true-client-ip",
         "x-client-ip",
+        "x-original-forwarded-for",
         "x-forwarded-for",
         "x-real-ip",
     ] {
@@ -78,10 +100,6 @@ fn parse_forwarded_for(value: &str) -> Option<String> {
     None
 }
 
-fn format_socket_ip(addr: SocketAddr) -> String {
-    normalize_ip_string(&addr.ip().to_string())
-}
-
 fn normalize_ip_string(value: &str) -> String {
     value.trim().trim_matches('"').to_string()
 }
@@ -124,11 +142,16 @@ pub fn is_private_ip(ip: &str) -> bool {
 }
 
 pub fn location_label(ip: &str) -> String {
-    if ip == "Unknown" || is_private_ip(ip) {
-        "Local network".into()
-    } else {
-        "Unknown".into()
+    match ip {
+        "Unknown" | "Unavailable" => "Unknown".into(),
+        ip if is_private_ip(ip) => "Local network".into(),
+        _ => "Unknown".into(),
     }
+}
+
+pub fn display_client_ip(ip: Option<String>) -> String {
+    ip.filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "Unavailable".into())
 }
 
 #[cfg(test)]
@@ -160,7 +183,14 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_peer_address() {
+    fn ignores_loopback_peer_without_forwarded_header() {
+        let headers = HeaderMap::new();
+        let peer: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+        assert_eq!(client_ip(&headers, Some(peer)), None);
+    }
+
+    #[test]
+    fn falls_back_to_public_peer_address() {
         let headers = HeaderMap::new();
         let peer: SocketAddr = "203.0.113.44:54321".parse().unwrap();
         assert_eq!(

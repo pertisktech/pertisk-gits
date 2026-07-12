@@ -141,10 +141,19 @@ export function CiLogViewer({
 
   useLayoutEffect(() => {
     if (!followTail || !isFollowingRef.current) return
-    scrollToBottom()
-    const frame = requestAnimationFrame(scrollToBottom)
-    return () => cancelAnimationFrame(frame)
-  }, [followTail, isFollowing, text, scrollToBottom])
+    const scroll = () => {
+      const element = scrollRef.current
+      if (!element) return
+      element.scrollTop = element.scrollHeight
+    }
+    scroll()
+    const raf1 = requestAnimationFrame(scroll)
+    const raf2 = requestAnimationFrame(() => requestAnimationFrame(scroll))
+    return () => {
+      cancelAnimationFrame(raf1)
+      cancelAnimationFrame(raf2)
+    }
+  }, [followTail, isFollowing, text])
 
   useEffect(() => {
     if (!followTail) return

@@ -487,10 +487,7 @@ pub fn notify_login(
         };
 
         let parsed = parse_user_agent(login_ctx.user_agent.as_deref());
-        let ip_address = login_ctx
-            .ip_address
-            .clone()
-            .unwrap_or_else(|| "Unknown".into());
+        let ip_address = request_context::display_client_ip(login_ctx.ip_address.clone());
         let location = lookup_ip_location(&ip_address)
             .await
             .unwrap_or_else(|| request_context::location_label(&ip_address));

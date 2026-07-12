@@ -470,13 +470,7 @@ export function PipelineRunDetailPage() {
                 title={activeStep ? stepLogTitle(activeStep, activeJob.job_name) : activeJob.job_name}
                 subtitle={activeStep ? stepLogSubtitle(activeStep) : undefined}
                 viewerKey={`${activeJob.id}-${jobLogSession}-${activeStepKey ?? ''}`}
-                followTail={
-                  isRunInProgress(run) &&
-                  activeJobDisplayStatus !== 'manual' &&
-                  (activeJobDisplayStatus === 'running' ||
-                    activeJobDisplayStatus === 'queued' ||
-                    activeStep?.running === true)
-                }
+                followTail
                 actions={
                   canCancelStep ? (
                     <SecondaryButton
