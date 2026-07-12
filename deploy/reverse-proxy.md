@@ -77,18 +77,7 @@ Enable TLS (ACME) for that host. Do **not** split UI and API into different upst
 
 **Registry pushes:** In site settings, set **max request body size** to **0** (unlimited) or at least **5 GiB**. Without this, `docker push` fails around 1–10 MiB with `413 Payload Too Large`.
 
-**Login notifications:** Enable **forward client IP** (or equivalent) so the upstream receives `X-Forwarded-For`. Without it, security emails show `Unavailable` for IP and location.
-
-In **pertisk-proxy** → **Sites** → your Git host → enable **Forward client IP** / **X-Forwarded-For** (wording may vary). After saving, verify from the server:
-
-```bash
-# Replace with your public Git URL; should show your real IP, not 127.0.0.1
-curl -sI -X POST https://gitdev.cloud.pertisk.com/api/v1/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"login":"test","password":"test"}' | grep -i x-forwarded
-```
-
-If you use **nginx** or **Caddy** instead, ensure `X-Forwarded-For` is set (see examples below).
+**Login notifications:** pertisk-proxy forwards `X-Real-IP` and `X-Forwarded-For` to upstreams by default (v0.1.90+). Older proxy builds required enabling **Forward client IP** per site in Admin → Sites. After upgrading pertisk-proxy, restart it and sign in again — login emails should show your real public IP.
 
 ---
 
