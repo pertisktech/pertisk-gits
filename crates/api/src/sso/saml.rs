@@ -13,9 +13,10 @@ use std::io::Read;
 use uuid::Uuid;
 
 use super::{
-    api_callback_url, browser_redirect_response, browser_session_response, ensure_enabled_provider,
-    issue_auth_response, jit_provision_user, load_provider, public_base_url, store_flow_state,
-    take_flow_state, ExternalUser,
+    api_callback_url, browser_pending_approval_response, browser_redirect_response,
+    browser_session_response, ensure_enabled_provider, finish_provider_login, jit_provision_user,
+    load_provider, public_base_url, store_flow_state, take_flow_state, ExternalUser,
+    ProviderLoginResult,
 };
 use crate::{
     audit::{record_audit_event, AuditEventInput},
@@ -111,13 +112,13 @@ pub async fn saml_acs(
         username_hint: email.split('@').next().map(str::to_string),
     };
 
-    let user = jit_provision_user(&state.pool, &provider, &external).await?;
+    let provisioned = jit_provision_user(&state.pool, &provider, &external).await?;
 
     record_audit_event(
         &state.pool,
         AuditEventInput {
             organization_id: None,
-            actor_user_id: Some(user.id),
+            actor_user_id: Some(provisioned.user.id),
             event_type: AuditEventType::SsoLogin,
             action: format!("saml login via {}", provider.name),
             resource_type: Some("auth_provider".into()),
@@ -130,8 +131,14 @@ pub async fn saml_acs(
     .await?;
 
     let login_ctx = crate::request_context::LoginContext::from_parts(&headers, Some(peer_addr));
-    let auth = issue_auth_response(&state, user, "saml", login_ctx).await?;
-    Ok(browser_session_response(&state, &auth).into_response())
+    match finish_provider_login(&state, provisioned, "saml", login_ctx).await? {
+        ProviderLoginResult::Authenticated(auth) => {
+            Ok(browser_session_response(&state, &auth).into_response())
+        }
+        ProviderLoginResult::PendingApproval => {
+            Ok(browser_pending_approval_response(&state).into_response())
+        }
+    }
 }
 
 fn deflate_base64(input: &str) -> String {

@@ -153,6 +153,12 @@ pub fn browser_login_error_response(state: &AppState, message: &str) -> SsoHtmlP
     browser_redirect_response(&frontend_login_url_with_error(state, message))
 }
 
+pub fn browser_pending_approval_response(state: &AppState) -> SsoHtmlPage {
+    browser_login_error_response(state, PENDING_APPROVAL_MESSAGE)
+}
+
+pub const PENDING_APPROVAL_MESSAGE: &str = "account pending admin approval";
+
 pub async fn store_flow_state(
     pool: &PgPool,
     provider_id: Uuid,
@@ -269,6 +275,47 @@ pub struct ExternalUser {
     pub username_hint: Option<String>,
 }
 
+pub struct ProvisionedUser {
+    pub user: User,
+    pub created: bool,
+}
+
+pub enum ProviderLoginResult {
+    Authenticated(AuthResponse),
+    PendingApproval,
+}
+
+pub async fn finish_provider_login(
+    state: &AppState,
+    provisioned: ProvisionedUser,
+    method: &str,
+    login_ctx: crate::request_context::LoginContext,
+) -> Result<ProviderLoginResult, ApiError> {
+    if provisioned.created && crate::admin::registration_requires_approval() {
+        crate::notifications::notify_user_registered(
+            state.pool.clone(),
+            state.secrets_crypto.clone(),
+            state.config.git_public_base_url.clone(),
+            provisioned.user.id,
+            true,
+        );
+    }
+
+    match provisioned.user.approval_status {
+        UserApprovalStatus::Pending => return Ok(ProviderLoginResult::PendingApproval),
+        UserApprovalStatus::Rejected => {
+            return Err(DomainError::Validation(
+                "account registration was rejected".into(),
+            )
+            .into());
+        }
+        UserApprovalStatus::Approved => {}
+    }
+
+    let auth = issue_auth_response(state, provisioned.user, method, login_ctx).await?;
+    Ok(ProviderLoginResult::Authenticated(auth))
+}
+
 pub(crate) fn normalize_email(email: &str) -> String {
     email.trim().to_ascii_lowercase()
 }
@@ -281,7 +328,7 @@ pub async fn jit_provision_user(
     pool: &PgPool,
     provider: &AuthProvider,
     external: &ExternalUser,
-) -> Result<User, ApiError> {
+) -> Result<ProvisionedUser, ApiError> {
     let external = ExternalUser {
         email: normalize_email(&external.email),
         ..external.clone()
@@ -307,7 +354,10 @@ pub async fn jit_provision_user(
     {
         let user = load_user_by_id(pool, existing_id).await?;
         if normalize_email(&user.email) == external.email {
-            return Ok(user);
+            return Ok(ProvisionedUser {
+                user,
+                created: false,
+            });
         }
 
         if let Some(correct_id) = find_user_id_by_email(pool, &external.email).await? {
@@ -324,26 +374,41 @@ pub async fn jit_provision_user(
                 .await
                 .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
             } else {
-                return Ok(user);
+                return Ok(ProvisionedUser {
+                    user,
+                    created: false,
+                });
             }
         } else {
-            return Ok(user);
+            return Ok(ProvisionedUser {
+                user,
+                created: false,
+            });
         }
     }
 
     if let Some(user_id) = find_user_id_by_email(pool, &external.email).await? {
         ensure_can_link_provider_identity(pool, provider.id, user_id, &external.subject).await?;
         link_external_identity(pool, user_id, provider.id, &external).await?;
-        return load_user_by_id(pool, user_id).await;
+        return Ok(ProvisionedUser {
+            user: load_user_by_id(pool, user_id).await?,
+            created: false,
+        });
     }
 
     let username = unique_username(pool, &external).await?;
     let display_name = external.display_name.clone();
+    let requires_approval = crate::admin::registration_requires_approval();
+    let approval_status = if requires_approval {
+        UserApprovalStatus::Pending
+    } else {
+        UserApprovalStatus::Approved
+    };
 
     let user = sqlx::query_as::<_, User>(
         r#"
         INSERT INTO users (username, email, password_hash, display_name, approval_status, approved_at)
-        VALUES ($1, $2, NULL, $3, 'approved', NOW())
+        VALUES ($1, $2, NULL, $3, $4, CASE WHEN $4 = 'approved' THEN NOW() ELSE NULL END)
         RETURNING id, username, email, password_hash, display_name, is_super_admin, is_machine_user,
                   approval_status, approved_at, approved_by, created_at, updated_at
         "#,
@@ -351,6 +416,7 @@ pub async fn jit_provision_user(
     .bind(&username)
     .bind(&external.email)
     .bind(&display_name)
+    .bind(approval_status)
     .fetch_one(pool)
     .await
     .map_err(|e| match e {
@@ -364,7 +430,10 @@ pub async fn jit_provision_user(
 
     link_external_identity(pool, user.id, provider.id, &external).await?;
 
-    Ok(user)
+    Ok(ProvisionedUser {
+        user,
+        created: true,
+    })
 }
 
 async fn find_user_id_by_email(pool: &PgPool, email: &str) -> Result<Option<Uuid>, ApiError> {

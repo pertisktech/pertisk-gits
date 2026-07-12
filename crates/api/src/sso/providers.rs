@@ -12,8 +12,8 @@ use uuid::Uuid;
 use validator::Validate;
 
 use super::{
-    ensure_auth_admin, ensure_enabled_provider, issue_auth_response, jit_provision_user,
-    load_provider, sync_ldap_group_memberships, ExternalUser,
+    ensure_auth_admin, ensure_enabled_provider, finish_provider_login, jit_provision_user,
+    load_provider, sync_ldap_group_memberships, ProviderLoginResult, ExternalUser,
 };
 use crate::{
     audit::{record_audit_event, AuditEventInput},
@@ -605,14 +605,20 @@ async fn ldap_login(
         username_hint: Some(body.username.clone()),
     };
 
-    let user = jit_provision_user(&state.pool, &provider, &external).await?;
-    sync_ldap_group_memberships(&state.pool, provider.id, user.id, &ldap_user.groups).await?;
+    let provisioned = jit_provision_user(&state.pool, &provider, &external).await?;
+    sync_ldap_group_memberships(
+        &state.pool,
+        provider.id,
+        provisioned.user.id,
+        &ldap_user.groups,
+    )
+    .await?;
 
     record_audit_event(
         &state.pool,
         AuditEventInput {
             organization_id: None,
-            actor_user_id: Some(user.id),
+            actor_user_id: Some(provisioned.user.id),
             event_type: AuditEventType::SsoLogin,
             action: format!("ldap login via {}", provider.name),
             resource_type: Some("auth_provider".into()),
@@ -625,7 +631,11 @@ async fn ldap_login(
     .await?;
 
     let login_ctx = crate::request_context::LoginContext::from_parts(&headers, Some(peer_addr));
-    Ok(Json(
-        issue_auth_response(&state, user, "ldap", login_ctx).await?,
-    ))
+    match finish_provider_login(&state, provisioned, "ldap", login_ctx).await? {
+        ProviderLoginResult::Authenticated(auth) => Ok(Json(auth)),
+        ProviderLoginResult::PendingApproval => Err(DomainError::Validation(
+            super::PENDING_APPROVAL_MESSAGE.into(),
+        )
+        .into()),
+    }
 }

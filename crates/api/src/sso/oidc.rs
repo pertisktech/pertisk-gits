@@ -17,8 +17,9 @@ use uuid::Uuid;
 
 use super::{
     api_callback_url, browser_login_error_response, browser_redirect_response,
-    browser_session_response, ensure_enabled_provider, issue_auth_response, jit_provision_user,
-    load_provider, random_token, store_flow_state, take_flow_state, ExternalUser, SsoHtmlPage,
+    browser_session_response, browser_pending_approval_response, ensure_enabled_provider,
+    finish_provider_login, jit_provision_user, load_provider, random_token, store_flow_state,
+    take_flow_state, ExternalUser, ProviderLoginResult, SsoHtmlPage,
 };
 use crate::{
     audit::{record_audit_event, AuditEventInput},
@@ -271,13 +272,13 @@ async fn oidc_callback_inner(
     )
     .await?;
 
-    let user = jit_provision_user(&state.pool, &provider, &external).await?;
+    let provisioned = jit_provision_user(&state.pool, &provider, &external).await?;
 
     record_audit_event(
         &state.pool,
         AuditEventInput {
             organization_id: None,
-            actor_user_id: Some(user.id),
+            actor_user_id: Some(provisioned.user.id),
             event_type: AuditEventType::SsoLogin,
             action: format!("oidc login via {}", provider.name),
             resource_type: Some("auth_provider".into()),
@@ -293,8 +294,10 @@ async fn oidc_callback_inner(
     )
     .await?;
 
-    let auth = issue_auth_response(state, user, "oidc", login_ctx).await?;
-    Ok(browser_session_response(state, &auth))
+    match finish_provider_login(state, provisioned, "oidc", login_ctx).await? {
+        ProviderLoginResult::Authenticated(auth) => Ok(browser_session_response(state, &auth)),
+        ProviderLoginResult::PendingApproval => Ok(browser_pending_approval_response(state)),
+    }
 }
 
 pub async fn oidc_session(
@@ -314,13 +317,13 @@ pub async fn oidc_session(
     let external =
         external_user_from_oidc(&provider, claims, body.access_token.as_deref()).await?;
 
-    let user = jit_provision_user(&state.pool, &provider, &external).await?;
+    let provisioned = jit_provision_user(&state.pool, &provider, &external).await?;
 
     record_audit_event(
         &state.pool,
         AuditEventInput {
             organization_id: None,
-            actor_user_id: Some(user.id),
+            actor_user_id: Some(provisioned.user.id),
             event_type: AuditEventType::SsoLogin,
             action: format!("oidc spa login via {}", provider.name),
             resource_type: Some("auth_provider".into()),
@@ -337,9 +340,13 @@ pub async fn oidc_session(
     .await?;
 
     let login_ctx = crate::request_context::LoginContext::from_parts(&headers, Some(peer_addr));
-    Ok(Json(
-        issue_auth_response(&state, user, "oidc", login_ctx).await?,
-    ))
+    match finish_provider_login(&state, provisioned, "oidc", login_ctx).await? {
+        ProviderLoginResult::Authenticated(auth) => Ok(Json(auth)),
+        ProviderLoginResult::PendingApproval => Err(DomainError::Validation(
+            super::PENDING_APPROVAL_MESSAGE.into(),
+        )
+        .into()),
+    }
 }
 
 /// Extract the OIDC host from issuer_url (e.g. `dev-xxx.auth0.com`).

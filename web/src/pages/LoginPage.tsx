@@ -203,6 +203,11 @@ export function LoginPage() {
   }
 
   const ssoBusy = ssoRedirecting || (searchParams.has('code') && searchParams.has('state'))
+  const pendingApproval =
+    error?.toLowerCase() === 'account pending admin approval'
+  const displayError = pendingApproval
+    ? 'Your account is waiting for a super admin to approve it. You can sign in once approved.'
+    : error
 
   return (
     <div className={styles.wrap}>
@@ -232,11 +237,11 @@ export function LoginPage() {
           <p className={styles.subtitle}>Sign in to your Git platform</p>
         </div>
 
-        {sessionExpired && !error && (
+        {sessionExpired && !displayError && (
           <p className={styles.error}>Your session has expired. Please sign in again.</p>
         )}
-        {error && <p className={styles.error}>{error}</p>}
-        {ssoBusy && !error && (
+        {displayError && <p className={styles.error}>{displayError}</p>}
+        {ssoBusy && !displayError && (
           <p className={styles.subtitle}>Completing sign-in…</p>
         )}
 
