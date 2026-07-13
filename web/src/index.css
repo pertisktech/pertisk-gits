@@ -4474,7 +4474,6 @@ select.app-field:disabled,
   font-family: var(--font-mono);
   font-weight: 600;
   color: var(--color-text);
-  text-transform: capitalize;
   white-space: nowrap;
 }
 
@@ -4843,7 +4842,28 @@ select.app-field:disabled,
   grid-template-columns: minmax(10rem, 13rem) 1fr;
 }
 
-/* Pipeline run detail — GitHub Actions style */
+/* Pipeline run detail — GitLab style */
+.app-main:has(.pipeline-run-page) {
+  overflow: auto;
+}
+
+.pipeline-run-page .app-panel:has(.ci-terminal--detail) {
+  display: flex;
+  flex-direction: column;
+  min-height: min(72vh, 56rem);
+}
+
+.pipeline-run-page .ci-terminal--detail {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  flex: 1;
+  min-height: min(72vh, 56rem);
+  border-radius: 0;
+  border: none;
+}
+
+/* Legacy GitHub Actions run page (embedded links still use gha-status-icon) */
 .app-main:has(.gha-run-page) {
   overflow: hidden;
   display: flex;
@@ -5558,23 +5578,17 @@ select.app-field:disabled,
   width: 100%;
 }
 
-.pipeline-run-page .ci-terminal--detail {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  min-height: min(72vh, 56rem);
-}
-
 .pipeline-run-page .ci-terminal-body--detail {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-height: 18rem;
+  min-height: 0;
 }
 
 .pipeline-run-page .ci-terminal-split--detail {
+  display: grid;
   flex: 1;
-  min-height: 14rem;
+  min-height: 0;
   width: 100%;
   align-items: stretch;
   grid-template-columns: minmax(11rem, 16rem) minmax(0, 1fr);
@@ -5594,11 +5608,20 @@ select.app-field:disabled,
   overflow: hidden;
 }
 
+.pipeline-run-page .ci-terminal-log-pane .ci-log-viewer-shell {
+  flex: 1 1 0;
+  min-height: 12rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .pipeline-run-page .ci-log-viewer--fill {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
   max-height: none;
   overflow-y: auto;
+  overflow-x: auto;
 }
 
 /* Pipeline DAG (React Flow) */

@@ -134,6 +134,14 @@ export function CiLogViewer({
     element.scrollTop = element.scrollHeight
   }, [])
 
+  const scheduleScrollToBottom = useCallback(() => {
+    scrollToBottom()
+    requestAnimationFrame(() => {
+      scrollToBottom()
+      requestAnimationFrame(scrollToBottom)
+    })
+  }, [scrollToBottom])
+
   useEffect(() => {
     setIsFollowing(followTail)
     isFollowingRef.current = followTail
@@ -141,19 +149,10 @@ export function CiLogViewer({
 
   useLayoutEffect(() => {
     if (!followTail || !isFollowingRef.current) return
-    const scroll = () => {
-      const element = scrollRef.current
-      if (!element) return
-      element.scrollTop = element.scrollHeight
-    }
-    scroll()
-    const raf1 = requestAnimationFrame(scroll)
-    const raf2 = requestAnimationFrame(() => requestAnimationFrame(scroll))
-    return () => {
-      cancelAnimationFrame(raf1)
-      cancelAnimationFrame(raf2)
-    }
-  }, [followTail, isFollowing, text])
+    scheduleScrollToBottom()
+    const timer = window.setTimeout(scheduleScrollToBottom, 0)
+    return () => window.clearTimeout(timer)
+  }, [followTail, isFollowing, text, scheduleScrollToBottom])
 
   useEffect(() => {
     if (!followTail) return
@@ -162,12 +161,12 @@ export function CiLogViewer({
 
     const observer = new ResizeObserver(() => {
       if (isFollowingRef.current) {
-        scrollToBottom()
+        scheduleScrollToBottom()
       }
     })
     observer.observe(content)
     return () => observer.disconnect()
-  }, [followTail, scrollToBottom])
+  }, [followTail, scheduleScrollToBottom])
 
   const handleScroll = useCallback(() => {
     if (!followTail) return
@@ -181,9 +180,8 @@ export function CiLogViewer({
   const resumeFollowing = useCallback(() => {
     isFollowingRef.current = true
     setIsFollowing(true)
-    scrollToBottom()
-    requestAnimationFrame(scrollToBottom)
-  }, [scrollToBottom])
+    scheduleScrollToBottom()
+  }, [scheduleScrollToBottom])
 
   return (
     <div className="ci-log-viewer-shell">

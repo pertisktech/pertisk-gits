@@ -1,22 +1,20 @@
 import type { JobRun, PipelineRun } from '../api/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Download, Loader2, Square, Trash2 } from 'lucide-react'
+import { ArrowLeft, Download, Loader2, Play, RotateCcw, Square, Trash2, Workflow } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
 import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
-import {
-  ActionsJobHeader,
-  ActionsJobSidebar,
-  ActionsLogPanel,
-  ActionsRunSummary,
-  ActionsStepList,
-  stepLogSubtitle,
-  stepLogTitle,
-} from '../components/PipelineActions'
+import { RepoDetailTabs } from '../components/RepoDetailTabs'
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
+import {
+  CiLogViewer,
+  CiPrompt,
+  CiRunLine,
+  CiTerminal,
+} from '../components/PipelineTerminal'
 import {
   filterRunJobsForList,
   filterRunJobsForManualDeploy,
@@ -29,26 +27,36 @@ import {
   countRerunnableFailedJobs,
   displayJobStatus,
   displayRunStatus,
-  displayRunStatusIcon,
   formatPipelineIid,
   isRunInProgress,
   blocksPipelineRerun,
   refLabel,
+  runStatusVariant,
   shortSha,
   type RerunScope,
 } from '../lib/pipelineStatus'
 import { PipelineRerunMenu } from '../components/PipelineRerunMenu'
-import { ActionsStatusIcon } from '../components/PipelineStatus'
+import { StatusBadge } from '../components/StatusBadge'
 import { projectTabPath } from '../lib/projectRoute'
 import { projectBreadcrumbItems } from '../lib/groupRoute'
 import { displayRepoName } from '../lib/projectInitial'
+import { formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, SecondaryButton } from '../components/ui'
 import {
   inferRunningStepName,
   initialStepKey,
   jobStepViews,
+  stepDisplayStatus,
   stepLogText,
+  stepMeta,
 } from '../lib/pipelineLog'
+
+type PipelineDetailTab = 'pipeline' | 'jobs'
+
+function parsePipelineTab(value: string | null): PipelineDetailTab {
+  if (value === 'jobs') return 'jobs'
+  return 'pipeline'
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -61,6 +69,7 @@ export function PipelineRunDetailPage() {
   const projectSub = useProjectSubRoute()
   const runId = projectSub?.kind === 'pipeline' ? projectSub.runId : ''
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { token } = useAuth()
   const queryClient = useQueryClient()
   const [activeJobId, setActiveJobId] = useState<string | null>(null)
@@ -69,6 +78,15 @@ export function PipelineRunDetailPage() {
   const userPinnedStep = useRef(false)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+
+  const activeTab = parsePipelineTab(searchParams.get('view'))
+
+  function setActiveTab(tab: PipelineDetailTab) {
+    const next = new URLSearchParams(searchParams)
+    if (tab === 'pipeline') next.delete('view')
+    else next.set('view', tab)
+    setSearchParams(next, { replace: true })
+  }
 
   const { data: repoData } = useQuery({
     queryKey: ['repository', orgSlug, projectSlug, token ?? 'public'],
@@ -137,6 +155,7 @@ export function PipelineRunDetailPage() {
       jobStepViews(job, updatedRun.status)[0]?.key ??
       null
     setActiveStepKey(step)
+    setActiveTab('jobs')
   }
 
   useEffect(() => {
@@ -154,7 +173,7 @@ export function PipelineRunDetailPage() {
     }
   }, [activeJob, activeJob?.log_text, run, activeStepKey])
 
-  const selectJob = (jobId: string) => {
+  const selectJob = (jobId: string, switchToJobs = true) => {
     if (!run) return
     const job = run.jobs.find((entry) => entry.id === jobId)
     if (!job) return
@@ -166,6 +185,7 @@ export function PipelineRunDetailPage() {
         jobStepViews(job, run.status)[0]?.key ??
         null,
     )
+    if (switchToJobs) setActiveTab('jobs')
   }
 
   const selectStep = (stepKey: string) => {
@@ -282,7 +302,7 @@ export function PipelineRunDetailPage() {
     return (
       <div className="flex items-center gap-2 text-sm text-text-secondary py-8">
         <Loader2 size={16} className="animate-spin" />
-        Loading workflow run…
+        Loading pipeline…
       </div>
     )
   }
@@ -297,7 +317,7 @@ export function PipelineRunDetailPage() {
 
   const branch = refLabel(run.ref_name)
   const runStatus = displayRunStatus(run)
-  const runStatusIcon = displayRunStatusIcon(run)
+  const passed = visibleJobs.filter((job) => displayJobStatus(job, run.status) === 'success').length
   const canPlayJob = (job: JobRun) => canPlayManualJob(job, run)
   const canRerunSingleJob = (job: JobRun) => canRerunJob(job, run)
 
@@ -307,82 +327,102 @@ export function PipelineRunDetailPage() {
   const repoPath = `/groups/${orgSlug}/projects/${projectSlug}`
   const pipelinesPath = projectTabPath(repoPath, 'pipelines')
 
+  const detailTabs = [
+    { id: 'pipeline', label: 'Pipeline' },
+    { id: 'jobs', label: `Jobs (${visibleJobs.length})` },
+  ]
+
   return (
-    <div className="gha-run-page">
+    <div className="pipeline-run-page">
       <Breadcrumbs
         items={projectBreadcrumbItems({
           orgPath: orgSlug,
           groups,
           projectName: repoName,
           projectTo: pipelinesPath,
-          suffix: [{ label: `${formatPipelineIid(run.pipeline_iid)} ${shortSha(run.commit_sha)}` }],
+          suffix: [{ label: formatPipelineIid(run.pipeline_iid) }],
         })}
       />
 
-      <div className="gha-run-header">
-        <div>
-          <Link to={pipelinesPath} className="gha-run-back">
-            <ArrowLeft size={14} />
-            All workflows
-          </Link>
-          <div className="gha-run-title-row">
-            <ActionsStatusIcon status={runStatusIcon} size="lg" />
-            <h1 className="gha-run-title">
-              <span className="gha-run-title-iid font-mono">{formatPipelineIid(run.pipeline_iid)}</span>
-              <span className="font-mono">.pertisk-ci.yaml</span>
-            </h1>
+      <div className="app-panel mb-4">
+        <div className="app-panel-body space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0 flex-1">
+              <Workflow size={20} className="text-primary shrink-0 mt-1" />
+              <div className="min-w-0 flex-1">
+                <Link
+                  to={pipelinesPath}
+                  className="inline-flex items-center gap-1 text-sm text-text-secondary hover:text-primary mb-2"
+                >
+                  <ArrowLeft size={14} />
+                  Back to pipelines
+                </Link>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-semibold text-text font-mono">
+                    {formatPipelineIid(run.pipeline_iid)}
+                  </h1>
+                  <StatusBadge variant={runStatusVariant(runStatus)}>{runStatus}</StatusBadge>
+                </div>
+                <p className="text-sm text-text-secondary mt-1">
+                  <span className="capitalize">{run.event_type}</span>
+                  {' · '}
+                  <Link
+                    to={`/groups/${orgSlug}/projects/${projectSlug}/commit/${run.commit_sha}`}
+                    className="text-primary hover:underline font-mono"
+                  >
+                    {shortSha(run.commit_sha)}
+                  </Link>
+                  {' · '}
+                  <span className="font-mono">{branch}</span>
+                  {run.target_environment && (
+                    <>
+                      {' · '}
+                      <span className="font-mono">{run.target_environment}</span>
+                    </>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {isRunInProgress(run) && (
+                <SecondaryButton
+                  type="button"
+                  className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg"
+                  disabled={cancelPipelineMutation.isPending}
+                  onClick={() => cancelPipelineMutation.mutate()}
+                >
+                  {cancelPipelineMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Square size={14} />
+                  )}
+                  Cancel pipeline
+                </SecondaryButton>
+              )}
+              <PipelineRerunMenu
+                disabled={blocksPipelineRerun(run)}
+                loading={rerunMutation.isPending}
+                canRerunFailed={canRerunFailed(run)}
+                failedCount={countRerunnableFailedJobs(run)}
+                onRerun={(scope) => rerunMutation.mutate(scope)}
+              />
+              {!isRunInProgress(run) && (
+                <SecondaryButton
+                  type="button"
+                  className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg"
+                  disabled={deleteMutation.isPending}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  {deleteMutation.isPending ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Trash2 size={14} />
+                  )}
+                  Delete
+                </SecondaryButton>
+              )}
+            </div>
           </div>
-          <p className="gha-run-subtitle">
-            <Link
-              to={`/groups/${orgSlug}/projects/${projectSlug}/commit/${run.commit_sha}`}
-              className="text-primary hover:underline font-mono"
-            >
-              {shortSha(run.commit_sha)}
-            </Link>
-            {' · '}
-            {branch}
-            {' · '}
-            {run.event_type}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {isRunInProgress(run) && (
-            <SecondaryButton
-              type="button"
-              className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg"
-              disabled={cancelPipelineMutation.isPending}
-              onClick={() => cancelPipelineMutation.mutate()}
-            >
-              {cancelPipelineMutation.isPending ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Square size={14} />
-              )}
-              Cancel workflow
-            </SecondaryButton>
-          )}
-          <PipelineRerunMenu
-            disabled={blocksPipelineRerun(run)}
-            loading={rerunMutation.isPending}
-            canRerunFailed={canRerunFailed(run)}
-            failedCount={countRerunnableFailedJobs(run)}
-            onRerun={(scope) => rerunMutation.mutate(scope)}
-          />
-          {!isRunInProgress(run) && (
-            <SecondaryButton
-              type="button"
-              className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg"
-              disabled={deleteMutation.isPending}
-              onClick={() => setConfirmDelete(true)}
-            >
-              {deleteMutation.isPending ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <Trash2 size={14} />
-              )}
-              Delete
-            </SecondaryButton>
-          )}
         </div>
       </div>
 
@@ -390,11 +430,11 @@ export function PipelineRunDetailPage() {
         <ConfirmModal
           open
           variant="danger"
-          title="Delete workflow run?"
+          title="Delete pipeline run?"
           description={
             <>
               This removes the run, job logs, and any uploaded artifacts for{' '}
-              <strong className="text-text font-mono">{shortSha(run.commit_sha)}</strong>.
+              <strong className="text-text font-mono">{formatPipelineIid(run.pipeline_iid)}</strong>.
             </>
           }
           confirmLabel="Delete run"
@@ -422,95 +462,169 @@ export function PipelineRunDetailPage() {
         </div>
       )}
 
-      <ActionsRunSummary run={run} />
-
-      <div className="gha-graph-panel">
-        <PipelineGraph
-          className="pipeline-graph-panel--inline"
-          jobs={graphJobs}
-          selectedJob={activeJob?.id ?? null}
-          onJobSelect={(jobKey) => {
-            const match = resolveJobKey(jobKey)
-            if (match) selectJob(match.id)
-          }}
-        />
-      </div>
-
-      <div className="gha-run-layout">
-        <ActionsJobSidebar
-          jobs={visibleJobs}
-          runStatus={runStatus}
-          activeJobId={activeJob?.id ?? null}
-          onSelectJob={selectJob}
+      <div className="app-panel">
+        <RepoDetailTabs
+          tabs={detailTabs}
+          active={activeTab}
+          onChange={(id) => setActiveTab(id as PipelineDetailTab)}
         />
 
-        <div className="gha-run-main">
-          {activeJob ? (
-            <>
-              <ActionsJobHeader
-                job={activeJob}
-                jobStatus={displayJobStatus(activeJob, runStatus)}
-                canPlay={canPlayJob(activeJob)}
-                playPending={playingJobId === activeJob.id}
-                onPlay={() => playJobMutation.mutate(activeJob.id)}
-                canRerun={canRerunSingleJob(activeJob)}
-                rerunPending={rerunningJobId === activeJob.id}
-                onRerun={() => rerunJobMutation.mutate(activeJob.id)}
-              />
+        {activeTab === 'pipeline' ? (
+          <div className="app-panel-body flush">
+            <div className="ci-terminal-meta-bar">
+              <span>
+                Started <strong>{formatDateTime(run.started_at ?? run.created_at)}</strong>
+              </span>
+              <span>
+                Finished <strong>{run.finished_at ? formatDateTime(run.finished_at) : '—'}</strong>
+              </span>
+              <span>
+                Jobs <strong>{passed}/{visibleJobs.length} passed</strong>
+              </span>
+            </div>
+            <PipelineGraph
+              className="pipeline-graph-panel--inline"
+              jobs={graphJobs}
+              selectedJob={activeJob?.id ?? null}
+              onJobSelect={(jobKey) => {
+                const match = resolveJobKey(jobKey)
+                if (match) selectJob(match.id)
+              }}
+            />
+          </div>
+        ) : (
+          <CiTerminal
+            className="ci-terminal--detail"
+            bodyClassName="ci-terminal-body--detail"
+            title="pertisk-ci"
+            subtitle={`${projectSlug}@${shortSha(run.commit_sha)}`}
+            actions={
+              <span className="text-[10px] font-mono text-naturals-n9">
+                {passed}/{visibleJobs.length} jobs ok
+              </span>
+            }
+          >
+            <div className="ci-terminal-split ci-terminal-split--detail">
+              <div className="ci-terminal-sidebar">
+                {visibleJobs.map((job) => (
+                  <div key={job.id}>
+                    <CiRunLine
+                      status={displayJobStatus(job, run.status)}
+                      label={job.job_name}
+                      meta={job.runs_on}
+                      active={activeJob?.id === job.id && !activeStepKey}
+                      onClick={() => selectJob(job.id, false)}
+                    />
+                    {activeJob?.id === job.id &&
+                      activeSteps.map((step) => (
+                        <CiRunLine
+                          key={step.key}
+                          nested
+                          status={stepDisplayStatus(
+                            step,
+                            displayJobStatus(job, run.status),
+                            run.status,
+                          )}
+                          label={step.name}
+                          meta={stepMeta(step)}
+                          active={activeStepKey === step.key}
+                          onClick={() => selectStep(step.key)}
+                        />
+                      ))}
+                  </div>
+                ))}
+              </div>
 
-              <ActionsStepList
-                steps={activeSteps}
-                jobStatus={displayJobStatus(activeJob, runStatus)}
-                runStatus={runStatus}
-                activeStepKey={activeStepKey}
-                onSelectStep={selectStep}
-              />
-
-              <ActionsLogPanel
-                title={activeStep ? stepLogTitle(activeStep, activeJob.job_name) : activeJob.job_name}
-                subtitle={activeStep ? stepLogSubtitle(activeStep) : undefined}
-                viewerKey={`${activeJob.id}-${jobLogSession}-${activeStepKey ?? ''}`}
-                followTail
-                actions={
-                  canCancelStep ? (
-                    <SecondaryButton
-                      type="button"
-                      className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg text-xs py-1 px-2.5"
-                      disabled={cancelStepMutation.isPending}
-                      onClick={() =>
-                        cancelStepMutation.mutate({
-                          jobId: activeJob.id,
-                          stepName: cancelStepName,
-                        })
-                      }
-                    >
-                      {cancelStepMutation.isPending ? (
-                        <Loader2 size={12} className="animate-spin" />
-                      ) : (
-                        <Square size={12} />
-                      )}
-                      Cancel step
-                    </SecondaryButton>
-                  ) : undefined
-                }
-                logText={logText}
-                emptyMessage={
-                  activeJobDisplayStatus === 'manual'
-                    ? canPlayJob(activeJob)
-                      ? 'Manual job — click Run job to start'
-                      : 'Manual job — waiting for upstream jobs to finish'
-                    : activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
-                      ? activeStepKey
-                        ? 'Waiting for log output…'
-                        : 'Select a step to view logs'
-                      : activeJobDisplayStatus === 'cancelled'
-                        ? 'Job was cancelled'
-                        : 'No log output'
-                }
-                footer={
+              <div className="ci-terminal-log-pane">
+                {activeJob ? (
                   <>
+                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-naturals-n4/40">
+                      <CiPrompt
+                        user="runner"
+                        host={activeJob.runs_on}
+                        path={activeJob.job_name}
+                        command={
+                          activeStep?.run ??
+                          (runningStepName ??
+                            (activeJob.metrics_json
+                              ? `exit ${activeJob.status === 'success' ? 0 : 1}`
+                              : activeStepKey ?? 'running…'))
+                        }
+                      />
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        {canRerunSingleJob(activeJob) && (
+                          <SecondaryButton
+                            type="button"
+                            className="text-xs py-1 px-2.5"
+                            disabled={rerunningJobId === activeJob.id}
+                            onClick={() => rerunJobMutation.mutate(activeJob.id)}
+                          >
+                            {rerunningJobId === activeJob.id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <RotateCcw size={12} />
+                            )}
+                            Re-run job
+                          </SecondaryButton>
+                        )}
+                        {canPlayJob(activeJob) && (
+                          <SecondaryButton
+                            type="button"
+                            className="text-xs py-1 px-2.5"
+                            disabled={playingJobId === activeJob.id}
+                            onClick={() => playJobMutation.mutate(activeJob.id)}
+                          >
+                            {playingJobId === activeJob.id ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Play size={12} />
+                            )}
+                            Run job
+                          </SecondaryButton>
+                        )}
+                        {canCancelStep && (
+                          <SecondaryButton
+                            type="button"
+                            className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg text-xs py-1 px-2.5"
+                            disabled={cancelStepMutation.isPending}
+                            onClick={() =>
+                              cancelStepMutation.mutate({
+                                jobId: activeJob.id,
+                                stepName: cancelStepName,
+                              })
+                            }
+                          >
+                            {cancelStepMutation.isPending ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Square size={12} />
+                            )}
+                            Cancel step
+                          </SecondaryButton>
+                        )}
+                      </div>
+                    </div>
+                    <CiLogViewer
+                      key={`${activeJob.id}-${jobLogSession}`}
+                      className="ci-log-viewer--fill"
+                      text={logText}
+                      followTail
+                      emptyMessage={
+                        activeJobDisplayStatus === 'manual'
+                          ? canPlayJob(activeJob)
+                            ? 'Manual job — click Run job to start'
+                            : 'Manual job — waiting for upstream jobs to finish'
+                          : activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
+                            ? activeStepKey
+                              ? 'Waiting for log output…'
+                              : 'Select a step to view logs'
+                            : activeJobDisplayStatus === 'cancelled'
+                              ? 'Job was cancelled'
+                              : 'No log output'
+                      }
+                    />
                     {activeJob.metrics_json && (
-                      <div className="gha-metrics-bar">
+                      <div className="ci-terminal-meta-bar ci-terminal-meta-bar--footer">
                         <span>
                           Queue <strong>{activeJob.metrics_json.queue_wait_ms}ms</strong>
                         </span>
@@ -523,18 +637,18 @@ export function PipelineRunDetailPage() {
                       </div>
                     )}
                     {activeJob.artifacts?.length > 0 && (
-                      <div className="gha-artifacts">
-                        <h4 className="gha-artifacts-title">Artifacts</h4>
-                        <ul className="gha-artifacts-list">
+                      <div className="ci-artifacts-panel">
+                        <h4 className="ci-artifacts-title">Artifacts</h4>
+                        <ul className="ci-artifacts-list">
                           {activeJob.artifacts.map((artifact) => (
-                            <li key={artifact.id} className="gha-artifacts-item">
-                              <span className="gha-artifacts-name">{artifact.name}</span>
-                              <span className="gha-artifacts-meta">
+                            <li key={artifact.id} className="ci-artifacts-item">
+                              <span className="ci-artifacts-name">{artifact.name}</span>
+                              <span className="ci-artifacts-meta">
                                 {formatBytes(artifact.size_bytes)}
                               </span>
                               <button
                                 type="button"
-                                className="gha-artifacts-download"
+                                className="ci-artifacts-download"
                                 disabled={downloadingArtifactId === artifact.id}
                                 onClick={async () => {
                                   if (!token) return
@@ -556,9 +670,9 @@ export function PipelineRunDetailPage() {
                                 }}
                               >
                                 {downloadingArtifactId === artifact.id ? (
-                                  <Loader2 className="animate-spin" size={14} />
+                                  <Loader2 className="ci-artifacts-icon animate-spin" size={14} />
                                 ) : (
-                                  <Download size={14} />
+                                  <Download className="ci-artifacts-icon" size={14} />
                                 )}
                                 Download
                               </button>
@@ -568,13 +682,13 @@ export function PipelineRunDetailPage() {
                       </div>
                     )}
                   </>
-                }
-              />
-            </>
-          ) : (
-            <div className="gha-run-empty">No jobs in this workflow run.</div>
-          )}
-        </div>
+                ) : (
+                  <CiLogViewer text="" emptyMessage="No jobs in this pipeline run." />
+                )}
+              </div>
+            </div>
+          </CiTerminal>
+        )}
       </div>
     </div>
   )

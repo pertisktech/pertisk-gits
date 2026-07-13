@@ -1,26 +1,36 @@
 import { Link } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import type { PipelineRun } from '../api/types'
+import { formatDateTime } from '../lib/collaboration'
 import { formatRelativeTimeFromIso } from '../lib/relativeTime'
 import { filterRunJobsForList, filterRunJobsForManualDeploy } from '../lib/pipelineSummary'
 import {
   canRerunFailed,
   countRerunnableFailedJobs,
   displayJobStatus,
-  displayRunStatusIcon,
+  displayRunStatus,
   failureSummary,
   formatRunDuration,
   formatPipelineIid,
   blocksPipelineRerun,
   isRunInProgress,
   refLabel,
+  runStatusVariant,
   shortSha,
   type RerunScope,
 } from '../lib/pipelineStatus'
-import { ActionsStatusIcon } from './PipelineStatus'
+import { PipelineJobStatusBadge } from './PipelineStatus'
 import { PipelineRerunMenu } from './PipelineRerunMenu'
+import { StatusBadge } from './StatusBadge'
 import { TablePagination } from './ui'
 import { useClientPagination } from '../lib/pagination'
+
+export type PipelineListFilter = 'all' | 'running'
+
+export function filterPipelineRuns(runs: PipelineRun[], filter: PipelineListFilter): PipelineRun[] {
+  if (filter === 'running') return runs.filter((run) => isRunInProgress(run))
+  return runs
+}
 
 export function PipelineRunsTable({
   runs,
@@ -59,10 +69,10 @@ export function PipelineRunsTable({
 
   if (runs.length === 0) {
     return (
-      <div className="gha-runs-empty">
+      <div className="pipeline-runs-empty">
         {emptyMessage ?? (
           <>
-            No workflow runs yet. Add{' '}
+            No pipeline runs yet. Add{' '}
             <code className="font-mono text-xs">.pertisk-ci.yaml</code> and push to start a
             pipeline.
           </>
@@ -73,19 +83,35 @@ export function PipelineRunsTable({
 
   return (
     <>
-      <div className="gha-runs-list">
-        {pageRuns.map((run) => (
-          <PipelineRunRow
-            key={run.id}
-            run={run}
-            orgSlug={orgSlug}
-            repoSlug={repoSlug}
-            onOpen={() => onOpenRun(run.id)}
-            onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
-            rerunLoading={rerunningRunId === run.id}
-            nowMs={nowMs}
-          />
-        ))}
+      <div className="pipeline-runs-table-wrap">
+        <table className="app-list-table pipeline-runs-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Pipeline</th>
+              <th>Commit</th>
+              <th>Branch</th>
+              <th>Stages</th>
+              <th>Started</th>
+              <th>Duration</th>
+              {onRerun && <th className="pipeline-runs-actions-col">Actions</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {pageRuns.map((run) => (
+              <PipelineRunRow
+                key={run.id}
+                run={run}
+                orgSlug={orgSlug}
+                repoSlug={repoSlug}
+                onOpen={() => onOpenRun(run.id)}
+                onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
+                rerunLoading={rerunningRunId === run.id}
+                nowMs={nowMs}
+              />
+            ))}
+          </tbody>
+        </table>
       </div>
       {total > 0 && (
         <TablePagination
@@ -93,7 +119,7 @@ export function PipelineRunsTable({
           pageSize={pageSize}
           total={total}
           onPageChange={setPage}
-          itemLabel="runs"
+          itemLabel="pipelines"
         />
       )}
     </>
@@ -117,79 +143,95 @@ function PipelineRunRow({
   rerunLoading?: boolean
   nowMs: number
 }) {
-  const status = displayRunStatusIcon(run)
+  const status = displayRunStatus(run)
   const inProgress = isRunInProgress(run)
   const visibleJobs =
     run.event_type === 'manual' && run.target_environment
       ? filterRunJobsForManualDeploy(run)
       : filterRunJobsForList(run)
   const summary = failureSummary(visibleJobs)
-  const timeReference = run.finished_at ?? run.started_at ?? run.created_at
+  const passed = visibleJobs.filter((job) => displayJobStatus(job, run.status) === 'success').length
+  const timeReference = run.started_at ?? run.created_at
   const relative = formatRelativeTimeFromIso(timeReference)
-  let relativeLabel = relative
-  if (run.finished_at) {
-    relativeLabel = `finished ${relative}`
-  } else if (inProgress) {
-    relativeLabel = `started ${relative}`
-  }
-  const durationLabel = formatRunDuration(run, nowMs)
+  const startedLabel = inProgress ? relative : formatDateTime(timeReference)
 
   return (
-    <div className="gha-run-row-wrap">
-      <button
-        type="button"
-        className="gha-run-row"
-        onClick={onOpen}
-      >
-        <ActionsStatusIcon status={status} size="lg" className="gha-run-row-icon" />
-        <div className="gha-run-row-body">
-          <div className="gha-run-row-title">
-            <span className="gha-run-row-iid font-mono">{formatPipelineIid(run.pipeline_iid)}</span>
-            <span className="font-mono">.pertisk-ci.yaml</span>
-            <span className="gha-run-row-event">{run.event_type}</span>
-          </div>
-          <div className="gha-run-row-sub">
-            <Link
-              to={`/groups/${orgSlug}/projects/${repoSlug}/commit/${run.commit_sha}`}
-              className="font-mono text-primary hover:underline"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {shortSha(run.commit_sha)}
-            </Link>
-            <span className="gha-summary-dot" aria-hidden>
-              ·
-            </span>
-            <span className="font-mono">{refLabel(run.ref_name)}</span>
-            {run.target_environment && (
-              <>
-                <span className="gha-summary-dot" aria-hidden>
-                  ·
-                </span>
-                <span className="font-mono text-text-secondary">{run.target_environment}</span>
-              </>
-            )}
-            {summary && (
-              <span className="gha-run-row-error" title={summary}>
-                — {summary}
-              </span>
-            )}
-          </div>
-          <div className="gha-run-row-jobs">
-            {visibleJobs.map((job) => (
-              <span key={job.id} className="gha-run-row-job" title={job.job_name}>
-                <ActionsStatusIcon status={displayJobStatus(job, run.status)} size="sm" />
-                <span>{job.job_name}</span>
-              </span>
-            ))}
-          </div>
+    <tr
+      className="pipeline-runs-row"
+      onClick={onOpen}
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onOpen()
+        }
+      }}
+    >
+      <td className="pipeline-runs-status">
+        <StatusBadge variant={runStatusVariant(status)}>{status}</StatusBadge>
+      </td>
+      <td className="pipeline-runs-pipeline" title={summary ?? undefined}>
+        <div className="pipeline-runs-pipeline-line">
+          <span className="pipeline-runs-pipeline-event font-mono">
+            {formatPipelineIid(run.pipeline_iid)}
+          </span>
+          <span className="pipeline-runs-pipeline-meta capitalize">{run.event_type}</span>
+          <span className="pipeline-runs-pipeline-meta">
+            {passed}/{visibleJobs.length} jobs
+          </span>
         </div>
-        <div className="gha-run-row-meta">
-          <span>{durationLabel}</span>
-          <span>{relativeLabel}</span>
+        {summary && (
+          <div className="pipeline-runs-pipeline-error" title={summary}>
+            {summary}
+          </div>
+        )}
+        {run.target_environment && (
+          <div className="pipeline-runs-pipeline-meta mt-0.5 font-mono">
+            {run.target_environment}
+          </div>
+        )}
+      </td>
+      <td className="pipeline-runs-sha">
+        <Link
+          to={`/groups/${orgSlug}/projects/${repoSlug}/commit/${run.commit_sha}`}
+          className="font-mono text-sm text-primary hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {shortSha(run.commit_sha)}
+        </Link>
+      </td>
+      <td className="pipeline-runs-branch font-mono text-sm text-text-secondary">
+        {refLabel(run.ref_name)}
+      </td>
+      <td className="pipeline-runs-jobs-cell">
+        <div className="pipeline-runs-jobs">
+          {visibleJobs.map((job) => {
+            const jobStatus = displayJobStatus(job, run.status)
+            return (
+              <span
+                key={job.id}
+                className="pipeline-runs-job"
+                title={`${job.job_name}: ${jobStatus}`}
+              >
+                <PipelineJobStatusBadge
+                  status={jobStatus}
+                  className="pipeline-runs-job-badge"
+                >
+                  {job.job_name}
+                </PipelineJobStatusBadge>
+              </span>
+            )
+          })}
         </div>
-      </button>
+      </td>
+      <td className="pipeline-runs-started text-sm text-text-secondary" title={startedLabel}>
+        {inProgress ? relative : formatDateTime(timeReference)}
+      </td>
+      <td className="pipeline-runs-duration font-mono text-sm text-text-secondary">
+        {formatRunDuration(run, nowMs)}
+      </td>
       {onRerun && (
-        <div className="gha-run-row-actions" onClick={(e) => e.stopPropagation()}>
+        <td className="pipeline-runs-actions" onClick={(e) => e.stopPropagation()}>
           <PipelineRerunMenu
             compact
             disabled={blocksPipelineRerun(run)}
@@ -198,8 +240,8 @@ function PipelineRunRow({
             failedCount={countRerunnableFailedJobs(run)}
             onRerun={onRerun}
           />
-        </div>
+        </td>
       )}
-    </div>
+    </tr>
   )
 }

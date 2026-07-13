@@ -13,11 +13,16 @@ import {
   shortSha,
   type RerunScope,
 } from '../lib/pipelineStatus'
+import { RepoDetailTabs } from './RepoDetailTabs'
 import { PipelineGraph } from './PipelineGraph'
-import { PipelineRunsTable } from './PipelineRunsTable'
+import {
+  filterPipelineRuns,
+  PipelineRunsTable,
+  type PipelineListFilter,
+} from './PipelineRunsTable'
 import { PipelineSummary } from './PipelineSummary'
 import { RunPipelineDialog, type RunPipelineParams } from './RunPipelineDialog'
-import { EmptyState, PrimaryButton, SecondaryButton, Toolbar, ToolbarActions } from './ui'
+import { EmptyState, PrimaryButton, SecondaryButton } from './ui'
 
 function PipelineMigratePanel({
   suggestions,
@@ -127,6 +132,8 @@ export function RepoPipelines({
 }) {
   const queryClient = useQueryClient()
   const navigate = useNavigate()
+  const [listFilter, setListFilter] = useState<PipelineListFilter>('all')
+  const [listTab, setListTab] = useState<'runs' | 'editor'>('runs')
   const [runDialogOpen, setRunDialogOpen] = useState(false)
   const [runDialogPreset, setRunDialogPreset] = useState<{
     environment?: CiEnvironment
@@ -197,6 +204,10 @@ export function RepoPipelines({
   })
 
   const runningRuns = useMemo(() => runs.filter((run) => isRunInProgress(run)), [runs])
+  const filteredRuns = useMemo(
+    () => filterPipelineRuns(runs, listFilter),
+    [runs, listFilter],
+  )
 
   const triggerPipelineRun = async ({ refKind, refName, environment }: RunPipelineParams) => {
     const commits = await api.getRepoCommits(
@@ -318,35 +329,74 @@ jobs:
     )
   } else {
     body = (
-      <div className="space-y-4 p-4">
+      <div className="space-y-0">
         {triggerMutation.isError && (
-          <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+          <div className="m-4 p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
             {(triggerMutation.error as Error).message}
           </div>
         )}
 
         {rerunMutation.isError && (
-          <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
+          <div className="m-4 p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
             {(rerunMutation.error as Error).message}
           </div>
         )}
 
-        <PipelineConfigGraph
-          token={token}
-          orgSlug={orgSlug}
-          repoSlug={repoSlug}
-          configRef={configRef}
-          onDeploy={(environment) => openRunDialog({ environment: environment as CiEnvironment })}
+        <RepoDetailTabs
+          tabs={[
+            { id: 'runs', label: `Runs (${runs.length})` },
+            { id: 'editor', label: 'Editor' },
+          ]}
+          active={listTab}
+          onChange={(id) => setListTab(id as 'runs' | 'editor')}
         />
 
-        <PipelineRunsTable
-          runs={runs}
-          orgSlug={orgSlug}
-          repoSlug={repoSlug}
-          onOpenRun={(runId) => navigate(pipelineUrl(orgSlug, repoSlug, runId))}
-          onRerun={(runId, scope) => rerunMutation.mutate({ runId, scope })}
-          rerunningRunId={rerunningRunId}
-        />
+        {listTab === 'runs' ? (
+          <div className="p-4">
+            <div className="repo-list-header mb-4">
+              <div className="repo-list-header-segment">
+                {(['all', 'running'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    className={`repo-list-tab ${listFilter === filter ? 'active' : ''}`}
+                    onClick={() => setListFilter(filter)}
+                  >
+                    {filter === 'all'
+                      ? `All (${runs.length})`
+                      : `Running (${runningRuns.length})`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <PipelineRunsTable
+              runs={filteredRuns}
+              orgSlug={orgSlug}
+              repoSlug={repoSlug}
+              onOpenRun={(runId) => navigate(pipelineUrl(orgSlug, repoSlug, runId))}
+              onRerun={(runId, scope) => rerunMutation.mutate({ runId, scope })}
+              rerunningRunId={rerunningRunId}
+              emptyMessage={
+                listFilter === 'running'
+                  ? 'No pipelines are running right now.'
+                  : undefined
+              }
+            />
+          </div>
+        ) : (
+          <div className="p-4">
+            <PipelineConfigGraph
+              token={token}
+              orgSlug={orgSlug}
+              repoSlug={repoSlug}
+              configRef={configRef}
+              onDeploy={(environment) =>
+                openRunDialog({ environment: environment as CiEnvironment })
+              }
+            />
+          </div>
+        )}
       </div>
     )
   }
@@ -354,9 +404,12 @@ jobs:
   return (
     <div className="space-y-4 min-w-0">
       <div className="app-panel">
-        <Toolbar>
-          {!contentLoading && hasPipelineConfig && (
-            <ToolbarActions>
+        {!contentLoading && hasPipelineConfig && (
+          <div className="repo-list-header">
+            <div className="repo-list-header-segment">
+              <span className="repo-list-tab active cursor-default">Pipelines</span>
+            </div>
+            <div className="repo-list-header-actions">
               <PrimaryButton
                 type="button"
                 disabled={toolbarDisabled || triggerMutation.isPending}
@@ -369,25 +422,11 @@ jobs:
                 )}
                 Run pipeline
               </PrimaryButton>
-            </ToolbarActions>
-          )}
-        </Toolbar>
+            </div>
+          </div>
+        )}
 
         <div className="app-panel-body flush space-y-0">
-          <div className="px-4 pt-4 pb-2 border-b border-naturals-n4">
-            <h2 className="text-base font-semibold text-text">Workflow runs</h2>
-            <p className="text-sm text-text-secondary mt-0.5">
-              CI from <code className="text-xs font-mono">.pertisk-ci.yaml</code>
-              {!contentLoading && (
-                <span className="text-muted">
-                  {' '}
-                  · {runs.length} run{runs.length === 1 ? '' : 's'}
-                  {' '}
-                  ({runningRuns.length} running)
-                </span>
-              )}
-            </p>
-          </div>
           {body}
         </div>
       </div>
