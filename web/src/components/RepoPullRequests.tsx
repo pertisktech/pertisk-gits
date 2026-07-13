@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { GitPullRequest, Loader2, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { pullUrl } from '../lib/collaboration'
 import { EmptyState, PrimaryButton, RefSelect, TablePagination } from './ui'
@@ -16,6 +16,8 @@ interface RepoPullRequestsProps {
 
 export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: RepoPullRequestsProps) {
   const queryClient = useQueryClient()
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
   const [stateFilter, setStateFilter] = useState<'open' | 'closed' | 'all'>('open')
   const [showNew, setShowNew] = useState(false)
   const [title, setTitle] = useState('')
@@ -74,8 +76,30 @@ export function RepoPullRequests({ token, orgSlug, repoSlug, defaultBranch }: Re
   }, [defaultBranch])
 
   useEffect(() => {
+    const gitlabSource = searchParams.get('merge_request[source_branch]')
+    const legacySource = searchParams.get('source')
+    const source = gitlabSource ?? legacySource
+    const target = searchParams.get('target')
+    const onNewPath = location.pathname.endsWith('/pulls/new')
+    const legacyCreate = searchParams.get('create') === '1' && Boolean(source)
+
+    if (!onNewPath && !legacyCreate && !gitlabSource) return
+
+    setShowNew(true)
+    if (source) setSourceBranch(source)
+    if (target) setTargetBranch(target)
+
+    const next = new URLSearchParams(searchParams)
+    next.delete('create')
+    next.delete('source')
+    next.delete('target')
+    next.delete('merge_request[source_branch]')
+    setSearchParams(next, { replace: true })
+  }, [location.pathname, searchParams, setSearchParams])
+
+  useEffect(() => {
     if (!showNew || branches.length === 0) return
-    if (sourceBranch && branches.includes(sourceBranch)) return
+    if (sourceBranch) return
     const candidate = branches.find((branch) => branch !== targetBranch) ?? branches[0] ?? ''
     setSourceBranch(candidate)
   }, [showNew, branches, sourceBranch, targetBranch])

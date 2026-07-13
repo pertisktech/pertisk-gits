@@ -49,6 +49,7 @@ import {
   stepDisplayStatus,
   stepLogText,
   stepMeta,
+  stepDisplayLabel,
 } from '../lib/pipelineLog'
 
 type PipelineDetailTab = 'pipeline' | 'jobs'
@@ -80,6 +81,7 @@ export function PipelineRunDetailPage() {
   const [confirmDelete, setConfirmDelete] = useState(false)
 
   const activeTab = parsePipelineTab(searchParams.get('view'))
+  const jobFromUrl = searchParams.get('job')
 
   function setActiveTab(tab: PipelineDetailTab) {
     const next = new URLSearchParams(searchParams)
@@ -119,6 +121,20 @@ export function PipelineRunDetailPage() {
     return filterRunJobsForList(run)
   }, [run])
 
+  useEffect(() => {
+    if (!jobFromUrl || !run) return
+    const job = visibleJobs.find((entry) => entry.id === jobFromUrl)
+    if (!job) return
+    userPinnedStep.current = false
+    setActiveJobId(jobFromUrl)
+    setActiveStepKey(initialStepKey(job, run.status))
+    if (activeTab !== 'jobs') {
+      const next = new URLSearchParams(searchParams)
+      next.set('view', 'jobs')
+      setSearchParams(next, { replace: true })
+    }
+  }, [jobFromUrl, run, visibleJobs, activeTab, searchParams, setSearchParams])
+
   const graphJobs = useMemo(() => {
     if (!run) return []
     return jobsFromRun(visibleJobs, run.status)
@@ -150,11 +166,7 @@ export function PipelineRunDetailPage() {
     userPinnedStep.current = false
     setActiveJobId(jobId)
     setJobLogSession((session) => session + 1)
-    const step =
-      initialStepKey(job, updatedRun.status) ??
-      jobStepViews(job, updatedRun.status)[0]?.key ??
-      null
-    setActiveStepKey(step)
+    setActiveStepKey(initialStepKey(job, updatedRun.status))
     setActiveTab('jobs')
   }
 
@@ -180,11 +192,7 @@ export function PipelineRunDetailPage() {
     userPinnedStep.current = false
     setActiveJobId(jobId)
     setJobLogSession((session) => session + 1)
-    setActiveStepKey(
-      initialStepKey(job, run.status) ??
-        jobStepViews(job, run.status)[0]?.key ??
-        null,
-    )
+    setActiveStepKey(initialStepKey(job, run.status))
     if (switchToJobs) setActiveTab('jobs')
   }
 
@@ -506,33 +514,59 @@ export function PipelineRunDetailPage() {
           >
             <div className="ci-terminal-split ci-terminal-split--detail">
               <div className="ci-terminal-sidebar">
-                {visibleJobs.map((job) => (
+                {visibleJobs.map((job) => {
+                  const jobStatus = displayJobStatus(job, run.status)
+                  const isManualJob = job.status === 'manual'
+                  const showPlay = canPlayJob(job)
+                  return (
                   <div key={job.id}>
                     <CiRunLine
-                      status={displayJobStatus(job, run.status)}
+                      status={jobStatus}
                       label={job.job_name}
                       meta={job.runs_on}
-                      active={activeJob?.id === job.id && !activeStepKey}
+                      active={activeJob?.id === job.id && (!activeStepKey || isManualJob)}
                       onClick={() => selectJob(job.id, false)}
+                      actions={
+                        showPlay ? (
+                          <button
+                            type="button"
+                            className="ci-run-line-action"
+                            title="Run manual job"
+                            disabled={playingJobId === job.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              playJobMutation.mutate(job.id)
+                            }}
+                          >
+                            {playingJobId === job.id ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Play size={14} />
+                            )}
+                          </button>
+                        ) : undefined
+                      }
                     />
                     {activeJob?.id === job.id &&
-                      activeSteps.map((step) => (
+                      !isManualJob &&
+                      activeSteps.map((step, index) => (
                         <CiRunLine
                           key={step.key}
                           nested
                           status={stepDisplayStatus(
                             step,
-                            displayJobStatus(job, run.status),
+                            jobStatus,
                             run.status,
                           )}
-                          label={step.name}
+                          label={stepDisplayLabel(step, index)}
                           meta={stepMeta(step)}
                           active={activeStepKey === step.key}
                           onClick={() => selectStep(step.key)}
                         />
                       ))}
                   </div>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="ci-terminal-log-pane">
@@ -544,11 +578,13 @@ export function PipelineRunDetailPage() {
                         host={activeJob.runs_on}
                         path={activeJob.job_name}
                         command={
-                          activeStep?.run ??
-                          (runningStepName ??
-                            (activeJob.metrics_json
-                              ? `exit ${activeJob.status === 'success' ? 0 : 1}`
-                              : activeStepKey ?? 'running…'))
+                          activeJobDisplayStatus === 'manual'
+                            ? 'manual job — click Run job to start'
+                            : activeStep?.run ??
+                              (runningStepName ??
+                                (activeJob.metrics_json
+                                  ? `exit ${activeJob.status === 'success' ? 0 : 1}`
+                                  : activeStepKey ?? 'select a step'))
                         }
                       />
                       <div className="flex flex-wrap items-center gap-2 shrink-0">

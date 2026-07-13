@@ -60,6 +60,7 @@ mod observability;
 mod org;
 mod password;
 mod permissions;
+mod push_hints;
 pub(crate) use org::find_org_for_member;
 
 mod registry;
@@ -279,11 +280,47 @@ pub async fn run() -> anyhow::Result<()> {
         },
     );
 
+    let push_hints_pool = state.pool.clone();
+    let push_hints_base_url = state.config.git_public_base_url.clone();
+    let push_hints: pertisk_git::http::PushHintHook = Arc::new(move |repo_id, updates| {
+        let pool = push_hints_pool.clone();
+        let base_url = push_hints_base_url.clone();
+        Box::pin(async move {
+            let row = sqlx::query_as::<_, (String, String)>(
+                r#"
+                SELECT o.full_path, r.slug
+                FROM repositories r
+                JOIN organizations o ON o.id = r.organization_id
+                WHERE r.id = $1
+                "#,
+            )
+            .bind(repo_id)
+            .fetch_optional(&pool)
+            .await;
+
+            let Ok(Some((org_path, repo_slug))) = row else {
+                return Vec::new();
+            };
+
+            push_hints::build_merge_request_push_hints(
+                &pool,
+                &base_url,
+                repo_id,
+                &org_path,
+                &repo_slug,
+                &updates,
+            )
+            .await
+            .unwrap_or_default()
+        })
+    });
+
     let git_state = GitHttpState {
         pool: state.pool.clone(),
         repos_root: state.config.repos_root.clone(),
         post_receive: Some(cicd::post_receive_hook(state.clone())),
         validate_push: Some(validate_push),
+        push_hints: Some(push_hints.clone()),
     };
 
     if let Some(ssh_port) = config.git_ssh_port {
@@ -296,6 +333,7 @@ pub async fn run() -> anyhow::Result<()> {
                 host_key_path: config.git_ssh_host_key_path.clone(),
             },
             post_receive: Some(cicd::post_receive_hook(state.clone())),
+            push_hints: Some(push_hints),
         });
 
         tokio::spawn(async move {

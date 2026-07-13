@@ -63,6 +63,7 @@ export function parseProjectSubRoute(pathname: string): ProjectSubRoute | null {
     const projectSlug = match[2]
     if (RESERVED_PROJECT_SLUGS.has(projectSlug)) return null
     const id = match[3]
+    if (kind === 'pull' && id === 'new') continue
     return { kind, orgSlug, projectSlug, [idKey]: id } as ProjectSubRoute
   }
   return null

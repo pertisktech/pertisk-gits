@@ -28,6 +28,7 @@ pub struct GitHttpState {
     pub repos_root: PathBuf,
     pub post_receive: Option<PostReceiveHook>,
     pub validate_push: Option<ValidatePushHook>,
+    pub push_hints: Option<PushHintHook>,
 }
 
 pub type PostReceiveHook = Arc<
@@ -38,6 +39,12 @@ pub type PostReceiveHook = Arc<
 
 pub type ValidatePushHook = Arc<
     dyn Fn(Uuid, Uuid, PathBuf, Vec<(String, String, String)>) -> Pin<Box<dyn Future<Output = Result<(), String>> + Send + 'static>>
+        + Send
+        + Sync,
+>;
+
+pub type PushHintHook = Arc<
+    dyn Fn(Uuid, Vec<crate::refs::RefUpdate>) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + 'static>>
         + Send
         + Sync,
 >;
@@ -268,18 +275,28 @@ async fn receive_pack(
         .await
         .map_err(|e| GitHttpError::Internal(e.to_string()))?;
 
+    let refs_after = snapshot_refs(&disk_path)
+        .await
+        .map_err(|e| GitHttpError::Internal(e.to_string()))?;
+    let ref_updates = diff_refs(&refs_before, &refs_after);
+
+    let mut response_body = response_body;
+    if !ref_updates.is_empty() {
+        if let Some(hints_hook) = &state.push_hints {
+            let hints = hints_hook(repo.id, ref_updates.clone()).await;
+            if !hints.is_empty() && protocol::receive_pack_supports_sideband(&request_body) {
+                response_body =
+                    protocol::append_receive_pack_sideband_messages(response_body, &hints);
+            }
+        }
+    }
+
     if let Some(hook) = &state.post_receive {
         let hook = hook.clone();
         let repo_id = repo.id;
         let path = disk_path.clone();
+        let updates = ref_updates;
         tokio::spawn(async move {
-            let updates = match snapshot_refs(&path).await {
-                Ok(refs_after) => diff_refs(&refs_before, &refs_after),
-                Err(err) => {
-                    tracing::warn!(repo = %path.display(), "post-receive ref snapshot failed: {err:#}");
-                    Vec::new()
-                }
-            };
             if !updates.is_empty() {
                 hook(repo_id, path, updates).await;
             }

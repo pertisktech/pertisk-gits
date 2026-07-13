@@ -19,7 +19,7 @@ import {
   shortSha,
   type RerunScope,
 } from '../lib/pipelineStatus'
-import { PipelineJobStatusBadge } from './PipelineStatus'
+import { ActionsStatusIcon } from './PipelineStatus'
 import { PipelineRerunMenu } from './PipelineRerunMenu'
 import { StatusBadge } from './StatusBadge'
 import { TablePagination } from './ui'
@@ -44,7 +44,7 @@ export function PipelineRunsTable({
   runs: PipelineRun[]
   orgSlug: string
   repoSlug: string
-  onOpenRun: (runId: string) => void
+  onOpenRun: (runId: string, jobId?: string) => void
   onRerun?: (runId: string, scope: RerunScope) => void
   rerunningRunId?: string | null
   emptyMessage?: string
@@ -105,6 +105,7 @@ export function PipelineRunsTable({
                 orgSlug={orgSlug}
                 repoSlug={repoSlug}
                 onOpen={() => onOpenRun(run.id)}
+                onOpenJob={(jobId) => onOpenRun(run.id, jobId)}
                 onRerun={onRerun ? (scope) => onRerun(run.id, scope) : undefined}
                 rerunLoading={rerunningRunId === run.id}
                 nowMs={nowMs}
@@ -131,6 +132,7 @@ function PipelineRunRow({
   orgSlug,
   repoSlug,
   onOpen,
+  onOpenJob,
   onRerun,
   rerunLoading,
   nowMs,
@@ -139,6 +141,7 @@ function PipelineRunRow({
   orgSlug: string
   repoSlug: string
   onOpen: () => void
+  onOpenJob: (jobId: string) => void
   onRerun?: (scope: RerunScope) => void
   rerunLoading?: boolean
   nowMs: number
@@ -208,18 +211,19 @@ function PipelineRunRow({
           {visibleJobs.map((job) => {
             const jobStatus = displayJobStatus(job, run.status)
             return (
-              <span
+              <button
                 key={job.id}
-                className="pipeline-runs-job"
-                title={`${job.job_name}: ${jobStatus}`}
+                type="button"
+                className="pipeline-runs-job-btn"
+                title={`${job.job_name} (${jobStatus})`}
+                aria-label={`${job.job_name}: ${jobStatus}`}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onOpenJob(job.id)
+                }}
               >
-                <PipelineJobStatusBadge
-                  status={jobStatus}
-                  className="pipeline-runs-job-badge"
-                >
-                  {job.job_name}
-                </PipelineJobStatusBadge>
-              </span>
+                <ActionsStatusIcon status={jobStatus} size="sm" />
+              </button>
             )
           })}
         </div>

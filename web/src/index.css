@@ -4126,6 +4126,42 @@ select.app-field:disabled,
   50% { opacity: 0.45; }
 }
 
+.ci-run-line-wrap {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 25%, transparent);
+}
+
+.ci-run-line-wrap .ci-run-line {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
+}
+
+.ci-run-line-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  padding: 0;
+  border: none;
+  border-left: 1px solid color-mix(in srgb, var(--color-border) 25%, transparent);
+  background: transparent;
+  color: var(--color-naturals-n11);
+  cursor: pointer;
+}
+
+.ci-run-line-action:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-naturals-n3) 65%, transparent);
+  color: var(--color-naturals-n13);
+}
+
+.ci-run-line-action:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .ci-run-line {
   display: flex;
   align-items: center;
@@ -4138,7 +4174,6 @@ select.app-field:disabled,
   color: var(--color-naturals-n12);
   font-family: var(--font-mono);
   font-size: 0.75rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--color-border) 25%, transparent);
 }
 
 .ci-run-line-clickable {
@@ -4501,29 +4536,37 @@ select.app-field:disabled,
 }
 
 .pipeline-runs-jobs-cell {
-  min-width: 10rem;
-  max-width: 16rem;
+  width: 1%;
+  white-space: nowrap;
 }
 
 .pipeline-runs-jobs {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 0.35rem;
-  overflow-x: auto;
-  scrollbar-width: thin;
+  gap: 0.2rem;
 }
 
-.pipeline-runs-job .status-green,
-.pipeline-runs-job .status-yellow,
-.pipeline-runs-job .status-red,
-.pipeline-runs-job .status-gray,
-.pipeline-runs-job-badge {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  padding: 0.125rem 0.4rem;
-  white-space: nowrap;
+.pipeline-runs-job-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border: none;
+  border-radius: 0.25rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
   flex-shrink: 0;
+}
+
+.pipeline-runs-job-btn:hover {
+  background: color-mix(in srgb, var(--color-naturals-n3) 70%, transparent);
+}
+
+.pipeline-runs-job-btn:focus-visible {
+  outline: 2px solid var(--color-primary-p4);
+  outline-offset: 1px;
 }
 
 .pipeline-runs-table-wrap {

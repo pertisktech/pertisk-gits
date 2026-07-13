@@ -200,8 +200,11 @@ export function formatRunDuration(run: PipelineRun, nowMs?: number): string {
   return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
 }
 
-export function pipelineUrl(orgSlug: string, repoSlug: string, runId: string) {
-  return `/groups/${orgSlug}/projects/${repoSlug}/pipelines/${runId}`
+export function pipelineUrl(orgSlug: string, repoSlug: string, runId: string, jobId?: string) {
+  const base = `/groups/${orgSlug}/projects/${repoSlug}/pipelines/${runId}`
+  if (!jobId) return base
+  const params = new URLSearchParams({ view: 'jobs', job: jobId })
+  return `${base}?${params.toString()}`
 }
 
 export function formatPipelineIid(iid: number): string {

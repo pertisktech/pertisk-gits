@@ -14,6 +14,53 @@ pub fn packet_flush() -> &'static [u8] {
     b"0000"
 }
 
+/// Sideband channel 2 — progress / remote status (shown as `remote:` on the client).
+pub fn sideband_progress_packet(message: &str) -> Vec<u8> {
+    let mut payload = vec![0x02];
+    payload.extend_from_slice(message.as_bytes());
+    packet_line(&payload)
+}
+
+/// Append human-readable status lines to a `git receive-pack --stateless-rpc` response.
+pub fn append_receive_pack_sideband_messages(mut body: Vec<u8>, messages: &[String]) -> Vec<u8> {
+    if messages.is_empty() {
+        return body;
+    }
+    if body.ends_with(packet_flush()) {
+        body.truncate(body.len() - 4);
+    }
+    for message in messages {
+        sideband_progress_packet(message).into_iter().for_each(|b| body.push(b));
+    }
+    body.extend_from_slice(packet_flush());
+    body
+}
+
+/// True when the client advertised side-band support in a receive-pack request.
+pub fn receive_pack_supports_sideband(body: &[u8]) -> bool {
+    let Some(payload) = first_receive_pack_packet(body) else {
+        return false;
+    };
+    let caps = payload
+        .split(|&b| b == 0)
+        .nth(1)
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+        .unwrap_or("");
+    caps.contains("side-band-64k") || caps.contains("side-band")
+}
+
+fn first_receive_pack_packet(body: &[u8]) -> Option<&[u8]> {
+    if body.len() < 4 {
+        return None;
+    }
+    let len_hex = std::str::from_utf8(&body[..4]).ok()?;
+    let pkt_len = usize::from_str_radix(len_hex, 16).ok()?;
+    if pkt_len < 4 || pkt_len > body.len() {
+        return None;
+    }
+    Some(&body[4..pkt_len])
+}
+
 pub fn wrap_service_advertisement(service: &str, body: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(&packet_line(format!("# service={service}\n").as_bytes()));
@@ -131,6 +178,29 @@ mod tests {
         let updates = parse_receive_pack_commands(&body);
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0].2, "refs/heads/main");
+    }
+
+    #[test]
+    fn receive_pack_supports_sideband_detects_capability() {
+        let command = b"0000000000000000000000000000000000000000 1111111111111111111111111111111111111111 refs/heads/main\0side-band-64k report-status\0";
+        let pkt_len = 4 + command.len();
+        let mut body = format!("{pkt_len:04x}").into_bytes();
+        body.extend_from_slice(command);
+        body.extend_from_slice(b"0000");
+        assert!(receive_pack_supports_sideband(&body));
+    }
+
+    #[test]
+    fn append_receive_pack_sideband_messages_extends_response() {
+        let mut body = packet_line(b"ok");
+        body.extend_from_slice(packet_flush());
+        let out = append_receive_pack_sideband_messages(
+            body,
+            &["\nTo create a merge request, visit:\n  https://example.com\n".into()],
+        );
+        assert!(out.windows(4).any(|w| w == b"0000"));
+        assert!(out.contains(&0x02));
+        assert!(out.iter().any(|&b| b == b'm'));
     }
 
     #[test]

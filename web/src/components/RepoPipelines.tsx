@@ -374,7 +374,9 @@ jobs:
               runs={filteredRuns}
               orgSlug={orgSlug}
               repoSlug={repoSlug}
-              onOpenRun={(runId) => navigate(pipelineUrl(orgSlug, repoSlug, runId))}
+              onOpenRun={(runId, jobId) =>
+                navigate(pipelineUrl(orgSlug, repoSlug, runId, jobId))
+              }
               onRerun={(runId, scope) => rerunMutation.mutate({ runId, scope })}
               rerunningRunId={rerunningRunId}
               emptyMessage={

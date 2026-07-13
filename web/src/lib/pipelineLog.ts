@@ -253,6 +253,7 @@ export function defaultStepKey(job: JobRun, runStatus?: PipelineRun['status']): 
 /** Step to show after selecting a job or re-running (queued/running → first/active step). */
 export function initialStepKey(job: JobRun, runStatus?: PipelineRun['status']): string | null {
   const jobStatus = effectiveJobStatus(job, runStatus)
+  if (jobStatus === 'manual') return null
   if (jobStatus === 'queued' || jobStatus === 'running') {
     return (
       inferRunningStepName(job, runStatus) ??
@@ -332,4 +333,11 @@ export function stepMeta(step: JobStepView): string {
   if (step.durationMs !== undefined) return `${step.durationMs}ms`
   if (step.exitCode !== undefined) return `exit ${step.exitCode}`
   return step.run ? step.run.slice(0, 48) : ''
+}
+
+/** Human-friendly step label (avoid raw `step-0` when YAML omits step name). */
+export function stepDisplayLabel(step: JobStepView, index: number): string {
+  const name = step.name.trim()
+  if (name && !/^step-\d+$/.test(name)) return name
+  return `Step ${index + 1}`
 }

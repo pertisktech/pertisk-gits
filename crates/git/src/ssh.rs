@@ -14,7 +14,7 @@ use crate::access::{self};
 use crate::command::{parse_ssh_command, GitService};
 use crate::config::repo_disk_path;
 use crate::refs::{diff_refs, snapshot_refs};
-use crate::serve::run_git_service;
+use crate::serve::run_git_service_with_hints;
 use crate::ssh_keys::fingerprint_of_key;
 use crate::storage::ensure_bare_repo;
 
@@ -32,6 +32,7 @@ pub struct GitSshState {
     pub repos_root: PathBuf,
     pub config: GitSshConfig,
     pub post_receive: Option<crate::http::PostReceiveHook>,
+    pub push_hints: Option<crate::http::PushHintHook>,
 }
 
 pub async fn run_server(state: Arc<GitSshState>) -> anyhow::Result<()> {
@@ -217,6 +218,7 @@ impl russh::server::Handler for SshSession {
             &git_cmd.repo_slug,
         );
         let post_receive = self.state.post_receive.clone();
+        let push_hints = self.state.push_hints.clone();
 
         let Some(channel) = self.take_channel(channel_id).await else {
             session.channel_failure(channel_id)?;
@@ -234,7 +236,31 @@ impl russh::server::Handler for SshSession {
                 None
             };
 
-            match run_git_service(&repo_path, service, stream).await {
+            let hint_lines = if service == GitService::ReceivePack {
+                let updates = match refs_before.as_ref() {
+                    Some(before) => snapshot_refs(&repo_path)
+                        .await
+                        .map(|after| diff_refs(before, &after))
+                        .unwrap_or_default(),
+                    None => Vec::new(),
+                };
+                if updates.is_empty() {
+                    None
+                } else if let Some(hook) = push_hints.as_ref() {
+                    let hints = hook(repo_id, updates.clone()).await;
+                    if hints.is_empty() {
+                        None
+                    } else {
+                        Some(hints)
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            match run_git_service_with_hints(&repo_path, service, stream, hint_lines).await {
                 Ok(()) => {
                     if service == GitService::ReceivePack {
                         if let Some(hook) = post_receive {

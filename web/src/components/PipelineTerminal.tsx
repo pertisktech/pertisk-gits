@@ -238,6 +238,7 @@ export function CiRunLine({
   onClick,
   active,
   nested,
+  actions,
 }: {
   status: string
   label: string
@@ -246,24 +247,28 @@ export function CiRunLine({
   onClick?: () => void
   active?: boolean
   nested?: boolean
+  actions?: ReactNode
 }) {
   const Tag = onClick ? 'button' : 'div'
   return (
-    <Tag
-      type={onClick ? 'button' : undefined}
-      onClick={onClick}
-      className={cn(
-        'ci-run-line',
-        nested && 'ci-run-line-nested',
-        active && 'ci-run-line-active',
-        onClick && 'ci-run-line-clickable',
-      )}
-    >
-      <CiStatusDot status={status} />
-      <span className="ci-run-line-label">{label}</span>
-      <span className="ci-run-line-meta">{meta}</span>
-      {hint && <span className="ci-run-line-hint truncate">{hint}</span>}
-      {onClick && <ChevronRight size={14} className="ci-run-line-chevron shrink-0" />}
-    </Tag>
+    <div className={cn('ci-run-line-wrap', nested && 'ci-run-line-wrap--nested')}>
+      <Tag
+        type={onClick ? 'button' : undefined}
+        onClick={onClick}
+        className={cn(
+          'ci-run-line',
+          nested && 'ci-run-line-nested',
+          active && 'ci-run-line-active',
+          onClick && 'ci-run-line-clickable',
+        )}
+      >
+        <CiStatusDot status={status} />
+        <span className="ci-run-line-label">{label}</span>
+        <span className="ci-run-line-meta">{meta}</span>
+        {hint && <span className="ci-run-line-hint truncate">{hint}</span>}
+        {onClick && !actions && <ChevronRight size={14} className="ci-run-line-chevron shrink-0" />}
+      </Tag>
+      {actions}
+    </div>
   )
 }
