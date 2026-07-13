@@ -136,12 +136,14 @@
   --warn: var(--color-yellow-y1);
 }
 
-html.dark {
+html.dark[data-theme-set='pertisk-default'] {
   --color-primary-glow: color-mix(in srgb, var(--color-primary) 28%, transparent);
+  color-scheme: dark;
 }
 
-/* ── Light theme (n0 lightest → n14 darkest) ──────────────────────────────── */
+/* ── Light theme (Pertisk default; custom sets override via injected rules) ─── */
 html.light {
+  color-scheme: light;
   --color-naturals-n0: #ffffff;
   --color-naturals-n1: #f8f9fc;
   --color-naturals-n2: #f1f3f8;

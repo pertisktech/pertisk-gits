@@ -8,6 +8,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#10111e" />
     <title>Pertisk Gits</title>
+    <script>
+      (function () {
+        try {
+          var raw = localStorage.getItem('pertisk_gits_theme_prefs')
+          var mode = 'dark'
+          var themeSetId = 'pertisk-default'
+          if (raw) {
+            var prefs = JSON.parse(raw)
+            if (prefs.mode === 'light' || prefs.mode === 'dark') mode = prefs.mode
+            if (prefs.themeSetId) themeSetId = prefs.themeSetId
+          } else {
+            var legacy = localStorage.getItem('pertisk_gits_theme')
+            if (legacy === 'light' || legacy === 'dark') mode = legacy
+          }
+          document.documentElement.classList.remove('light', 'dark')
+          document.documentElement.classList.add(mode)
+          document.documentElement.dataset.themeSet = themeSetId
+          document.documentElement.dataset.themeMode = mode
+        } catch (e) {
+          document.documentElement.classList.add('dark')
+          document.documentElement.dataset.themeSet = 'pertisk-default'
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

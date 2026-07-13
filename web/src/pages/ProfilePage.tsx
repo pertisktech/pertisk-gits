@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { PersonalAccessTokensPanel } from '../components/PersonalAccessTokensPanel'
+import { ThemeSettingsPanel } from '../components/ThemeSettingsPanel'
 import { Breadcrumbs, PageHeader, PrimaryButton } from '../components/ui'
 
 type ProfileForm = {
@@ -144,6 +145,8 @@ export function ProfilePage() {
       <PageHeader title="User profile" subtitle="Update your account and manage SSH keys for git clone" />
 
       <div className="space-y-5 max-w-3xl">
+        <ThemeSettingsPanel />
+
         <div className="app-panel max-w-lg">
           <div className="app-panel-header">Account</div>
           <div className="app-panel-body">

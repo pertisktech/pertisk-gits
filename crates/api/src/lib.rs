@@ -378,8 +378,20 @@ pub async fn run() -> anyhow::Result<()> {
             .route_service("/favicon.png", get_service(ServeFile::new(web_dist.join("favicon.png"))))
             .route_service("/logo.png", get_service(ServeFile::new(web_dist.join("logo.png"))))
             .route_service("/logo-192.png", get_service(ServeFile::new(web_dist.join("logo-192.png"))))
-            .route_service("/icons.svg", get_service(ServeFile::new(web_dist.join("icons.svg"))))
-            .fallback(get(spa_index));
+            .route_service("/icons.svg", get_service(ServeFile::new(web_dist.join("icons.svg"))));
+
+        let themes_dir = web_dist.join("themes");
+        if themes_dir.is_dir() {
+            app = app.nest_service(
+                "/themes",
+                ServeDir::new(themes_dir)
+                    .precompressed_zstd()
+                    .precompressed_br()
+                    .precompressed_gzip(),
+            );
+        }
+
+        app = app.fallback(get(spa_index));
         tracing::info!("serving web UI from {}", web_dist.display());
     } else {
         app = app.route("/", get(root));

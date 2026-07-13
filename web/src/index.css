@@ -1106,6 +1106,23 @@ body,
   font-weight: 600;
 }
 
+.accent-tab-active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.accent-chip-active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+.accent-fill-active {
+  background: var(--color-primary);
+  color: var(--color-on-primary);
+}
+
 .repo-list-header {
   display: flex;
   align-items: center;

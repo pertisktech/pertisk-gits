@@ -68,7 +68,7 @@ function PipelineMigratePanel({
               type="button"
               className={`px-3 py-1.5 rounded-md text-xs border transition-colors ${
                 index === selectedIndex
-                  ? 'border-primary bg-primary/10 text-primary'
+                  ? 'accent-tab-active'
                   : 'border-naturals-n4 text-text-secondary hover:text-text hover:bg-hover'
               }`}
               onClick={() => setSelectedIndex(index)}

@@ -264,7 +264,7 @@ function BranchRow({
               {branch.name}
             </Link>
             {isDefault && (
-              <span className="text-2xs font-semibold uppercase tracking-wide text-primary bg-primary/10 px-1.5 py-0.5 rounded">
+              <span className="text-2xs font-semibold uppercase tracking-wide accent-chip-active px-1.5 py-0.5 rounded">
                 default
               </span>
             )}
