@@ -148,7 +148,7 @@
   font-size: var(--text-base);
   font-weight: 600;
   font-family: inherit;
-  color: white;
+  color: var(--color-on-primary);
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
   border: none;
   border-radius: var(--radius-md);

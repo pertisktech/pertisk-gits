@@ -24,6 +24,7 @@ export default {
         },
         muted: "var(--color-muted)",
         primary: "var(--color-primary)",
+        "on-primary": "var(--color-on-primary)",
         card: "var(--color-card)",
         sidebar: "var(--color-sidebar)",
         /* Naturals palette */

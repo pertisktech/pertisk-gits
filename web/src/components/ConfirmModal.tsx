@@ -104,7 +104,7 @@ export function ConfirmModal({
               'inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-60',
               variant === 'danger'
                 ? 'bg-dashboard-danger text-white hover:opacity-90'
-                : 'bg-primary text-bg hover:opacity-90',
+                : 'bg-primary text-on-primary hover:opacity-90',
             )}
             data-no-global-button-hover="true"
           >

@@ -278,7 +278,7 @@ export function AdminUsersPage() {
                   type="button"
                   className={`px-3 py-1.5 text-xs font-medium transition-colors ${
                     filter === entry.id
-                      ? 'bg-primary text-white'
+                      ? 'bg-primary text-on-primary'
                       : 'bg-surface text-text-secondary hover:bg-hover'
                   }`}
                   onClick={() => setFilter(entry.id)}

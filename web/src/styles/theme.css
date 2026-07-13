@@ -1,3 +1,250 @@
+/* Pertisk Gits — design tokens (dark default, light via html.light) */
+
+/* ── Dark theme (default) ─────────────────────────────────────────────────── */
+:root {
+  /* Neutrals — violet-tinted dark navy (n0 darkest → n14 lightest) */
+  --color-naturals-n0: #0c0d18;
+  --color-naturals-n1: #10111e;
+  --color-naturals-n2: #131421;
+  --color-naturals-n3: #181a2c;
+  --color-naturals-n4: #1d1f32;
+  --color-naturals-n5: #23253c;
+  --color-naturals-n6: #2c2f4c;
+  --color-naturals-n7: #3b3e5e;
+  --color-naturals-n8: #585b7a;
+  --color-naturals-n9: #7778a0;
+  --color-naturals-n10: #8e90ad;
+  --color-naturals-n11: #a8aac6;
+  --color-naturals-n12: #c8c9de;
+  --color-naturals-n13: #e6e7f0;
+  --color-naturals-n14: #ffffff;
+
+  /* Primary — violet */
+  --color-primary-p1: #d8c8fd;
+  --color-primary-p2: #b89ef9;
+  --color-primary-p3: #9a7bf7;
+  --color-primary-p4: #7c59f0;
+  --color-primary-p5: #5f3fd4;
+  --color-primary-p6: #281a5e;
+
+  /* Semantic palette */
+  --color-green-g1: #4ade9b;
+  --color-green-g2: #22a06b;
+  --color-red-r1: #ff5c56;
+  --color-red-r2: #6e2f30;
+  --color-yellow-y1: #fbbf24;
+  --color-yellow-y2: #d97706;
+  --color-blue-b1: #60a5fa;
+
+  /* Surface aliases */
+  --color-bg: var(--color-naturals-n0);
+  --color-surface: var(--color-naturals-n1);
+  --color-surface-elevated: var(--color-naturals-n2);
+  --color-hover: var(--color-naturals-n4);
+  --color-border: var(--color-naturals-n5);
+  --color-text: var(--color-naturals-n13);
+  --color-text-secondary: var(--color-naturals-n11);
+  --color-muted: var(--color-naturals-n9);
+  --color-card: var(--color-naturals-n2);
+  --color-sidebar: #090a14;
+  --color-primary: var(--color-primary-p3);
+  --color-primary-hover: var(--color-primary-p2);
+  --color-on-primary: #ffffff;
+  --color-bg-gradient-start: var(--color-naturals-n0);
+  --color-bg-gradient-end: var(--color-naturals-n1);
+  --color-overlay-backdrop: rgba(0, 0, 0, 0.75);
+
+  /* Icon / status */
+  --color-icon-primary: var(--color-primary-p3);
+  --color-icon-secondary: var(--color-naturals-n10);
+  --color-icon-success: var(--color-green-g1);
+  --color-icon-warning: var(--color-yellow-y1);
+  --color-icon-danger: var(--color-red-r1);
+  --color-icon-info: var(--color-blue-b1);
+
+  --color-status-ready: #25a7a0;
+  --color-status-ready-bg: rgba(37, 167, 160, 0.12);
+  --color-workload-accent: #14b8a6;
+  --color-workload-accent-strong: #0f766e;
+  --color-workload-accent-bg: color-mix(in srgb, var(--color-workload-accent) 16%, transparent);
+  --color-workload-accent-soft: color-mix(in srgb, var(--color-workload-accent) 38%, var(--color-border));
+
+  /* Dashboard metrics */
+  --color-dashboard-success: var(--color-green-g1);
+  --color-dashboard-success-bg: color-mix(in srgb, var(--color-green-g1) 12%, transparent);
+  --color-dashboard-warning: var(--color-yellow-y1);
+  --color-dashboard-warning-bg: color-mix(in srgb, var(--color-yellow-y1) 12%, transparent);
+  --color-dashboard-danger: var(--color-red-r1);
+  --color-dashboard-danger-bg: color-mix(in srgb, var(--color-red-r1) 12%, transparent);
+  --color-dashboard-info: var(--color-blue-b1);
+  --color-dashboard-info-bg: color-mix(in srgb, var(--color-blue-b1) 12%, transparent);
+  --color-dashboard-metric-primary: var(--color-green-g2);
+  --color-dashboard-metric-primary-bg: color-mix(in srgb, var(--color-green-g2) 12%, transparent);
+  --color-dashboard-metric-secondary: #a855f7;
+  --color-dashboard-metric-secondary-bg: rgba(168, 85, 247, 0.12);
+  --color-dashboard-metric-tertiary: #ec4899;
+  --color-dashboard-metric-tertiary-bg: rgba(236, 72, 153, 0.12);
+  --color-dashboard-metric-quaternary: #06b6d4;
+  --color-dashboard-metric-quaternary-bg: rgba(6, 182, 212, 0.12);
+
+  /* Resource / status labels */
+  --label-green: #61ff9b;
+  --label-red: #fc2226;
+  --label-orange: #f67a51;
+  --label-violet: #fd90e6;
+  --label-yellow: #fcdf69;
+  --label-cyan: #00c4d6;
+  --label-blue1: #6fabeb;
+  --label-blue2: #3388ff;
+  --label-blue3: #9675f0;
+  --label-light1: #e89292;
+  --label-light2: #c09c75;
+  --label-light3: #b7bb7e;
+  --label-light4: #849a7f;
+  --label-light5: #7ba09d;
+  --label-light6: #7e86ba;
+  --label-light7: #a57bbc;
+
+  /* CI terminal */
+  --color-terminal-user: #7ee787;
+  --color-terminal-host: #79c0ff;
+  --color-terminal-path: #d2a8ff;
+  --color-terminal-ok: var(--color-green-g1);
+  --color-terminal-error: var(--color-red-r1);
+  --color-terminal-warn: var(--color-yellow-y1);
+  --color-terminal-shadow: color-mix(in srgb, black 28%, transparent);
+  --color-terminal-mix: black;
+
+  /* Bottom panel */
+  --bottom-panel-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-surface) 86%, transparent),
+    color-mix(in srgb, var(--color-bg) 95%, transparent)
+  );
+  --bottom-panel-tabbar-bg: color-mix(in srgb, var(--color-surface-elevated) 88%, var(--color-bg));
+  --bottom-panel-tab-active-bg: color-mix(in srgb, var(--color-bg) 72%, var(--color-surface));
+  --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
+  --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 80%, var(--color-surface));
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
+  --shadow-sidebar: 0 0 0 1px rgba(31, 34, 46, 0.95), 8px 0 24px rgba(0, 0, 0, 0.32);
+
+  --error: var(--color-red-r1);
+  --warn: var(--color-yellow-y1);
+}
+
+html.dark {
+  --color-primary-glow: color-mix(in srgb, var(--color-primary) 28%, transparent);
+}
+
+/* ── Light theme (n0 lightest → n14 darkest) ──────────────────────────────── */
+html.light {
+  --color-naturals-n0: #ffffff;
+  --color-naturals-n1: #f8f9fc;
+  --color-naturals-n2: #f1f3f8;
+  --color-naturals-n3: #e8ebf2;
+  --color-naturals-n4: #dde1ea;
+  --color-naturals-n5: #cfd5e2;
+  --color-naturals-n6: #b3bac9;
+  --color-naturals-n7: #9399ad;
+  --color-naturals-n8: #767c92;
+  --color-naturals-n9: #5c6278;
+  --color-naturals-n10: #494f64;
+  --color-naturals-n11: #3a4055;
+  --color-naturals-n12: #262b3d;
+  --color-naturals-n13: #181b2e;
+  --color-naturals-n14: #0d0f1a;
+
+  --color-primary-p1: #ede9fe;
+  --color-primary-p2: #c4b5fd;
+  --color-primary-p3: #7c3aed;
+  --color-primary-p4: #6d28d9;
+  --color-primary-p5: #5b21b6;
+  --color-primary-p6: #f5f3ff;
+
+  --color-green-g1: #1a7f37;
+  --color-green-g2: #116329;
+  --color-red-r1: #cf222e;
+  --color-red-r2: #a40e26;
+  --color-yellow-y1: #9a6700;
+  --color-yellow-y2: #7c4a00;
+  --color-blue-b1: #0969da;
+
+  --color-bg: #f6f7fb;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #ffffff;
+  --color-hover: #eef0f6;
+  --color-border: #dde1ea;
+  --color-text: #181b2e;
+  --color-text-secondary: #3a4055;
+  --color-muted: #5c6278;
+  --color-card: #ffffff;
+  --color-sidebar: #f4f5f9;
+  --color-primary: #6d28d9;
+  --color-primary-hover: #7c3aed;
+  --color-on-primary: #ffffff;
+  --color-bg-gradient-start: #f6f7fb;
+  --color-bg-gradient-end: #ffffff;
+  --color-overlay-backdrop: rgba(24, 27, 46, 0.42);
+
+  --color-icon-secondary: #5c6278;
+
+  --color-status-ready: #0f766e;
+  --color-status-ready-bg: color-mix(in srgb, var(--color-status-ready) 10%, transparent);
+  --color-workload-accent: #0d9488;
+  --color-workload-accent-strong: #0f766e;
+
+  --color-dashboard-metric-secondary: #7c3aed;
+  --color-dashboard-metric-secondary-bg: color-mix(in srgb, var(--color-dashboard-metric-secondary) 10%, transparent);
+  --color-dashboard-metric-tertiary: #db2777;
+  --color-dashboard-metric-tertiary-bg: color-mix(in srgb, var(--color-dashboard-metric-tertiary) 10%, transparent);
+  --color-dashboard-metric-quaternary: #0891b2;
+  --color-dashboard-metric-quaternary-bg: color-mix(in srgb, var(--color-dashboard-metric-quaternary) 10%, transparent);
+
+  --label-green: #15803d;
+  --label-red: #b91c1c;
+  --label-orange: #c2410c;
+  --label-violet: #7c3aed;
+  --label-yellow: #92400e;
+  --label-cyan: #0e7490;
+  --label-blue1: #1d4ed8;
+  --label-blue2: #1e40af;
+  --label-blue3: #6d28d9;
+  --label-light1: #be123c;
+  --label-light2: #b45309;
+  --label-light3: #a16207;
+  --label-light4: #4d7c0f;
+  --label-light5: #0f766e;
+  --label-light6: #4338ca;
+  --label-light7: #7e22ce;
+
+  --color-terminal-user: #116329;
+  --color-terminal-host: #0550ae;
+  --color-terminal-path: #6639ba;
+  --color-terminal-ok: #116329;
+  --color-terminal-error: #cf222e;
+  --color-terminal-warn: #9a6700;
+  --color-terminal-shadow: color-mix(in srgb, black 8%, transparent);
+  --color-terminal-mix: var(--color-naturals-n7);
+
+  --bottom-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 247, 251, 0.96));
+  --bottom-panel-tabbar-bg: color-mix(in srgb, var(--color-surface) 92%, var(--color-hover));
+  --bottom-panel-tab-active-bg: var(--color-surface);
+  --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
+  --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 80%, var(--color-surface));
+
+  --shadow-sm: 0 1px 2px rgba(24, 27, 46, 0.06);
+  --shadow-md: 0 8px 24px rgba(24, 27, 46, 0.08);
+  --shadow-lg: 0 16px 48px rgba(24, 27, 46, 0.12);
+  --shadow-sidebar: 0 0 0 1px rgba(109, 40, 217, 0.12), 8px 0 16px rgba(24, 27, 46, 0.04);
+
+  --color-primary-glow: color-mix(in srgb, var(--color-primary) 18%, transparent);
+}
+
+/* ── Status badge utilities ───────────────────────────────────────────────── */
 .status-green {
   background-color: color-mix(in srgb, var(--color-icon-success) 20%, transparent);
   color: var(--color-icon-success);

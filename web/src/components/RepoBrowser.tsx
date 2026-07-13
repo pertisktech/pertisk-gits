@@ -55,11 +55,13 @@ export function RepoBrowser({
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const initialFile = searchParams.get('file')
+  const urlPath = searchParams.get('path') ?? ''
   const urlRef = searchParams.get('ref')
   const refKind: 'branch' | 'tag' =
     urlRef && searchParams.get('ref_kind') === 'tag' ? 'tag' : 'branch'
 
   const [path, setPath] = useState(() => {
+    if (urlPath) return urlPath
     if (!initialFile) return ''
     const slash = initialFile.lastIndexOf('/')
     return slash >= 0 ? initialFile.slice(0, slash) : ''
@@ -186,27 +188,53 @@ export function RepoBrowser({
   }, [])
 
   const patchSearchParams = useCallback(
-    (patch: (next: URLSearchParams) => void) => {
-      setSearchParams((prev) => {
-        const next = new URLSearchParams(prev)
-        patch(next)
-        return next
-      }, { replace: true })
+    (patch: (next: URLSearchParams) => void, options?: { replace?: boolean }) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          patch(next)
+          return next
+        },
+        { replace: options?.replace ?? false },
+      )
     },
     [setSearchParams],
   )
 
-  const syncFileParam = useCallback(
-    (filePath: string | null) => {
+  const syncBrowseParams = useCallback(
+    (
+      browse: { file?: string | null; folderPath?: string },
+      options?: { replace?: boolean },
+    ) => {
       patchSearchParams((next) => {
-        if (filePath) {
-          next.set('file', filePath)
-        } else {
-          next.delete('file')
+        if (browse.file) {
+          next.set('file', browse.file)
+          next.delete('path')
+          return
         }
-      })
+        next.delete('file')
+        if (browse.folderPath) {
+          next.set('path', browse.folderPath)
+        } else {
+          next.delete('path')
+        }
+      }, options)
     },
     [patchSearchParams],
+  )
+
+  const syncFileParam = useCallback(
+    (filePath: string | null, options?: { replace?: boolean }) => {
+      syncBrowseParams({ file: filePath }, options)
+    },
+    [syncBrowseParams],
+  )
+
+  const syncFolderParam = useCallback(
+    (folderPath: string, options?: { replace?: boolean }) => {
+      syncBrowseParams({ folderPath }, options)
+    },
+    [syncBrowseParams],
   )
 
   const viewFile = useCallback(
@@ -288,17 +316,31 @@ export function RepoBrowser({
   )
 
   useEffect(() => {
-    if (!initialFile || !canBrowse) return
-    if (localNewPathsRef.current.has(initialFile)) return
-    viewFile(initialFile)
-  }, [initialFile, canBrowse]) // eslint-disable-line react-hooks/exhaustive-deps -- open once on load
+    if (!canBrowse) return
 
-  useEffect(() => {
-    if (!viewingPath || viewingMeta !== undefined) return
-    if (viewingEntry?.last_commit) {
-      setViewingMeta(viewingEntry.last_commit)
+    const file = searchParams.get('file')
+    const folderPath = searchParams.get('path') ?? ''
+    const resolvedPath = file
+      ? file.includes('/')
+        ? file.slice(0, file.lastIndexOf('/'))
+        : ''
+      : folderPath
+
+    setPath(resolvedPath)
+
+    if (file) {
+      if (localNewPathsRef.current.has(file)) return
+      expandPath(file)
+      setActivePath(file)
+      setFileViewMode('preview')
+      return
     }
-  }, [viewingPath, viewingEntry, viewingMeta])
+
+    setOpenFiles([])
+    setActivePath(null)
+    setEditorOpen(false)
+    setViewingMeta(undefined)
+  }, [canBrowse, expandPath, searchParams])
 
   useEffect(() => {
     if (initialFile) return
@@ -333,9 +375,9 @@ export function RepoBrowser({
       setEditorOpen(false)
       setFileViewMode('preview')
       setViewingMeta(undefined)
-      syncFileParam(null)
+      syncFolderParam(newPath)
     },
-    [syncFileParam],
+    [syncFolderParam],
   )
 
   const openEntry = useCallback(
@@ -429,20 +471,24 @@ export function RepoBrowser({
 
   const changeRef = useCallback(
     (kind: 'branch' | 'tag', name: string) => {
-      patchSearchParams((next) => {
-        next.delete('file')
-        if (kind === 'branch' && name === defaultRef) {
-          next.delete('ref')
-          next.delete('ref_kind')
-        } else {
-          next.set('ref', name)
-          if (kind === 'tag') {
-            next.set('ref_kind', 'tag')
-          } else {
+      patchSearchParams(
+        (next) => {
+          next.delete('file')
+          next.delete('path')
+          if (kind === 'branch' && name === defaultRef) {
+            next.delete('ref')
             next.delete('ref_kind')
+          } else {
+            next.set('ref', name)
+            if (kind === 'tag') {
+              next.set('ref_kind', 'tag')
+            } else {
+              next.delete('ref_kind')
+            }
           }
-        }
-      })
+        },
+        { replace: true },
+      )
       resetBrowseState()
     },
     [defaultRef, patchSearchParams, resetBrowseState],
