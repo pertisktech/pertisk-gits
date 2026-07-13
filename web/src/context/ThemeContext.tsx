@@ -9,11 +9,13 @@ import {
   type ReactNode,
 } from 'react'
 import { applyThemeCssVars, clearThemeCssVars } from '../lib/theme/applyThemeCssVars'
-import { clearSchemeCache, resolveSchemeCssVars } from '../lib/theme/schemeLoader'
+import { PERTISK_BUILTIN_LIGHT_VARS } from '../lib/theme/pertiskBuiltin'
+import { clearImportedSchemeCache, clearSchemeCache, resolveThemeSetVars } from '../lib/theme/schemeLoader'
 import {
   getThemeSet,
+  IMPORTED_SCHEME_ID_PREFIX,
+  normalizeImportedSchemeId,
   PERTISK_DEFAULT_THEME_SET_ID,
-  schemeRefForThemeSet,
   THEME_SETS,
   type ThemeSetDefinition,
 } from '../lib/theme/themeSets'
@@ -60,6 +62,19 @@ function defaultPreferences(): ThemePreferences {
   }
 }
 
+function migrateImportedPreferences(prefs: ThemePreferences): ThemePreferences {
+  const migratedSchemes: Record<string, ImportedScheme> = {}
+  for (const [id, scheme] of Object.entries(prefs.importedSchemes)) {
+    migratedSchemes[normalizeImportedSchemeId(id)] = scheme
+  }
+
+  return {
+    ...prefs,
+    themeSetId: normalizeImportedSchemeId(prefs.themeSetId),
+    importedSchemes: migratedSchemes,
+  }
+}
+
 function readPreferences(): ThemePreferences {
   if (typeof localStorage === 'undefined') return defaultPreferences()
 
@@ -67,11 +82,11 @@ function readPreferences(): ThemePreferences {
   if (raw) {
     try {
       const parsed = JSON.parse(raw) as Partial<ThemePreferences>
-      return {
+      return migrateImportedPreferences({
         mode: parsed.mode === 'light' ? 'light' : 'dark',
         themeSetId: parsed.themeSetId ?? PERTISK_DEFAULT_THEME_SET_ID,
         importedSchemes: parsed.importedSchemes ?? {},
-      }
+      })
     } catch {
       return defaultPreferences()
     }
@@ -97,11 +112,12 @@ function applyModeClass(mode: ThemeMode): void {
 }
 
 function importedSchemeId(name: string): string {
-  const slug = name
+  const base = name.replace(/\.itermcolors$/i, '')
+  const slug = base
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-  return `imported:${slug || 'scheme'}`
+  return `${IMPORTED_SCHEME_ID_PREFIX}${slug || 'scheme'}`
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -114,6 +130,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [loadingTheme, setLoadingTheme] = useState(false)
   const [themeError, setThemeError] = useState<string | null>(null)
   const loadGeneration = useRef(0)
+  const importedSchemesRef = useRef(prefs.importedSchemes)
+  importedSchemesRef.current = prefs.importedSchemes
 
   const importedThemeSets = useMemo<ThemeSetDefinition[]>(() => {
     return Object.entries(prefs.importedSchemes).map(([id, scheme]) => ({
@@ -152,17 +170,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       getThemeSet(PERTISK_DEFAULT_THEME_SET_ID)!
 
     if (themeSet.builtin) {
-      clearThemeCssVars()
+      applyThemeCssVars(PERTISK_DEFAULT_THEME_SET_ID, { light: PERTISK_BUILTIN_LIGHT_VARS })
       setThemeError(null)
       setLoadingTheme(false)
       return
     }
 
     const generation = ++loadGeneration.current
-    const darkRef = schemeRefForThemeSet(themeSet, 'dark')
-    const lightRef = schemeRefForThemeSet(themeSet, 'light')
 
-    if (!darkRef && !lightRef) {
+    if (!themeSet.dark && !themeSet.light) {
       clearThemeCssVars()
       setThemeError('This theme set has no schemes.')
       setLoadingTheme(false)
@@ -171,17 +187,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     setLoadingTheme(true)
     setThemeError(null)
+    clearImportedSchemeCache(prefs.importedSchemes)
 
     void (async () => {
       try {
-        const [darkVars, lightVars] = await Promise.all([
-          darkRef
-            ? resolveSchemeCssVars(darkRef, 'dark', prefs.importedSchemes)
-            : Promise.resolve(undefined),
-          lightRef
-            ? resolveSchemeCssVars(lightRef, 'light', prefs.importedSchemes)
-            : Promise.resolve(undefined),
-        ])
+        const importedSchemes = importedSchemesRef.current
+        const { dark: darkVars, light: lightVars } = await resolveThemeSetVars(
+          themeSet,
+          importedSchemes,
+        )
 
         if (generation !== loadGeneration.current) return
 

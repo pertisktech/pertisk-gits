@@ -99,17 +99,30 @@ export function adaptItermSchemeToCssVars(
   scheme: ItermSchemeColors,
   modeOverride?: 'light' | 'dark',
 ): ThemeCssVars {
-  const mode = modeOverride ?? detectColorMode(scheme.background)
   const schemeIsLight = detectColorMode(scheme.background) === 'light'
-  const neutrals = buildNeutralScale(scheme.background, scheme.foreground, mode)
-  const primary = pickPrimary(scheme.ansi)
-  const primaryHover = mixHex(primary, scheme.foreground, mode === 'dark' ? 0.22 : 0.12)
+  const mode = modeOverride ?? detectColorMode(scheme.background)
   const isLight = mode === 'light'
 
-  const background = isLight && !schemeIsLight ? neutrals.n0 : scheme.background
-  const surface = isLight ? neutrals.n0 : neutrals.n1
-  const foreground = pickReadableText(surface, scheme.foreground)
-  const textSecondary = pickReadableText(surface, neutrals.n11)
+  const background =
+    isLight && !schemeIsLight ? mixHex(scheme.background, '#ffffff', 0.88) : scheme.background
+  const surface =
+    isLight && schemeIsLight
+      ? scheme.background
+      : isLight
+        ? mixHex(scheme.background, '#ffffff', 0.92)
+        : mixHex(scheme.background, '#000000', 0.08)
+  const paletteBackground = isLight && !schemeIsLight ? background : scheme.background
+  const paletteForeground = isLight && !schemeIsLight ? pickReadableText(surface, scheme.foreground) : scheme.foreground
+  const neutrals = buildNeutralScale(paletteBackground, paletteForeground, mode)
+  const primary = pickPrimary(scheme.ansi)
+  const primaryHover = mixHex(primary, paletteForeground, mode === 'dark' ? 0.22 : 0.12)
+
+  const foreground =
+    isLight && schemeIsLight
+      ? scheme.foreground
+      : pickReadableText(surface, scheme.foreground)
+  const textSecondary =
+    isLight && schemeIsLight ? neutrals.n11 : pickReadableText(surface, neutrals.n11)
 
   const vars: ThemeCssVars = {
     '--color-naturals-n0': neutrals.n0,
@@ -125,7 +138,7 @@ export function adaptItermSchemeToCssVars(
     '--color-naturals-n10': neutrals.n10,
     '--color-naturals-n11': neutrals.n11,
     '--color-naturals-n12': neutrals.n12,
-    '--color-naturals-n13': foreground,
+    '--color-naturals-n13': isLight && schemeIsLight ? scheme.foreground : foreground,
     '--color-naturals-n14': neutrals.n14,
     '--color-primary-p1': mixHex(primary, scheme.background, isLight ? 0.82 : 0.72),
     '--color-primary-p2': mixHex(primary, scheme.background, isLight ? 0.62 : 0.48),
@@ -148,7 +161,7 @@ export function adaptItermSchemeToCssVars(
     '--color-text': foreground,
     '--color-text-secondary': textSecondary,
     '--color-muted': pickReadableText(surface, neutrals.n9),
-    '--color-card': neutrals.n2,
+    '--color-card': isLight ? mixHex(surface, '#ffffff', 0.35) : neutrals.n2,
     '--color-sidebar': mode === 'dark' ? mixHex(scheme.background, '#000000', 0.35) : neutrals.n1,
     '--color-primary': primary,
     '--color-primary-hover': primaryHover,

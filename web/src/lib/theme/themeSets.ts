@@ -7,6 +7,21 @@ export const ITERM_SCHEMES_REPO_URL =
   'https://github.com/mbadolato/iTerm2-Color-Schemes/tree/master/schemes'
 
 export const PERTISK_DEFAULT_THEME_SET_ID = 'pertisk-default'
+export const IMPORTED_SCHEME_ID_PREFIX = 'imported-'
+
+export function isImportedSchemeId(schemeId: string): boolean {
+  return schemeId.startsWith(IMPORTED_SCHEME_ID_PREFIX) || schemeId.startsWith('imported:')
+}
+
+export function normalizeImportedSchemeId(schemeId: string): string {
+  let id = schemeId.startsWith('imported:')
+    ? schemeId.replace('imported:', IMPORTED_SCHEME_ID_PREFIX)
+    : schemeId
+  if (id.endsWith('-itermcolors')) {
+    id = id.slice(0, -'-itermcolors'.length)
+  }
+  return id
+}
 
 export interface ThemeSchemeRef {
   id: string

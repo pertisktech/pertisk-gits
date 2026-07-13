@@ -141,9 +141,12 @@ html.dark[data-theme-set='pertisk-default'] {
   color-scheme: dark;
 }
 
-/* ── Light theme (Pertisk default; custom sets override via injected rules) ─── */
+/* ── Light theme fallback + Pertisk default ─────────────────────────────────── */
 html.light {
   color-scheme: light;
+}
+
+html.light[data-theme-set='pertisk-default'] {
   --color-naturals-n0: #ffffff;
   --color-naturals-n1: #f8f9fc;
   --color-naturals-n2: #f1f3f8;

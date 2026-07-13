@@ -4,15 +4,34 @@ import {
   findCatalogScheme,
   ITERM_SCHEME_CATALOG,
   ITERM_SCHEMES_REMOTE_URL,
+  isImportedSchemeId,
+  normalizeImportedSchemeId,
   schemeUrl,
   type ThemeSchemeRef,
+  type ThemeSetDefinition,
 } from './themeSets'
 
 const contentCache = new Map<string, string>()
 const parsedCache = new Map<string, ItermSchemeColors>()
 const cssCache = new Map<string, ThemeCssVars>()
 
-function cacheKey(ref: ThemeSchemeRef, mode: 'light' | 'dark'): string {
+function importedContentFingerprint(
+  schemeId: string,
+  importedSchemes?: Record<string, { name: string; content: string }>,
+): string {
+  const content = importedSchemes?.[schemeId]?.content
+  if (!content) return ''
+  return String(content.length)
+}
+
+function cacheKey(
+  ref: ThemeSchemeRef,
+  mode: 'light' | 'dark',
+  importedSchemes?: Record<string, { name: string; content: string }>,
+): string {
+  if (isImportedSchemeId(ref.id)) {
+    return `${ref.id}:${mode}:${importedContentFingerprint(ref.id, importedSchemes)}`
+  }
   return `${ref.id}:${mode}`
 }
 
@@ -48,7 +67,8 @@ export async function loadImportedSchemeContent(
   schemeId: string,
   importedSchemes: Record<string, { name: string; content: string }>,
 ): Promise<string> {
-  const entry = importedSchemes[schemeId]
+  const normalizedId = normalizeImportedSchemeId(schemeId)
+  const entry = importedSchemes[normalizedId] ?? importedSchemes[schemeId]
   if (!entry) throw new Error(`Imported scheme not found: ${schemeId}`)
   return entry.content
 }
@@ -58,12 +78,12 @@ export async function resolveSchemeCssVars(
   mode: 'light' | 'dark',
   importedSchemes?: Record<string, { name: string; content: string }>,
 ): Promise<ThemeCssVars> {
-  const key = cacheKey(ref, mode)
+  const key = cacheKey(ref, mode, importedSchemes)
   const cached = cssCache.get(key)
   if (cached) return cached
 
   const content =
-    ref.id.startsWith('imported:') && importedSchemes
+    isImportedSchemeId(ref.id) && importedSchemes
       ? await loadImportedSchemeContent(ref.id, importedSchemes)
       : await fetchItermSchemeContent(ref)
 
@@ -74,12 +94,57 @@ export async function resolveSchemeCssVars(
   return vars
 }
 
+async function resolveLightVars(
+  themeSet: ThemeSetDefinition,
+  importedSchemes?: Record<string, { name: string; content: string }>,
+): Promise<ThemeCssVars | undefined> {
+  const darkRef = themeSet.dark
+  const lightRef = themeSet.light
+  const sharedScheme = Boolean(darkRef && lightRef && darkRef.id === lightRef.id)
+
+  if (sharedScheme && darkRef) {
+    return resolveSchemeCssVars(darkRef, 'light', importedSchemes)
+  }
+
+  if (lightRef) {
+    try {
+      return await resolveSchemeCssVars(lightRef, 'light', importedSchemes)
+    } catch {
+      if (darkRef) {
+        return resolveSchemeCssVars(darkRef, 'light', importedSchemes)
+      }
+      throw new Error(`Failed to load light theme for "${themeSet.name}"`)
+    }
+  }
+
+  if (darkRef) {
+    return resolveSchemeCssVars(darkRef, 'light', importedSchemes)
+  }
+
+  return undefined
+}
+
+export async function resolveThemeSetVars(
+  themeSet: ThemeSetDefinition,
+  importedSchemes?: Record<string, { name: string; content: string }>,
+): Promise<{ dark?: ThemeCssVars; light?: ThemeCssVars }> {
+  if (themeSet.builtin) return {}
+
+  const darkRef = themeSet.dark
+  const [darkVars, lightVars] = await Promise.all([
+    darkRef ? resolveSchemeCssVars(darkRef, 'dark', importedSchemes) : Promise.resolve(undefined),
+    resolveLightVars(themeSet, importedSchemes),
+  ])
+
+  return { dark: darkVars, light: lightVars }
+}
+
 export async function resolveSchemeById(
   schemeId: string,
   mode: 'light' | 'dark',
   importedSchemes?: Record<string, { name: string; content: string }>,
 ): Promise<ThemeCssVars> {
-  if (schemeId.startsWith('imported:')) {
+  if (isImportedSchemeId(schemeId)) {
     const entry = importedSchemes?.[schemeId]
     if (!entry) throw new Error('Imported scheme missing')
     const ref: ThemeSchemeRef = { id: schemeId, name: entry.name, file: '' }
@@ -103,4 +168,16 @@ export function clearSchemeCache(): void {
   contentCache.clear()
   parsedCache.clear()
   cssCache.clear()
+}
+
+export function clearImportedSchemeCache(
+  importedSchemes: Record<string, { name: string; content: string }>,
+): void {
+  for (const schemeId of Object.keys(importedSchemes)) {
+    contentCache.delete(schemeId)
+    parsedCache.delete(schemeId)
+    for (const key of cssCache.keys()) {
+      if (key.startsWith(`${schemeId}:`)) cssCache.delete(key)
+    }
+  }
 }
