@@ -2,6 +2,7 @@ use std::path::Path;
 use std::time::Duration;
 
 use serde::Serialize;
+use pertisk_cicd::disk_usage_bytes;
 use sysinfo::{Disks, Pid, ProcessRefreshKind, System};
 
 #[derive(Debug, Serialize)]
@@ -35,13 +36,7 @@ pub fn collect_host_metrics() -> HostMetrics {
     let cpu_usage_percent = system.global_cpu_usage();
 
     let disks = Disks::new_with_refreshed_list();
-    let (disk_total_bytes, disk_free_bytes) =
-        disks.list().iter().fold((0u64, 0u64), |(total, free), disk| {
-            (
-                total.saturating_add(disk.total_space()),
-                free.saturating_add(disk.available_space()),
-            )
-        });
+    let (disk_total_bytes, disk_free_bytes) = disk_usage_bytes(&disks);
     let disk_used_bytes = disk_total_bytes.saturating_sub(disk_free_bytes);
 
     HostMetrics {

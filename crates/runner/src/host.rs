@@ -1,6 +1,7 @@
 use std::net::UdpSocket;
 
 use serde::Serialize;
+use pertisk_cicd::disk_usage_bytes;
 use sysinfo::{Disks, System};
 
 use crate::version::APP_VERSION;
@@ -26,12 +27,9 @@ pub fn collect_host_info() -> HostInfo {
     let cpu_cores = system.cpus().len().max(1) as u32;
 
     let disks = Disks::new_with_refreshed_list();
-    let (disk_total_mb, disk_free_mb) = disks.list().iter().fold((0u64, 0u64), |(total, free), disk| {
-        (
-            total.saturating_add(disk.total_space() / 1024 / 1024),
-            free.saturating_add(disk.available_space() / 1024 / 1024),
-        )
-    });
+    let (disk_total_bytes, disk_free_bytes) = disk_usage_bytes(&disks);
+    let disk_total_mb = disk_total_bytes / 1024 / 1024;
+    let disk_free_mb = disk_free_bytes / 1024 / 1024;
 
     HostInfo {
         version: APP_VERSION.to_string(),

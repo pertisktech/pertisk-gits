@@ -12,6 +12,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
+sysinfo = "0.33"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

@@ -6,6 +6,7 @@ pub mod predefined;
 pub mod secrets;
 pub mod executor;
 pub mod job_if;
+pub mod host_disk;
 pub mod metrics;
 pub mod pattern;
 pub mod schedule;
@@ -24,6 +25,7 @@ pub use environment::{
 pub use predefined::{build_predefined_vars, PredefinedCiContext, PullRequestContext};
 pub use executor::{bench_noop_steps, JobExecutor, ShellExecutor, StepOutput};
 pub use job_if::{JobIfMatcher, JobScheduleMode, RunContext};
+pub use host_disk::disk_usage_bytes;
 pub use metrics::{JobMetrics, StepTiming};
 pub use schedule::{RerunReset, ScheduledJob, Scheduler};
 pub use script::render_job_script;
