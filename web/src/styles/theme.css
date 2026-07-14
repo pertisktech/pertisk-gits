@@ -146,22 +146,23 @@ html.light {
   color-scheme: light;
 }
 
+/* Light surfaces aligned to TailAdmin gray scale; violet primary kept */
 html.light[data-theme-set='pertisk-default'] {
   --color-naturals-n0: #ffffff;
-  --color-naturals-n1: #f8f9fc;
-  --color-naturals-n2: #f1f3f8;
-  --color-naturals-n3: #e8ebf2;
-  --color-naturals-n4: #dde1ea;
-  --color-naturals-n5: #cfd5e2;
-  --color-naturals-n6: #b3bac9;
-  --color-naturals-n7: #9399ad;
-  --color-naturals-n8: #767c92;
-  --color-naturals-n9: #5c6278;
-  --color-naturals-n10: #494f64;
-  --color-naturals-n11: #3a4055;
-  --color-naturals-n12: #262b3d;
-  --color-naturals-n13: #181b2e;
-  --color-naturals-n14: #0d0f1a;
+  --color-naturals-n1: #fcfcfd;
+  --color-naturals-n2: #f9fafb;
+  --color-naturals-n3: #f2f4f7;
+  --color-naturals-n4: #e4e7ec;
+  --color-naturals-n5: #d0d5dd;
+  --color-naturals-n6: #98a2b3;
+  --color-naturals-n7: #667085;
+  --color-naturals-n8: #475467;
+  --color-naturals-n9: #344054;
+  --color-naturals-n10: #1d2939;
+  --color-naturals-n11: #1d2939;
+  --color-naturals-n12: #101828;
+  --color-naturals-n13: #101828;
+  --color-naturals-n14: #0c111d;
 
   --color-primary-p1: #ede9fe;
   --color-primary-p2: #c4b5fd;
@@ -170,34 +171,34 @@ html.light[data-theme-set='pertisk-default'] {
   --color-primary-p5: #5b21b6;
   --color-primary-p6: #f5f3ff;
 
-  --color-green-g1: #1a7f37;
-  --color-green-g2: #116329;
-  --color-red-r1: #cf222e;
-  --color-red-r2: #a40e26;
-  --color-yellow-y1: #9a6700;
-  --color-yellow-y2: #7c4a00;
-  --color-blue-b1: #0969da;
+  --color-green-g1: #039855;
+  --color-green-g2: #027a48;
+  --color-red-r1: #d92d20;
+  --color-red-r2: #b42318;
+  --color-yellow-y1: #dc6803;
+  --color-yellow-y2: #b54708;
+  --color-blue-b1: #0ba5ec;
 
-  --color-bg: #f6f7fb;
+  --color-bg: #f9fafb;
   --color-surface: #ffffff;
   --color-surface-elevated: #ffffff;
-  --color-hover: #eef0f6;
-  --color-border: #dde1ea;
-  --color-text: #181b2e;
-  --color-text-secondary: #3a4055;
-  --color-muted: #5c6278;
+  --color-hover: #f2f4f7;
+  --color-border: #e4e7ec;
+  --color-text: #101828;
+  --color-text-secondary: #475467;
+  --color-muted: #667085;
   --color-card: #ffffff;
-  --color-sidebar: #f4f5f9;
+  --color-sidebar: #ffffff;
   --color-primary: #6d28d9;
   --color-primary-hover: #7c3aed;
   --color-on-primary: #ffffff;
-  --color-bg-gradient-start: #f6f7fb;
-  --color-bg-gradient-end: #ffffff;
-  --color-overlay-backdrop: rgba(24, 27, 46, 0.42);
+  --color-bg-gradient-start: #f9fafb;
+  --color-bg-gradient-end: #f9fafb;
+  --color-overlay-backdrop: rgba(16, 24, 40, 0.4);
 
-  --color-icon-secondary: #5c6278;
+  --color-icon-secondary: #667085;
 
-  --color-status-ready: #0f766e;
+  --color-status-ready: #039855;
   --color-status-ready-bg: color-mix(in srgb, var(--color-status-ready) 10%, transparent);
   --color-workload-accent: #0d9488;
   --color-workload-accent-strong: #0f766e;
@@ -209,44 +210,44 @@ html.light[data-theme-set='pertisk-default'] {
   --color-dashboard-metric-quaternary: #0891b2;
   --color-dashboard-metric-quaternary-bg: color-mix(in srgb, var(--color-dashboard-metric-quaternary) 10%, transparent);
 
-  --label-green: #15803d;
-  --label-red: #b91c1c;
-  --label-orange: #c2410c;
+  --label-green: #039855;
+  --label-red: #d92d20;
+  --label-orange: #ec4a0a;
   --label-violet: #7c3aed;
-  --label-yellow: #92400e;
-  --label-cyan: #0e7490;
-  --label-blue1: #1d4ed8;
-  --label-blue2: #1e40af;
+  --label-yellow: #dc6803;
+  --label-cyan: #0ba5ec;
+  --label-blue1: #465fff;
+  --label-blue2: #3641f5;
   --label-blue3: #6d28d9;
-  --label-light1: #be123c;
-  --label-light2: #b45309;
-  --label-light3: #a16207;
-  --label-light4: #4d7c0f;
-  --label-light5: #0f766e;
-  --label-light6: #4338ca;
-  --label-light7: #7e22ce;
+  --label-light1: #f04438;
+  --label-light2: #f79009;
+  --label-light3: #dc6803;
+  --label-light4: #12b76a;
+  --label-light5: #0ba5ec;
+  --label-light6: #465fff;
+  --label-light7: #7c3aed;
 
-  --color-terminal-user: #116329;
-  --color-terminal-host: #0550ae;
-  --color-terminal-path: #6639ba;
-  --color-terminal-ok: #116329;
-  --color-terminal-error: #cf222e;
-  --color-terminal-warn: #9a6700;
-  --color-terminal-shadow: color-mix(in srgb, black 8%, transparent);
-  --color-terminal-mix: var(--color-naturals-n7);
+  --color-terminal-user: #027a48;
+  --color-terminal-host: #0086c9;
+  --color-terminal-path: #6d28d9;
+  --color-terminal-ok: #027a48;
+  --color-terminal-error: #d92d20;
+  --color-terminal-warn: #dc6803;
+  --color-terminal-shadow: color-mix(in srgb, black 6%, transparent);
+  --color-terminal-mix: var(--color-naturals-n6);
 
-  --bottom-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 247, 251, 0.96));
+  --bottom-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.96));
   --bottom-panel-tabbar-bg: color-mix(in srgb, var(--color-surface) 92%, var(--color-hover));
   --bottom-panel-tab-active-bg: var(--color-surface);
   --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
   --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 80%, var(--color-surface));
 
-  --shadow-sm: 0 1px 2px rgba(24, 27, 46, 0.06);
-  --shadow-md: 0 8px 24px rgba(24, 27, 46, 0.08);
-  --shadow-lg: 0 16px 48px rgba(24, 27, 46, 0.12);
-  --shadow-sidebar: 0 0 0 1px rgba(109, 40, 217, 0.12), 8px 0 16px rgba(24, 27, 46, 0.04);
+  --shadow-sm: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0px 4px 8px -2px rgba(16, 24, 40, 0.1), 0px 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --shadow-lg: 0px 12px 16px -4px rgba(16, 24, 40, 0.08), 0px 4px 6px -2px rgba(16, 24, 40, 0.03);
+  --shadow-sidebar: 1px 0 0 0 #e4e7ec, 0px 1px 3px 0px rgba(16, 24, 40, 0.05);
 
-  --color-primary-glow: color-mix(in srgb, var(--color-primary) 18%, transparent);
+  --color-primary-glow: color-mix(in srgb, var(--color-primary) 14%, transparent);
 }
 
 /* ── Status badge utilities ───────────────────────────────────────────────── */

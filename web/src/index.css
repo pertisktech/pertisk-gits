@@ -797,7 +797,7 @@ body,
 }
 
 .app-sidebar-link.active {
-  background: var(--color-hover);
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface));
   color: var(--color-primary);
   font-weight: 600;
 }
@@ -873,7 +873,7 @@ body,
   overflow: auto;
   min-height: 0;
   min-width: 0;
-  background: var(--color-naturals-n0);
+  background: var(--color-bg);
 }
 
 @media (max-width: 767px) {
@@ -1258,19 +1258,20 @@ body,
 }
 
 .app-panel {
-  background: var(--color-naturals-n2);
-  border: 1px solid var(--color-naturals-n4);
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 .app-panel-header {
   padding: 0.75rem 1rem;
-  border-bottom: 1px solid var(--color-naturals-n4);
+  border-bottom: 1px solid var(--color-border);
   background: transparent;
   font-size: var(--text-sm);
   font-weight: 500;
-  color: var(--color-naturals-n13);
+  color: var(--color-text);
 }
 
 .app-panel-body {
