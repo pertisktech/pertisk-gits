@@ -31,6 +31,9 @@ function appVersion(): string {
   if (fromEnv) {
     return fromEnv.replace(/^[vV]/, '')
   }
+  if (process.env.NODE_ENV === 'production') {
+    return workspaceVersion()
+  }
   return gitDescribeVersion() ?? workspaceVersion()
 }
 

@@ -41,7 +41,7 @@ DEV_ACTIVE_DATABASE_URL := $(DEV_LOCAL_DATABASE_URL)
 else
 DEV_ACTIVE_DATABASE_URL := $(DEV_DATABASE_URL)
 endif
-DEV_EXPORT_ENV = DATABASE_URL='$(DEV_ACTIVE_DATABASE_URL)'
+DEV_EXPORT_ENV = DATABASE_URL='$(DEV_ACTIVE_DATABASE_URL)' PERTISK_VERSION='$(VERSION)'
 
 # Remote deploy — use DEPLOY_HOST=user@host (like pertisk-proxy) or REMOTE_USER + REMOTE_HOST
 DEPLOY_HOST ?=
@@ -122,7 +122,7 @@ H3_CERT ?= deploy/certs/h3.crt
 H3_KEY ?= deploy/certs/h3.key
 
 run-release: web-dist
-	$(CARGO) run --release -p pertisk-api
+	PERTISK_VERSION=$(VERSION) $(CARGO) run --release -p pertisk-api
 
 # --- Infrastructure (Postgres, Redis, MinIO) ---
 infra:
@@ -188,9 +188,10 @@ web-dist:
 			if [ "$$stored_version" = "$(VERSION)" ]; then \
 				echo "web/dist is up to date (v$(VERSION)); skipping build."; \
 				skip=1; \
+			elif [ "$$stored_version" != "$(VERSION)" ]; then \
+				echo "web/dist version mismatch (stored=$${stored_version:-missing}, requested=$(VERSION)); rebuilding."; \
 			elif [ ! -w web/dist ] 2>/dev/null || { [ -d web/dist/assets ] && [ ! -w web/dist/assets ]; }; then \
-				echo "web/dist is up to date (sources unchanged, read-only); skipping build."; \
-				skip=1; \
+				echo "web/dist is read-only; rebuilding after ownership fix."; \
 			fi; \
 		fi; \
 	fi; \
@@ -273,8 +274,8 @@ package-clean:
 	rm -f pertisk-gits-linux-amd64 pertisk-gits-linux-arm64 pertisk-backup-linux-amd64 pertisk-backup-linux-arm64 pertisk-worker-linux-amd64 pertisk-worker-linux-arm64
 	rm -f pertisk-gits-linux-amd64.version pertisk-gits-linux-arm64.version
 	@$(MAKE) fix-web-dist-owner
-	rm -f web/dist/.app-version
-	@echo "Removed Linux binaries; next package build will rebuild via Docker."
+	rm -rf web/dist
+	@echo "Removed Linux binaries and web/dist; next package build will rebuild via Docker."
 
 package-amd64: web-dist
 	chmod +x build/docker-common.sh build/package.sh build/deb-rpm.sh build/deploy-remote.sh build/deploy-deb.sh build/deploy-rpm.sh

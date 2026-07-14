@@ -64,7 +64,7 @@ impl EmailContent {
 
 pub fn render_plain(base_url: &str, from_name: &str, content: &EmailContent) -> String {
     if let Some(login) = &content.login {
-        return render_login_plain(from_name, content, login);
+        return render_login_plain(base_url, from_name, content, login);
     }
 
     let mut body = String::new();
@@ -81,7 +81,7 @@ pub fn render_plain(base_url: &str, from_name: &str, content: &EmailContent) -> 
     body
 }
 
-fn render_login_plain(from_name: &str, content: &EmailContent, login: &LoginEmailDetails) -> String {
+fn render_login_plain(base_url: &str, from_name: &str, content: &EmailContent, login: &LoginEmailDetails) -> String {
     let mut body = String::new();
     let _ = writeln!(body, "{}\n", content.headline);
     let _ = writeln!(body, "{}\n", login.greeting);
@@ -95,8 +95,9 @@ fn render_login_plain(from_name: &str, content: &EmailContent, login: &LoginEmai
     let _ = writeln!(body, "Location:\t{}", login.location);
     let _ = writeln!(body, "Browser:\t{}", login.browser);
     let _ = writeln!(body, "Sign-in method:\t{}", login.sign_in_method);
-    let _ = writeln!(body, "\nThank you,");
-    let _ = write!(body, "{from_name}");
+    let _ = writeln!(body, "\n---");
+    let _ = writeln!(body, "{from_name}");
+    let _ = write!(body, "{}", base_url.trim_end_matches('/'));
     body
 }
 
@@ -289,7 +290,14 @@ fn render_login_html(
                 </tr>
               </table>
               <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#3f3f46;">{footer}</p>
-              <p style="margin:0;font-size:15px;line-height:1.6;color:#3f3f46;">Thank you,<br />{from_name_esc}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:20px 8px 0;text-align:center;font-size:12px;line-height:1.5;color:#71717a;">
+              <p style="margin:0 0 6px;">{from_name_esc}</p>
+              <p style="margin:0;">
+                <a href="{base_url_esc}" style="color:#6d28d9;text-decoration:none;">{base_url_esc}</a>
+              </p>
             </td>
           </tr>
         </table>
@@ -467,5 +475,28 @@ mod tests {
         assert!(html.contains("OPD2415 (Android16)"));
         assert!(html.contains("49.0.72.138"));
         assert!(html.contains("Chiang Mai-Chiang Mai,Thailand"));
+        assert!(html.contains("Pertisk Gits"));
+        assert!(html.contains("https://git.example.com"));
+    }
+
+    #[test]
+    fn login_plain_includes_app_name_and_url() {
+        let plain = render_plain(
+            "https://git.example.com",
+            "Pertisk Gits",
+            &EmailContent::login_notification(LoginEmailDetails {
+                greeting: "Hi,".into(),
+                device_label: "MacBook Pro".into(),
+                device_info: "Apple MacBookPro".into(),
+                browser: "Safari 18".into(),
+                ip_address: "10.0.0.1".into(),
+                location: "Unknown".into(),
+                signed_in_at: "Sun Jul 12 00:16:12 GMT 2026".into(),
+                sign_in_method: "Password".into(),
+                is_mobile: false,
+            }),
+        );
+        assert!(plain.contains("Pertisk Gits"));
+        assert!(plain.contains("https://git.example.com"));
     }
 }
