@@ -2,18 +2,18 @@
 
 set -euo pipefail
 
-# Build DEB, copy to remote host, install via dpkg.
+# Build DEB for pertisk-runner, copy to remote host, install via dpkg.
 #
 # Usage:
-#   DEPLOY_HOST=user@host VERSION=0.1.0 ./build/deploy-deb.sh
+#   DEPLOY_HOST=user@host VERSION=0.1.0 ./build/deploy-runner-deb.sh
 #
 # Env:
 #   REMOTE_HOST      — remote server
 #   REMOTE_USER      — SSH user (default: root)
 #   VERSION          — package version (default: git describe)
-#   PACKAGE_NAME     — pertisk-gits (default)
+#   PACKAGE_NAME     — pertisk-runner (default)
 #   REMOTE_PATH      — remote upload dir (default: /tmp)
-#   PACKAGE_CLEAN    — 1 (default) run make package-clean before build
+#   PACKAGE_CLEAN    — 1 (default) run make package-runner-clean before build
 #   PACKAGE_BUILD    — 1 (default) build package; 0 = deploy existing release/*.deb
 #   DEPLOY_ARCH      — auto (default), amd64, or arm64 (auto = detect via SSH)
 #   DEB_ARCH         — amd64 or arm64 (derived from DEPLOY_ARCH unless set)
@@ -22,7 +22,7 @@ set -euo pipefail
 
 REMOTE_HOST="${REMOTE_HOST:-}"
 REMOTE_USER="${REMOTE_USER:-root}"
-PACKAGE_NAME="${PACKAGE_NAME:-pertisk-gits}"
+PACKAGE_NAME="${PACKAGE_NAME:-pertisk-runner}"
 RAW_PACKAGE_VERSION="${1:-${PACKAGE_VERSION:-${VERSION:-$(git describe --tags --always 2>/dev/null | sed 's/^v//' || echo '0.1.0')}}}"
 VERSION="${RAW_PACKAGE_VERSION#v}"
 VERSION="${VERSION#V}"
@@ -39,7 +39,7 @@ resolve_deploy_host
 resolve_deploy_arch
 
 if [ -z "${REMOTE_HOST:-}" ]; then
-  echo "REMOTE_HOST or DEPLOY_HOST is required. Usage: DEPLOY_HOST=user@host ./build/deploy-deb.sh" >&2
+  echo "REMOTE_HOST or DEPLOY_HOST is required. Usage: DEPLOY_HOST=user@host ./build/deploy-runner-deb.sh" >&2
   exit 1
 fi
 
@@ -74,10 +74,10 @@ cd "$ROOT_DIR"
 if [[ "$PACKAGE_BUILD" = "1" ]]; then
   log_info "Building Debian package (linux/${DEB_ARCH})..."
   if [[ "$PACKAGE_CLEAN" = "1" ]]; then
-    log_info "Cleaning previous package binaries..."
-    make package-clean
+    log_info "Cleaning previous runner package binaries..."
+    make package-runner-clean
   fi
-  make "package-${DEB_ARCH}" VERSION="${VERSION}"
+  make "package-runner-${DEB_ARCH}" VERSION="${VERSION}"
 fi
 
 if [[ ! -f "release/${DEB_FILE}" ]]; then
@@ -106,4 +106,5 @@ echo "Service status:"
 sudo systemctl status "${PACKAGE_NAME}" --no-pager
 EOF
 
-log_ok "Debian deployment completed successfully!"
+log_ok "Runner Debian deployment completed successfully!"
+log_info "Set PERTISK_RUNNER_TOKEN in /etc/pertisk-runner/pertisk-runner.conf then: sudo systemctl restart pertisk-runner"

@@ -5,7 +5,7 @@
 	package-runner package-runner-clean package-runner-amd64 package-runner-arm64 \
 	release release-amd release-arm \
 	deploy deploy-package deploy-remote deploy-deb deploy-rpm deploy-rpm-arm64 \
-	install-runner deploy-runner-rpm deploy-runner-rpm-arm64 \
+	install-runner deploy-runner-deb deploy-runner-rpm deploy-runner-rpm-arm64 \
 	backup-cli-build backup-create backup-restore backup-list \
 	runner-image runner-image-push runner-image-arm64 runner-image-multi runner-compose-up runner-compose-down \
 	pertisk-gits-image pertisk-gits-image-push pertisk-gits-image-arm64 pertisk-gits-image-multi \
@@ -339,7 +339,8 @@ deploy-deb:
 	DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" REMOTE_USER="$(REMOTE_USER)" \
 		VERSION="$(VERSION)" PACKAGE_NAME="$(PACKAGE_NAME)" \
 		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
-		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEB_ARCH="$(DEPLOY_ARCH)" \
+		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEPLOY_ARCH="$(DEPLOY_ARCH)" \
+		DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)" \
 		./build/deploy-deb.sh
 
 deploy-rpm:
@@ -359,7 +360,8 @@ deploy-rpm-arm64:
 		DEPLOY_ARCH=arm64 DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)"
 
 # --- Runner packaging & deploy ---
-# make install-runner DEPLOY_HOST=user@host VERSION=0.1.0
+# make install-runner DEPLOY_HOST=user@host VERSION=0.1.0   (RPM / RHEL)
+# make deploy-runner-deb DEPLOY_HOST=user@host VERSION=0.1.0 (DEB / Ubuntu)
 # Or:  make deploy-runner-rpm DEPLOY_HOST=user@host
 
 RUNNER_PACKAGE_NAME ?= pertisk-runner
@@ -370,17 +372,26 @@ package-runner-clean:
 	@echo "Removed runner Linux binaries; next package build will rebuild via Docker."
 
 package-runner-amd64:
-	chmod +x build/docker-common.sh build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
+	chmod +x build/docker-common.sh build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh build/deploy-runner-deb.sh
 	PERTISK_FORCE_DOCKER_BUILD="$(PERTISK_FORCE_DOCKER_BUILD)" ./build/package-runner.sh amd64 $(VERSION) $(PACKAGE_TARGET)
 
 package-runner-arm64:
-	chmod +x build/docker-common.sh build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh
+	chmod +x build/docker-common.sh build/package-runner.sh build/deb-rpm-runner.sh build/deploy-runner-rpm.sh build/deploy-runner-deb.sh
 	PERTISK_FORCE_DOCKER_BUILD="$(PERTISK_FORCE_DOCKER_BUILD)" ./build/package-runner.sh arm64 $(VERSION) $(PACKAGE_TARGET)
 
 package-runner: package-runner-amd64 package-runner-arm64
 	@echo "Done. See release/pertisk-runner-*"
 
 install-runner: deploy-runner-rpm
+
+deploy-runner-deb:
+	chmod +x build/deploy-runner-deb.sh
+	DEPLOY_HOST="$(DEPLOY_HOST)" REMOTE_HOST="$(REMOTE_HOST)" REMOTE_USER="$(REMOTE_USER)" \
+		VERSION="$(VERSION)" PACKAGE_NAME="$(RUNNER_PACKAGE_NAME)" \
+		REMOTE_PATH="$(REMOTE_PATH)" PACKAGE_CLEAN="$(PACKAGE_CLEAN)" \
+		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEPLOY_ARCH="$(DEPLOY_ARCH)" \
+		DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)" \
+		./build/deploy-runner-deb.sh
 
 deploy-runner-rpm:
 	chmod +x build/deploy-runner-rpm.sh
