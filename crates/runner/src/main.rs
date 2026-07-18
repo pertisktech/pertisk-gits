@@ -114,6 +114,18 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
     let mut shutdown = false;
     let mut last_job_claimed_at = Instant::now();
 
+    if job::is_kubernetes_executor() {
+        let cleanup_api = api.clone_for_poll();
+        tokio::spawn(async move {
+            loop {
+                if let Err(err) = crate::k8s::cleanup_orphaned_jobs(&cleanup_api).await {
+                    tracing::warn!("orphaned k8s job cleanup failed: {err:#}");
+                }
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            }
+        });
+    }
+
     while !shutdown {
         let host = collect_host_info();
         if let Err(err) = api.heartbeat(&host).await {
@@ -134,7 +146,7 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
         let poll_timeout_secs = cli.poll_timeout_secs.clamp(1, 55);
 
         let poll = tokio::select! {
-            poll = api.poll_job(poll_timeout_secs) => poll,
+            poll = api.poll_job(poll_timeout_secs, &host.host_name) => poll,
             _ = wait_shutdown_signal() => {
                 shutdown = true;
                 drop(permit);
@@ -174,7 +186,8 @@ async fn run_loop(cli: &Cli) -> anyhow::Result<()> {
                 }
             }
 
-            tokio::time::sleep(Duration::from_secs(2)).await;
+            // Long-poll already waited; only brief pause before the next attempt.
+            tokio::time::sleep(Duration::from_millis(200)).await;
 
             continue;
         };

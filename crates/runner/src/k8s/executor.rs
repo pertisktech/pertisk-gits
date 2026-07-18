@@ -993,3 +993,52 @@ async fn fetch_container_log(pods: &Api<Pod>, pod_name: &str, container: &str) -
         }
     }
 }
+
+/// Delete CI Jobs left behind when their manager pod died (job already terminal in API).
+pub async fn cleanup_orphaned_jobs(api: &RunnerApi) -> anyhow::Result<()> {
+    let config = K8sExecutorConfig::from_env();
+    let client = Client::try_default()
+        .await
+        .context("connect to Kubernetes API for orphan cleanup")?;
+    let jobs: Api<Job> = Api::namespaced(client.clone(), &config.namespace);
+    let lp = ListParams::default().labels("pertisk.dev/managed-by=pertisk-runner");
+    let list = jobs.list(&lp).await.context("list managed Kubernetes Jobs")?;
+
+    for job in list.items {
+        let Some(name) = job.metadata.name.clone() else {
+            continue;
+        };
+        let Some(job_id) = job
+            .metadata
+            .labels
+            .as_ref()
+            .and_then(|labels| labels.get("pertisk.dev/job-id"))
+            .and_then(|id| Uuid::parse_str(id).ok())
+        else {
+            continue;
+        };
+
+        let terminal = match api.fetch_job_control_optional(job_id).await {
+            Ok(None) => true,
+            Ok(Some(control)) => control.is_terminal(),
+            Err(err) => {
+                tracing::debug!(%err, %job_id, k8s_job = %name, "skip orphan check");
+                continue;
+            }
+        };
+
+        if !terminal {
+            continue;
+        }
+
+        tracing::info!(
+            %job_id,
+            k8s_job = %name,
+            namespace = %config.namespace,
+            "deleting orphaned Kubernetes Job (pipeline job already finished)"
+        );
+        delete_kubernetes_job(&client, &config.namespace, &name).await;
+    }
+
+    Ok(())
+}

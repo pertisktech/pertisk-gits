@@ -81,11 +81,20 @@ pub struct JobControlState {
     pub cancel_step_name: Option<String>,
     #[serde(default)]
     pub timed_out: bool,
+    #[serde(default)]
+    pub job_status: String,
 }
 
 impl JobControlState {
     pub fn should_cancel_job(&self) -> bool {
         self.pipeline_cancelled || self.job_cancelled || self.timed_out
+    }
+
+    pub fn is_terminal(&self) -> bool {
+        matches!(
+            self.job_status.as_str(),
+            "success" | "failure" | "cancelled" | "skipped"
+        ) || self.should_cancel_job()
     }
 
     pub fn should_cancel_step(&self, step_name: &str) -> bool {
@@ -131,11 +140,18 @@ impl RunnerApi {
         Ok(())
     }
 
-    pub async fn poll_job(&self, timeout_secs: u64) -> anyhow::Result<Option<PollJobResponse>> {
+    pub async fn poll_job(
+        &self,
+        timeout_secs: u64,
+        host_name: &str,
+    ) -> anyhow::Result<Option<PollJobResponse>> {
         let response = self
             .client
             .get(format!("{}/api/v1/runner/jobs", self.base_url))
-            .query(&[("timeout_secs", timeout_secs.to_string())])
+            .query(&[
+                ("timeout_secs", timeout_secs.to_string()),
+                ("host_name", host_name.to_string()),
+            ])
             .bearer_auth(&self.token)
             .send()
             .await
@@ -294,11 +310,37 @@ impl RunnerApi {
             .await
             .context("fetch job control")?;
 
+        if response.status() == StatusCode::NOT_FOUND {
+            anyhow::bail!("job not found");
+        }
         if !response.status().is_success() {
             anyhow::bail!("job control failed: {}", response.status());
         }
 
         Ok(response.json().await?)
+    }
+
+    /// Returns `None` when the job is unknown to this runner (404).
+    pub async fn fetch_job_control_optional(
+        &self,
+        job_id: Uuid,
+    ) -> anyhow::Result<Option<JobControlState>> {
+        let response = self
+            .client
+            .get(format!("{}/api/v1/runner/jobs/{job_id}/control", self.base_url))
+            .bearer_auth(&self.token)
+            .send()
+            .await
+            .context("fetch job control")?;
+
+        if response.status() == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !response.status().is_success() {
+            anyhow::bail!("job control failed: {}", response.status());
+        }
+
+        Ok(Some(response.json().await?))
     }
 
     pub async fn fetch_job_secrets(&self, job_id: Uuid) -> anyhow::Result<JobSecretsResponse> {

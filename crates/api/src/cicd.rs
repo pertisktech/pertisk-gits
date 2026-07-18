@@ -81,6 +81,9 @@ async fn mark_stale_runners_offline(pool: &PgPool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
+    // Reclaim jobs owned by dead instances before deleting their rows.
+    reclaim_jobs_for_lost_instances(pool).await?;
+
     sqlx::query(
         r#"
         DELETE FROM runner_instances
@@ -212,9 +215,91 @@ async fn reclaim_timed_out_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
+async fn finalize_reclaimed_running_job(
+    pool: &PgPool,
+    job_id: Uuid,
+    pipeline_run_id: Uuid,
+    job_name: &str,
+    log_suffix: &str,
+    reason: &str,
+) -> Result<(), sqlx::Error> {
+    let updated = sqlx::query(
+        r#"
+        UPDATE job_runs
+        SET status = 'failure',
+            finished_at = NOW(),
+            log_text = log_text || $2
+        WHERE id = $1 AND status = 'running'
+        "#,
+    )
+    .bind(job_id)
+    .bind(log_suffix)
+    .execute(pool)
+    .await?;
+
+    if updated.rows_affected() == 0 {
+        return Ok(());
+    }
+
+    if let Err(err) = update_commit_status_for_job(pool, job_id, "failure", job_name).await {
+        tracing::warn!(%job_id, %err, "failed to update commit status for reclaimed job");
+    }
+    if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
+        tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after reclaimed job");
+    }
+    if let Err(err) = finish_k8s_pod_for_job(pool, job_id, "failed").await {
+        tracing::warn!(%job_id, %err, "failed to finish k8s pod record for reclaimed job");
+    }
+    tracing::warn!(%job_id, job = %job_name, reason, "reclaimed running job");
+    Ok(())
+}
+
+/// Fail jobs whose claiming pod/process died while other replicas of the same
+/// runner token keep heartbeating (common with Helm replicaCount > 1).
+async fn reclaim_jobs_for_lost_instances(pool: &PgPool) -> Result<(), sqlx::Error> {
+    let lost = sqlx::query_as::<_, (Uuid, Uuid, String, Option<String>)>(
+        r#"
+        SELECT j.id, j.pipeline_run_id, j.job_name, j.runner_instance_id
+        FROM job_runs j
+        WHERE j.status = 'running'
+          AND j.runner_instance_id IS NOT NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM runner_instances ri
+            WHERE ri.runner_id = j.runner_id
+              AND ri.instance_id = j.runner_instance_id
+              AND ri.last_seen_at >= NOW() - make_interval(secs => $1)
+          )
+        "#,
+    )
+    .bind(RUNNER_INSTANCE_STALE_SECS as f64)
+    .fetch_all(pool)
+    .await?;
+
+    for (job_id, pipeline_run_id, job_name, instance_id) in lost {
+        let suffix = match instance_id.as_deref() {
+            Some(id) => format!(
+                "\n\n=== job failed (runner instance {id} lost contact)\n"
+            ),
+            None => "\n\n=== job failed (runner instance lost contact)\n".into(),
+        };
+        finalize_reclaimed_running_job(
+            pool,
+            job_id,
+            pipeline_run_id,
+            &job_name,
+            &suffix,
+            "runner instance lost",
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 /// Fail jobs left in `running` when the runner stops heartbeating (crash/kill).
 async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
     reclaim_timed_out_jobs(pool).await?;
+    reclaim_jobs_for_lost_instances(pool).await?;
     let stale_jobs = sqlx::query_as::<_, (Uuid, Uuid, String)>(
         r#"
         SELECT j.id, j.pipeline_run_id, j.job_name
@@ -233,29 +318,15 @@ async fn reclaim_stale_running_jobs(pool: &PgPool) -> Result<(), sqlx::Error> {
     .await?;
 
     for (job_id, pipeline_run_id, job_name) in stale_jobs {
-        sqlx::query(
-            r#"
-            UPDATE job_runs
-            SET status = 'failure',
-                finished_at = NOW(),
-                log_text = log_text || E'\n\n=== job failed (runner lost contact)\n'
-            WHERE id = $1 AND status = 'running'
-            "#,
+        finalize_reclaimed_running_job(
+            pool,
+            job_id,
+            pipeline_run_id,
+            &job_name,
+            "\n\n=== job failed (runner lost contact)\n",
+            "runner lost contact",
         )
-        .bind(job_id)
-        .execute(pool)
         .await?;
-
-        if let Err(err) = update_commit_status_for_job(pool, job_id, "failure", &job_name).await {
-            tracing::warn!(%job_id, %err, "failed to update commit status for reclaimed job");
-        }
-        if let Err(err) = finalize_pipeline_run_if_done(pool, pipeline_run_id).await {
-            tracing::warn!(%pipeline_run_id, %err, "failed to finalize pipeline after reclaimed job");
-        }
-        if let Err(err) = finish_k8s_pod_for_job(pool, job_id, "failed").await {
-            tracing::warn!(%job_id, %err, "failed to finish k8s pod record for reclaimed job");
-        }
-        tracing::warn!(%job_id, job = %job_name, "reclaimed stale running job");
     }
 
     let cancel_stale = sqlx::query_as::<_, (Uuid, Uuid, String)>(
@@ -664,6 +735,8 @@ struct RotateRunnerTokenResponse {
 #[derive(Deserialize)]
 struct PollQuery {
     timeout_secs: Option<u64>,
+    /// Kubernetes pod name / hostname of this runner process (for instance reclaim).
+    host_name: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -1564,14 +1637,23 @@ async fn poll_runner_job(
     if let Err(err) = mark_stale_runners_offline(&state.pool).await {
         tracing::warn!(%err, "failed to mark stale runners offline during poll");
     }
-    let _timeout_secs = query.timeout_secs;
 
-    if let Some(job) = claim_next_job(&state.pool, runner_id)
-        .await
-        .map_err(|e| internal(e.to_string()))?
-    {
-        let meta = sqlx::query_as::<_, JobPollRow>(
-            r#"
+    let instance_id = query
+        .host_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string);
+    let timeout = Duration::from_secs(query.timeout_secs.unwrap_or(0).clamp(0, 55));
+    let deadline = tokio::time::Instant::now() + timeout;
+
+    loop {
+        if let Some(job) = claim_next_job(&state.pool, runner_id, instance_id.as_deref())
+            .await
+            .map_err(|e| internal(e.to_string()))?
+        {
+            let meta = sqlx::query_as::<_, JobPollRow>(
+                r#"
             SELECT
                 j.id,
                 j.pipeline_run_id,
@@ -1606,36 +1688,42 @@ async fn poll_runner_job(
             INNER JOIN organizations o ON o.id = r.organization_id
             WHERE j.id = $1
             "#,
-        )
-        .bind(job)
-        .fetch_one(&state.pool)
-        .await
-        .map_err(|e| internal(e.to_string()))?;
+            )
+            .bind(job)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(|e| internal(e.to_string()))?;
 
-        return Ok(Json(Some(PollJobResponse {
-            job_id: meta.id,
-            pipeline_run_id: meta.pipeline_run_id,
-            job_name: meta.job_name,
-            repository_id: meta.repository_id,
-            org_slug: meta.org_slug,
-            repo_slug: meta.repo_slug,
-            repo_name: meta.repo_name,
-            commit_sha: meta.commit_sha,
-            ref_name: meta.ref_name,
-            event_type: meta.event_type,
-            pipeline_iid: meta.pipeline_iid,
-            pipeline_created_at: meta.pipeline_created_at,
-            config_path: meta.config_path,
-            target_environment: meta.target_environment,
-            effective_environment: meta.effective_environment,
-            default_branch: meta.default_branch,
-            pull_request_number: meta.pull_request_number,
-            steps: meta.steps_json,
-            artifacts: meta.artifacts_json,
-            timeout_minutes: meta.timeout_minutes,
-            image: meta.image,
-            dind: meta.dind,
-        })));
+            return Ok(Json(Some(PollJobResponse {
+                job_id: meta.id,
+                pipeline_run_id: meta.pipeline_run_id,
+                job_name: meta.job_name,
+                repository_id: meta.repository_id,
+                org_slug: meta.org_slug,
+                repo_slug: meta.repo_slug,
+                repo_name: meta.repo_name,
+                commit_sha: meta.commit_sha,
+                ref_name: meta.ref_name,
+                event_type: meta.event_type,
+                pipeline_iid: meta.pipeline_iid,
+                pipeline_created_at: meta.pipeline_created_at,
+                config_path: meta.config_path,
+                target_environment: meta.target_environment,
+                effective_environment: meta.effective_environment,
+                default_branch: meta.default_branch,
+                pull_request_number: meta.pull_request_number,
+                steps: meta.steps_json,
+                artifacts: meta.artifacts_json,
+                timeout_minutes: meta.timeout_minutes,
+                image: meta.image,
+                dind: meta.dind,
+            })));
+        }
+
+        if timeout.is_zero() || tokio::time::Instant::now() >= deadline {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
 
     Ok(Json(None))
@@ -2759,6 +2847,7 @@ async fn materialize_jobs_for_run(
                 required = EXCLUDED.required,
                 status = EXCLUDED.status,
                 runner_id = NULL,
+                runner_instance_id = NULL,
                 metrics_json = NULL,
                 log_text = EXCLUDED.log_text,
                 queued_at = NOW(),
@@ -3037,7 +3126,11 @@ async fn insert_trigger(
     Ok(())
 }
 
-async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, sqlx::Error> {
+async fn claim_next_job(
+    pool: &PgPool,
+    runner_id: Uuid,
+    instance_id: Option<&str>,
+) -> Result<Option<Uuid>, sqlx::Error> {
     let mut tx = pool.begin().await?;
     let job = sqlx::query_scalar::<_, Uuid>(
         r#"
@@ -3084,6 +3177,7 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
         UPDATE job_runs
         SET status = 'running',
             runner_id = $2,
+            runner_instance_id = $3,
             started_at = NOW(),
             cancel_requested_at = NULL,
             cancel_step_name = NULL
@@ -3092,6 +3186,7 @@ async fn claim_next_job(pool: &PgPool, runner_id: Uuid) -> Result<Option<Uuid>, 
     )
     .bind(job_id)
     .bind(runner_id)
+    .bind(instance_id)
     .execute(&mut *tx)
     .await?;
 
@@ -3165,6 +3260,7 @@ async fn queue_downstream_jobs_after_success(
             started_at = NULL,
             finished_at = NULL,
             runner_id = NULL,
+            runner_instance_id = NULL,
             metrics_json = NULL
         WHERE j.pipeline_run_id = $1
           AND j.status = 'skipped'::job_run_status
@@ -4062,6 +4158,8 @@ struct RunnerJobControlResponse {
     cancel_requested: bool,
     cancel_step_name: Option<String>,
     timed_out: bool,
+    /// Current job_runs.status — used by managers to GC orphaned Kubernetes Jobs.
+    job_status: String,
 }
 
 async fn runner_job_control(
@@ -4101,6 +4199,7 @@ async fn runner_job_control(
         cancel_requested: row.3.is_some(),
         cancel_step_name: row.2,
         timed_out: row.4,
+        job_status: row.1,
     }))
 }
 
@@ -4325,6 +4424,7 @@ async fn play_manual_job_run(
             started_at = NULL,
             finished_at = NULL,
             runner_id = NULL,
+            runner_instance_id = NULL,
             metrics_json = NULL
         WHERE id = $1 AND status::text = 'manual'
         RETURNING job_name

@@ -10,7 +10,6 @@ helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
   -f deploy/helm/pertisk-runner/values-kubernetes.yaml \
   --namespace pertisk-proxy \
   --create-namespace \
-  --kubeconfig "${KUBECONFIG:-/Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml}" \
   --set apiUrl=https://gitdev.talos.pertisk.com \
   --set runnerToken=ptr_061968d418b144f6aa7e78511eacac85 \
   --set image.tag="$VERSION" \
