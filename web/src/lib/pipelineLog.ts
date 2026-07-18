@@ -135,6 +135,9 @@ export function jobStepViews(job: JobRun, runStatus?: PipelineRun['status']): Jo
     fromMetrics.length === 1 &&
     fromMetrics[0]?.name === job.job_name &&
     job.steps.length > 0
+  const syntheticJobExitCode = metricsAreSyntheticJobStep
+    ? fromMetrics[0]?.exit_code
+    : undefined
   if (
     fromMetrics.length > 0 &&
     !metricsAreSyntheticJobStep &&
@@ -164,6 +167,14 @@ export function jobStepViews(job: JobRun, runStatus?: PipelineRun['status']): Jo
         // Step was in progress when the job/pipeline was cancelled.
         if (jobStatus === 'cancelled' || runStatus === 'cancelled') {
           exitCode = 130
+        } else if (jobStatus === 'failure') {
+          // Kubernetes may terminate the build shell before it emits the
+          // matching `(exit N)` marker. Its synthetic job metric still has
+          // the container exit code; assign it to the unfinished step so the
+          // Jobs view selects and displays the actual failing log section.
+          exitCode = syntheticJobExitCode ?? 1
+        } else if (jobStatus === 'success') {
+          exitCode = 0
         } else {
           exitCode = undefined
         }

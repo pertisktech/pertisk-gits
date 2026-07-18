@@ -95,6 +95,9 @@ upload_artifact() {{
             .unwrap_or_else(|| "$CI_PROJECT_DIR".into());
 
         script.push_str(&format!("echo \"=== {step_name} (running)\"\n"));
+        // The wrapper itself uses `set -e`, but must capture a failed step
+        // before exiting so the log always receives its `(exit N)` marker.
+        script.push_str("set +e\n");
         script.push_str("(\n");
         script.push_str(&format!("  cd {cwd}\n"));
         for (key, value) in &step.env {
@@ -107,6 +110,7 @@ upload_artifact() {{
         ));
         script.push_str(")\n");
         script.push_str("step_exit=$?\n");
+        script.push_str("set -e\n");
         script.push_str(&format!(
             "if [ \"$step_exit\" -ne 0 ]; then echo \"=== {step_name} (exit $step_exit)\"; exit \"$step_exit\"; fi\n"
         ));
