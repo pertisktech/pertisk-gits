@@ -4254,6 +4254,9 @@ async fn cancel_job_step_run(
 
     let job_name = cancelled.0;
     let _ = update_commit_status_for_job(pool, job_id, "cancelled", &job_name).await;
+    if let Err(err) = finish_k8s_pod_for_job(pool, job_id, "cancelled").await {
+        tracing::warn!(%job_id, %err, "failed to finish k8s pod record for cancelled step");
+    }
     let _ = finalize_pipeline_run_if_done(pool, run_id).await;
     let _ = release_idle_runners(pool).await;
 

@@ -1,12 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export VERSION="${VERSION:-0.1.89}"
-make runner-image-multi VERSION="$VERSION"
+export VERSION="${VERSION:-0.4.23}"
+# amd64 load+push (buildx --push hits Harbor TLS over bridge); multi-arch optional:
+#   make runner-image-multi VERSION="$VERSION"
+make runner-image VERSION="$VERSION"
+docker push "harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/runner:${VERSION}"
 helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
   -f deploy/helm/pertisk-runner/values-kubernetes.yaml \
   --namespace pertisk-proxy \
   --create-namespace \
+  --kubeconfig "${KUBECONFIG:-/Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml}" \
   --set apiUrl=https://gitdev.talos.pertisk.com \
   --set runnerToken=ptr_061968d418b144f6aa7e78511eacac85 \
   --set image.tag="$VERSION" \

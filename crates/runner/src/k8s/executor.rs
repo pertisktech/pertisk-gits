@@ -266,19 +266,9 @@ async fn cleanup_job_resources(
     job_name: &str,
     script_cm_name: &str,
 ) {
-    let jobs: Api<Job> = Api::namespaced(client.clone(), namespace);
+    delete_kubernetes_job(client, namespace, job_name).await;
+
     let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
-
-    let delete_params = DeleteParams {
-        propagation_policy: Some(PropagationPolicy::Foreground),
-        ..Default::default()
-    };
-    if let Err(err) = jobs.delete(job_name, &delete_params).await {
-        if !is_not_found(&err) {
-            tracing::warn!(%err, job = %job_name, "failed to delete Kubernetes Job during cleanup");
-        }
-    }
-
     if let Err(err) =
         wait_for_job_pods_gone(&pods, job_name, Duration::from_secs(120)).await
     {
@@ -287,6 +277,49 @@ async fn cleanup_job_resources(
 
     if let Err(err) = delete_configmap(client, namespace, script_cm_name).await {
         tracing::warn!(%err, cm = %script_cm_name, "failed to delete script ConfigMap during cleanup");
+    }
+}
+
+/// Delete a CI Job with foreground cascading so pods are torn down immediately.
+async fn delete_kubernetes_job(client: &Client, namespace: &str, job_name: &str) {
+    let jobs: Api<Job> = Api::namespaced(client.clone(), namespace);
+    let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
+
+    let delete_params = DeleteParams {
+        propagation_policy: Some(PropagationPolicy::Foreground),
+        grace_period_seconds: Some(0),
+        ..Default::default()
+    };
+
+    match jobs.delete(job_name, &delete_params).await {
+        Ok(_) => {
+            tracing::info!(job = %job_name, namespace = %namespace, "deleted Kubernetes Job");
+        }
+        Err(err) if is_not_found(&err) => {}
+        Err(err) => {
+            tracing::warn!(%err, job = %job_name, "failed to delete Kubernetes Job");
+        }
+    }
+
+    // Belt-and-suspenders: Job cascade can lag; explicitly delete pods by label.
+    let selector = format!("job-name={job_name}");
+    let lp = ListParams::default().labels(&selector);
+    match pods.list(&lp).await {
+        Ok(list) => {
+            for pod in list.items {
+                let Some(name) = pod.metadata.name else {
+                    continue;
+                };
+                if let Err(err) = pods.delete(&name, &delete_params).await {
+                    if !is_not_found(&err) {
+                        tracing::warn!(%err, pod = %name, "failed to delete job pod");
+                    }
+                }
+            }
+        }
+        Err(err) => {
+            tracing::warn!(%err, job = %job_name, "failed to list job pods for delete");
+        }
     }
 }
 
@@ -545,10 +578,53 @@ async fn watch_job(
     let pods: Api<k8s_openapi::api::core::v1::Pod> = Api::namespaced(client.clone(), namespace);
     let jobs: Api<Job> = Api::namespaced(client.clone(), namespace);
 
-    let pod_name = wait_for_build_ready(&pods, job_name, api, job_id).await?;
+    // Cancel must be watched from Job creation — not only after the build container is ready.
+    // Otherwise Init/dind-stuck pods keep running after the user cancels in the UI.
+    let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
+    let poll_api = api.clone_for_poll();
+    let cancel_job_name = job_name.to_string();
+    let cancel_namespace = namespace.to_string();
+    let cancel_client = client.clone();
+    let cancel_handle = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let Ok(control) = poll_api.fetch_job_control(job_id).await else {
+                continue;
+            };
+            if control.should_cancel_job() || control.timed_out || control.cancel_requested {
+                tracing::info!(
+                    job_id = %job_id,
+                    k8s_job = %cancel_job_name,
+                    timed_out = control.timed_out,
+                    "cancel/timeout signalled — deleting Kubernetes Job"
+                );
+                delete_kubernetes_job(&cancel_client, &cancel_namespace, &cancel_job_name).await;
+                let _ = cancel_tx.send(true);
+                return (control.timed_out, true);
+            }
+        }
+    });
+
+    let wait_result = wait_for_build_ready(&pods, job_name, api, job_id, cancel_rx.clone()).await;
+    let pod_name = match wait_result {
+        Ok(name) => name,
+        Err(err) => {
+            cancel_handle.abort();
+            if *cancel_rx.borrow() {
+                return Ok((130, true, false));
+            }
+            return Err(err);
+        }
+    };
+
+    if *cancel_rx.borrow() {
+        cancel_handle.abort();
+        return Ok((130, true, false));
+    }
 
     if let Some(init_exit) = helper_init_exit_code(&pods, &pod_name).await? {
         if init_exit != 0 {
+            cancel_handle.abort();
             let helper_log = fetch_container_log(&pods, &pod_name, "helper").await;
             if !helper_log.is_empty() {
                 api.append_log(job_id, &helper_log).await?;
@@ -575,42 +651,32 @@ async fn watch_job(
     api.append_log(job_id, &format!("=== kubernetes pod {pod_name} (running)\n"))
         .await?;
 
-    let poll_api = api.clone_for_poll();
-    let cancel_job_name = job_name.to_string();
-    let cancel_namespace = namespace.to_string();
-    let cancel_client = client.clone();
-    let cancel_handle = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-            let Ok(control) = poll_api.fetch_job_control(job_id).await else {
-                continue;
-            };
-            if control.should_cancel_job() || control.timed_out {
-                let jobs: Api<Job> =
-                    Api::namespaced(cancel_client.clone(), &cancel_namespace);
-                let _ = jobs
-                    .delete(&cancel_job_name, &DeleteParams::default())
-                    .await;
-                return (control.timed_out, true);
-            }
-        }
-    });
-
     let mut streamer = LogStreamer::new(api, job_id, mask_values);
-    let (exit_code, timed_out) =
-        follow_build_logs_until_exit(
-            &pods,
-            &jobs,
-            job_name,
-            &pod_name,
-            &mut streamer,
-            timeout_minutes,
-        )
-        .await?;
+    let follow_result = follow_build_logs_until_exit(
+        &pods,
+        &jobs,
+        job_name,
+        &pod_name,
+        &mut streamer,
+        timeout_minutes,
+        cancel_rx.clone(),
+    )
+    .await;
 
+    // Ensure cancel task is stopped; if it already deleted the Job, join is fine.
     cancel_handle.abort();
 
-    if exit_code != 0 {
+    let (exit_code, timed_out, follow_cancelled) = match follow_result {
+        Ok(v) => v,
+        Err(err) => {
+            if *cancel_rx.borrow() {
+                return Ok((130, true, false));
+            }
+            return Err(err);
+        }
+    };
+
+    if exit_code != 0 && !follow_cancelled && !*cancel_rx.borrow() {
         append_container_logs_on_failure(&pods, &pod_name, api, job_id).await;
     }
 
@@ -625,11 +691,19 @@ async fn watch_job(
         .await?;
     }
 
-    let cancelled = api
-        .fetch_job_control(job_id)
-        .await
-        .map(|c| c.should_cancel_job())
-        .unwrap_or(false);
+    let cancelled = follow_cancelled
+        || *cancel_rx.borrow()
+        || api
+            .fetch_job_control(job_id)
+            .await
+            .map(|c| c.should_cancel_job() || c.cancel_requested)
+            .unwrap_or(false);
+
+    if cancelled {
+        api.append_log(job_id, "=== kubernetes job cancelled — pod deleted\n")
+            .await
+            .ok();
+    }
 
     Ok((exit_code, cancelled, timed_out))
 }
@@ -641,7 +715,8 @@ async fn follow_build_logs_until_exit<'a>(
     pod_name: &str,
     streamer: &mut LogStreamer<'a>,
     timeout_minutes: Option<u32>,
-) -> anyhow::Result<(i32, bool)> {
+    cancel_rx: tokio::sync::watch::Receiver<bool>,
+) -> anyhow::Result<(i32, bool, bool)> {
     let max_wait = timeout_minutes
         .map(|minutes| Duration::from_secs(minutes as u64 * 60))
         .unwrap_or(Duration::from_secs(3600));
@@ -650,6 +725,12 @@ async fn follow_build_logs_until_exit<'a>(
     let mut timed_out = false;
 
     loop {
+        if *cancel_rx.borrow() {
+            push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+            streamer.flush().await;
+            return Ok((130, timed_out, true));
+        }
+
         if Instant::now() >= deadline {
             anyhow::bail!("timed out waiting for build container exit for job {job_name}");
         }
@@ -659,51 +740,68 @@ async fn follow_build_logs_until_exit<'a>(
         if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
             push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
             streamer.flush().await;
-            return Ok((exit_code, timed_out));
+            return Ok((exit_code, timed_out, false));
         }
 
-        if let Ok(job) = jobs.get(job_name).await {
-            if let Some(status) = &job.status {
-                if status.conditions.as_ref().is_some_and(|conds| {
-                    conds.iter().any(|c| {
-                        c.type_ == "Failed" && c.reason.as_deref() == Some("DeadlineExceeded")
-                    })
-                }) {
-                    timed_out = true;
-                }
-                if status.succeeded.is_some_and(|n| n > 0) {
-                    push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
-                    streamer.flush().await;
-                    if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
-                        return Ok((exit_code, timed_out));
+        match jobs.get(job_name).await {
+            Ok(job) => {
+                if let Some(status) = &job.status {
+                    if status.conditions.as_ref().is_some_and(|conds| {
+                        conds.iter().any(|c| {
+                            c.type_ == "Failed" && c.reason.as_deref() == Some("DeadlineExceeded")
+                        })
+                    }) {
+                        timed_out = true;
                     }
-                    return Ok((0, timed_out));
-                }
-                if status.failed.is_some_and(|n| n > 0) {
-                    push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
-                    streamer.flush().await;
-                    if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
-                        return Ok((exit_code, timed_out));
+                    if status.succeeded.is_some_and(|n| n > 0) {
+                        push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+                        streamer.flush().await;
+                        if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+                            return Ok((exit_code, timed_out, false));
+                        }
+                        return Ok((0, timed_out, false));
                     }
-                    return Ok((1, timed_out));
+                    if status.failed.is_some_and(|n| n > 0) {
+                        push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+                        streamer.flush().await;
+                        if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+                            return Ok((exit_code, timed_out, false));
+                        }
+                        return Ok((1, timed_out, false));
+                    }
                 }
             }
-        }
-
-        if let Ok(pod) = pods.get(pod_name).await {
-            let phase = pod
-                .status
-                .as_ref()
-                .and_then(|status| status.phase.as_deref());
-            if matches!(phase, Some("Failed") | Some("Succeeded")) {
+            Err(err) if is_not_found(&err) => {
+                // Job deleted by cancel watcher (or external cleanup).
                 push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
                 streamer.flush().await;
-                if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
-                    return Ok((exit_code, timed_out));
-                }
-                let phase_exit = if phase == Some("Succeeded") { 0 } else { 1 };
-                return Ok((phase_exit, timed_out));
+                return Ok((130, timed_out, true));
             }
+            Err(_) => {}
+        }
+
+        match pods.get(pod_name).await {
+            Ok(pod) => {
+                let phase = pod
+                    .status
+                    .as_ref()
+                    .and_then(|status| status.phase.as_deref());
+                if matches!(phase, Some("Failed") | Some("Succeeded")) {
+                    push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+                    streamer.flush().await;
+                    if let Some(exit_code) = build_container_exit_code(pods, pod_name).await? {
+                        return Ok((exit_code, timed_out, false));
+                    }
+                    let phase_exit = if phase == Some("Succeeded") { 0 } else { 1 };
+                    return Ok((phase_exit, timed_out, false));
+                }
+            }
+            Err(err) if is_not_found(&err) => {
+                push_build_log_delta(pods, pod_name, streamer, &mut sent_bytes).await;
+                streamer.flush().await;
+                return Ok((130, timed_out, true));
+            }
+            Err(_) => {}
         }
 
         tokio::time::sleep(Duration::from_millis(500)).await;
@@ -747,6 +845,7 @@ async fn wait_for_build_ready(
     job_name: &str,
     api: &RunnerApi,
     job_id: Uuid,
+    cancel_rx: tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<String> {
     let selector = format!("job-name={job_name}");
     let lp = ListParams::default().labels(&selector);
@@ -754,10 +853,19 @@ async fn wait_for_build_ready(
     let mut last_helper_log_at = Instant::now();
 
     loop {
+        if *cancel_rx.borrow() {
+            anyhow::bail!("job cancelled while waiting for build container");
+        }
         if Instant::now() >= deadline {
             anyhow::bail!("timed out waiting for build container to start for job {job_name}");
         }
         let list = pods.list(&lp).await.context("list job pods")?;
+        if list.items.is_empty() {
+            // Job may have been deleted by the cancel watcher.
+            if *cancel_rx.borrow() {
+                anyhow::bail!("job cancelled while waiting for build container");
+            }
+        }
         if let Some(pod) = list.items.first() {
             if let Some(name) = pod.metadata.name.clone() {
                 if helper_init_running(pod) && last_helper_log_at.elapsed() >= Duration::from_secs(5)
