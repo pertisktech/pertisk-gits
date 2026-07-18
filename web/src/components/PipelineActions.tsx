@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Loader2, Play, RotateCcw } from 'lucide-react'
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { JobRun, PipelineRun } from '../api/types'
 import { formatDateTime } from '../lib/collaboration'
 import type { DisplayJobStatus } from '../lib/pipelineStatus'
@@ -7,8 +7,11 @@ import { type JobStepView, stepDisplayStatus, stepMeta } from '../lib/pipelineLo
 import {
   displayJobStatus,
   displayRunStatus,
+  formatElapsedDuration,
+  formatJobDuration,
   formatPipelineIid,
   formatRunDuration,
+  isRunInProgress,
   refLabel,
   shortSha,
 } from '../lib/pipelineStatus'
@@ -18,16 +21,20 @@ import { cn } from '../utils/cn'
 
 function formatStepDuration(ms?: number): string {
   if (ms === undefined) return ''
-  if (ms < 1000) return `${ms}ms`
-  const seconds = ms / 1000
-  if (seconds < 60) return `${seconds.toFixed(1)}s`
-  const minutes = Math.floor(seconds / 60)
-  const rem = Math.round(seconds % 60)
-  return rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`
+  return formatElapsedDuration(ms)
 }
 
 export function ActionsRunSummary({ run }: { run: PipelineRun }) {
   const status = displayRunStatus(run)
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  const inProgress = isRunInProgress(run)
+
+  useEffect(() => {
+    if (!inProgress) return
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [inProgress])
+
   const statusLabel =
     status === 'success'
       ? 'Success'
@@ -57,7 +64,7 @@ export function ActionsRunSummary({ run }: { run: PipelineRun }) {
         </div>
         <div className="gha-summary-item">
           <span className="gha-summary-label">Total duration</span>
-          <span className="gha-summary-value">{formatRunDuration(run)}</span>
+          <span className="gha-summary-value">{formatRunDuration(run, nowMs)}</span>
         </div>
         <div className="gha-summary-item">
           <span className="gha-summary-label">Workflow</span>
@@ -88,11 +95,13 @@ export function ActionsJobSidebar({
   runStatus,
   activeJobId,
   onSelectJob,
+  nowMs,
 }: {
   jobs: JobRun[]
   runStatus: PipelineRun['status']
   activeJobId: string | null
   onSelectJob: (jobId: string) => void
+  nowMs?: number
 }) {
   return (
     <nav className="gha-job-sidebar" aria-label="Jobs">
@@ -101,6 +110,7 @@ export function ActionsJobSidebar({
         {jobs.map((job) => {
           const status = displayJobStatus(job, runStatus)
           const active = activeJobId === job.id
+          const duration = formatJobDuration(job, nowMs)
           return (
             <li key={job.id}>
               <button
@@ -111,7 +121,9 @@ export function ActionsJobSidebar({
                 <ActionsStatusIcon status={status} size="md" />
                 <span className="gha-job-item-body">
                   <span className="gha-job-item-name">{job.job_name}</span>
-                  <span className="gha-job-item-runner">{job.runs_on}</span>
+                  <span className="gha-job-item-runner">
+                    {duration !== '—' ? `${duration} · ${job.runs_on}` : job.runs_on}
+                  </span>
                 </span>
               </button>
             </li>
@@ -185,6 +197,7 @@ export function ActionsJobHeader({
   canRerun?: boolean
 }) {
   const showActions = (canRerun && onRerun) || (canPlay && onPlay)
+  const duration = formatJobDuration(job)
 
   return (
     <div className="gha-job-header">
@@ -192,7 +205,9 @@ export function ActionsJobHeader({
         <ActionsStatusIcon status={jobStatus} size="md" />
         <div className="gha-job-header-text">
           <h2 className="gha-job-header-title">{job.job_name}</h2>
-          <span className="gha-job-header-runner">{job.runs_on}</span>
+          <span className="gha-job-header-runner">
+            {duration !== '—' ? `${duration} · ${job.runs_on}` : job.runs_on}
+          </span>
         </div>
       </div>
       {showActions && (

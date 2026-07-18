@@ -1,5 +1,5 @@
 import type { JobRun, PipelineRun } from '../api/types'
-import type { DisplayJobStatus } from './pipelineStatus'
+import { formatElapsedDuration, type DisplayJobStatus } from './pipelineStatus'
 
 export interface LogStepSection {
   name: string
@@ -365,8 +365,23 @@ export function stepLogText(
   return '(no output for this step)'
 }
 
-export function stepMeta(step: JobStepView): string {
-  if (step.durationMs !== undefined) return `${step.durationMs}ms`
+export function stepMeta(
+  step: JobStepView,
+  opts?: {
+    nowMs?: number
+    job?: JobRun
+    /** When true, show live elapsed from job start (no per-step metrics yet). */
+    running?: boolean
+  },
+): string {
+  if (step.durationMs !== undefined) {
+    return formatElapsedDuration(step.durationMs)
+  }
+  if (opts?.running && opts.job?.started_at) {
+    const startMs = new Date(opts.job.started_at).getTime()
+    const endMs = opts.nowMs ?? Date.now()
+    return formatElapsedDuration(endMs - startMs, { inProgress: true })
+  }
   if (step.exitCode !== undefined) return `exit ${step.exitCode}`
   return step.run ? step.run.slice(0, 48) : ''
 }

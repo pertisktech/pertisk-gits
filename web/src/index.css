@@ -4737,15 +4737,29 @@ select.app-field:disabled,
   grid-template-columns: minmax(10rem, 13rem) 1fr;
 }
 
-/* Pipeline run detail — GitLab style */
+/* Pipeline run detail — fill remaining viewport (Jobs log + Pipeline graph) */
 .app-main:has(.pipeline-run-page) {
-  overflow: auto;
-}
-
-.pipeline-run-page .app-panel:has(.ci-terminal--detail) {
+  overflow: hidden;
   display: flex;
   flex-direction: column;
-  min-height: min(72vh, 56rem);
+}
+
+.app-main:has(.pipeline-run-page) .app-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  padding-bottom: 0.5rem;
+}
+
+.pipeline-run-page .app-panel:has(.ci-terminal--detail),
+.pipeline-run-page .app-panel:has(.pipeline-graph-panel--inline) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .pipeline-run-page .ci-terminal--detail {
@@ -4753,9 +4767,23 @@ select.app-field:disabled,
   flex-direction: column;
   width: 100%;
   flex: 1;
-  min-height: min(72vh, 56rem);
+  min-height: 0;
   border-radius: 0;
   border: none;
+}
+
+.pipeline-run-page .app-panel-body.flush:has(.pipeline-graph-panel--inline) {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pipeline-run-page .pipeline-graph-panel--inline {
+  flex: 1;
+  min-height: 16rem;
+  height: auto !important;
 }
 
 /* Legacy GitHub Actions run page (embedded links still use gha-status-icon) */
@@ -5465,12 +5493,24 @@ select.app-field:disabled,
   }
 }
 
-/* Legacy pipeline run page aliases */
+/* Pipeline run page — fill main column under header */
 .pipeline-run-page {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   width: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pipeline-run-page > *:not(.app-panel:has(.ci-terminal--detail)):not(
+    .app-panel:has(.pipeline-graph-panel--inline)
+  ),
+.pipeline-run-page .repo-list-header,
+.pipeline-run-page .ci-terminal-chrome,
+.pipeline-run-page .ci-terminal-meta-bar {
+  flex-shrink: 0;
 }
 
 .pipeline-run-page .ci-terminal-body--detail {
@@ -5493,6 +5533,7 @@ select.app-field:disabled,
   max-height: none;
   min-height: 0;
   overflow-y: auto;
+  border-right: 1px solid var(--color-naturals-n4);
 }
 
 .pipeline-run-page .ci-terminal-log-pane {
@@ -5500,12 +5541,17 @@ select.app-field:disabled,
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   overflow: hidden;
+}
+
+.pipeline-run-page .ci-terminal-log-pane > .flex {
+  flex-shrink: 0;
 }
 
 .pipeline-run-page .ci-terminal-log-pane .ci-log-viewer-shell {
   flex: 1 1 0;
-  min-height: 12rem;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -5515,6 +5561,7 @@ select.app-field:disabled,
   flex: 1 1 auto;
   min-height: 0;
   max-height: none;
+  height: 100%;
   overflow-y: auto;
   overflow-x: auto;
 }

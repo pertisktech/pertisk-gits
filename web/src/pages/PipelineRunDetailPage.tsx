@@ -27,7 +27,9 @@ import {
   countRerunnableFailedJobs,
   displayJobStatus,
   displayRunStatus,
+  formatJobDuration,
   formatPipelineIid,
+  formatRunDuration,
   isRunInProgress,
   blocksPipelineRerun,
   refLabel,
@@ -79,6 +81,7 @@ export function PipelineRunDetailPage() {
   const userPinnedStep = useRef(false)
   const [downloadingArtifactId, setDownloadingArtifactId] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [nowMs, setNowMs] = useState(() => Date.now())
 
   const activeTab = parsePipelineTab(searchParams.get('view'))
   const jobFromUrl = searchParams.get('job')
@@ -119,6 +122,14 @@ export function PipelineRunDetailPage() {
       return cancelledRecently ? 2000 : false
     },
   })
+
+  const runInProgress = Boolean(run && isRunInProgress(run))
+
+  useEffect(() => {
+    if (!runInProgress) return
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [runInProgress])
 
   const visibleJobs = useMemo(() => {
     if (!run) return []
@@ -517,6 +528,9 @@ export function PipelineRunDetailPage() {
                 Finished <strong>{run.finished_at ? formatDateTime(run.finished_at) : '—'}</strong>
               </span>
               <span>
+                Duration <strong>{formatRunDuration(run, nowMs)}</strong>
+              </span>
+              <span>
                 Jobs <strong>{passed}/{visibleJobs.length} passed</strong>
               </span>
             </div>
@@ -538,7 +552,7 @@ export function PipelineRunDetailPage() {
             subtitle={`${projectSlug}@${shortSha(run.commit_sha)}`}
             actions={
               <span className="text-[10px] font-mono text-naturals-n9">
-                {passed}/{visibleJobs.length} jobs ok
+                {formatRunDuration(run, nowMs)} · {passed}/{visibleJobs.length} jobs ok
               </span>
             }
           >
@@ -548,12 +562,13 @@ export function PipelineRunDetailPage() {
                   const jobStatus = displayJobStatus(job, run.status)
                   const isManualJob = job.status === 'manual'
                   const showPlay = canPlayJob(job)
+                  const jobDuration = formatJobDuration(job, nowMs)
                   return (
                   <div key={job.id}>
                     <CiRunLine
                       status={jobStatus}
                       label={job.job_name}
-                      meta={job.runs_on}
+                      meta={jobDuration !== '—' ? `${jobDuration} · ${job.runs_on}` : job.runs_on}
                       active={activeJob?.id === job.id && (!activeStepKey || isManualJob)}
                       onClick={() => selectJob(job.id, false)}
                       actions={
@@ -579,21 +594,28 @@ export function PipelineRunDetailPage() {
                     />
                     {activeJob?.id === job.id &&
                       !isManualJob &&
-                      activeSteps.map((step, index) => (
+                      activeSteps.map((step, index) => {
+                        const stepStatus = stepDisplayStatus(
+                          step,
+                          jobStatus,
+                          run.status,
+                        )
+                        return (
                         <CiRunLine
                           key={step.key}
                           nested
-                          status={stepDisplayStatus(
-                            step,
-                            jobStatus,
-                            run.status,
-                          )}
+                          status={stepStatus}
                           label={stepDisplayLabel(step, index)}
-                          meta={stepMeta(step)}
+                          meta={stepMeta(step, {
+                            nowMs,
+                            job,
+                            running: stepStatus === 'running',
+                          })}
                           active={activeStepKey === step.key}
                           onClick={() => selectStep(step.key)}
                         />
-                      ))}
+                        )
+                      })}
                   </div>
                   )
                 })}

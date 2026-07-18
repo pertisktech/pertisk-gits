@@ -186,18 +186,36 @@ export function refLabel(refName: string) {
   return refName.replace(/^refs\/heads\//, '').replace(/^refs\/tags\//, 'tag:')
 }
 
+/** Human-readable elapsed time (e.g. `12s`, `2m 5s`). */
+export function formatElapsedDuration(ms: number, opts?: { inProgress?: boolean }): string {
+  const elapsed = Math.max(0, ms)
+  if (opts?.inProgress && elapsed < 1000) return '0s'
+  if (elapsed < 1000) return `${elapsed}ms`
+  if (elapsed < 60_000) return `${Math.round(elapsed / 1000)}s`
+  const minutes = Math.floor(elapsed / 60_000)
+  const seconds = Math.round((elapsed % 60_000) / 1000)
+  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+}
+
 export function formatRunDuration(run: PipelineRun, nowMs?: number): string {
   const startMs = new Date(run.started_at ?? run.created_at).getTime()
   const inProgress = !run.finished_at && isRunInProgress(run)
   const endMs = run.finished_at ? new Date(run.finished_at).getTime() : (nowMs ?? Date.now())
+  return formatElapsedDuration(endMs - startMs, { inProgress })
+}
 
-  const ms = Math.max(0, endMs - startMs)
-  if (inProgress && ms < 1000) return '0s'
-  if (ms < 1000) return `${ms}ms`
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`
-  const minutes = Math.floor(ms / 60_000)
-  const seconds = Math.round((ms % 60_000) / 1000)
-  return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`
+/** Job wall-clock duration from started/queued timestamps (works without step metrics). */
+export function formatJobDuration(job: JobRun, nowMs?: number): string {
+  if (job.status === 'manual' || job.status === 'skipped') return '—'
+  const startIso = job.started_at ?? job.queued_at
+  if (!startIso) return '—'
+  const inProgress =
+    !job.finished_at && (job.status === 'running' || job.status === 'queued')
+  const startMs = new Date(startIso).getTime()
+  const endMs = job.finished_at
+    ? new Date(job.finished_at).getTime()
+    : (nowMs ?? Date.now())
+  return formatElapsedDuration(endMs - startMs, { inProgress })
 }
 
 export function pipelineUrl(orgSlug: string, repoSlug: string, runId: string, jobId?: string) {
