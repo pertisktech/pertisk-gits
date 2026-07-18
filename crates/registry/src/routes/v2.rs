@@ -17,6 +17,7 @@ use crate::auth::{authorize_registry, auth_allows_catalog, registry_err, Registr
 use crate::storage::{sha256_digest, BlobStore};
 
 const MANIFEST_V2_MEDIA_TYPE: &str = "application/vnd.docker.distribution.manifest.v2+json";
+const OCI_IMAGE_INDEX_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+json";
 const BLOB_MEDIA_TYPE: &str = "application/octet-stream";
 const DEFAULT_PROVIDER: &str = "pertisk";
 
@@ -603,6 +604,195 @@ async fn put_manifest_inner(
         ],
     )
         .into_response())
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ReferrersQuery {
+    #[serde(rename = "artifactType")]
+    pub artifact_type: Option<String>,
+}
+
+pub async fn get_referrers(
+    State(state): State<RegistryState>,
+    Path((org, project, image, digest)): Path<(String, String, String, String)>,
+    Query(query): Query<ReferrersQuery>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_referrers_inner(
+        &state,
+        DEFAULT_PROVIDER,
+        &org,
+        &project,
+        &image,
+        &digest,
+        query.artifact_type.as_deref(),
+        &headers,
+    )
+    .await
+}
+
+pub async fn get_referrers_short(
+    State(state): State<RegistryState>,
+    Path((org, project, digest)): Path<(String, String, String)>,
+    Query(query): Query<ReferrersQuery>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_referrers_inner(
+        &state,
+        DEFAULT_PROVIDER,
+        &org,
+        &project,
+        &project,
+        &digest,
+        query.artifact_type.as_deref(),
+        &headers,
+    )
+    .await
+}
+
+pub async fn get_referrers_provider_short(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, digest)): Path<(String, String, String, String)>,
+    Query(query): Query<ReferrersQuery>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_referrers_inner(
+        &state,
+        &provider,
+        &org,
+        &project,
+        &project,
+        &digest,
+        query.artifact_type.as_deref(),
+        &headers,
+    )
+    .await
+}
+
+pub async fn get_referrers_provider(
+    State(state): State<RegistryState>,
+    Path((provider, org, project, image, digest)): Path<(String, String, String, String, String)>,
+    Query(query): Query<ReferrersQuery>,
+    headers: HeaderMap,
+) -> RegistryResult<Response> {
+    get_referrers_inner(
+        &state,
+        &provider,
+        &org,
+        &project,
+        &image,
+        &digest,
+        query.artifact_type.as_deref(),
+        &headers,
+    )
+    .await
+}
+
+async fn get_referrers_inner(
+    state: &RegistryState,
+    provider: &str,
+    org: &str,
+    project: &str,
+    image: &str,
+    digest: &str,
+    artifact_type_filter: Option<&str>,
+    headers: &HeaderMap,
+) -> RegistryResult<Response> {
+    if !digest.starts_with("sha256:") {
+        return Err(registry_err(StatusCode::BAD_REQUEST, "digest must be sha256:..."));
+    }
+
+    let full_name = provider_repo_name(provider, org, project, image);
+    let _auth = require_pull(state, headers, &full_name).await?;
+
+    let (resolved_org, resolved_project, resolved_image) =
+        resolve_registry_target(&state.pool, org, project, image)
+            .await
+            .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+    let repo = find_repository(
+        &state.pool,
+        &resolved_org,
+        &resolved_project,
+        &resolved_image,
+        provider,
+    )
+    .await
+    .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
+    .ok_or_else(|| registry_err(StatusCode::NOT_FOUND, "repository not found"))?;
+
+    let rows = sqlx::query_as::<_, (String, String, i64, Vec<u8>)>(
+        r#"
+        SELECT digest, media_type, size_bytes, payload
+        FROM container_manifests
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repo.id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+
+    let mut manifests = Vec::new();
+    let mut filter_applied = false;
+    for (ref_digest, media_type, size_bytes, payload) in rows {
+        let Some(subject) = crate::manifest::subject_digest(&payload) else {
+            continue;
+        };
+        if subject != digest {
+            continue;
+        }
+        let art = crate::manifest::artifact_type(&payload, &media_type);
+        if let Some(want) = artifact_type_filter {
+            filter_applied = true;
+            if art.as_deref() != Some(want) {
+                continue;
+            }
+        }
+        let mut entry = serde_json::json!({
+            "mediaType": manifest_media_type(&media_type),
+            "digest": ref_digest,
+            "size": size_bytes,
+        });
+        if let Some(art) = art {
+            entry
+                .as_object_mut()
+                .expect("object")
+                .insert("artifactType".into(), serde_json::Value::String(art));
+        }
+        manifests.push(entry);
+    }
+
+    let index = serde_json::json!({
+        "schemaVersion": 2,
+        "mediaType": OCI_IMAGE_INDEX_MEDIA_TYPE,
+        "manifests": manifests,
+    });
+    let body = serde_json::to_vec(&index)
+        .map_err(|e| registry_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    let index_digest = sha256_digest(&body);
+
+    let mut response = (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, OCI_IMAGE_INDEX_MEDIA_TYPE.to_string()),
+            (
+                header::HeaderName::from_static("docker-content-digest"),
+                index_digest,
+            ),
+            (header::CONTENT_LENGTH, body.len().to_string()),
+        ],
+        body,
+    )
+        .into_response();
+    if filter_applied {
+        response.headers_mut().insert(
+            header::HeaderName::from_static("oci-filters-applied"),
+            header::HeaderValue::from_static("artifactType"),
+        );
+    }
+
+    Ok(response)
 }
 
 pub async fn get_blob(
