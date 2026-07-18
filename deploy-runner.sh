@@ -10,6 +10,5 @@ helm upgrade --install pertisk-runner ./deploy/helm/pertisk-runner \
   --set apiUrl=https://gitdev.talos.pertisk.com \
   --set runnerToken=ptr_061968d418b144f6aa7e78511eacac85 \
   --set image.tag="$VERSION" \
-  --set image.pullPolicy=Always 
-  #\
-  #--set-json 'nodeSelector={"kubernetes.io/arch":"arm64"}'
+  --set image.pullPolicy=Always \
+  --set-json 'nodeSelector={"kubernetes.io/arch":"amd64"}'
