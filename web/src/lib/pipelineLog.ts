@@ -129,8 +129,15 @@ export function jobStepViews(job: JobRun, runStatus?: PipelineRun['status']): Jo
   const jobStatus = effectiveJobStatus(job, runStatus)
   const fromMetrics = job.metrics_json?.steps ?? []
   // Completed metrics from a prior run are stale while the job is queued/running again.
+  // Also ignore synthetic single-step metrics named after the job (kubernetes executor);
+  // those wipe real YAML step names from the Jobs tab after cancel/complete.
+  const metricsAreSyntheticJobStep =
+    fromMetrics.length === 1 &&
+    fromMetrics[0]?.name === job.job_name &&
+    job.steps.length > 0
   if (
     fromMetrics.length > 0 &&
+    !metricsAreSyntheticJobStep &&
     jobStatus !== 'queued' &&
     jobStatus !== 'running'
   ) {
@@ -154,7 +161,20 @@ export function jobStepViews(job: JobRun, runStatus?: PipelineRun['status']): Jo
         logSteps.find((entry) => entry.name === defaultStepName(index))
       let exitCode = log?.exitCode ?? undefined
       if (exitCode === null) {
-        exitCode = undefined
+        // Step was in progress when the job/pipeline was cancelled.
+        if (jobStatus === 'cancelled' || runStatus === 'cancelled') {
+          exitCode = 130
+        } else {
+          exitCode = undefined
+        }
+      }
+      // Later steps that never started after a cancel stay pending visually as cancelled.
+      if (
+        exitCode === undefined &&
+        (jobStatus === 'cancelled' || runStatus === 'cancelled') &&
+        index > nextIndex
+      ) {
+        // leave undefined — stepDisplayStatus maps cancelled job → cancelled
       }
       const running =
         jobStatus === 'running' &&
@@ -243,6 +263,9 @@ export function defaultStepKey(job: JobRun, runStatus?: PipelineRun['status']): 
     return steps[0]?.key ?? null
   }
 
+  const cancelled = steps.find((step) => step.exitCode === 130)
+  if (cancelled) return cancelled.key
+
   const failed = steps.find(
     (step) =>
       step.exitCode !== undefined && step.exitCode !== 0 && step.exitCode !== 130,
@@ -273,9 +296,14 @@ export function stepLogText(
 
   const section = findLogSection(job.log_text, stepKey)
   if (section) {
+    const cancelledMidStep =
+      section.exitCode === null &&
+      (effectiveJobStatus(job, runStatus) === 'cancelled' || runStatus === 'cancelled')
     const header =
       section.exitCode === null
-        ? `=== ${section.name} (running)`
+        ? cancelledMidStep
+          ? `=== ${section.name} (cancelled)`
+          : `=== ${section.name} (running)`
         : section.exitCode === 130
           ? `=== ${section.name} (exit cancelled)`
           : `=== ${section.name} (exit ${section.exitCode})`
@@ -288,6 +316,14 @@ export function stepLogText(
       const start = job.log_text.indexOf(marker)
       if (start >= 0) {
         return job.log_text.slice(start)
+      }
+    }
+    if (cancelledMidStep) {
+      const marker = `=== ${section.name} (running)`
+      const start = job.log_text.indexOf(marker)
+      if (start >= 0) {
+        const body = job.log_text.slice(start + marker.length).trim()
+        return body ? `${header}\n${body}` : header
       }
     }
     return section.text.trim() ? `${header}\n${section.text.trim()}` : header

@@ -1719,7 +1719,12 @@ async fn complete_runner_job(
                 ELSE $3::job_run_status
             END,
             log_text = COALESCE($4, log_text),
-            metrics_json = COALESCE($5, metrics_json),
+            -- Never let a synthetic/late metrics payload overwrite UI steps after cancel.
+            metrics_json = CASE
+                WHEN status = 'cancelled'::job_run_status THEN metrics_json
+                WHEN $3 = 'cancelled' THEN NULL
+                ELSE COALESCE($5, metrics_json)
+            END,
             finished_at = COALESCE(finished_at, NOW())
         WHERE id = $1
           AND runner_id = $2

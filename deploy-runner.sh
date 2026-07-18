@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-export VERSION="${VERSION:-0.4.23}"
+export VERSION="${VERSION:-0.4.24}"
 # amd64 load+push (buildx --push hits Harbor TLS over bridge); multi-arch optional:
 #   make runner-image-multi VERSION="$VERSION"
 make runner-image VERSION="$VERSION"

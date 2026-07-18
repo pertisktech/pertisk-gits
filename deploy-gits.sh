@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
-export VERSION="${VERSION:-0.4.22}"
+export VERSION="${VERSION:-0.4.25}"
 KUBECONFIG="${KUBECONFIG:-/Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml}"
 GITS_IMAGE="${GITS_IMAGE:-harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/pertisk-gits}"
 

@@ -168,15 +168,22 @@ pub async fn run_job(api: &RunnerApi, job: PollJobResponse) -> anyhow::Result<()
     }];
     let metrics = JobMetrics::from_step_timings(&job.job_name, timings, queue_wait);
 
-    let status = if watch_err.is_some() || timed_out || exit_code != 0 {
-        "failure"
-    } else if cancelled {
+    let status = if cancelled {
         "cancelled"
+    } else if watch_err.is_some() || timed_out || exit_code != 0 {
+        "failure"
     } else {
         "success"
     };
 
-    let metrics_json = serde_json::to_value(&metrics).ok();
+    // Kubernetes executor does not yet emit per-YAML-step timings. Sending a
+    // single synthetic step named after the job makes the detail page replace
+    // real step/log views with one fake step (especially visible after cancel).
+    let metrics_json = if cancelled {
+        None
+    } else {
+        serde_json::to_value(&metrics).ok()
+    };
     api.complete_job(job.job_id, status, None, metrics_json).await?;
     tracing::info!(job = %job.job_name, status, k8s_job = %job_name, "kubernetes job finished");
 

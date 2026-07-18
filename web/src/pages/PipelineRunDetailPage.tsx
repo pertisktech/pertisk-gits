@@ -109,7 +109,14 @@ export function PipelineRunDetailPage() {
     refetchInterval: (query) => {
       const item = query.state.data
       if (!item) return false
-      return isRunInProgress(item) ? 1000 : false
+      if (isRunInProgress(item)) return 1000
+      // After cancel, poll a few more times so runner-appended cancel logs appear.
+      const cancelledRecently = item.jobs.some((job) => {
+        if (job.status !== 'cancelled' || !job.finished_at) return false
+        const age = Date.now() - new Date(job.finished_at).getTime()
+        return age >= 0 && age < 15_000
+      })
+      return cancelledRecently ? 2000 : false
     },
   })
 
@@ -204,6 +211,16 @@ export function PipelineRunDetailPage() {
   const logText = activeJob && run ? stepLogText(activeJob, activeStepKey, run.status) : ''
   const activeStep = activeSteps.find((step) => step.key === activeStepKey) ?? null
   const activeJobDisplayStatus = activeJob && run ? displayJobStatus(activeJob, run.status) : null
+
+  // Drop stale step selection (e.g. synthetic metrics step named after the job).
+  useEffect(() => {
+    if (!activeJob || !run || !activeStepKey) return
+    const keys = new Set(jobStepViews(activeJob, run.status).map((step) => step.key))
+    if (!keys.has(activeStepKey)) {
+      userPinnedStep.current = false
+      setActiveStepKey(initialStepKey(activeJob, run.status))
+    }
+  }, [activeJob, run, activeStepKey])
   const runningStepName =
     activeJob && activeJobDisplayStatus === 'running'
       ? inferRunningStepName(activeJob, run?.status)
@@ -228,9 +245,16 @@ export function PipelineRunDetailPage() {
 
   const cancelPipelineMutation = useMutation({
     mutationFn: () => api.cancelPipeline(token!, orgSlug, projectSlug, runId),
-    onSuccess: (updatedRun) => {
+    onSuccess: async (updatedRun) => {
+      await queryClient.cancelQueries({
+        queryKey: ['pipeline-run', orgSlug, projectSlug, runId],
+      })
       queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
       queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+      // Keep polling briefly so runner-appended cancel logs land in the UI.
+      void queryClient.invalidateQueries({
+        queryKey: ['pipeline-run', orgSlug, projectSlug, runId],
+      })
     },
   })
 
@@ -244,9 +268,15 @@ export function PipelineRunDetailPage() {
         payload.jobId,
         payload.stepName,
       ),
-    onSuccess: (updatedRun) => {
+    onSuccess: async (updatedRun) => {
+      await queryClient.cancelQueries({
+        queryKey: ['pipeline-run', orgSlug, projectSlug, runId],
+      })
       queryClient.setQueryData(['pipeline-run', orgSlug, projectSlug, runId], updatedRun)
       queryClient.invalidateQueries({ queryKey: ['pipeline-runs', orgSlug, projectSlug] })
+      void queryClient.invalidateQueries({
+        queryKey: ['pipeline-run', orgSlug, projectSlug, runId],
+      })
     },
   })
 
@@ -580,11 +610,13 @@ export function PipelineRunDetailPage() {
                         command={
                           activeJobDisplayStatus === 'manual'
                             ? 'manual job — click Run job to start'
-                            : activeStep?.run ??
-                              (runningStepName ??
-                                (activeJob.metrics_json
-                                  ? `exit ${activeJob.status === 'success' ? 0 : 1}`
-                                  : activeStepKey ?? 'select a step'))
+                            : activeJobDisplayStatus === 'cancelled'
+                              ? 'cancelled'
+                              : activeStep?.run ??
+                                (runningStepName ??
+                                  (activeJob.metrics_json
+                                    ? `exit ${activeJob.status === 'success' ? 0 : 1}`
+                                    : activeStepKey ?? 'select a step'))
                         }
                       />
                       <div className="flex flex-wrap items-center gap-2 shrink-0">
