@@ -10,7 +10,7 @@
 
 services:
   runner:
-    image: ${RUNNER_IMAGE:-harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/runner:latest}
+    image: ${RUNNER_IMAGE:-harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/runner:latest}
     container_name: pertisk-runner
     restart: unless-stopped
     env_file:

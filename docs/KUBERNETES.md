@@ -61,11 +61,11 @@ make helm-gits-template
 Build and push multi-arch platform image (Harbor):
 
 ```bash
-docker login harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy
+docker login harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy
 make pertisk-gits-image-multi VERSION=0.2.65
 ```
 
-Image: `harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/pertisk-gits:VERSION` (also `:latest`).
+Image: `harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/pertisk-gits:VERSION` (also `:latest`).
 
 ## Planned (Phase 7)
 

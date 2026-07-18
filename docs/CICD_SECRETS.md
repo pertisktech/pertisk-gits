@@ -35,7 +35,7 @@ Use the **same variable name** in each environment with a **different value**:
 | dev | `HARBOR_URL` | `harbor-dev.tools.thaidevops.co` |
 | qa | `HARBOR_URL` | `harbor-qa.tools.thaidevops.co` |
 | uat | `HARBOR_URL` | `harbor-uat.tools.thaidevops.co` |
-| prd | `HARBOR_URL` | `harbor.tools.thaidevops.co` |
+| prd | `HARBOR_URL` | `harbor.homelab.pertisk.com` |
 | all | `CI_TOKEN` | shared across every environment |
 
 ### UI

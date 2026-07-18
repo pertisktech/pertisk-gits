@@ -10,7 +10,7 @@
 	runner-image runner-image-push runner-image-arm64 runner-image-multi runner-compose-up runner-compose-down \
 	pertisk-gits-image pertisk-gits-image-push pertisk-gits-image-arm64 pertisk-gits-image-multi \
 	helm-runner-lint helm-runner-template helm-runner-install helm-runner-upgrade \
-	helm-gits-lint helm-gits-template
+	helm-gits-lint helm-gits-template helm-gits-talos-template helm-gits-talos-install
 
 CARGO ?= cargo
 CARGO_BUILD_JOBS ?= 4
@@ -409,7 +409,7 @@ deploy-runner-rpm-arm64:
 		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEPLOY_ARCH=arm64 DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)"
 
 # --- Runner Docker image & Compose ---
-RUNNER_REGISTRY ?= harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy
+RUNNER_REGISTRY ?= harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy
 RUNNER_IMAGE_NAME ?= runner
 RUNNER_IMAGE ?= $(RUNNER_REGISTRY)/$(RUNNER_IMAGE_NAME)
 RUNNER_IMAGE_TAG ?= $(VERSION)
@@ -479,7 +479,7 @@ runner-image-multi:
 	@echo "Verify: docker buildx imagetools inspect $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)"
 
 # --- Platform (pertisk-gits) Docker image ---
-GITS_REGISTRY ?= harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy
+GITS_REGISTRY ?= harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy
 GITS_IMAGE_NAME ?= pertisk-gits
 GITS_IMAGE ?= $(GITS_REGISTRY)/$(GITS_IMAGE_NAME)
 GITS_IMAGE_TAG ?= $(VERSION)
@@ -594,6 +594,25 @@ helm-gits-template:
 	  --set publicUrl=https://git.example.com \
 	  --set jwt.secret=dev-secret \
 	  --set database.url='postgres://pertisk:pertisk@postgres:5432/pertisk_gits'
+
+# --- pertisk-gits on the omni-proxmox Talos cluster ---
+# Requires the pertisk-gits-secret (database-url, jwt-secret, secrets-encryption-key)
+# in the pertisk-proxy namespace. See deploy/helm/pertisk-gits/values-talos.yaml.
+HELM_GITS_TALOS_NAMESPACE ?= pertisk-proxy
+HELM_GITS_TALOS_VALUES = $(HELM_GITS_CHART)/values-talos.yaml
+KUBECONFIG_TALOS ?= /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
+
+helm-gits-talos-template:
+	helm template $(HELM_GITS_RELEASE) $(HELM_GITS_CHART) \
+	  -f $(HELM_GITS_TALOS_VALUES) \
+	  --set image.tag="$(VERSION)"
+
+helm-gits-talos-install:
+	helm upgrade --install $(HELM_GITS_RELEASE) $(HELM_GITS_CHART) \
+	  --namespace $(HELM_GITS_TALOS_NAMESPACE) --create-namespace \
+	  -f $(HELM_GITS_TALOS_VALUES) \
+	  --set image.tag="$(VERSION)" \
+	  --kubeconfig $(KUBECONFIG_TALOS)
 
 # Delete a tag (local and remote).
 delete-tag:

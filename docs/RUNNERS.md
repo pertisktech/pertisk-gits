@@ -88,10 +88,10 @@ PERTISK_RUNNER_MAX_PARALLEL=4
 
 Multi-stage image: `docker/Dockerfile.runner.release` target `runtime` (Debian bookworm-slim + git, curl, Docker CLI).
 
-Default registry: `harbor.tools.thaidevops.co/pertisksoft/pertisk-proxy/runner`
+Default registry: `harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/runner`
 
 ```bash
-docker login harbor.tools.thaidevops.co
+docker login harbor.homelab.pertisk.com
 
 # Local load (amd64)
 make runner-image VERSION=0.1.84

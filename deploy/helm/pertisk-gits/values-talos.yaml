@@ -1,25 +1,43 @@
-# HA overrides for Talos Orion (arm64 + NFS RWX).
+# Deploy overrides for the omni-proxmox Talos cluster (NFS RWX).
 #
 # Prerequisites:
-#   1. HA PostgreSQL reachable from the cluster (update secret below).
-#   2. kubectl create secret … database-url + jwt-secret (do not commit secrets).
-#   3. NFS StorageClass `nfs-client` (already on talos-orion).
+#   1. PostgreSQL reachable from the cluster (referenced via existingSecret below).
+#   2. Create the app secret (do not commit secrets):
+#        kubectl create secret generic pertisk-gits-secret \
+#          --namespace pertisk-proxy \
+#          --from-literal=database-url='postgres://USER:PASS@HOST:5432/pertisk_gits' \
+#          --from-literal=jwt-secret="$(openssl rand -hex 32)" \
+#          --from-literal=secrets-encryption-key="$(openssl rand -hex 32)" \
+#          --kubeconfig /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
+#   3. NFS StorageClass `nfs-client` present on the cluster.
+#   4. TLS secret `admin-talos-tls` present in the `pertisk-proxy` namespace.
+#   5. Harbor pull secret (private registry):
+#        kubectl create secret docker-registry harbor-pull \
+#          --namespace pertisk-proxy \
+#          --docker-server=harbor.homelab.pertisk.com \
+#          --docker-username='<user>' \
+#          --docker-password='<pass-or-token>' \
+#          --kubeconfig /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
 #
 # Install:
 #   helm upgrade --install pertisk-gits ./deploy/helm/pertisk-gits \
 #     --namespace pertisk-proxy --create-namespace \
-#     -f deploy/helm/pertisk-gits/values-ha-talos.yaml \
-#     --kubeconfig /Users/nat/.kube/talos-orion-cluster-kubeconfig.yaml
+#     -f deploy/helm/pertisk-gits/values-talos.yaml \
+#     --kubeconfig /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
 
 replicaCount: 2
 
 image:
   repository: harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/pertisk-gits
-  tag: "0.2.65"
+  tag: "0.4.22"
   pullPolicy: IfNotPresent
 
+# Private Harbor — cluster needs credentials to pull (see prerequisite 5)
+imagePullSecrets:
+  - name: harbor-pull
+
 # Must match runner apiUrl and clone URLs
-publicUrl: "https://gitdev.orion.thaidevops.co"
+publicUrl: "https://gitdev.talos.pertisk.com"
 
 database:
   url: ""
@@ -52,15 +70,14 @@ ingress:
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
   hosts:
-    - host: gitdev.orion.thaidevops.co
+    - host: gitdev.talos.pertisk.com
       paths:
         - path: /
           pathType: Prefix
-  #tls: []
   tls:
-     - secretName: admin-orion-tls
-       hosts:
-         - gitdev.orion.thaidevops.co
+    - secretName: admin-talos-tls
+      hosts:
+        - gitdev.talos.pertisk.com
 
 resources:
   requests:
@@ -69,9 +86,6 @@ resources:
   limits:
     cpu: "2"
     memory: 2Gi
-
-nodeSelector:
-  kubernetes.io/arch: arm64
 
 podSecurityContext:
   fsGroup: 1000
@@ -93,4 +107,5 @@ affinity:
               app.kubernetes.io/name: pertisk-gits
           topologyKey: kubernetes.io/hostname
 
+nodeSelector: {}
 tolerations: []
