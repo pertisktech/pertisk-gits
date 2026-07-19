@@ -456,9 +456,31 @@ async fn git_smart_http_middleware(
     pertisk_git::http::handle(State((*git).clone()), req).await
 }
 
-async fn spa_index(method: Method, State(state): State<AppState>) -> Result<Response, StatusCode> {
+async fn spa_index(
+    method: Method,
+    uri: axum::http::Uri,
+    State(state): State<AppState>,
+) -> Result<Response, StatusCode> {
     if method != Method::GET && method != Method::HEAD {
         return Err(StatusCode::NOT_FOUND);
+    }
+
+    let path = uri.path();
+    // Never serve the React SPA for OCI registry paths — clients expect JSON.
+    if path == "/v2" || path.starts_with("/v2/") || path.starts_with("/service/token") {
+        let body = serde_json::json!({
+            "errors": [{
+                "code": "NOT_FOUND",
+                "message": "registry endpoint not found",
+                "detail": { "path": path }
+            }]
+        });
+        return Ok((
+            StatusCode::NOT_FOUND,
+            [(header::CONTENT_TYPE, "application/json")],
+            body.to_string(),
+        )
+            .into_response());
     }
 
     let web_dist = state

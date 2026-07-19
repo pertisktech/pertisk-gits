@@ -97,6 +97,22 @@ pub fn router() -> Router<RegistryState> {
             "/v2/providers/{provider}/{org}/{project}/{image}/blobs/uploads/{upload_id}",
             patch(routes::v2::patch_upload_provider).put(routes::v2::complete_upload_provider),
         )
+        .route(
+            "/v2/{org}/{project}/referrers/{digest}",
+            get(routes::v2::get_referrers_short),
+        )
+        .route(
+            "/v2/providers/{provider}/{org}/{project}/referrers/{digest}",
+            get(routes::v2::get_referrers_provider_short),
+        )
+        .route(
+            "/v2/{org}/{project}/{image}/referrers/{digest}",
+            get(routes::v2::get_referrers),
+        )
+        .route(
+            "/v2/providers/{provider}/{org}/{project}/{image}/referrers/{digest}",
+            get(routes::v2::get_referrers_provider),
+        )
         .layer(DefaultBodyLimit::max(MAX_REGISTRY_BODY_BYTES))
 }
 

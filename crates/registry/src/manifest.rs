@@ -29,6 +29,35 @@ pub fn image_total_size_bytes(payload: &[u8]) -> i64 {
     }
 }
 
+/// Subject digest from an OCI artifact / referrer manifest (`subject.digest`).
+pub fn subject_digest(payload: &[u8]) -> Option<String> {
+    let value = serde_json::from_slice::<serde_json::Value>(payload).ok()?;
+    value
+        .get("subject")
+        .and_then(|s| s.get("digest"))
+        .and_then(|d| d.as_str())
+        .map(str::to_string)
+}
+
+/// Artifact type used for referrers filtering (`artifactType`, or config mediaType).
+pub fn artifact_type(payload: &[u8], media_type: &str) -> Option<String> {
+    let value = serde_json::from_slice::<serde_json::Value>(payload).ok()?;
+    if let Some(t) = value.get("artifactType").and_then(|v| v.as_str()) {
+        return Some(t.to_string());
+    }
+    if let Some(t) = value
+        .get("config")
+        .and_then(|c| c.get("mediaType"))
+        .and_then(|v| v.as_str())
+    {
+        return Some(t.to_string());
+    }
+    if !media_type.is_empty() {
+        return Some(media_type.to_string());
+    }
+    None
+}
+
 /// Platforms declared in a Docker/OCI manifest index payload.
 ///
 /// For single-image manifests (without a `manifests` array), returns an empty list.
@@ -127,5 +156,22 @@ mod tests {
         }"#;
 
         assert!(index_platforms(payload).is_empty());
+    }
+
+    #[test]
+    fn extracts_subject_digest_and_artifact_type() {
+        let payload = br#"{
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "artifactType": "application/vnd.cncf.notary.signature",
+            "subject": { "mediaType": "application/vnd.oci.image.manifest.v1+json", "digest": "sha256:abc", "size": 1 },
+            "config": { "mediaType": "application/vnd.oci.empty.v1+json", "digest": "sha256:cfg", "size": 2 },
+            "layers": []
+        }"#;
+        assert_eq!(subject_digest(payload).as_deref(), Some("sha256:abc"));
+        assert_eq!(
+            artifact_type(payload, "application/vnd.oci.image.manifest.v1+json").as_deref(),
+            Some("application/vnd.cncf.notary.signature")
+        );
     }
 }
