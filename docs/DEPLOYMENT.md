@@ -17,17 +17,17 @@ Like [pertisk-proxy](https://github.com/pertisktech/pertisk-proxy), packages are
 
 ```bash
 # Build Linux package (amd64 DEB + RPM + tarball → release/)
-make build VERSION=0.1.0
+VERSION=0.1.0 ./scripts/build.sh
+# or: make package VERSION=0.1.0
 
-# Build + deploy (auto-detect deb/rpm on remote host)
+# Deploy to hosts listed in scripts/hosts.local.sh (gitignored)
+cp scripts/hosts.local.example.sh scripts/hosts.local.sh   # once
+VERSION=0.1.0 ./scripts/deploy.sh
+
+# Or a single host via Make
 make deploy DEPLOY_HOST=user@host VERSION=0.1.0
-
-# Or explicit package manager
 make deploy-rpm DEPLOY_HOST=user@host VERSION=0.1.0
 make deploy-deb DEPLOY_HOST=user@host VERSION=0.1.0
-
-# Build only (both architectures)
-make package VERSION=0.1.0
 
 # Deploy existing package (skip rebuild)
 make deploy DEPLOY_HOST=user@host VERSION=0.1.0 PACKAGE_BUILD=0

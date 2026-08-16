@@ -10,7 +10,7 @@
 	runner-image runner-image-push runner-image-arm64 runner-image-multi runner-compose-up runner-compose-down \
 	pertisk-gits-image pertisk-gits-image-push pertisk-gits-image-arm64 pertisk-gits-image-multi \
 	helm-runner-lint helm-runner-template helm-runner-install helm-runner-upgrade \
-	helm-gits-lint helm-gits-template helm-gits-talos-template helm-gits-talos-install
+	helm-gits-lint helm-gits-template helm-gits-cluster-template helm-gits-cluster-install
 
 CARGO ?= cargo
 CARGO_BUILD_JOBS ?= 4
@@ -26,16 +26,16 @@ DEV_API_PORT ?= 8080
 DEV_USER ?= $(if $(SUDO_USER),$(SUDO_USER),$(USER))
 RUN_AS_USER = $(if $(filter root,$(USER)),sudo -u $(DEV_USER) ,)
 
-# Remote dev DB (Talos / shared Postgres). Override: make dev DEV_DATABASE_URL=...
+# Local docker Postgres by default. Override: make dev DEV_DATABASE_URL=...
 # Or set DATABASE_URL in .env (gitignored).
 -include .env
-DEV_DATABASE_URL ?= postgres://postgres:c2UT3eavGQ7eEykq@localhost:5432/pertisk_local_gits
+DEV_LOCAL_DATABASE_URL ?= postgres://pertisk:pertisk@localhost:5432/pertisk_gits
+DEV_DATABASE_URL ?= $(DEV_LOCAL_DATABASE_URL)
 ifneq ($(strip $(DATABASE_URL)),)
 DEV_DATABASE_URL := $(DATABASE_URL)
 endif
-# Set DEV_USE_LOCAL_DB=1 to start docker-compose Postgres on localhost instead.
+# Set DEV_USE_LOCAL_DB=1 to start docker-compose Postgres on localhost (same default URL).
 DEV_USE_LOCAL_DB ?= 0
-DEV_LOCAL_DATABASE_URL ?= postgres://pertisk:pertisk@localhost:5432/pertisk_gits
 ifeq ($(DEV_USE_LOCAL_DB),1)
 DEV_ACTIVE_DATABASE_URL := $(DEV_LOCAL_DATABASE_URL)
 else
@@ -305,7 +305,7 @@ release-arm:
 
 # --- Deploy (build package + install on remote host) ---
 # Primary: make deploy DEPLOY_HOST=user@host VERSION=0.1.0
-# AlmaLinux ARM64: make deploy-rpm DEPLOY_HOST=almalinux@10.1.1.233 VERSION=0.2.26
+# AlmaLinux ARM64: make deploy-rpm DEPLOY_HOST=user@host VERSION=0.2.26 DEPLOY_ARCH=arm64
 #   (DEPLOY_ARCH=auto detects aarch64 via SSH; override with DEPLOY_ARCH=amd64|arm64)
 # Or:      make deploy-deb DEPLOY_HOST=user@host
 #          make deploy-rpm DEPLOY_HOST=user@host
@@ -409,7 +409,8 @@ deploy-runner-rpm-arm64:
 		PACKAGE_BUILD="$(PACKAGE_BUILD)" DEPLOY_ARCH=arm64 DEPLOY_SSH_OPTS="$(DEPLOY_SSH_OPTS)"
 
 # --- Runner Docker image & Compose ---
-RUNNER_REGISTRY ?= harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy
+# Override via env or scripts/hosts.local.sh (e.g. ghcr.io/org/pertisk)
+RUNNER_REGISTRY ?= ghcr.io/example/pertisk
 RUNNER_IMAGE_NAME ?= runner
 RUNNER_IMAGE ?= $(RUNNER_REGISTRY)/$(RUNNER_IMAGE_NAME)
 RUNNER_IMAGE_TAG ?= $(VERSION)
@@ -479,7 +480,7 @@ runner-image-multi:
 	@echo "Verify: docker buildx imagetools inspect $(RUNNER_IMAGE):$(RUNNER_IMAGE_TAG)"
 
 # --- Platform (pertisk-gits) Docker image ---
-GITS_REGISTRY ?= harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy
+GITS_REGISTRY ?= ghcr.io/example/pertisk
 GITS_IMAGE_NAME ?= pertisk-gits
 GITS_IMAGE ?= $(GITS_REGISTRY)/$(GITS_IMAGE_NAME)
 GITS_IMAGE_TAG ?= $(VERSION)
@@ -595,24 +596,21 @@ helm-gits-template:
 	  --set jwt.secret=dev-secret \
 	  --set database.url='postgres://pertisk:pertisk@postgres:5432/pertisk_gits'
 
-# --- pertisk-gits on the omni-proxmox Talos cluster ---
-# Requires the pertisk-gits-secret (database-url, jwt-secret, secrets-encryption-key)
-# in the pertisk-proxy namespace. See deploy/helm/pertisk-gits/values-talos.yaml.
-HELM_GITS_TALOS_NAMESPACE ?= pertisk-proxy
-HELM_GITS_TALOS_VALUES = $(HELM_GITS_CHART)/values-talos.yaml
-KUBECONFIG_TALOS ?= /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
+# --- pertisk-gits cluster install (use values.local.yaml; see values.cluster.example.yaml) ---
+HELM_GITS_CLUSTER_NAMESPACE ?= pertisk-gits
+HELM_GITS_CLUSTER_VALUES ?= $(HELM_GITS_CHART)/values.local.yaml
+# Optional: KUBECONFIG=/path/to/kubeconfig make helm-gits-cluster-install
 
-helm-gits-talos-template:
+helm-gits-cluster-template:
 	helm template $(HELM_GITS_RELEASE) $(HELM_GITS_CHART) \
-	  -f $(HELM_GITS_TALOS_VALUES) \
+	  -f $(HELM_GITS_CLUSTER_VALUES) \
 	  --set image.tag="$(VERSION)"
 
-helm-gits-talos-install:
+helm-gits-cluster-install:
 	helm upgrade --install $(HELM_GITS_RELEASE) $(HELM_GITS_CHART) \
-	  --namespace $(HELM_GITS_TALOS_NAMESPACE) --create-namespace \
-	  -f $(HELM_GITS_TALOS_VALUES) \
-	  --set image.tag="$(VERSION)" \
-	  --kubeconfig $(KUBECONFIG_TALOS)
+	  --namespace $(HELM_GITS_CLUSTER_NAMESPACE) --create-namespace \
+	  -f $(HELM_GITS_CLUSTER_VALUES) \
+	  --set image.tag="$(VERSION)"
 
 # Delete a tag (local and remote).
 delete-tag:

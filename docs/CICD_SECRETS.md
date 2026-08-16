@@ -32,10 +32,10 @@ Use the **same variable name** in each environment with a **different value**:
 
 | Environment | Name | Value (example) |
 |-------------|------|-----------------|
-| dev | `HARBOR_URL` | `harbor-dev.tools.thaidevops.co` |
-| qa | `HARBOR_URL` | `harbor-qa.tools.thaidevops.co` |
-| uat | `HARBOR_URL` | `harbor-uat.tools.thaidevops.co` |
-| prd | `HARBOR_URL` | `harbor.homelab.pertisk.com` |
+| dev | `HARBOR_URL` | `harbor-dev.example.com` |
+| qa | `HARBOR_URL` | `harbor-qa.example.com` |
+| uat | `HARBOR_URL` | `harbor-uat.example.com` |
+| prd | `HARBOR_URL` | `registry.example.com` |
 | all | `CI_TOKEN` | shared across every environment |
 
 ### UI

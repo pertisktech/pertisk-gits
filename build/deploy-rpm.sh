@@ -5,10 +5,10 @@ set -euo pipefail
 # Build amd64 RPM, copy to remote host, install via dnf/yum/rpm.
 #
 # Usage:
-#   REMOTE_HOST=10.1.1.15 REMOTE_USER=root VERSION=0.1.0 ./build/deploy-rpm.sh
+#   DEPLOY_HOST=user@host VERSION=0.1.0 ./build/deploy-rpm.sh
 #
 # Env:
-#   REMOTE_HOST      — remote server (default: 10.1.1.8)
+#   REMOTE_HOST      — remote server (required unless DEPLOY_HOST is set)
 #   REMOTE_USER      — SSH user (default: root)
 #   VERSION          — package version (default: git describe)
 #   PACKAGE_NAME     — pertisk-gits (default)

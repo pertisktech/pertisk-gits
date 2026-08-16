@@ -58,14 +58,14 @@ make helm-gits-lint
 make helm-gits-template
 ```
 
-Build and push multi-arch platform image (Harbor):
+Build and push multi-arch platform image:
 
 ```bash
-docker login harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy
-make pertisk-gits-image-multi VERSION=0.2.65
+docker login ghcr.io
+make pertisk-gits-image-multi VERSION=0.1.0 GITS_REGISTRY=ghcr.io/example/pertisk
 ```
 
-Image: `harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/pertisk-gits:VERSION` (also `:latest`).
+Image: `$(GITS_REGISTRY)/pertisk-gits:VERSION` (also `:latest`).
 
 ## Planned (Phase 7)
 
@@ -80,14 +80,14 @@ Default chart values are **single-replica** (`replicaCount: 1`, `ReadWriteOnce` 
 For **active/active API** pods, use shared git storage and an HA database:
 
 ```bash
-# Example: Talos Orion + NFS (see values-ha-talos.yaml)
-kubectl create secret generic pertisk-gits-secret -n pertisk-proxy \
+# Example: HA + NFS (see values.ha.example.yaml → values.local.yaml)
+kubectl create secret generic pertisk-gits-secret -n pertisk-gits \
   --from-literal=database-url='postgres://USER:PASS@HOST:5432/pertisk_gits' \
   --from-literal=jwt-secret='LONG_RANDOM_SECRET'
 
 helm upgrade --install pertisk-gits ./deploy/helm/pertisk-gits \
-  --namespace pertisk-proxy \
-  -f deploy/helm/pertisk-gits/values-ha-talos.yaml
+  --namespace pertisk-gits \
+  -f deploy/helm/pertisk-gits/values.local.yaml
 ```
 
 | Requirement | HA platform |

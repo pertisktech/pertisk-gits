@@ -46,8 +46,8 @@ kubernetes:
   # nodeSelector: {}
 
 image:
-  repository: harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/runner
-  tag: "0.2.32" # fixed arm64 build (explicit TARGETARCH in Makefile)
+  repository: ghcr.io/example/pertisk/runner
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn new_merge_request_url_uses_gitlab_style_query() {
         let url = new_merge_request_url(
-            "https://gitdev.tools.pertisk.com",
+            "https://git.example.com",
             "pertisktech",
             "pertisk-rproxy",
             "unit-test",

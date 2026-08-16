@@ -1,43 +1,43 @@
-# Deploy overrides for the omni-proxmox Talos cluster (NFS RWX).
+# Example cluster overrides — copy to values.local.yaml (gitignored) for real deploys.
 #
 # Prerequisites:
-#   1. PostgreSQL reachable from the cluster (referenced via existingSecret below).
+#   1. PostgreSQL reachable from the cluster (existingSecret below).
 #   2. Create the app secret (do not commit secrets):
 #        kubectl create secret generic pertisk-gits-secret \
-#          --namespace pertisk-proxy \
+#          --namespace pertisk-gits \
 #          --from-literal=database-url='postgres://USER:PASS@HOST:5432/pertisk_gits' \
 #          --from-literal=jwt-secret="$(openssl rand -hex 32)" \
-#          --from-literal=secrets-encryption-key="$(openssl rand -hex 32)" \
-#          --kubeconfig /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
-#   3. NFS StorageClass `nfs-client` present on the cluster.
-#   4. TLS secret `admin-talos-tls` present in the `pertisk-proxy` namespace.
-#   5. Harbor pull secret (private registry):
-#        kubectl create secret docker-registry harbor-pull \
-#          --namespace pertisk-proxy \
-#          --docker-server=harbor.homelab.pertisk.com \
+#          --from-literal=secrets-encryption-key="$(openssl rand -hex 32)"
+#   3. Shared RWX storage class (e.g. NFS) when replicaCount > 1.
+#   4. TLS secret for ingress (optional).
+#   5. Registry pull secret if using a private registry:
+#        kubectl create secret docker-registry registry-pull \
+#          --namespace pertisk-gits \
+#          --docker-server=registry.example.com \
 #          --docker-username='<user>' \
-#          --docker-password='<pass-or-token>' \
-#          --kubeconfig /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
+#          --docker-password='<pass-or-token>'
 #
 # Install:
+#   cp deploy/helm/pertisk-gits/values.cluster.example.yaml \
+#      deploy/helm/pertisk-gits/values.local.yaml
+#   # edit values.local.yaml
 #   helm upgrade --install pertisk-gits ./deploy/helm/pertisk-gits \
-#     --namespace pertisk-proxy --create-namespace \
-#     -f deploy/helm/pertisk-gits/values-talos.yaml \
-#     --kubeconfig /Users/nat/.kube/omni-proxmox-285h-kubeconfig.yaml
+#     --namespace pertisk-gits --create-namespace \
+#     -f deploy/helm/pertisk-gits/values.local.yaml
 
 replicaCount: 2
 
 image:
-  repository: harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/pertisk-gits
-  tag: "0.4.22"
+  repository: ghcr.io/example/pertisk/pertisk-gits
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
 
-# Private Harbor — cluster needs credentials to pull (see prerequisite 5)
+# Private registry — cluster needs credentials to pull (see prerequisite 5)
 imagePullSecrets:
-  - name: harbor-pull
+  - name: registry-pull
 
 # Must match runner apiUrl and clone URLs
-publicUrl: "https://gitdev.talos.pertisk.com"
+publicUrl: "https://git.example.com"
 
 database:
   url: ""
@@ -64,20 +64,19 @@ service:
 
 ingress:
   enabled: true
-  className: pertisk-proxy
+  className: nginx
   annotations:
-    # Large registry pushes — tune for your ingress controller
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
   hosts:
-    - host: gitdev.talos.pertisk.com
+    - host: git.example.com
       paths:
         - path: /
           pathType: Prefix
   tls:
-    - secretName: admin-talos-tls
+    - secretName: pertisk-gits-tls
       hosts:
-        - gitdev.talos.pertisk.com
+        - git.example.com
 
 resources:
   requests:
@@ -96,7 +95,6 @@ secrets:
     name: pertisk-gits-secret
     key: secrets-encryption-key
 
-# Spread API pods across nodes (same pattern as pertisk-runner)
 affinity:
   podAntiAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:

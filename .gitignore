@@ -36,3 +36,7 @@ pertisk-backup-linux-arm64
 data/search
 data-backup/
 
+# Local deploy overrides (never commit)
+scripts/hosts.local.sh
+deploy/helm/**/values.local.yaml
+

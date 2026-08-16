@@ -32,7 +32,7 @@ resources:
     cpu: "1"
     memory: 512Mi
 
-# AMD64 cluster (omni-proxmox). For ARM, use:
+# AMD64 cluster. For ARM, use:
 #   --set-json 'nodeSelector={"kubernetes.io/arch":"arm64"}'
 nodeSelector:
   kubernetes.io/arch: amd64

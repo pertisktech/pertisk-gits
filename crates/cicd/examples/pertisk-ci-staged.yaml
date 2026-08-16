@@ -10,9 +10,9 @@
 #       POST .../pipelines/{run_id}/jobs/{job_id}/play  (manual jobs on push runs)
 #
 # Secrets (Group or Repo → Secrets):
-#   dev  HARBOR_URL = harbor-dev.tools.thaidevops.co
-#   qa   HARBOR_URL = harbor-qa.tools.thaidevops.co
-#   uat  HARBOR_URL = harbor-uat.tools.thaidevops.co
+#   dev  HARBOR_URL = harbor-dev.example.com
+#   qa   HARBOR_URL = harbor-qa.example.com
+#   uat  HARBOR_URL = harbor-uat.example.com
 
 on:
   push:

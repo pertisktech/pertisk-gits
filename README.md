@@ -79,18 +79,19 @@ For production backup/restore (GitLab-style CLI, S3/MinIO/RustFS), see [docs/BAC
 Like [pertisk-proxy](https://github.com/pertisktech/pertisk-proxy), packages are built with Docker cross-compile + fpm (DEB/RPM).
 
 ```bash
-# Build Linux package (amd64 DEB + RPM + tarball → release/)
-make build VERSION=0.1.0
+# Private host lists / tokens (gitignored)
+cp scripts/hosts.local.example.sh scripts/hosts.local.sh
 
-# Build + deploy (auto-detect deb/rpm on remote host)
-make deploy DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.0
+# Build packages (DEB + RPM, amd64 + arm64 → release/)
+VERSION=0.1.0 ./scripts/build.sh
 
-# Or explicit package manager
-make deploy-rpm DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.0
-make deploy-deb DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.0
+# Deploy from release/ to hosts in hosts.local.sh
+VERSION=0.1.0 ./scripts/deploy.sh
 
-# Build only (both architectures)
-make package VERSION=0.1.0
+# Or deploy a single host via Make
+make deploy DEPLOY_HOST=user@host VERSION=0.1.0
+make deploy-rpm DEPLOY_HOST=user@host VERSION=0.1.0
+make deploy-deb DEPLOY_HOST=user@host VERSION=0.1.0
 
 # Deploy existing package (skip rebuild)
 make deploy DEPLOY_HOST=user@host VERSION=0.1.0 PACKAGE_BUILD=0
@@ -99,6 +100,8 @@ make deploy DEPLOY_HOST=user@host VERSION=0.1.0 PACKAGE_BUILD=0
 Installed service: `pertisk-gits` on port **8080** (UI + API + Git HTTP).
 
 Config: `/etc/pertisk-gits/pertisk-gits.conf` — set `DATABASE_URL`, `JWT_SECRET`, and `GIT_PUBLIC_BASE_URL`, then `sudo systemctl restart pertisk-gits`.
+
+Before publishing this repository, rotate any secrets that were previously committed (DB password, runner tokens) — see [NOTE.md](NOTE.md).
 
 ## API Endpoints (Phase 0)
 

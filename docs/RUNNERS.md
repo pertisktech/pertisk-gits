@@ -88,21 +88,21 @@ PERTISK_RUNNER_MAX_PARALLEL=4
 
 Multi-stage image: `docker/Dockerfile.runner.release` target `runtime` (Debian bookworm-slim + git, curl, Docker CLI).
 
-Default registry: `harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/runner`
+Default registry: `ghcr.io/example/pertisk/runner` (override with `RUNNER_REGISTRY`).
 
 ```bash
-docker login harbor.homelab.pertisk.com
+docker login ghcr.io
 
 # Local load (amd64)
 make runner-image VERSION=0.1.84
 
-# Push amd64 to Harbor
+# Push amd64
 make runner-image-push VERSION=0.1.84
 
 # Push amd64 + arm64 (separate builds merged into one manifest — required for ARM nodes)
 make runner-image-multi VERSION=0.1.84
 
-# ARM only (Talos / Graviton nodes)
+# ARM only
 make runner-image-arm64 VERSION=0.1.84
 ```
 

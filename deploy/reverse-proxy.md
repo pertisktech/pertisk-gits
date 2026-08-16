@@ -28,10 +28,10 @@ API_PORT=8080
 DATABASE_URL=postgres://pertisk:SECRET@127.0.0.1:5432/pertisk_gits
 JWT_SECRET=<long-random-secret>
 REPOS_ROOT=/var/lib/pertisk-gits/repos
-GIT_PUBLIC_BASE_URL=https://gitdev.cloud.pertisk.com
+GIT_PUBLIC_BASE_URL=https://git.example.com
 GIT_SSH_HOST=0.0.0.0
 GIT_SSH_PORT=2222
-GIT_SSH_PUBLIC_HOST=gitdev.cloud.pertisk.com
+GIT_SSH_PUBLIC_HOST=git.example.com
 GIT_SSH_HOST_KEY_PATH=/var/lib/pertisk-gits/ssh_host_key
 WEB_DIST=/usr/share/pertisk-gits/web
 ```
@@ -69,7 +69,7 @@ In the **pertisk-proxy admin UI** → **Sites** → add:
 
 | Field | Value |
 |-------|--------|
-| Host | `gitdev.cloud.pertisk.com` |
+| Host | `git.example.com` |
 | Upstream | `127.0.0.1:8080` |
 | Path | `/` (prefix — all paths) |
 
@@ -83,7 +83,7 @@ Enable TLS (ACME) for that host. Do **not** split UI and API into different upst
 
 ## Kubernetes / nginx ingress
 
-If `gitdev.cloud.pertisk.com` is routed through nginx ingress (not pertisk-proxy on the same host), add annotations:
+If `git.example.com` is routed through nginx ingress (not pertisk-proxy on the same host), add annotations:
 
 ```yaml
 metadata:
@@ -99,7 +99,7 @@ metadata:
 ## Caddy
 
 ```caddy
-gitdev.cloud.pertisk.com {
+git.example.com {
     request_body {
         max_size 5GB
     }
@@ -114,7 +114,7 @@ gitdev.cloud.pertisk.com {
 ```nginx
 server {
     listen 443 ssl;
-    server_name gitdev.cloud.pertisk.com;
+    server_name git.example.com;
 
     location / {
         proxy_pass http://127.0.0.1:8080;

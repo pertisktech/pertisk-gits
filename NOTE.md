@@ -1,32 +1,33 @@
 ## Build (packages + Docker images)
 
 ```sh
-export VERSION=0.1.87
-./build.sh
+export VERSION=0.1.89
+./scripts/build.sh
 ```
 
-Builds pertisk-gits and pertisk-runner DEB/RPM (amd64 + arm64) and pushes multi-arch Docker images.
+Builds pertisk-gits and pertisk-runner DEB/RPM (amd64 + arm64).
 
-## Deploy (all hosts, uses artifacts from build)
+## Deploy (hosts from hosts.local.sh)
 
 ```sh
-export VERSION=0.1.87
-./build.sh   # skip if release/ already has this version
-./deploy.sh
+cp scripts/hosts.local.example.sh scripts/hosts.local.sh   # once; edit privately
+export VERSION=0.1.89
+./scripts/build.sh   # skip if release/ already has this version
+./scripts/deploy.sh
 ```
 
-Or build and deploy in one step: `VERSION=0.1.87 ./build-deploy.sh`
+Or build and deploy in one step: `VERSION=0.1.89 ./scripts/build-deploy.sh`
 
-## Deploy git server only
+## Deploy a single host
 
 ```sh
-make deploy-rpm DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.87
+make deploy-rpm DEPLOY_HOST=user@host VERSION=0.1.89
+make install-runner DEPLOY_HOST=user@host VERSION=0.1.89
 ```
 
-## Deploy git runner only
+## Before making the repo public
 
-```sh
-make install-runner DEPLOY_HOST=nat@103.117.150.228 VERSION=0.1.87
-make install-runner DEPLOY_HOST=almalinux@10.1.1.14 VERSION=0.1.87
-make install-runner DEPLOY_HOST=root@135.181.197.40 VERSION=0.1.87
-```
+Rotate secrets that appeared in git history (even after this scrub):
+
+1. Postgres password previously in `Makefile` / local `.env` — change the DB password and update `.env` / server conf.
+2. Runner token previously in `deploy-runner.sh` — revoke/re-register; put the new token only in `scripts/hosts.local.sh` or a Kubernetes Secret.

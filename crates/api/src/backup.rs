@@ -1428,10 +1428,10 @@ mod tests {
     #[test]
     fn parses_postgres_url_into_connection_info() {
         let info = pg_connection_info(
-            "postgres://user:secret@10.1.1.233:5432/pertisk_gits?sslmode=require",
+            "postgres://user:secret@192.0.2.10:5432/pertisk_gits?sslmode=require",
         )
         .unwrap();
-        assert_eq!(info.host, "10.1.1.233");
+        assert_eq!(info.host, "192.0.2.10");
         assert_eq!(info.port, "5432");
         assert_eq!(info.database, "pertisk_gits");
         assert_eq!(info.user, "user");

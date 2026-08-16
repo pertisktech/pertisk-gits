@@ -1,25 +1,23 @@
-# HA overrides for Talos Orion (arm64 + NFS RWX).
+# Example HA overrides (multi-arch / RWX). Copy to values.local.yaml and edit.
 #
 # Prerequisites:
-#   1. HA PostgreSQL reachable from the cluster (update secret below).
+#   1. HA PostgreSQL reachable from the cluster.
 #   2. kubectl create secret … database-url + jwt-secret (do not commit secrets).
-#   3. NFS StorageClass `nfs-client` (already on talos-orion).
+#   3. RWX StorageClass (e.g. nfs-client).
 #
 # Install:
 #   helm upgrade --install pertisk-gits ./deploy/helm/pertisk-gits \
-#     --namespace pertisk-proxy --create-namespace \
-#     -f deploy/helm/pertisk-gits/values-ha-talos.yaml \
-#     --kubeconfig /Users/nat/.kube/talos-orion-cluster-kubeconfig.yaml
+#     --namespace pertisk-gits --create-namespace \
+#     -f deploy/helm/pertisk-gits/values.local.yaml
 
 replicaCount: 2
 
 image:
-  repository: harbor.homelab.pertisk.com/pertisksoft/pertisk-proxy/pertisk-gits
-  tag: "0.2.65"
+  repository: ghcr.io/example/pertisk/pertisk-gits
+  tag: "0.1.0"
   pullPolicy: IfNotPresent
 
-# Must match runner apiUrl and clone URLs
-publicUrl: "https://gitdev.orion.thaidevops.co"
+publicUrl: "https://git.example.com"
 
 database:
   url: ""
@@ -33,7 +31,6 @@ jwt:
     name: pertisk-gits-secret
     key: jwt-secret
 
-# Shared bare repos — required for replicaCount > 1
 persistence:
   enabled: true
   size: 100Gi
@@ -46,21 +43,19 @@ service:
 
 ingress:
   enabled: true
-  className: pertisk-proxy
+  className: nginx
   annotations:
-    # Large registry pushes — tune for your ingress controller
     nginx.ingress.kubernetes.io/proxy-body-size: "0"
     nginx.ingress.kubernetes.io/proxy-request-buffering: "off"
   hosts:
-    - host: gitdev.orion.thaidevops.co
+    - host: git.example.com
       paths:
         - path: /
           pathType: Prefix
-  #tls: []
   tls:
-     - secretName: admin-orion-tls
-       hosts:
-         - gitdev.orion.thaidevops.co
+    - secretName: pertisk-gits-tls
+      hosts:
+        - git.example.com
 
 resources:
   requests:
@@ -70,8 +65,7 @@ resources:
     cpu: "2"
     memory: 2Gi
 
-nodeSelector:
-  kubernetes.io/arch: arm64
+nodeSelector: {}
 
 podSecurityContext:
   fsGroup: 1000
@@ -82,7 +76,6 @@ secrets:
     name: pertisk-gits-secret
     key: secrets-encryption-key
 
-# Spread API pods across nodes (same pattern as pertisk-runner)
 affinity:
   podAntiAffinity:
     preferredDuringSchedulingIgnoredDuringExecution:
