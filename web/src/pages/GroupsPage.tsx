@@ -53,7 +53,7 @@ export function GroupsPage() {
     <>
       <PageHeader
         title="Groups"
-        subtitle="Top-level namespaces for repositories and subgroups"
+        subtitle="Organize projects and members into teams"
         action={
           <div className="flex flex-wrap items-center gap-2">
             <ImportMenuDropdown />

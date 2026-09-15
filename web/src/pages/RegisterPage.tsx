@@ -1,16 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { Moon, Sun, UserPlus } from 'lucide-react'
+import { UserPlus } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { AppVersion } from '../components/AppVersion'
-import { useTheme } from '../context/ThemeContext'
 import styles from './AuthPage.module.css'
 
 export function RegisterPage() {
   const { setSession } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
@@ -55,13 +53,6 @@ export function RegisterPage() {
   if (registrationInfo && !registrationInfo.enabled) {
     return (
       <div className={styles.wrap}>
-        <header className={styles.topBar}>
-          <button type="button" className={styles.themeToggle} onClick={toggleTheme} data-no-global-button-hover="true">
-            {isDark ? <Sun size={16} /> : <Moon size={16} />}
-            {isDark ? 'Light' : 'Dark'}
-          </button>
-        </header>
-
         <div className={styles.brand}>
           <img src="/logo.png" alt="" className={styles.brandLogo} />
           <span className={styles.brandName}>Pertisk Gits</span>
@@ -83,13 +74,6 @@ export function RegisterPage() {
 
   return (
     <div className={styles.wrap}>
-      <header className={styles.topBar}>
-        <button type="button" className={styles.themeToggle} onClick={toggleTheme} data-no-global-button-hover="true">
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          {isDark ? 'Light' : 'Dark'}
-        </button>
-      </header>
-
       <div className={styles.brand}>
         <img src="/logo.png" alt="" className={styles.brandLogo} />
         <span className={styles.brandName}>Pertisk Gits</span>
@@ -101,51 +85,43 @@ export function RegisterPage() {
           <h1 className={styles.title}>
             <UserPlus size={20} /> Create account
           </h1>
-          <p className={styles.subtitle}>
-            {registrationInfo?.require_approval
-              ? 'Register for access — a super admin must approve your account before you can sign in.'
-              : 'Join your team on Pertisk Gits'}
-          </p>
+          <p className={styles.subtitle}>Join your Git platform</p>
         </div>
 
-        {error && <p className={styles.error}>{error}</p>}
-        {pendingMessage && <p className={styles.success}>{pendingMessage}</p>}
+        <form className={styles.form} onSubmit={onSubmit}>
+          <label className={styles.field}>
+            <span>Username</span>
+            <input value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="username" />
+          </label>
+          <label className={styles.field}>
+            <span>Email</span>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+          </label>
+          <label className={styles.field}>
+            <span>Password</span>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="new-password"
+            />
+          </label>
+          {error && <p className={styles.error}>{error}</p>}
+          {pendingMessage && <p className={styles.pending}>{pendingMessage}</p>}
+          <button type="submit" className={styles.submit} disabled={loading} data-no-global-button-hover="true">
+            {loading ? 'Creating…' : 'Create account'}
+          </button>
+        </form>
 
-        {!pendingMessage && (
-          <form onSubmit={onSubmit} className={styles.form}>
-            <label className={styles.label}>
-              Username
-              <input className={styles.input} value={username} onChange={(e) => setUsername(e.target.value)} required />
-            </label>
-            <label className={styles.label}>
-              Email
-              <input className={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </label>
-            <label className={styles.label}>
-              Password
-              <input
-                className={styles.input}
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={8}
-                required
-              />
-            </label>
-            <button type="submit" className={styles.button} disabled={loading} data-no-global-button-hover="true">
-              {loading ? 'Creating…' : 'Create account'}
-            </button>
-          </form>
-        )}
-
-        <p className={styles.linkRow} style={{ marginTop: '1rem' }}>
-          {pendingMessage ? (
-            <Link to="/login">Go to sign in</Link>
-          ) : (
-            <>
-              Already have an account? <Link to="/login">Sign in</Link>
-            </>
-          )}
+        <p className={styles.linkRow}>
+          Already have an account? <Link to="/login">Sign in</Link>
         </p>
       </div>
     </div>

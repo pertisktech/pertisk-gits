@@ -1,49 +1,26 @@
 .wrap {
+  position: relative;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   padding: 1.5rem;
-  padding-top: 4rem;
-  gap: 1.5rem;
+  gap: 2rem;
+  overflow: hidden;
 }
 
-.topBar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3rem;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 1.25rem;
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
-  z-index: 10;
-}
-
-.themeToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.75rem;
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  background: transparent;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: color 0.15s, background 0.15s, border-color 0.15s;
-}
-
-.themeToggle:hover {
-  color: var(--color-text);
-  background: var(--color-hover);
+.wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.6;
+  background: radial-gradient(600px circle at 50% 0%, color-mix(in oklch, var(--color-primary) 18%, transparent), transparent 60%);
 }
 
 .brand {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -51,34 +28,37 @@
 }
 
 .brandVersion {
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  font-size: 0.6875rem;
+  color: var(--color-muted);
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
 .brandLogo {
   display: block;
-  width: 3rem;
-  height: 3rem;
+  width: 2.25rem;
+  height: 2.25rem;
   object-fit: contain;
+  border-radius: var(--radius-md);
 }
 
 .brandName {
-  font-size: var(--text-2xl);
-  font-weight: 700;
+  font-size: 1.25rem;
+  font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--color-text);
 }
 
 .card {
+  position: relative;
   width: 100%;
-  max-width: 28rem;
-  background: var(--color-surface);
+  max-width: 24rem;
+  background: color-mix(in oklch, var(--color-card) 70%, transparent);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-xl);
-  padding: 2rem 2.25rem;
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-2xl);
+  padding: 2rem;
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(24px);
 }
 
 .cardHeader {
@@ -87,13 +67,14 @@
 }
 
 .title {
-  margin: 0 0 0.35rem;
-  font-size: var(--text-2xl);
-  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--color-text);
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
   gap: 0.5rem;
 }
 
@@ -104,7 +85,7 @@
 .subtitle {
   margin: 0;
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-muted);
 }
 
 .form {
@@ -116,26 +97,30 @@
 .label {
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.375rem;
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: 500;
   color: var(--color-text);
 }
 
 .input {
-  padding: 0.5rem 0.75rem;
-  font-size: var(--text-base);
+  height: 2.5rem;
+  padding: 0 0.75rem;
+  font-size: var(--text-sm);
   font-family: inherit;
   color: var(--color-text);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
+  background: color-mix(in oklch, var(--color-bg) 60%, transparent);
+  border: 1px solid var(--color-input);
+  border-radius: var(--radius-lg);
   outline: none;
-  transition: border-color 0.15s;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
 }
 
 .input:focus {
-  border-color: var(--color-primary);
+  border-color: color-mix(in oklch, var(--color-primary) 60%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-primary) 20%, transparent);
 }
 
 .input::placeholder {
@@ -143,23 +128,27 @@
 }
 
 .button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
   margin-top: 0.25rem;
-  padding: 0.65rem 1.25rem;
-  font-size: var(--text-base);
+  padding: 0 1.25rem;
+  font-size: var(--text-sm);
   font-weight: 600;
   font-family: inherit;
   color: var(--color-on-primary);
-  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
+  background: linear-gradient(90deg, var(--color-primary), var(--color-chart-2));
   border: none;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: box-shadow 0.2s, opacity 0.2s;
-  box-shadow: 0 2px 8px color-mix(in srgb, var(--color-primary) 42%, transparent);
+  transition: opacity 0.15s;
+  box-shadow: var(--shadow-primary);
+  text-decoration: none;
 }
 
 .button:hover:not(:disabled) {
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--color-primary) 55%, transparent);
-  opacity: 0.95;
+  opacity: 0.9;
 }
 
 .button:disabled {
@@ -174,7 +163,8 @@
   text-align: center;
 }
 
-.success {
+.success,
+.pending {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-primary);
@@ -183,14 +173,15 @@
 }
 
 .linkRow {
-  margin: 0;
+  margin: 1.25rem 0 0;
   text-align: center;
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-muted);
 }
 
 .linkRow a {
   color: var(--color-primary);
+  font-weight: 500;
   text-decoration: none;
 }
 

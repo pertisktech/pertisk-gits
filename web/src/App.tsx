@@ -3,7 +3,6 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-
 import { AuthProvider } from './auth/AuthContext'
 import { SessionExpiryHandler } from './auth/SessionExpiryHandler'
 import { AppLayout } from './components/AppLayout'
-import { ThemeProvider } from './context/ThemeContext'
 import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { ActivityApproveUsersPage } from './pages/activity/ActivityApproveUsersPage'
 import { ActivityMergeRequestsPage } from './pages/activity/ActivityMergeRequestsPage'
@@ -70,52 +69,50 @@ function RedirectShortOrg() {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <BrowserRouter>
-            <SessionExpiryHandler />
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
-              <Route path="/auth/callback" element={<AuthCallbackPage />} />
-              <Route element={<AppLayout />}>
-                <Route element={<ProtectedRoute />}>
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/groups" element={<GroupsPage />} />
-                  <Route path="/groups/new" element={<NewGroupPage />} />
-                  <Route path="/groups/import" element={<GroupImportPage />} />
-                  <Route path="/activity" element={<Navigate to="/activity/merge-requests" replace />} />
-                  <Route path="/activity/merge-requests" element={<ActivityMergeRequestsPage />} />
-                  <Route element={<SuperAdminRoute />}>
-                    <Route path="/activity/approve-users" element={<ActivityApproveUsersPage />} />
-                  </Route>
-                  <Route path="/runners" element={<Navigate to="/admin/runners" replace />} />
-                  <Route element={<SuperAdminRoute />}>
-                    <Route path="/admin" element={<AdminSystemPage />} />
-                    <Route path="/admin/health" element={<AdminHealthPage />} />
-                    <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
-                    <Route path="/admin/observability" element={<AdminObservabilityPage />} />
-                    <Route path="/admin/auth" element={<AdminAuthPage />} />
-                    <Route path="/admin/users" element={<AdminUsersPage />} />
-                    <Route path="/admin/backups" element={<AdminBackupPage />} />
-                    <Route path="/admin/runners" element={<RunnersPage />} />
-                  </Route>
-                  <Route path="/profile" element={<ProfilePage />} />
-                  <Route path="/settings/auth" element={<Navigate to="/admin/auth" replace />} />
-                  <Route path="/organizations" element={<Navigate to="/groups" replace />} />
-                  <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />
+    <QueryClientProvider client={queryClient}>
+      <AuthProvider>
+        <BrowserRouter>
+          <SessionExpiryHandler />
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegisterPage />} />
+            <Route path="/auth/callback" element={<AuthCallbackPage />} />
+            <Route element={<AppLayout />}>
+              <Route element={<ProtectedRoute />}>
+                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard" element={<DashboardPage />} />
+                <Route path="/groups" element={<GroupsPage />} />
+                <Route path="/groups/new" element={<NewGroupPage />} />
+                <Route path="/groups/import" element={<GroupImportPage />} />
+                <Route path="/activity" element={<Navigate to="/activity/merge-requests" replace />} />
+                <Route path="/activity/merge-requests" element={<ActivityMergeRequestsPage />} />
+                <Route element={<SuperAdminRoute />}>
+                  <Route path="/activity/approve-users" element={<ActivityApproveUsersPage />} />
                 </Route>
-                <Route path="/groups/*" element={<GroupAreaRouter />} />
-                <Route path="/:orgSlug/:repoSlug" element={<RedirectShortRepo />} />
-                <Route path="/:orgSlug" element={<RedirectShortOrg />} />
+                <Route path="/runners" element={<Navigate to="/admin/runners" replace />} />
+                <Route element={<SuperAdminRoute />}>
+                  <Route path="/admin" element={<AdminSystemPage />} />
+                  <Route path="/admin/health" element={<AdminHealthPage />} />
+                  <Route path="/admin/configuration" element={<AdminConfigurationPage />} />
+                  <Route path="/admin/observability" element={<AdminObservabilityPage />} />
+                  <Route path="/admin/auth" element={<AdminAuthPage />} />
+                  <Route path="/admin/users" element={<AdminUsersPage />} />
+                  <Route path="/admin/backups" element={<AdminBackupPage />} />
+                  <Route path="/admin/runners" element={<RunnersPage />} />
+                </Route>
+                <Route path="/profile" element={<ProfilePage />} />
+                <Route path="/settings/auth" element={<Navigate to="/admin/auth" replace />} />
+                <Route path="/organizations" element={<Navigate to="/groups" replace />} />
+                <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />
               </Route>
-              <Route path="*" element={<Navigate to="/dashboard" replace />} />
-            </Routes>
-          </BrowserRouter>
-        </AuthProvider>
-      </QueryClientProvider>
-    </ThemeProvider>
+              <Route path="/groups/*" element={<GroupAreaRouter />} />
+              <Route path="/:orgSlug/:repoSlug" element={<RedirectShortRepo />} />
+              <Route path="/:orgSlug" element={<RedirectShortOrg />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
+    </QueryClientProvider>
   )
 }

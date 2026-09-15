@@ -1,8 +1,7 @@
-import { Menu, Moon, Plus, Sun, X } from 'lucide-react'
+import { Menu, Plus, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useEffectiveUser } from '../auth/AuthContext'
-import { useTheme } from '../context/ThemeContext'
 import { cn } from '../utils/cn'
 import { AppSidebar } from './AppSidebar'
 import { GlobalSearch } from './GlobalSearch'
@@ -16,7 +15,6 @@ function getStoredSidebarCollapsed(): boolean {
 }
 
 export function AppLayout() {
-  const { isDark, toggleTheme } = useTheme()
   const user = useEffectiveUser()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -74,21 +72,12 @@ export function AppLayout() {
 
             <GlobalSearch />
 
-            <div className="ml-auto flex items-center gap-1.5 shrink-0">
+            <div className="ml-auto flex items-center gap-2 shrink-0">
               {user && (
                 <NavLink to="/groups/new" className="app-topbar-icon-btn" title="New group">
-                  <Plus size={16} />
+                  <Plus size={18} />
                 </NavLink>
               )}
-              <button
-                type="button"
-                onClick={toggleTheme}
-                className="app-topbar-icon-btn"
-                data-no-global-button-hover="true"
-                title={isDark ? 'Light mode' : 'Dark mode'}
-              >
-                {isDark ? <Sun size={16} /> : <Moon size={16} />}
-              </button>
               {user ? (
                 <UserMenu />
               ) : (

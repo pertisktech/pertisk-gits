@@ -59,6 +59,8 @@ pub struct RepoBrowser {
     pub tags: Vec<String>,
     pub default_ref: String,
     pub empty: bool,
+    #[serde(default)]
+    pub languages: Vec<crate::languages::LanguageStat>,
 }
 
 pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Result<RepoBrowser> {
@@ -73,11 +75,20 @@ pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Res
 
     let empty = branches.is_empty() || !ref_exists(repo_path, &default_ref).await?;
 
+    let languages = if empty {
+        Vec::new()
+    } else {
+        crate::languages::analyze_languages(repo_path, &default_ref, RefKind::Branch)
+            .await
+            .unwrap_or_default()
+    };
+
     Ok(RepoBrowser {
         branches,
         tags,
         default_ref,
         empty,
+        languages,
     })
 }
 
@@ -946,6 +957,11 @@ fn parse_ls_tree_line(line: &str, prefix: &str) -> Option<TreeEntry> {
 async fn git(repo_path: &Path, args: &[&str]) -> anyhow::Result<String> {
     let bytes = git_bytes(repo_path, args).await?;
     Ok(String::from_utf8_lossy(&bytes).trim_end().to_string())
+}
+
+/// Recursive `git ls-tree -r -l` for language byte accounting.
+pub async fn git_ls_tree_recursive(repo_path: &Path, refspec: &str) -> anyhow::Result<String> {
+    git(repo_path, &["ls-tree", "-r", "-l", "--full-tree", refspec]).await
 }
 
 async fn git_bytes(repo_path: &Path, args: &[&str]) -> anyhow::Result<Vec<u8>> {

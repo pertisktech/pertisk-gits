@@ -2,7 +2,7 @@
   display: flex;
   align-items: flex-start;
   gap: 0.875rem;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
 }
 
 .main {
@@ -10,29 +10,18 @@
   min-width: 0;
 }
 
-.icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.75rem;
-  height: 2.75rem;
-  flex-shrink: 0;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--color-blue-b1) 16%, transparent);
-  color: var(--color-blue-b1);
-}
-
-.iconLetter {
-  font-size: var(--text-lg);
-  font-weight: 600;
-  line-height: 1;
-  text-transform: uppercase;
+.iconLg {
+  width: 2.75rem !important;
+  height: 2.75rem !important;
+  font-size: var(--text-lg) !important;
+  border-radius: var(--radius-xl) !important;
 }
 
 .title {
   margin: 0;
   font-size: var(--text-2xl);
   font-weight: 600;
+  letter-spacing: -0.02em;
   color: var(--color-text);
   display: flex;
   align-items: center;
@@ -44,6 +33,6 @@
 .description {
   margin: 0.35rem 0 0;
   font-size: var(--text-sm);
-  color: var(--color-text-secondary);
+  color: var(--color-muted);
   line-height: 1.45;
 }

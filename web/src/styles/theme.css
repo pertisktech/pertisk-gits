@@ -1,58 +1,68 @@
-/* Pertisk Gits — design tokens (dark default, light via html.light) */
+/* Pertisk Gits — fixed purple-on-dark design tokens (design prototype) */
 
-/* ── Dark theme (default) ─────────────────────────────────────────────────── */
 :root {
-  /* Neutrals — violet-tinted dark navy (n0 darkest → n14 lightest) */
-  --color-naturals-n0: #0c0d18;
-  --color-naturals-n1: #10111e;
-  --color-naturals-n2: #131421;
-  --color-naturals-n3: #181a2c;
-  --color-naturals-n4: #1d1f32;
-  --color-naturals-n5: #23253c;
-  --color-naturals-n6: #2c2f4c;
-  --color-naturals-n7: #3b3e5e;
-  --color-naturals-n8: #585b7a;
-  --color-naturals-n9: #7778a0;
-  --color-naturals-n10: #8e90ad;
-  --color-naturals-n11: #a8aac6;
-  --color-naturals-n12: #c8c9de;
-  --color-naturals-n13: #e6e7f0;
-  --color-naturals-n14: #ffffff;
+  color-scheme: dark;
 
-  /* Primary — violet */
-  --color-primary-p1: #d8c8fd;
-  --color-primary-p2: #b89ef9;
-  --color-primary-p3: #9a7bf7;
-  --color-primary-p4: #7c59f0;
-  --color-primary-p5: #5f3fd4;
-  --color-primary-p6: #281a5e;
+  /* Neutrals — purple-tinted dark (n0 darkest → n14 lightest) */
+  --color-naturals-n0: oklch(0.16 0.024 274);
+  --color-naturals-n1: oklch(0.18 0.026 274);
+  --color-naturals-n2: oklch(0.2 0.028 274);
+  --color-naturals-n3: oklch(0.22 0.03 274);
+  --color-naturals-n4: oklch(0.24 0.028 274);
+  --color-naturals-n5: oklch(0.26 0.03 274);
+  --color-naturals-n6: oklch(0.3 0.06 292);
+  --color-naturals-n7: oklch(0.38 0.04 285);
+  --color-naturals-n8: oklch(0.5 0.04 285);
+  --color-naturals-n9: oklch(0.62 0.035 285);
+  --color-naturals-n10: oklch(0.7 0.03 285);
+  --color-naturals-n11: oklch(0.78 0.02 286);
+  --color-naturals-n12: oklch(0.88 0.012 286);
+  --color-naturals-n13: oklch(0.96 0.008 286);
+  --color-naturals-n14: oklch(0.99 0 0);
 
-  /* Semantic palette */
-  --color-green-g1: #4ade9b;
-  --color-green-g2: #22a06b;
-  --color-red-r1: #ff5c56;
-  --color-red-r2: #6e2f30;
-  --color-yellow-y1: #fbbf24;
-  --color-yellow-y2: #d97706;
-  --color-blue-b1: #60a5fa;
+  /* Primary — violet / magenta */
+  --color-primary-p1: oklch(0.88 0.08 295);
+  --color-primary-p2: oklch(0.78 0.14 295);
+  --color-primary-p3: oklch(0.66 0.19 295);
+  --color-primary-p4: oklch(0.58 0.2 295);
+  --color-primary-p5: oklch(0.48 0.18 295);
+  --color-primary-p6: oklch(0.32 0.1 295);
 
-  /* Surface aliases */
+  /* Semantic */
+  --color-green-g1: oklch(0.68 0.16 155);
+  --color-green-g2: oklch(0.55 0.14 155);
+  --color-red-r1: oklch(0.62 0.21 22);
+  --color-red-r2: oklch(0.42 0.14 22);
+  --color-yellow-y1: oklch(0.78 0.15 78);
+  --color-yellow-y2: oklch(0.65 0.14 70);
+  --color-blue-b1: oklch(0.62 0.16 250);
+
+  /* Surface aliases (map to design semantic tokens) */
   --color-bg: var(--color-naturals-n0);
   --color-surface: var(--color-naturals-n1);
   --color-surface-elevated: var(--color-naturals-n2);
   --color-hover: var(--color-naturals-n4);
-  --color-border: var(--color-naturals-n5);
+  --color-border: oklch(1 0 0 / 9%);
+  --color-input: oklch(1 0 0 / 12%);
   --color-text: var(--color-naturals-n13);
   --color-text-secondary: var(--color-naturals-n11);
-  --color-muted: var(--color-naturals-n9);
-  --color-card: var(--color-naturals-n2);
-  --color-sidebar: #090a14;
+  --color-muted: var(--color-naturals-n10);
+  --color-card: oklch(0.2 0.028 274);
+  --color-sidebar: oklch(0.18 0.026 274);
+  --color-sidebar-accent: oklch(0.28 0.05 292);
+  --color-accent: oklch(0.3 0.06 292);
   --color-primary: var(--color-primary-p3);
   --color-primary-hover: var(--color-primary-p2);
-  --color-on-primary: #ffffff;
+  --color-on-primary: oklch(0.99 0 0);
   --color-bg-gradient-start: var(--color-naturals-n0);
   --color-bg-gradient-end: var(--color-naturals-n1);
-  --color-overlay-backdrop: rgba(0, 0, 0, 0.75);
+  --color-overlay-backdrop: oklch(0 0 0 / 0.75);
+  --color-primary-glow: color-mix(in oklch, var(--color-primary) 28%, transparent);
+  --color-success: var(--color-green-g1);
+  --color-success-foreground: oklch(0.99 0 0);
+  --color-warning: var(--color-yellow-y1);
+  --color-warning-foreground: var(--color-naturals-n2);
+  --color-chart-2: oklch(0.7 0.15 320);
 
   /* Icon / status */
   --color-icon-primary: var(--color-primary-p3);
@@ -62,211 +72,106 @@
   --color-icon-danger: var(--color-red-r1);
   --color-icon-info: var(--color-blue-b1);
 
-  --color-status-ready: #25a7a0;
-  --color-status-ready-bg: rgba(37, 167, 160, 0.12);
-  --color-workload-accent: #14b8a6;
-  --color-workload-accent-strong: #0f766e;
-  --color-workload-accent-bg: color-mix(in srgb, var(--color-workload-accent) 16%, transparent);
-  --color-workload-accent-soft: color-mix(in srgb, var(--color-workload-accent) 38%, var(--color-border));
+  --color-status-ready: oklch(0.65 0.12 180);
+  --color-status-ready-bg: color-mix(in oklch, var(--color-status-ready) 12%, transparent);
+  --color-workload-accent: oklch(0.65 0.12 180);
+  --color-workload-accent-strong: oklch(0.5 0.1 180);
+  --color-workload-accent-bg: color-mix(in oklch, var(--color-workload-accent) 16%, transparent);
+  --color-workload-accent-soft: color-mix(in oklch, var(--color-workload-accent) 38%, var(--color-border));
 
   /* Dashboard metrics */
   --color-dashboard-success: var(--color-green-g1);
-  --color-dashboard-success-bg: color-mix(in srgb, var(--color-green-g1) 12%, transparent);
+  --color-dashboard-success-bg: color-mix(in oklch, var(--color-green-g1) 12%, transparent);
   --color-dashboard-warning: var(--color-yellow-y1);
-  --color-dashboard-warning-bg: color-mix(in srgb, var(--color-yellow-y1) 12%, transparent);
+  --color-dashboard-warning-bg: color-mix(in oklch, var(--color-yellow-y1) 12%, transparent);
   --color-dashboard-danger: var(--color-red-r1);
-  --color-dashboard-danger-bg: color-mix(in srgb, var(--color-red-r1) 12%, transparent);
+  --color-dashboard-danger-bg: color-mix(in oklch, var(--color-red-r1) 12%, transparent);
   --color-dashboard-info: var(--color-blue-b1);
-  --color-dashboard-info-bg: color-mix(in srgb, var(--color-blue-b1) 12%, transparent);
+  --color-dashboard-info-bg: color-mix(in oklch, var(--color-blue-b1) 12%, transparent);
   --color-dashboard-metric-primary: var(--color-green-g2);
-  --color-dashboard-metric-primary-bg: color-mix(in srgb, var(--color-green-g2) 12%, transparent);
-  --color-dashboard-metric-secondary: #a855f7;
-  --color-dashboard-metric-secondary-bg: rgba(168, 85, 247, 0.12);
-  --color-dashboard-metric-tertiary: #ec4899;
-  --color-dashboard-metric-tertiary-bg: rgba(236, 72, 153, 0.12);
-  --color-dashboard-metric-quaternary: #06b6d4;
-  --color-dashboard-metric-quaternary-bg: rgba(6, 182, 212, 0.12);
+  --color-dashboard-metric-primary-bg: color-mix(in oklch, var(--color-green-g2) 12%, transparent);
+  --color-dashboard-metric-secondary: var(--color-primary-p3);
+  --color-dashboard-metric-secondary-bg: color-mix(in oklch, var(--color-primary-p3) 12%, transparent);
+  --color-dashboard-metric-tertiary: oklch(0.7 0.15 320);
+  --color-dashboard-metric-tertiary-bg: color-mix(in oklch, oklch(0.7 0.15 320) 12%, transparent);
+  --color-dashboard-metric-quaternary: oklch(0.7 0.12 220);
+  --color-dashboard-metric-quaternary-bg: color-mix(in oklch, oklch(0.7 0.12 220) 12%, transparent);
 
   /* Resource / status labels */
-  --label-green: #61ff9b;
-  --label-red: #fc2226;
-  --label-orange: #f67a51;
-  --label-violet: #fd90e6;
-  --label-yellow: #fcdf69;
-  --label-cyan: #00c4d6;
-  --label-blue1: #6fabeb;
-  --label-blue2: #3388ff;
-  --label-blue3: #9675f0;
-  --label-light1: #e89292;
-  --label-light2: #c09c75;
-  --label-light3: #b7bb7e;
-  --label-light4: #849a7f;
-  --label-light5: #7ba09d;
-  --label-light6: #7e86ba;
-  --label-light7: #a57bbc;
+  --label-green: var(--color-green-g1);
+  --label-red: var(--color-red-r1);
+  --label-orange: oklch(0.7 0.16 45);
+  --label-violet: oklch(0.75 0.14 320);
+  --label-yellow: var(--color-yellow-y1);
+  --label-cyan: oklch(0.72 0.12 200);
+  --label-blue1: var(--color-blue-b1);
+  --label-blue2: oklch(0.58 0.18 260);
+  --label-blue3: var(--color-primary-p3);
+  --label-light1: oklch(0.72 0.12 25);
+  --label-light2: oklch(0.72 0.1 60);
+  --label-light3: oklch(0.75 0.1 100);
+  --label-light4: oklch(0.7 0.1 145);
+  --label-light5: oklch(0.7 0.1 190);
+  --label-light6: oklch(0.68 0.1 260);
+  --label-light7: oklch(0.7 0.12 300);
 
   /* CI terminal */
-  --color-terminal-user: #7ee787;
-  --color-terminal-host: #79c0ff;
-  --color-terminal-path: #d2a8ff;
+  --color-terminal-user: oklch(0.78 0.14 145);
+  --color-terminal-host: oklch(0.75 0.12 240);
+  --color-terminal-path: oklch(0.78 0.12 300);
   --color-terminal-ok: var(--color-green-g1);
   --color-terminal-error: var(--color-red-r1);
   --color-terminal-warn: var(--color-yellow-y1);
-  --color-terminal-shadow: color-mix(in srgb, black 28%, transparent);
+  --color-terminal-shadow: oklch(0 0 0 / 0.28);
   --color-terminal-mix: black;
 
   /* Bottom panel */
   --bottom-panel-bg: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--color-surface) 86%, transparent),
-    color-mix(in srgb, var(--color-bg) 95%, transparent)
+    color-mix(in oklch, var(--color-surface) 86%, transparent),
+    color-mix(in oklch, var(--color-bg) 95%, transparent)
   );
-  --bottom-panel-tabbar-bg: color-mix(in srgb, var(--color-surface-elevated) 88%, var(--color-bg));
-  --bottom-panel-tab-active-bg: color-mix(in srgb, var(--color-bg) 72%, var(--color-surface));
-  --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 34%, var(--color-border));
-  --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 80%, var(--color-surface));
+  --bottom-panel-tabbar-bg: color-mix(in oklch, var(--color-surface-elevated) 88%, var(--color-bg));
+  --bottom-panel-tab-active-bg: color-mix(in oklch, var(--color-bg) 72%, var(--color-surface));
+  --bottom-panel-tab-active-border: color-mix(in oklch, var(--color-primary) 34%, var(--color-border));
+  --bottom-panel-tab-hover-bg: color-mix(in oklch, var(--color-hover) 80%, var(--color-surface));
+
+  /* Radius — design base 0.75rem */
+  --radius: 0.75rem;
+  --radius-xs: calc(var(--radius) * 0.4);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 
   /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28);
-  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.45);
-  --shadow-sidebar: 0 0 0 1px rgba(31, 34, 46, 0.95), 8px 0 24px rgba(0, 0, 0, 0.32);
+  --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.28);
+  --shadow-md: 0 8px 24px oklch(0 0 0 / 0.35);
+  --shadow-lg: 0 16px 48px oklch(0 0 0 / 0.45);
+  --shadow-sidebar: 0 0 0 1px oklch(1 0 0 / 0.06), 8px 0 24px oklch(0 0 0 / 0.32);
+  --shadow-primary: 0 8px 24px color-mix(in oklch, var(--color-primary) 25%, transparent);
 
   --error: var(--color-red-r1);
   --warn: var(--color-yellow-y1);
 }
 
-html.dark[data-theme-set='pertisk-default'] {
-  --color-primary-glow: color-mix(in srgb, var(--color-primary) 28%, transparent);
-  color-scheme: dark;
-}
-
-/* ── Light theme fallback + Pertisk default ─────────────────────────────────── */
-html.light {
-  color-scheme: light;
-}
-
-/* Light surfaces aligned to TailAdmin gray scale; violet primary kept */
-html.light[data-theme-set='pertisk-default'] {
-  --color-naturals-n0: #ffffff;
-  --color-naturals-n1: #fcfcfd;
-  --color-naturals-n2: #f9fafb;
-  --color-naturals-n3: #f2f4f7;
-  --color-naturals-n4: #e4e7ec;
-  --color-naturals-n5: #d0d5dd;
-  --color-naturals-n6: #98a2b3;
-  --color-naturals-n7: #667085;
-  --color-naturals-n8: #475467;
-  --color-naturals-n9: #344054;
-  --color-naturals-n10: #1d2939;
-  --color-naturals-n11: #1d2939;
-  --color-naturals-n12: #101828;
-  --color-naturals-n13: #101828;
-  --color-naturals-n14: #0c111d;
-
-  --color-primary-p1: #ede9fe;
-  --color-primary-p2: #c4b5fd;
-  --color-primary-p3: #7c3aed;
-  --color-primary-p4: #6d28d9;
-  --color-primary-p5: #5b21b6;
-  --color-primary-p6: #f5f3ff;
-
-  --color-green-g1: #039855;
-  --color-green-g2: #027a48;
-  --color-red-r1: #d92d20;
-  --color-red-r2: #b42318;
-  --color-yellow-y1: #dc6803;
-  --color-yellow-y2: #b54708;
-  --color-blue-b1: #0ba5ec;
-
-  --color-bg: #f9fafb;
-  --color-surface: #ffffff;
-  --color-surface-elevated: #ffffff;
-  --color-hover: #f2f4f7;
-  --color-border: #e4e7ec;
-  --color-text: #101828;
-  --color-text-secondary: #475467;
-  --color-muted: #667085;
-  --color-card: #ffffff;
-  --color-sidebar: #ffffff;
-  --color-primary: #6d28d9;
-  --color-primary-hover: #7c3aed;
-  --color-on-primary: #ffffff;
-  --color-bg-gradient-start: #f9fafb;
-  --color-bg-gradient-end: #f9fafb;
-  --color-overlay-backdrop: rgba(16, 24, 40, 0.4);
-
-  --color-icon-secondary: #667085;
-
-  --color-status-ready: #039855;
-  --color-status-ready-bg: color-mix(in srgb, var(--color-status-ready) 10%, transparent);
-  --color-workload-accent: #0d9488;
-  --color-workload-accent-strong: #0f766e;
-
-  --color-dashboard-metric-secondary: #7c3aed;
-  --color-dashboard-metric-secondary-bg: color-mix(in srgb, var(--color-dashboard-metric-secondary) 10%, transparent);
-  --color-dashboard-metric-tertiary: #db2777;
-  --color-dashboard-metric-tertiary-bg: color-mix(in srgb, var(--color-dashboard-metric-tertiary) 10%, transparent);
-  --color-dashboard-metric-quaternary: #0891b2;
-  --color-dashboard-metric-quaternary-bg: color-mix(in srgb, var(--color-dashboard-metric-quaternary) 10%, transparent);
-
-  --label-green: #039855;
-  --label-red: #d92d20;
-  --label-orange: #ec4a0a;
-  --label-violet: #7c3aed;
-  --label-yellow: #dc6803;
-  --label-cyan: #0ba5ec;
-  --label-blue1: #465fff;
-  --label-blue2: #3641f5;
-  --label-blue3: #6d28d9;
-  --label-light1: #f04438;
-  --label-light2: #f79009;
-  --label-light3: #dc6803;
-  --label-light4: #12b76a;
-  --label-light5: #0ba5ec;
-  --label-light6: #465fff;
-  --label-light7: #7c3aed;
-
-  --color-terminal-user: #027a48;
-  --color-terminal-host: #0086c9;
-  --color-terminal-path: #6d28d9;
-  --color-terminal-ok: #027a48;
-  --color-terminal-error: #d92d20;
-  --color-terminal-warn: #dc6803;
-  --color-terminal-shadow: color-mix(in srgb, black 6%, transparent);
-  --color-terminal-mix: var(--color-naturals-n6);
-
-  --bottom-panel-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(249, 250, 251, 0.96));
-  --bottom-panel-tabbar-bg: color-mix(in srgb, var(--color-surface) 92%, var(--color-hover));
-  --bottom-panel-tab-active-bg: var(--color-surface);
-  --bottom-panel-tab-active-border: color-mix(in srgb, var(--color-primary) 22%, var(--color-border));
-  --bottom-panel-tab-hover-bg: color-mix(in srgb, var(--color-hover) 80%, var(--color-surface));
-
-  --shadow-sm: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
-  --shadow-md: 0px 4px 8px -2px rgba(16, 24, 40, 0.1), 0px 2px 4px -2px rgba(16, 24, 40, 0.06);
-  --shadow-lg: 0px 12px 16px -4px rgba(16, 24, 40, 0.08), 0px 4px 6px -2px rgba(16, 24, 40, 0.03);
-  --shadow-sidebar: 1px 0 0 0 #e4e7ec, 0px 1px 3px 0px rgba(16, 24, 40, 0.05);
-
-  --color-primary-glow: color-mix(in srgb, var(--color-primary) 14%, transparent);
-}
-
-/* ── Status badge utilities ───────────────────────────────────────────────── */
 .status-green {
-  background-color: color-mix(in srgb, var(--color-icon-success) 20%, transparent);
+  background-color: color-mix(in oklch, var(--color-icon-success) 20%, transparent);
   color: var(--color-icon-success);
 }
 
 .status-yellow {
-  background-color: color-mix(in srgb, var(--color-icon-warning) 20%, transparent);
+  background-color: color-mix(in oklch, var(--color-icon-warning) 20%, transparent);
   color: var(--color-icon-warning);
 }
 
 .status-red {
-  background-color: color-mix(in srgb, var(--color-icon-danger) 20%, transparent);
+  background-color: color-mix(in oklch, var(--color-icon-danger) 20%, transparent);
   color: var(--color-icon-danger);
 }
 
 .status-gray {
-  background-color: color-mix(in srgb, var(--color-icon-secondary) 20%, transparent);
+  background-color: color-mix(in oklch, var(--color-icon-secondary) 20%, transparent);
   color: var(--color-icon-secondary);
 }

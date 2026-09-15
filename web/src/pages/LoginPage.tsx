@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useState, type FormEvent } from 'react'
-import { Moon, Shield, Sun } from 'lucide-react'
+import { Shield } from 'lucide-react'
 import { Link, Navigate, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { AuthProviderPublic } from '../api/types'
@@ -8,14 +8,12 @@ import { getAuth0Client, isAuth0Provider } from '../auth/auth0'
 import { getStoredAuthToken, useAuth } from '../auth/AuthContext'
 import { isJwtExpired } from '../auth/session'
 import { AppVersion } from '../components/AppVersion'
-import { useTheme } from '../context/ThemeContext'
 import styles from './AuthPage.module.css'
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '/api/v1'
 
 export function LoginPage() {
   const { setSession, token, clearSession } = useAuth()
-  const { isDark, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const location = useLocation()
   const [searchParams] = useSearchParams()
@@ -211,18 +209,6 @@ export function LoginPage() {
 
   return (
     <div className={styles.wrap}>
-      <header className={styles.topBar}>
-        <button
-          type="button"
-          className={styles.themeToggle}
-          onClick={toggleTheme}
-          data-no-global-button-hover="true"
-        >
-          {isDark ? <Sun size={16} /> : <Moon size={16} />}
-          {isDark ? 'Light' : 'Dark'}
-        </button>
-      </header>
-
       <div className={styles.brand}>
         <img src="/logo.png" alt="" className={styles.brandLogo} />
         <span className={styles.brandName}>Pertisk Gits</span>

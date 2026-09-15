@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
-import { displayRepoName, projectInitial } from '../lib/projectInitial'
-import { StatusBadge, visibilityVariant } from './StatusBadge'
+import { displayRepoName } from '../lib/projectInitial'
+import { Badge, RepoIcon } from './primitives'
 import styles from './RepoHeader.module.css'
 
 interface RepoHeaderProps {
@@ -25,20 +25,20 @@ export function RepoHeader({
   return (
     <div className={`${styles.header} flex flex-wrap items-start justify-between gap-3`}>
       <div className={`${styles.main} flex items-start gap-3 min-w-0`}>
-        <div className={styles.icon} aria-hidden>
-          <span className={styles.iconLetter}>{projectInitial(title, repoSlug)}</span>
-        </div>
+        <RepoIcon name={title} className={styles.iconLg} />
         <div className="min-w-0">
           <h1 className={styles.title}>
             <span>{title}</span>
             {visibility && (
-              <StatusBadge variant={visibilityVariant(visibility)} className="ml-1">
+              <Badge variant={visibility === 'private' ? 'warning' : 'success'} className="ml-1">
                 {visibility}
-              </StatusBadge>
+              </Badge>
             )}
           </h1>
           <p className={styles.description}>
-            <span className="font-mono text-text-secondary">{orgPath}/{repoSlug}</span>
+            <span className="font-mono text-muted text-xs">
+              {orgPath}/{repoSlug}
+            </span>
           </p>
           {description && <p className={styles.description}>{description}</p>}
         </div>

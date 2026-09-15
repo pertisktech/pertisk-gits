@@ -56,6 +56,8 @@ export interface DashboardProjectStats {
   open_issue_count: number
   has_pipelines: boolean
   latest_pipeline_status: string | null
+  primary_language?: string | null
+  primary_language_color?: string | null
 }
 
 export interface RepositoryDetail {
@@ -144,11 +146,19 @@ export interface CommitDetail extends CommitInfo {
   deletions: number
 }
 
+export interface LanguageStat {
+  name: string
+  bytes: number
+  percent: number
+  color: string
+}
+
 export interface RepoBrowser {
   branches: string[]
   tags: string[]
   default_ref: string
   empty: boolean
+  languages?: LanguageStat[]
 }
 
 export interface ApiTokenSummary {

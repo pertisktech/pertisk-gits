@@ -27,6 +27,10 @@ export default {
         "on-primary": "var(--color-on-primary)",
         card: "var(--color-card)",
         sidebar: "var(--color-sidebar)",
+        accent: "var(--color-accent)",
+        success: "var(--color-success)",
+        warning: "var(--color-warning)",
+        input: "var(--color-input)",
         /* Naturals palette */
         "naturals-n0":  "var(--color-naturals-n0)",
         "naturals-n1":  "var(--color-naturals-n1)",

@@ -56,12 +56,12 @@ export function ActivityMergeRequestsPage() {
         )}
 
         {!isLoading && pullRequests.length > 0 && (
-          <ul className="divide-y divide-naturals-n4">
+          <ul className="divide-y divide-border">
             {pagePullRequests.map(({ pull_request: pr, author, review_summary: reviewSummary, orgSlug, orgName, repoSlug, repoName }) => (
               <li key={pr.id}>
                 <Link
                   to={pullUrl(orgSlug, repoSlug, pr.number)}
-                  className="flex items-start gap-3 px-4 py-3 hover:bg-hover no-underline text-inherit"
+                  className="flex items-start gap-3 px-4 py-4 hover:bg-accent/30 no-underline text-inherit transition-colors"
                 >
                   <GitPullRequest
                     size={16}

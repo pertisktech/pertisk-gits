@@ -1,7 +1,6 @@
 import CodeEditor from '@uiw/react-textarea-code-editor'
 import '@uiw/react-textarea-code-editor/dist.css'
 import { useMemo, useRef } from 'react'
-import { useTheme } from '../context/ThemeContext'
 import { languageFromPath } from '../lib/fileLanguage'
 
 const EDITOR_PADDING = 12
@@ -21,7 +20,6 @@ function lineCountFor(content: string): number {
 }
 
 export function CodeFileView({ path, content, readOnly = true, onChange }: CodeFileViewProps) {
-  const { theme } = useTheme()
   const scrollRef = useRef<HTMLDivElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
 
@@ -60,7 +58,7 @@ export function CodeFileView({ path, content, readOnly = true, onChange }: CodeF
         <CodeEditor
           value={content}
           language={languageFromPath(path)}
-          data-color-mode={theme}
+          data-color-mode="dark"
           readOnly={readOnly}
           padding={EDITOR_PADDING}
           onChange={(event) => onChange?.(event.target.value)}

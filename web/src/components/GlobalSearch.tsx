@@ -150,8 +150,8 @@ export function GlobalSearch() {
   const showDropdown = open && trimmedQuery.length > 0
 
   return (
-    <div ref={containerRef} className="relative flex-1 min-w-0 max-w-xl">
-      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+    <div ref={containerRef} className="relative flex-1 min-w-0 max-w-lg">
+      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
       <input
         ref={inputRef}
         type="search"
@@ -172,22 +172,22 @@ export function GlobalSearch() {
           }
         }}
         placeholder="Search groups, repositories, and code…"
-        className="w-full pl-8 pr-3 py-1.5 rounded-md border border-naturals-n4 bg-bg text-sm text-text placeholder:text-muted focus:outline-none focus:ring-1 focus:ring-primary/40"
+        className="h-9 w-full rounded-lg border border-input bg-card/60 pl-9 pr-3 text-sm text-text placeholder:text-muted outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
         aria-label="Search groups and repositories"
         aria-autocomplete="list"
       />
 
       {showDropdown && (
-        <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-md border border-naturals-n4 bg-surface shadow-lg overflow-hidden">
+        <div className="absolute left-0 right-0 top-full z-50 mt-2 overflow-hidden rounded-lg border border-border bg-[var(--color-surface-elevated)] shadow-lg">
           {combinedResults.length === 0 ? (
-            <div className="px-3 py-2.5 text-sm text-text-secondary">No results for “{trimmedQuery}”</div>
+            <div className="px-3 py-2.5 text-sm text-muted">No results for “{trimmedQuery}”</div>
           ) : (
             <ul className="max-h-72 overflow-y-auto py-1">
               {combinedResults.map((result) => (
                 <li key={resultKey(result)}>
                   <button
                     type="button"
-                    className="w-full px-3 py-2 text-left hover:bg-hover flex items-start gap-2"
+                    className="w-full px-3 py-2 text-left hover:bg-accent/50 flex items-start gap-2 rounded-md mx-0"
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => goTo(result)}
                   >
@@ -204,7 +204,7 @@ export function GlobalSearch() {
                         </span>
                       )}
                       {result.type === 'code' ? (
-                        <span className="block text-xs text-text-secondary font-mono truncate mt-0.5">
+                        <span className="block text-xs text-muted font-mono truncate mt-0.5">
                           {result.snippet}
                         </span>
                       ) : null}

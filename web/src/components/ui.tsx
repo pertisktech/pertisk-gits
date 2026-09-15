@@ -39,10 +39,10 @@ export function PageHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 flex-wrap mb-6 md:mb-7">
-      <div>
-        <h1 className="text-xl font-medium text-text">{title}</h1>
-        {subtitle && <p className="text-sm text-text-secondary mt-1">{subtitle}</p>}
+    <div className="flex items-end justify-between gap-4 flex-wrap mb-6">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-semibold tracking-tight text-text m-0">{title}</h1>
+        {subtitle && <p className="text-sm text-muted m-0">{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -58,7 +58,7 @@ export function PrimaryButton({
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-2 px-4 py-1.5 rounded-md bg-primary-p4 text-on-primary text-sm font-medium hover:bg-primary-p3 disabled:opacity-60 transition-colors',
+        'inline-flex h-9 items-center gap-1.5 px-3.5 rounded-lg bg-primary text-on-primary text-sm font-semibold shadow-[0_8px_24px_color-mix(in_oklch,var(--color-primary)_25%,transparent)] hover:opacity-90 disabled:opacity-60 transition-opacity',
         className,
       )}
       data-no-global-button-hover="true"
@@ -78,7 +78,7 @@ export function SecondaryButton({
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-2 px-4 py-1.5 rounded-md border border-naturals-n4 text-text-secondary hover:text-text hover:bg-naturals-n3 text-sm font-medium disabled:opacity-60 transition-colors',
+        'inline-flex h-9 items-center gap-1.5 px-3 rounded-lg border border-border bg-card/60 text-muted hover:text-text text-sm font-medium disabled:opacity-60 transition-colors',
         className,
       )}
       data-no-global-button-hover="true"
@@ -105,8 +105,8 @@ export function LinkButton({
       to={to}
       className={cn(
         primary
-          ? 'inline-flex items-center gap-2 px-4 py-1.5 rounded-md bg-primary-p4 text-on-primary text-sm font-medium hover:bg-primary-p3 transition-colors'
-          : 'inline-flex items-center gap-2 px-4 py-1.5 rounded-md border border-naturals-n4 text-text-secondary hover:text-text hover:bg-naturals-n3 text-sm font-medium transition-colors',
+          ? 'inline-flex h-9 items-center gap-1.5 px-3.5 rounded-lg bg-primary text-on-primary text-sm font-semibold shadow-[0_8px_24px_color-mix(in_oklch,var(--color-primary)_25%,transparent)] hover:opacity-90 transition-opacity'
+          : 'inline-flex h-9 items-center gap-1.5 px-3 rounded-lg border border-border bg-card/60 text-muted hover:text-text text-sm font-medium transition-colors',
         className,
       )}
     >

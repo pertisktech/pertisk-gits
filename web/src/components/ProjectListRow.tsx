@@ -1,10 +1,10 @@
 import { Link } from 'react-router-dom'
 import type { DashboardProjectStats } from '../api/types'
-import { displayRepoName, projectInitial } from '../lib/projectInitial'
+import { displayRepoName } from '../lib/projectInitial'
 import { repositoryActivityAt } from '../lib/repositoryActivity'
 import { formatRelativeTimeFromIso } from '../lib/relativeTime'
-import { cn } from '../utils/cn'
 import { DashboardProjectAside } from './DashboardProjectAside'
+import { RepoIcon } from './primitives'
 import styles from './ProjectList.module.css'
 
 export function ProjectListRow({
@@ -39,14 +39,9 @@ export function ProjectListRow({
 
   return (
     <li className={styles.row}>
-      <div className={cn(styles.icon, styles.iconRepo)} aria-hidden>
-        <span className={styles.iconLetter}>{projectInitial(shortName, slug)}</span>
-      </div>
+      <RepoIcon name={shortName} />
       <div className={styles.main}>
-        <Link
-          to={`/groups/${orgSlug}/projects/${slug}`}
-          className={styles.pathLink}
-        >
+        <Link to={`/groups/${orgSlug}/projects/${slug}`} className={styles.pathLink}>
           <span>{displayText}</span>
         </Link>
       </div>

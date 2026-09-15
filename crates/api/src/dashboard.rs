@@ -43,6 +43,8 @@ struct ProjectStats {
     open_issue_count: i64,
     has_pipelines: bool,
     latest_pipeline_status: Option<String>,
+    primary_language: Option<String>,
+    primary_language_color: Option<String>,
 }
 
 #[derive(Debug, sqlx::FromRow)]
@@ -194,6 +196,8 @@ async fn project_stats(
                 open_issue_count: 0,
                 has_pipelines: false,
                 latest_pipeline_status: None,
+                primary_language: None,
+                primary_language_color: None,
             },
         });
     }
@@ -210,23 +214,35 @@ async fn project_stat(
     let (_org, repo, repo_path) =
         load_repo_for_read(state, org_path, slug, Some(auth)).await?;
 
-    let (branch_count, tag_count, open_issue_count, has_pipelines, latest_pipeline_status) = tokio::join!(
-        async {
-            explorer::list_branches(&repo_path)
+    let (branch_count, tag_count, open_issue_count, has_pipelines, latest_pipeline_status, languages) =
+        tokio::join!(
+            async {
+                explorer::list_branches(&repo_path)
+                    .await
+                    .map(|branches| branches.len() as u32)
+                    .unwrap_or(0)
+            },
+            async {
+                explorer::list_tags(&repo_path)
+                    .await
+                    .map(|tags| tags.len() as u32)
+                    .unwrap_or(0)
+            },
+            open_issue_count(&state.pool, repo.id),
+            cicd::repository_has_ci(&repo_path, &repo.default_branch, repo.id, &state.pool),
+            latest_pipeline_status(&state.pool, repo.id),
+            async {
+                pertisk_git::analyze_languages(
+                    &repo_path,
+                    &repo.default_branch,
+                    explorer::RefKind::Branch,
+                )
                 .await
-                .map(|branches| branches.len() as u32)
-                .unwrap_or(0)
-        },
-        async {
-            explorer::list_tags(&repo_path)
-                .await
-                .map(|tags| tags.len() as u32)
-                .unwrap_or(0)
-        },
-        open_issue_count(&state.pool, repo.id),
-        cicd::repository_has_ci(&repo_path, &repo.default_branch, repo.id, &state.pool),
-        latest_pipeline_status(&state.pool, repo.id),
-    );
+                .unwrap_or_default()
+            },
+        );
+
+    let primary = pertisk_git::primary_language(&languages);
 
     Ok(ProjectStats {
         org_path: org_path.to_string(),
@@ -236,6 +252,8 @@ async fn project_stat(
         open_issue_count,
         has_pipelines,
         latest_pipeline_status,
+        primary_language: primary.map(|l| l.name.clone()),
+        primary_language_color: primary.map(|l| l.color.clone()),
     })
 }
 

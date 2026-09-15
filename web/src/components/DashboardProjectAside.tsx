@@ -54,6 +54,20 @@ export function DashboardProjectAside({
   return (
     <div className={styles.aside}>
       <div className={styles.stats}>
+        {stats?.primary_language && (
+          <span
+            className={cn(styles.stat, styles.statWithCount, styles.languageStat)}
+            title={stats.primary_language}
+            aria-label={`Primary language: ${stats.primary_language}`}
+          >
+            <span
+              className={styles.languageDot}
+              style={{ backgroundColor: stats.primary_language_color ?? '#8B949E' }}
+              aria-hidden
+            />
+            <span className={styles.statValue}>{stats.primary_language}</span>
+          </span>
+        )}
         {stats?.has_pipelines && (
           <Link
             to={projectTabPath(basePath, 'pipelines')}

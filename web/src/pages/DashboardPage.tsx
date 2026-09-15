@@ -46,10 +46,10 @@ export function DashboardPage() {
 
   return (
     <>
-      <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-semibold text-text m-0">Projects</h1>
-          <p className="text-sm text-text-secondary mt-1 mb-0">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight text-text m-0">Projects</h1>
+          <p className="text-sm text-muted mt-0 mb-0">
             {user?.display_name ?? user?.username} · public repositories and projects in your groups
           </p>
         </div>

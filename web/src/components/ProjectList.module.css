@@ -7,8 +7,8 @@
 .row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
+  gap: 1rem;
+  padding: 1rem;
   border-bottom: 1px solid var(--color-border);
   transition: background 0.12s;
 }
@@ -18,7 +18,7 @@
 }
 
 .row:hover {
-  background: var(--color-hover);
+  background: color-mix(in oklch, var(--color-accent) 30%, transparent);
 }
 
 .icon {
@@ -28,19 +28,21 @@
   width: 2.25rem;
   height: 2.25rem;
   flex-shrink: 0;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--color-primary) 14%, transparent);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--color-accent) 60%, transparent);
   color: var(--color-primary);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-primary) 25%, transparent);
 }
 
 .iconGroup {
-  background: color-mix(in srgb, var(--color-yellow-y1) 16%, transparent);
-  color: var(--color-yellow-y1);
+  background: color-mix(in oklch, var(--color-warning) 16%, transparent);
+  color: var(--color-warning);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--color-warning) 25%, transparent);
 }
 
 .iconRepo {
-  background: color-mix(in srgb, var(--color-blue-b1) 16%, transparent);
-  color: var(--color-blue-b1);
+  background: color-mix(in oklch, var(--color-accent) 60%, transparent);
+  color: var(--color-primary);
 }
 
 .iconLetter {
@@ -57,8 +59,8 @@
 
 .pathLink {
   display: block;
-  font-size: var(--text-md);
-  font-weight: 600;
+  font-size: var(--text-sm);
+  font-weight: 500;
   color: var(--color-text);
   text-decoration: none;
   line-height: 1.35;
@@ -141,8 +143,29 @@
   min-width: 1ch;
 }
 
+.languageStat {
+  gap: 0.4rem;
+  cursor: default;
+  color: var(--color-muted);
+  pointer-events: none;
+}
+
+@media (max-width: 1023px) {
+  .languageStat {
+    display: none;
+  }
+}
+
+.languageDot {
+  display: inline-block;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
 .updated {
-  font-size: var(--text-code);
-  color: var(--color-text-secondary);
+  font-size: var(--text-xs);
+  color: var(--color-muted);
   white-space: nowrap;
 }

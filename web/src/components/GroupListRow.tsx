@@ -2,8 +2,8 @@ import { FolderGit2, FolderTree, Loader2 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import type { Organization } from '../api/types'
 import { groupBaseUrl, groupUrlPath } from '../lib/groupPath'
-import { projectInitial } from '../lib/projectInitial'
 import { cn } from '../utils/cn'
+import { RepoIcon } from './primitives'
 import styles from './ProjectList.module.css'
 
 function GroupStat({
@@ -50,17 +50,14 @@ export function GroupListRow({
 
   return (
     <li className={styles.row}>
-      <div className={cn(styles.icon, styles.iconGroup)} aria-hidden>
-        <span className={styles.iconLetter}>{projectInitial(group.name, group.slug)}</span>
-      </div>
+      <RepoIcon name={group.name} />
       <div className={styles.main}>
         <Link to={groupBaseUrl(group)} className={styles.pathLink}>
           {group.name}
         </Link>
-        <div className="text-xs text-text-secondary mt-0.5">Subgroup path</div>
-        <div className="text-xs text-muted font-mono">{path}</div>
+        <div className="text-xs text-muted font-mono mt-0.5">{path}</div>
         {group.description && (
-          <p className="text-sm text-text-secondary mt-1 mb-0 line-clamp-2">{group.description}</p>
+          <p className="text-sm text-muted mt-1 mb-0 line-clamp-2">{group.description}</p>
         )}
       </div>
       <div className={styles.meta}>

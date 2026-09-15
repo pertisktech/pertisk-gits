@@ -25,6 +25,7 @@ import { RepoFilePreview } from './RepoFilePreview'
 import { RepoFindFilePopover } from './RepoFindFilePopover'
 import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoEntryIcon } from './RepoEntryIcon'
+import { RepoLanguagesPanel } from './RepoLanguagesPanel'
 import { RepoPathBreadcrumb } from './RepoPathBreadcrumb'
 import { RepoReadme } from './RepoReadme'
 import { RepoRefHeadCommitRow } from './RepoRefHeadCommitRow'
@@ -671,6 +672,16 @@ export function RepoBrowser({
 
   return (
     <div className="space-y-4 min-w-0">
+      <div
+        className={cn(
+          'gap-6 min-w-0',
+          !inEditMode &&
+            !viewingPath &&
+            (browser?.languages?.length ?? 0) > 0 &&
+            'lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start',
+        )}
+      >
+        <div className="space-y-4 min-w-0">
       <div className="app-panel">
         {toolbar}
 
@@ -851,6 +862,14 @@ export function RepoBrowser({
           readmePath={readmePath}
         />
       )}
+        </div>
+
+        {!inEditMode && !viewingPath && (browser?.languages?.length ?? 0) > 0 && (
+          <aside className="space-y-6 lg:sticky lg:top-20">
+            <RepoLanguagesPanel languages={browser!.languages!} />
+          </aside>
+        )}
+      </div>
 
       <CreateRepoEntryDialog
         open={createEntryKind !== null}

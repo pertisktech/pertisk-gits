@@ -3,6 +3,7 @@ pub mod command;
 pub mod config;
 pub mod editor;
 pub mod explorer;
+pub mod languages;
 pub mod http;
 pub mod password;
 pub mod protocol;
@@ -15,6 +16,7 @@ pub mod workspace;
 
 pub use config::GitConfig;
 pub use http::{GitHttpState, PostReceiveHook, PushHintHook};
+pub use languages::{analyze_languages, language_color, language_from_path, primary_language, LanguageStat};
 pub use ssh::{GitSshConfig, GitSshState};
 pub use storage::{ensure_bare_repo_refs_dirs, repair_all_bare_repo_refs_dirs, repo_exists_on_disk};
 pub use refs::{diff_refs, is_ancestor, snapshot_refs, RefUpdate};
