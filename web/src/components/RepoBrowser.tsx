@@ -26,6 +26,7 @@ import { RepoFindFilePopover } from './RepoFindFilePopover'
 import { RepoClonePushGuide } from './RepoClonePushGuide'
 import { RepoEntryIcon } from './RepoEntryIcon'
 import { RepoLanguagesPanel } from './RepoLanguagesPanel'
+import { RepoRecentCommitsPanel } from './RepoRecentCommitsPanel'
 import { RepoPathBreadcrumb } from './RepoPathBreadcrumb'
 import { RepoReadme } from './RepoReadme'
 import { RepoRefHeadCommitRow } from './RepoRefHeadCommitRow'
@@ -677,8 +678,9 @@ export function RepoBrowser({
           'gap-6 min-w-0',
           !inEditMode &&
             !viewingPath &&
-            (browser?.languages?.length ?? 0) > 0 &&
-            'lg:grid lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start',
+            ((browser?.languages?.length ?? 0) > 0 ||
+              (browser?.recent_commits?.length ?? 0) > 0) &&
+            'lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start',
         )}
       >
         <div className="space-y-4 min-w-0">
@@ -864,11 +866,19 @@ export function RepoBrowser({
       )}
         </div>
 
-        {!inEditMode && !viewingPath && (browser?.languages?.length ?? 0) > 0 && (
-          <aside className="space-y-6 lg:sticky lg:top-20">
-            <RepoLanguagesPanel languages={browser!.languages!} />
-          </aside>
-        )}
+        {!inEditMode &&
+          !viewingPath &&
+          ((browser?.languages?.length ?? 0) > 0 ||
+            (browser?.recent_commits?.length ?? 0) > 0) && (
+            <aside className="space-y-6">
+              <RepoRecentCommitsPanel
+                commits={browser?.recent_commits ?? []}
+                orgSlug={orgSlug}
+                repoSlug={repoSlug}
+              />
+              <RepoLanguagesPanel languages={browser?.languages ?? []} />
+            </aside>
+          )}
       </div>
 
       <CreateRepoEntryDialog

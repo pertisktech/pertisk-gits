@@ -2175,6 +2175,7 @@ async fn get_repo_browser(
             default_ref: repo.default_branch.clone(),
             empty: true,
             languages: vec![],
+            recent_commits: vec![],
         }
     } else {
         explorer::repo_browser(&repo_path, &repo.default_branch)

@@ -59,7 +59,7 @@ export function UserMenu() {
     <div className="relative" ref={ref}>
       <button
         type="button"
-        className="inline-flex items-center gap-2 rounded-lg border border-border bg-card/60 py-1 pl-1 pr-2 transition-colors hover:border-primary/40"
+        className="inline-flex items-center gap-2 rounded-lg border border-border bg-card-soft py-1 pl-1 pr-2 transition-colors hover:border-primary/40"
         data-no-global-button-hover="true"
         onClick={() => setOpen((v) => !v)}
       >

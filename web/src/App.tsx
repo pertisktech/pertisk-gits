@@ -3,6 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-
 import { AuthProvider } from './auth/AuthContext'
 import { SessionExpiryHandler } from './auth/SessionExpiryHandler'
 import { AppLayout } from './components/AppLayout'
+import { ThemeProvider } from './context/ThemeContext'
 import { AuthCallbackPage } from './pages/AuthCallbackPage'
 import { ActivityApproveUsersPage } from './pages/activity/ActivityApproveUsersPage'
 import { ActivityMergeRequestsPage } from './pages/activity/ActivityMergeRequestsPage'
@@ -69,11 +70,12 @@ function RedirectShortOrg() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <BrowserRouter>
-          <SessionExpiryHandler />
-          <Routes>
+    <ThemeProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <BrowserRouter>
+            <SessionExpiryHandler />
+            <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
@@ -114,5 +116,6 @@ export default function App() {
         </BrowserRouter>
       </AuthProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   )
 }

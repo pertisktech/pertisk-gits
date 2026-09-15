@@ -78,7 +78,7 @@ export function SecondaryButton({
     <button
       type="button"
       className={cn(
-        'inline-flex h-9 items-center gap-1.5 px-3 rounded-lg border border-border bg-card/60 text-muted hover:text-text text-sm font-medium disabled:opacity-60 transition-colors',
+        'inline-flex h-9 items-center gap-1.5 px-3 rounded-lg border border-border bg-card-soft text-muted hover:text-text text-sm font-medium disabled:opacity-60 transition-colors',
         className,
       )}
       data-no-global-button-hover="true"
@@ -106,7 +106,7 @@ export function LinkButton({
       className={cn(
         primary
           ? 'inline-flex h-9 items-center gap-1.5 px-3.5 rounded-lg bg-primary text-on-primary text-sm font-semibold shadow-[0_8px_24px_color-mix(in_oklch,var(--color-primary)_25%,transparent)] hover:opacity-90 transition-opacity'
-          : 'inline-flex h-9 items-center gap-1.5 px-3 rounded-lg border border-border bg-card/60 text-muted hover:text-text text-sm font-medium transition-colors',
+          : 'inline-flex h-9 items-center gap-1.5 px-3 rounded-lg border border-border bg-card-soft text-muted hover:text-text text-sm font-medium transition-colors',
         className,
       )}
     >

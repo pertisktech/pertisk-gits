@@ -26,6 +26,7 @@ export default {
         primary: "var(--color-primary)",
         "on-primary": "var(--color-on-primary)",
         card: "var(--color-card)",
+        "card-soft": "var(--color-card-soft)",
         sidebar: "var(--color-sidebar)",
         accent: "var(--color-accent)",
         success: "var(--color-success)",

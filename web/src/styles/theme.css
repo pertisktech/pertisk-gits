@@ -1,9 +1,150 @@
-/* Pertisk Gits — fixed purple-on-dark design tokens (design prototype) */
+/* Pertisk Gits — design tokens (light default + html.dark) */
 
 :root {
+  color-scheme: light;
+
+  --color-naturals-n0: oklch(0.985 0.004 286);
+  --color-naturals-n1: oklch(0.975 0.006 286);
+  --color-naturals-n2: oklch(1 0 0);
+  --color-naturals-n3: oklch(0.955 0.008 286);
+  --color-naturals-n4: oklch(0.93 0.035 295);
+  --color-naturals-n5: oklch(0.9 0.02 286);
+  --color-naturals-n6: oklch(0.85 0.02 286);
+  --color-naturals-n7: oklch(0.7 0.025 285);
+  --color-naturals-n8: oklch(0.58 0.025 285);
+  --color-naturals-n9: oklch(0.5 0.025 285);
+  --color-naturals-n10: oklch(0.5 0.025 285);
+  --color-naturals-n11: oklch(0.42 0.03 274);
+  --color-naturals-n12: oklch(0.35 0.03 274);
+  --color-naturals-n13: oklch(0.22 0.03 274);
+  --color-naturals-n14: oklch(0.15 0.03 274);
+
+  --color-primary-p1: oklch(0.93 0.05 295);
+  --color-primary-p2: oklch(0.72 0.16 295);
+  --color-primary-p3: oklch(0.55 0.21 295);
+  --color-primary-p4: oklch(0.48 0.2 295);
+  --color-primary-p5: oklch(0.4 0.18 295);
+  --color-primary-p6: oklch(0.32 0.12 295);
+
+  --color-green-g1: oklch(0.58 0.15 155);
+  --color-green-g2: oklch(0.48 0.14 155);
+  --color-red-r1: oklch(0.58 0.22 22);
+  --color-red-r2: oklch(0.45 0.16 22);
+  --color-yellow-y1: oklch(0.62 0.15 62);
+  --color-yellow-y2: oklch(0.55 0.14 62);
+  --color-blue-b1: oklch(0.55 0.16 250);
+
+  --color-bg: oklch(0.985 0.004 286);
+  --color-surface: oklch(1 0 0);
+  --color-surface-elevated: oklch(1 0 0);
+  --color-hover: oklch(0.955 0.008 286);
+  --color-border: oklch(0.22 0.03 274 / 12%);
+  --color-input: oklch(0.22 0.03 274 / 16%);
+  --color-text: oklch(0.22 0.03 274);
+  --color-text-secondary: oklch(0.42 0.03 274);
+  --color-muted: oklch(0.5 0.025 285);
+  --color-card: oklch(1 0 0);
+  --color-card-soft: color-mix(in oklch, var(--color-card) 60%, transparent);
+  --color-sidebar: oklch(0.975 0.006 286);
+  --color-sidebar-accent: oklch(0.93 0.035 295);
+  --color-accent: oklch(0.93 0.035 295);
+  --color-primary: oklch(0.55 0.21 295);
+  --color-primary-hover: oklch(0.48 0.2 295);
+  --color-on-primary: oklch(0.99 0 0);
+  --color-bg-gradient-start: oklch(0.985 0.004 286);
+  --color-bg-gradient-end: oklch(0.975 0.006 286);
+  --color-overlay-backdrop: oklch(0.22 0.03 274 / 0.4);
+  --color-primary-glow: color-mix(in oklch, var(--color-primary) 18%, transparent);
+  --color-success: var(--color-green-g1);
+  --color-success-foreground: oklch(0.99 0 0);
+  --color-warning: var(--color-yellow-y1);
+  --color-warning-foreground: oklch(0.99 0 0);
+  --color-chart-2: oklch(0.6 0.17 320);
+
+  --color-icon-primary: var(--color-primary);
+  --color-icon-secondary: var(--color-muted);
+  --color-icon-success: var(--color-green-g1);
+  --color-icon-warning: var(--color-yellow-y1);
+  --color-icon-danger: var(--color-red-r1);
+  --color-icon-info: var(--color-blue-b1);
+
+  --color-status-ready: oklch(0.55 0.12 180);
+  --color-status-ready-bg: color-mix(in oklch, var(--color-status-ready) 12%, transparent);
+  --color-workload-accent: oklch(0.55 0.12 180);
+  --color-workload-accent-strong: oklch(0.45 0.1 180);
+  --color-workload-accent-bg: color-mix(in oklch, var(--color-workload-accent) 16%, transparent);
+  --color-workload-accent-soft: color-mix(in oklch, var(--color-workload-accent) 38%, var(--color-border));
+
+  --color-dashboard-success: var(--color-green-g1);
+  --color-dashboard-success-bg: color-mix(in oklch, var(--color-green-g1) 12%, transparent);
+  --color-dashboard-warning: var(--color-yellow-y1);
+  --color-dashboard-warning-bg: color-mix(in oklch, var(--color-yellow-y1) 12%, transparent);
+  --color-dashboard-danger: var(--color-red-r1);
+  --color-dashboard-danger-bg: color-mix(in oklch, var(--color-red-r1) 12%, transparent);
+  --color-dashboard-info: var(--color-blue-b1);
+  --color-dashboard-info-bg: color-mix(in oklch, var(--color-blue-b1) 12%, transparent);
+  --color-dashboard-metric-primary: var(--color-green-g2);
+  --color-dashboard-metric-primary-bg: color-mix(in oklch, var(--color-green-g2) 12%, transparent);
+  --color-dashboard-metric-secondary: var(--color-primary);
+  --color-dashboard-metric-secondary-bg: color-mix(in oklch, var(--color-primary) 12%, transparent);
+  --color-dashboard-metric-tertiary: oklch(0.6 0.17 320);
+  --color-dashboard-metric-tertiary-bg: color-mix(in oklch, oklch(0.6 0.17 320) 12%, transparent);
+  --color-dashboard-metric-quaternary: oklch(0.55 0.16 250);
+  --color-dashboard-metric-quaternary-bg: color-mix(in oklch, oklch(0.55 0.16 250) 12%, transparent);
+
+  --label-green: var(--color-green-g1);
+  --label-red: var(--color-red-r1);
+  --label-orange: oklch(0.65 0.16 45);
+  --label-violet: oklch(0.55 0.18 295);
+  --label-yellow: var(--color-yellow-y1);
+  --label-cyan: oklch(0.6 0.12 200);
+  --label-blue1: var(--color-blue-b1);
+  --label-blue2: oklch(0.5 0.18 260);
+  --label-blue3: var(--color-primary);
+  --label-light1: oklch(0.6 0.12 25);
+  --label-light2: oklch(0.62 0.1 60);
+  --label-light3: oklch(0.65 0.1 100);
+  --label-light4: oklch(0.58 0.1 145);
+  --label-light5: oklch(0.58 0.1 190);
+  --label-light6: oklch(0.55 0.1 260);
+  --label-light7: oklch(0.55 0.12 300);
+
+  --color-terminal-user: oklch(0.45 0.12 145);
+  --color-terminal-host: oklch(0.45 0.12 240);
+  --color-terminal-path: oklch(0.5 0.14 295);
+  --color-terminal-ok: var(--color-green-g1);
+  --color-terminal-error: var(--color-red-r1);
+  --color-terminal-warn: var(--color-yellow-y1);
+  --color-terminal-shadow: oklch(0.22 0.03 274 / 0.08);
+  --color-terminal-mix: var(--color-naturals-n6);
+
+  --bottom-panel-bg: linear-gradient(180deg, oklch(1 0 0 / 0.98), oklch(0.985 0.004 286 / 0.96));
+  --bottom-panel-tabbar-bg: color-mix(in oklch, var(--color-surface) 92%, var(--color-hover));
+  --bottom-panel-tab-active-bg: var(--color-surface);
+  --bottom-panel-tab-active-border: color-mix(in oklch, var(--color-primary) 22%, var(--color-border));
+  --bottom-panel-tab-hover-bg: color-mix(in oklch, var(--color-hover) 80%, var(--color-surface));
+
+  --radius: 0.75rem;
+  --radius-xs: calc(var(--radius) * 0.4);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+
+  --shadow-sm: 0 1px 2px oklch(0.22 0.03 274 / 0.06);
+  --shadow-md: 0 8px 24px oklch(0.22 0.03 274 / 0.1);
+  --shadow-lg: 0 16px 48px oklch(0.22 0.03 274 / 0.12);
+  --shadow-sidebar: 1px 0 0 0 oklch(0.22 0.03 274 / 0.1);
+  --shadow-primary: 0 8px 24px color-mix(in oklch, var(--color-primary) 25%, transparent);
+
+  --error: var(--color-red-r1);
+  --warn: var(--color-yellow-y1);
+}
+
+html.dark {
   color-scheme: dark;
 
-  /* Neutrals — purple-tinted dark (n0 darkest → n14 lightest) */
   --color-naturals-n0: oklch(0.16 0.024 274);
   --color-naturals-n1: oklch(0.18 0.026 274);
   --color-naturals-n2: oklch(0.2 0.028 274);
@@ -20,7 +161,6 @@
   --color-naturals-n13: oklch(0.96 0.008 286);
   --color-naturals-n14: oklch(0.99 0 0);
 
-  /* Primary — violet / magenta */
   --color-primary-p1: oklch(0.88 0.08 295);
   --color-primary-p2: oklch(0.78 0.14 295);
   --color-primary-p3: oklch(0.66 0.19 295);
@@ -28,7 +168,6 @@
   --color-primary-p5: oklch(0.48 0.18 295);
   --color-primary-p6: oklch(0.32 0.1 295);
 
-  /* Semantic */
   --color-green-g1: oklch(0.68 0.16 155);
   --color-green-g2: oklch(0.55 0.14 155);
   --color-red-r1: oklch(0.62 0.21 22);
@@ -37,34 +176,33 @@
   --color-yellow-y2: oklch(0.65 0.14 70);
   --color-blue-b1: oklch(0.62 0.16 250);
 
-  /* Surface aliases (map to design semantic tokens) */
-  --color-bg: var(--color-naturals-n0);
-  --color-surface: var(--color-naturals-n1);
-  --color-surface-elevated: var(--color-naturals-n2);
-  --color-hover: var(--color-naturals-n4);
+  --color-bg: oklch(0.16 0.024 274);
+  --color-surface: oklch(0.18 0.026 274);
+  --color-surface-elevated: oklch(0.2 0.028 274);
+  --color-hover: oklch(0.24 0.028 274);
   --color-border: oklch(1 0 0 / 9%);
   --color-input: oklch(1 0 0 / 12%);
-  --color-text: var(--color-naturals-n13);
-  --color-text-secondary: var(--color-naturals-n11);
-  --color-muted: var(--color-naturals-n10);
+  --color-text: oklch(0.96 0.008 286);
+  --color-text-secondary: oklch(0.78 0.02 286);
+  --color-muted: oklch(0.7 0.03 285);
   --color-card: oklch(0.2 0.028 274);
+  --color-card-soft: color-mix(in oklch, var(--color-card) 60%, transparent);
   --color-sidebar: oklch(0.18 0.026 274);
   --color-sidebar-accent: oklch(0.28 0.05 292);
   --color-accent: oklch(0.3 0.06 292);
-  --color-primary: var(--color-primary-p3);
-  --color-primary-hover: var(--color-primary-p2);
+  --color-primary: oklch(0.66 0.19 295);
+  --color-primary-hover: oklch(0.78 0.14 295);
   --color-on-primary: oklch(0.99 0 0);
-  --color-bg-gradient-start: var(--color-naturals-n0);
-  --color-bg-gradient-end: var(--color-naturals-n1);
+  --color-bg-gradient-start: oklch(0.16 0.024 274);
+  --color-bg-gradient-end: oklch(0.18 0.026 274);
   --color-overlay-backdrop: oklch(0 0 0 / 0.75);
   --color-primary-glow: color-mix(in oklch, var(--color-primary) 28%, transparent);
   --color-success: var(--color-green-g1);
   --color-success-foreground: oklch(0.99 0 0);
   --color-warning: var(--color-yellow-y1);
-  --color-warning-foreground: var(--color-naturals-n2);
+  --color-warning-foreground: oklch(0.2 0.028 274);
   --color-chart-2: oklch(0.7 0.15 320);
 
-  /* Icon / status */
   --color-icon-primary: var(--color-primary-p3);
   --color-icon-secondary: var(--color-naturals-n10);
   --color-icon-success: var(--color-green-g1);
@@ -79,7 +217,6 @@
   --color-workload-accent-bg: color-mix(in oklch, var(--color-workload-accent) 16%, transparent);
   --color-workload-accent-soft: color-mix(in oklch, var(--color-workload-accent) 38%, var(--color-border));
 
-  /* Dashboard metrics */
   --color-dashboard-success: var(--color-green-g1);
   --color-dashboard-success-bg: color-mix(in oklch, var(--color-green-g1) 12%, transparent);
   --color-dashboard-warning: var(--color-yellow-y1);
@@ -97,35 +234,12 @@
   --color-dashboard-metric-quaternary: oklch(0.7 0.12 220);
   --color-dashboard-metric-quaternary-bg: color-mix(in oklch, oklch(0.7 0.12 220) 12%, transparent);
 
-  /* Resource / status labels */
-  --label-green: var(--color-green-g1);
-  --label-red: var(--color-red-r1);
-  --label-orange: oklch(0.7 0.16 45);
-  --label-violet: oklch(0.75 0.14 320);
-  --label-yellow: var(--color-yellow-y1);
-  --label-cyan: oklch(0.72 0.12 200);
-  --label-blue1: var(--color-blue-b1);
-  --label-blue2: oklch(0.58 0.18 260);
-  --label-blue3: var(--color-primary-p3);
-  --label-light1: oklch(0.72 0.12 25);
-  --label-light2: oklch(0.72 0.1 60);
-  --label-light3: oklch(0.75 0.1 100);
-  --label-light4: oklch(0.7 0.1 145);
-  --label-light5: oklch(0.7 0.1 190);
-  --label-light6: oklch(0.68 0.1 260);
-  --label-light7: oklch(0.7 0.12 300);
-
-  /* CI terminal */
   --color-terminal-user: oklch(0.78 0.14 145);
   --color-terminal-host: oklch(0.75 0.12 240);
   --color-terminal-path: oklch(0.78 0.12 300);
-  --color-terminal-ok: var(--color-green-g1);
-  --color-terminal-error: var(--color-red-r1);
-  --color-terminal-warn: var(--color-yellow-y1);
   --color-terminal-shadow: oklch(0 0 0 / 0.28);
   --color-terminal-mix: black;
 
-  /* Bottom panel */
   --bottom-panel-bg: linear-gradient(
     180deg,
     color-mix(in oklch, var(--color-surface) 86%, transparent),
@@ -136,24 +250,11 @@
   --bottom-panel-tab-active-border: color-mix(in oklch, var(--color-primary) 34%, var(--color-border));
   --bottom-panel-tab-hover-bg: color-mix(in oklch, var(--color-hover) 80%, var(--color-surface));
 
-  /* Radius — design base 0.75rem */
-  --radius: 0.75rem;
-  --radius-xs: calc(var(--radius) * 0.4);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-
-  /* Shadows */
   --shadow-sm: 0 1px 2px oklch(0 0 0 / 0.28);
   --shadow-md: 0 8px 24px oklch(0 0 0 / 0.35);
   --shadow-lg: 0 16px 48px oklch(0 0 0 / 0.45);
   --shadow-sidebar: 0 0 0 1px oklch(1 0 0 / 0.06), 8px 0 24px oklch(0 0 0 / 0.32);
   --shadow-primary: 0 8px 24px color-mix(in oklch, var(--color-primary) 25%, transparent);
-
-  --error: var(--color-red-r1);
-  --warn: var(--color-yellow-y1);
 }
 
 .status-green {

@@ -5,6 +5,7 @@ import { useEffectiveUser } from '../auth/AuthContext'
 import { cn } from '../utils/cn'
 import { AppSidebar } from './AppSidebar'
 import { GlobalSearch } from './GlobalSearch'
+import { ThemeToggle } from './ThemeToggle'
 import { UserMenu } from './UserMenu'
 
 const SIDEBAR_COLLAPSED_KEY = 'pertisk_gits_sidebar_collapsed'
@@ -73,6 +74,7 @@ export function AppLayout() {
             <GlobalSearch />
 
             <div className="ml-auto flex items-center gap-2 shrink-0">
+              <ThemeToggle />
               {user && (
                 <NavLink to="/groups/new" className="app-topbar-icon-btn" title="New group">
                   <Plus size={18} />

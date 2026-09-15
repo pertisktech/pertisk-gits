@@ -61,6 +61,8 @@ pub struct RepoBrowser {
     pub empty: bool,
     #[serde(default)]
     pub languages: Vec<crate::languages::LanguageStat>,
+    #[serde(default)]
+    pub recent_commits: Vec<CommitInfo>,
 }
 
 pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Result<RepoBrowser> {
@@ -75,12 +77,16 @@ pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Res
 
     let empty = branches.is_empty() || !ref_exists(repo_path, &default_ref).await?;
 
-    let languages = if empty {
-        Vec::new()
+    let (languages, recent_commits) = if empty {
+        (Vec::new(), Vec::new())
     } else {
-        crate::languages::analyze_languages(repo_path, &default_ref, RefKind::Branch)
+        let languages = crate::languages::analyze_languages(repo_path, &default_ref, RefKind::Branch)
             .await
-            .unwrap_or_default()
+            .unwrap_or_default();
+        let recent_commits = list_commits(repo_path, &default_ref, RefKind::Branch, 5)
+            .await
+            .unwrap_or_default();
+        (languages, recent_commits)
     };
 
     Ok(RepoBrowser {
@@ -89,6 +95,7 @@ pub async fn repo_browser(repo_path: &Path, default_branch: &str) -> anyhow::Res
         default_ref,
         empty,
         languages,
+        recent_commits,
     })
 }
 

@@ -159,6 +159,7 @@ export interface RepoBrowser {
   default_ref: string
   empty: boolean
   languages?: LanguageStat[]
+  recent_commits?: CommitInfo[]
 }
 
 export interface ApiTokenSummary {

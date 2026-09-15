@@ -8,6 +8,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#1a1626" />
     <title>Pertisk Gits</title>
+    <script>
+      (function () {
+        try {
+          var mode = localStorage.getItem('pertisk_gits_theme')
+          if (mode !== 'light' && mode !== 'dark') mode = 'dark'
+          document.documentElement.classList.remove('light', 'dark')
+          document.documentElement.classList.add(mode)
+          document.documentElement.dataset.themeMode = mode
+        } catch (e) {
+          document.documentElement.classList.add('dark')
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

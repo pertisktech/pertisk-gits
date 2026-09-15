@@ -4,7 +4,7 @@ export function RepoLanguagesPanel({ languages }: { languages: LanguageStat[] })
   if (languages.length === 0) return null
 
   return (
-    <section className="rounded-xl border border-border bg-card/40 p-4">
+    <section>
       <h2 className="mb-2 text-sm font-semibold text-text m-0">Languages</h2>
       <div className="flex h-2 overflow-hidden rounded-full bg-hover">
         {languages.map((lang) => (

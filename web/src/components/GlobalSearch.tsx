@@ -172,7 +172,7 @@ export function GlobalSearch() {
           }
         }}
         placeholder="Search groups, repositories, and code…"
-        className="h-9 w-full rounded-lg border border-input bg-card/60 pl-9 pr-3 text-sm text-text placeholder:text-muted outline-none transition-colors focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
+        className="app-search-input"
         aria-label="Search groups and repositories"
         aria-autocomplete="list"
       />

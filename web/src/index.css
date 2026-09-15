@@ -590,7 +590,7 @@ body,
   height: 2.25rem;
   border-radius: var(--radius-lg);
   border: 1px solid var(--color-border);
-  background: color-mix(in oklch, var(--color-card) 60%, transparent);
+  background: var(--color-card-soft);
   color: var(--color-muted);
   text-decoration: none;
   transition:
@@ -602,6 +602,31 @@ body,
 .app-topbar-icon-btn:hover {
   color: var(--color-text);
   border-color: color-mix(in oklch, var(--color-primary) 40%, var(--color-border));
+}
+
+.app-search-input {
+  height: 2.25rem;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-input);
+  background: var(--color-card-soft);
+  padding: 0 0.75rem 0 2.25rem;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  outline: none;
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.app-search-input::placeholder {
+  color: var(--color-muted);
+}
+
+.app-search-input:focus {
+  border-color: color-mix(in oklch, var(--color-primary) 60%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--color-primary) 20%, transparent);
 }
 
 .app-topbar-sign-in {
@@ -942,14 +967,14 @@ body,
 
 .app-container {
   width: 100%;
-  max-width: 72rem;
+  max-width: 1600px;
   margin: 0 auto;
   padding: 1.5rem 1rem 2.5rem;
 }
 
 @media (min-width: 768px) {
   .app-container {
-    padding: 1.5rem 1.5rem 2.5rem;
+    padding: 2rem 2rem 2.5rem;
   }
 }
 
