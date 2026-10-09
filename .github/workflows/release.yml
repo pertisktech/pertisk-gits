@@ -1,0 +1,160 @@
+# Release on tag — runner Docker image (amd64 + arm64) and pertisk-runner Helm chart.
+# Self-hosted runner. Packages (DEB/RPM) and the platform image are not built here.
+
+name: Release runner
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+
+permissions:
+  contents: read
+
+env:
+  CONTAINER_REGISTRY: ${{ vars.CONTAINER_REGISTRY || 'registry.tools.thaidevops.co' }}
+  RUNNER_REGISTRY: ${{ vars.RUNNER_REGISTRY || 'registry.tools.thaidevops.co/pertisk-gits' }}
+  RUNNER_IMAGE_NAME: runner
+  HELM_CHART_REPO_URL: ${{ vars.HELM_CHART_REPO_URL || 'https://charts.tools.thaidevops.co' }}
+  CARGO_BUILD_JOBS: "14"
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  docker-build:
+    name: Docker runner image
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Free disk space
+        run: |
+          set -euo pipefail
+          echo "=== disk before cleanup ==="
+          df -h
+          docker system df || true
+          docker buildx prune -af || true
+          docker builder prune -af || true
+          docker system prune -af --volumes || true
+          rm -rf "${RUNNER_TEMP:-/tmp}/.buildx-cache" .buildx-cache 2>/dev/null || true
+          echo "=== disk after cleanup ==="
+          df -h
+
+      - name: Configure Docker
+        run: |
+          DOCKER_TEMP_DIR="$RUNNER_TEMP/.docker"
+          mkdir -p "$DOCKER_TEMP_DIR"
+          echo '{"auths":{},"credsStore":"","credHelpers":{}}' > "$DOCKER_TEMP_DIR/config.json"
+          echo "DOCKER_CONFIG=$DOCKER_TEMP_DIR" >> $GITHUB_ENV
+
+      - name: Login to container registry
+        run: |
+          set -euo pipefail
+          : "${DOCKER_CONFIG:?DOCKER_CONFIG unset — Configure Docker step must run first}"
+          USERNAME="${{ secrets.HARBOR_USERNAME }}"
+          PASSWORD="${{ secrets.HARBOR_PASSWORD }}"
+          REGISTRY="${{ env.CONTAINER_REGISTRY }}"
+          test -n "$USERNAME" || { echo "::error::HARBOR_USERNAME secret is empty"; exit 1; }
+          test -n "$PASSWORD" || { echo "::error::HARBOR_PASSWORD secret is empty"; exit 1; }
+          echo "$PASSWORD" | docker login "$REGISTRY" -u "$USERNAME" --password-stdin
+          AUTH=$(printf '%s' "${USERNAME}:${PASSWORD}" | base64 | tr -d '\n')
+          python3 -c "
+          import json, os
+          path = os.path.join(os.environ['DOCKER_CONFIG'], 'config.json')
+          auth = '''${AUTH}'''
+          registry = '''${REGISTRY}'''
+          keys = {registry, f'https://{registry}', f'http://{registry}'}
+          cfg = {'auths': {k: {'auth': auth} for k in keys}, 'credsStore': '', 'credHelpers': {}}
+          open(path, 'w').write(json.dumps(cfg))
+          print('wrote docker auth for:', ', '.join(sorted(keys)))
+          "
+
+      - name: Build and push runner image
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          RUNNER_REGISTRY: ${{ env.RUNNER_REGISTRY }}
+          RUNNER_IMAGE_NAME: ${{ env.RUNNER_IMAGE_NAME }}
+          CARGO_BUILD_JOBS: ${{ env.CARGO_BUILD_JOBS }}
+        run: |
+          set -euo pipefail
+          make runner-image-multi VERSION="$VERSION"
+
+      - name: Summary
+        run: |
+          echo "## Runner image" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version:** ${{ steps.version.outputs.VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.RUNNER_REGISTRY }}/runner:${{ steps.version.outputs.VERSION }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`${{ env.RUNNER_REGISTRY }}/runner:latest\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Platforms:** linux/amd64, linux/arm64" >> "$GITHUB_STEP_SUMMARY"
+
+  helm-publish:
+    name: Publish Helm runner chart
+    needs: docker-build
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Helm
+        run: |
+          set -euo pipefail
+          if command -v helm >/dev/null 2>&1; then
+            helm version
+            exit 0
+          fi
+          HELM_VERSION="${HELM_VERSION:-3.21.1}"
+          HELM_INSTALL_DIR="${HOME}/.local/bin"
+          mkdir -p "$HELM_INSTALL_DIR"
+          case "$(uname -m)" in
+            x86_64|amd64) HELM_ARCH=amd64 ;;
+            aarch64|arm64) HELM_ARCH=arm64 ;;
+            *)
+              echo "unsupported architecture for helm: $(uname -m)" >&2
+              exit 1
+              ;;
+          esac
+          TMP="$(mktemp -d)"
+          trap 'rm -rf "$TMP"' EXIT
+          curl -fsSL "https://get.helm.sh/helm-v${HELM_VERSION}-linux-${HELM_ARCH}.tar.gz" -o "$TMP/helm.tgz"
+          tar -xzf "$TMP/helm.tgz" -C "$TMP"
+          install -m 755 "$TMP/linux-${HELM_ARCH}/helm" "$HELM_INSTALL_DIR/helm"
+          echo "$HELM_INSTALL_DIR" >> "$GITHUB_PATH"
+          helm version
+
+      - name: Publish pertisk-runner chart
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          HELM_CHART_REPO_URL: ${{ env.HELM_CHART_REPO_URL }}
+          HELM_CHART_TOKEN: ${{ secrets.HELM_CHART_TOKEN }}
+          HELM_USER: ${{ secrets.HELM_USER }}
+          HELM_PASSWORD: ${{ secrets.HELM_PASSWORD }}
+          RUNNER_IMAGE: ${{ env.RUNNER_REGISTRY }}/runner
+        run: chmod +x build/publish-helm-runner.sh && ./build/publish-helm-runner.sh
+
+      - name: Summary
+        run: |
+          echo "## Helm chart published" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Chart:** pertisk-runner ${{ steps.version.outputs.VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Repository:** ${{ env.HELM_CHART_REPO_URL }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Image:** \`${{ env.RUNNER_REGISTRY }}/runner:${{ steps.version.outputs.VERSION }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo '```bash' >> "$GITHUB_STEP_SUMMARY"
+          echo "helm repo add pertisk ${{ env.HELM_CHART_REPO_URL }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "helm repo update" >> "$GITHUB_STEP_SUMMARY"
+          echo "helm upgrade --install pertisk-runner pertisk/pertisk-runner \\" >> "$GITHUB_STEP_SUMMARY"
+          echo "  --version ${{ steps.version.outputs.VERSION }} -n pertisk --create-namespace" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
