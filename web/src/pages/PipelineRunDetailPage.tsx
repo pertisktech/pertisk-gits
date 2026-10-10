@@ -1,6 +1,6 @@
 import type { JobRun, PipelineRun } from '../api/types'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Download, Loader2, Play, RotateCcw, Square, Trash2, Workflow } from 'lucide-react'
+import { ArrowLeft, Loader2, Square, Trash2, Workflow } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
@@ -9,12 +9,7 @@ import { useProjectParams } from '../hooks/useProjectParams'
 import { useProjectSubRoute } from '../hooks/useProjectSubRoute'
 import { RepoDetailTabs } from '../components/RepoDetailTabs'
 import { PipelineGraph, jobsFromRun } from '../components/PipelineGraph'
-import {
-  CiLogViewer,
-  CiPrompt,
-  CiRunLine,
-  CiTerminal,
-} from '../components/PipelineTerminal'
+import { PipelineJobStages } from '../components/PipelineJobStages'
 import {
   filterRunJobsForList,
   filterRunJobsForManualDeploy,
@@ -27,7 +22,6 @@ import {
   countRerunnableFailedJobs,
   displayJobStatus,
   displayRunStatus,
-  formatJobDuration,
   formatPipelineIid,
   formatRunDuration,
   isRunInProgress,
@@ -44,27 +38,13 @@ import { projectBreadcrumbItems } from '../lib/groupRoute'
 import { displayRepoName } from '../lib/projectInitial'
 import { formatDateTime } from '../lib/collaboration'
 import { Breadcrumbs, SecondaryButton } from '../components/ui'
-import {
-  inferRunningStepName,
-  initialStepKey,
-  jobStepViews,
-  stepDisplayStatus,
-  stepLogText,
-  stepMeta,
-  stepDisplayLabel,
-} from '../lib/pipelineLog'
+import { inferRunningStepName, initialStepKey, jobStepViews } from '../lib/pipelineLog'
 
 type PipelineDetailTab = 'pipeline' | 'jobs'
 
 function parsePipelineTab(value: string | null): PipelineDetailTab {
   if (value === 'jobs') return 'jobs'
   return 'pipeline'
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`
 }
 
 export function PipelineRunDetailPage() {
@@ -219,7 +199,6 @@ export function PipelineRunDetailPage() {
     setActiveStepKey((prev) => (prev === stepKey ? null : stepKey))
   }
 
-  const logText = activeJob && run ? stepLogText(activeJob, activeStepKey, run.status) : ''
   const activeStep = activeSteps.find((step) => step.key === activeStepKey) ?? null
   const activeJobDisplayStatus = activeJob && run ? displayJobStatus(activeJob, run.status) : null
 
@@ -545,239 +524,50 @@ export function PipelineRunDetailPage() {
             />
           </div>
         ) : (
-          <CiTerminal
-            className="ci-terminal--detail"
-            bodyClassName="ci-terminal-body--detail"
-            title="pertisk-ci"
-            subtitle={`${projectSlug}@${shortSha(run.commit_sha)}`}
-            actions={
-              <span className="text-[10px] font-mono text-naturals-n9">
-                {formatRunDuration(run, nowMs)} · {passed}/{visibleJobs.length} jobs ok
-              </span>
-            }
-          >
-            <div className="ci-terminal-split ci-terminal-split--detail">
-              <div className="ci-terminal-sidebar">
-                {visibleJobs.map((job) => {
-                  const jobStatus = displayJobStatus(job, run.status)
-                  const isManualJob = job.status === 'manual'
-                  const showPlay = canPlayJob(job)
-                  const jobDuration = formatJobDuration(job, nowMs)
-                  return (
-                  <div key={job.id}>
-                    <CiRunLine
-                      status={jobStatus}
-                      label={job.job_name}
-                      meta={jobDuration !== '—' ? `${jobDuration} · ${job.runs_on}` : job.runs_on}
-                      active={activeJob?.id === job.id && (!activeStepKey || isManualJob)}
-                      onClick={() => selectJob(job.id, false)}
-                      actions={
-                        showPlay ? (
-                          <button
-                            type="button"
-                            className="ci-run-line-action"
-                            title="Run manual job"
-                            disabled={playingJobId === job.id}
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              playJobMutation.mutate(job.id)
-                            }}
-                          >
-                            {playingJobId === job.id ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <Play size={14} />
-                            )}
-                          </button>
-                        ) : undefined
-                      }
-                    />
-                    {activeJob?.id === job.id &&
-                      !isManualJob &&
-                      activeSteps.map((step, index) => {
-                        const stepStatus = stepDisplayStatus(
-                          step,
-                          jobStatus,
-                          run.status,
-                        )
-                        return (
-                        <CiRunLine
-                          key={step.key}
-                          nested
-                          status={stepStatus}
-                          label={stepDisplayLabel(step, index)}
-                          meta={stepMeta(step, {
-                            nowMs,
-                            job,
-                            running: stepStatus === 'running',
-                          })}
-                          active={activeStepKey === step.key}
-                          onClick={() => selectStep(step.key)}
-                        />
-                        )
-                      })}
-                  </div>
-                  )
-                })}
-              </div>
-
-              <div className="ci-terminal-log-pane">
-                {activeJob ? (
-                  <>
-                    <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-naturals-n4/40">
-                      <CiPrompt
-                        user="runner"
-                        host={activeJob.runs_on}
-                        path={activeJob.job_name}
-                        command={
-                          activeJobDisplayStatus === 'manual'
-                            ? 'manual job — click Run job to start'
-                            : activeJobDisplayStatus === 'cancelled'
-                              ? 'cancelled'
-                              : activeStep?.run ??
-                                (runningStepName ??
-                                  (activeJob.metrics_json
-                                    ? `exit ${activeJob.status === 'success' ? 0 : 1}`
-                                    : activeStepKey ?? 'select a step'))
-                        }
-                      />
-                      <div className="flex flex-wrap items-center gap-2 shrink-0">
-                        {canRerunSingleJob(activeJob) && (
-                          <SecondaryButton
-                            type="button"
-                            className="text-xs py-1 px-2.5"
-                            disabled={rerunningJobId === activeJob.id}
-                            onClick={() => rerunJobMutation.mutate(activeJob.id)}
-                          >
-                            {rerunningJobId === activeJob.id ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              <RotateCcw size={12} />
-                            )}
-                            Re-run job
-                          </SecondaryButton>
-                        )}
-                        {canPlayJob(activeJob) && (
-                          <SecondaryButton
-                            type="button"
-                            className="text-xs py-1 px-2.5"
-                            disabled={playingJobId === activeJob.id}
-                            onClick={() => playJobMutation.mutate(activeJob.id)}
-                          >
-                            {playingJobId === activeJob.id ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              <Play size={12} />
-                            )}
-                            Run job
-                          </SecondaryButton>
-                        )}
-                        {canCancelStep && (
-                          <SecondaryButton
-                            type="button"
-                            className="border-red-r1/40 text-dashboard-danger hover:bg-dashboard-danger-bg text-xs py-1 px-2.5"
-                            disabled={cancelStepMutation.isPending}
-                            onClick={() =>
-                              cancelStepMutation.mutate({
-                                jobId: activeJob.id,
-                                stepName: cancelStepName,
-                              })
-                            }
-                          >
-                            {cancelStepMutation.isPending ? (
-                              <Loader2 size={12} className="animate-spin" />
-                            ) : (
-                              <Square size={12} />
-                            )}
-                            Cancel step
-                          </SecondaryButton>
-                        )}
-                      </div>
-                    </div>
-                    <CiLogViewer
-                      key={`${activeJob.id}-${jobLogSession}`}
-                      className="ci-log-viewer--fill"
-                      text={logText}
-                      followTail
-                      emptyMessage={
-                        activeJobDisplayStatus === 'manual'
-                          ? canPlayJob(activeJob)
-                            ? 'Manual job — click Run job to start'
-                            : 'Manual job — waiting for upstream jobs to finish'
-                          : activeJobDisplayStatus === 'queued' || activeJobDisplayStatus === 'running'
-                            ? activeStepKey
-                              ? 'Waiting for log output…'
-                              : 'Select a step to view logs'
-                            : activeJobDisplayStatus === 'cancelled'
-                              ? 'Job was cancelled'
-                              : 'No log output'
-                      }
-                    />
-                    {activeJob.metrics_json && (
-                      <div className="ci-terminal-meta-bar ci-terminal-meta-bar--footer">
-                        <span>
-                          Queue <strong>{activeJob.metrics_json.queue_wait_ms}ms</strong>
-                        </span>
-                        <span>
-                          Execute <strong>{activeJob.metrics_json.execution_ms}ms</strong>
-                        </span>
-                        <span>
-                          Total <strong>{activeJob.metrics_json.total_ms}ms</strong>
-                        </span>
-                      </div>
-                    )}
-                    {activeJob.artifacts?.length > 0 && (
-                      <div className="ci-artifacts-panel">
-                        <h4 className="ci-artifacts-title">Artifacts</h4>
-                        <ul className="ci-artifacts-list">
-                          {activeJob.artifacts.map((artifact) => (
-                            <li key={artifact.id} className="ci-artifacts-item">
-                              <span className="ci-artifacts-name">{artifact.name}</span>
-                              <span className="ci-artifacts-meta">
-                                {formatBytes(artifact.size_bytes)}
-                              </span>
-                              <button
-                                type="button"
-                                className="ci-artifacts-download"
-                                disabled={downloadingArtifactId === artifact.id}
-                                onClick={async () => {
-                                  if (!token) return
-                                  setDownloadingArtifactId(artifact.id)
-                                  try {
-                                    await api.downloadPipelineArtifact(
-                                      token,
-                                      orgSlug,
-                                      projectSlug,
-                                      runId,
-                                      artifact.id,
-                                      `${artifact.name}.tar.gz`,
-                                    )
-                                  } catch (err) {
-                                    console.error(err)
-                                  } finally {
-                                    setDownloadingArtifactId(null)
-                                  }
-                                }}
-                              >
-                                {downloadingArtifactId === artifact.id ? (
-                                  <Loader2 className="ci-artifacts-icon animate-spin" size={14} />
-                                ) : (
-                                  <Download className="ci-artifacts-icon" size={14} />
-                                )}
-                                Download
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <CiLogViewer text="" emptyMessage="No jobs in this pipeline run." />
-                )}
-              </div>
-            </div>
-          </CiTerminal>
+          <PipelineJobStages
+            jobs={visibleJobs}
+            run={run}
+            activeJob={activeJob}
+            activeStepKey={activeStepKey}
+            nowMs={nowMs}
+            logSession={jobLogSession}
+            onSelectJob={(jobId) => selectJob(jobId, false)}
+            onSelectStep={selectStep}
+            canPlayJob={canPlayJob}
+            canRerunJob={canRerunSingleJob}
+            playingJobId={playingJobId}
+            rerunningJobId={rerunningJobId}
+            onPlayJob={(jobId) => playJobMutation.mutate(jobId)}
+            onRerunJob={(jobId) => rerunJobMutation.mutate(jobId)}
+            canCancelStep={canCancelStep}
+            cancelPending={cancelStepMutation.isPending}
+            onCancelStep={() => {
+              if (!activeJob) return
+              cancelStepMutation.mutate({
+                jobId: activeJob.id,
+                stepName: cancelStepName,
+              })
+            }}
+            downloadingArtifactId={downloadingArtifactId}
+            onDownloadArtifact={async (artifact) => {
+              if (!token) return
+              setDownloadingArtifactId(artifact.id)
+              try {
+                await api.downloadPipelineArtifact(
+                  token,
+                  orgSlug,
+                  projectSlug,
+                  runId,
+                  artifact.id,
+                  `${artifact.name}.tar.gz`,
+                )
+              } catch (err) {
+                console.error(err)
+              } finally {
+                setDownloadingArtifactId(null)
+              }
+            }}
+          />
         )}
       </div>
     </div>

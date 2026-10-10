@@ -403,3 +403,19 @@ export function stepDisplayLabel(step: JobStepView, index: number): string {
   if (name && !/^step-\d+$/.test(name)) return name
   return `Step ${index + 1}`
 }
+
+/** Short failure excerpt so a long log does not hide the error. */
+export function stepErrorExcerpt(text: string): string | null {
+  const lines = text
+    .split('\n')
+    .map((line) => line.trimEnd())
+    .filter((line) => line.trim() && !line.trim().startsWith('==='))
+  if (lines.length < 8) return null
+  const errors = lines.filter((line) =>
+    /error|fatal|failed|exception|panic|permission denied|not found|command not found/i.test(
+      line,
+    ),
+  )
+  if (errors.length === 0) return null
+  return errors.slice(-4).join('\n')
+}

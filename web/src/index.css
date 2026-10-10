@@ -4843,6 +4843,7 @@ select.app-field:disabled,
 }
 
 .pipeline-run-page .app-panel:has(.ci-terminal--detail),
+.pipeline-run-page .app-panel:has(.ci-job-stages),
 .pipeline-run-page .app-panel:has(.pipeline-graph-panel--inline) {
   display: flex;
   flex-direction: column;
@@ -5594,8 +5595,8 @@ select.app-field:disabled,
 }
 
 .pipeline-run-page > *:not(.app-panel:has(.ci-terminal--detail)):not(
-    .app-panel:has(.pipeline-graph-panel--inline)
-  ),
+    .app-panel:has(.ci-job-stages)
+  ):not(.app-panel:has(.pipeline-graph-panel--inline)),
 .pipeline-run-page .repo-list-header,
 .pipeline-run-page .ci-terminal-chrome,
 .pipeline-run-page .ci-terminal-meta-bar {
@@ -5653,6 +5654,208 @@ select.app-field:disabled,
   height: 100%;
   overflow-y: auto;
   overflow-x: auto;
+}
+
+.ci-job-stages {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.ci-job-stages-empty {
+  padding: 1.5rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.ci-job-stage-jobs {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.ci-job-stage-job {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 16rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-card-soft);
+  color: var(--color-text);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.ci-job-stage-job--active {
+  border-color: color-mix(in oklch, var(--color-primary) 55%, var(--color-border));
+  background: color-mix(in oklch, var(--color-primary) 12%, var(--color-surface));
+}
+
+.ci-job-stage-job-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ci-job-stage-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.ci-job-stage-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.ci-job-stage-toolbar-name {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ci-job-stage-toolbar-meta {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+}
+
+.ci-job-stage-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.ci-job-stage-list {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.ci-job-stage {
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.ci-job-stage--open {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.ci-job-stage--failure .ci-job-stage-head {
+  background: color-mix(in oklch, var(--color-red-r1) 8%, transparent);
+}
+
+.ci-job-stage-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.15rem 0.5rem 0.15rem 0;
+}
+
+.ci-job-stage-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.ci-job-stage-toggle:hover {
+  background: color-mix(in oklch, var(--color-hover) 70%, transparent);
+}
+
+.ci-job-stage-chevron {
+  display: flex;
+  color: var(--color-muted);
+  flex-shrink: 0;
+}
+
+.ci-job-stage-name {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ci-job-stage-exit {
+  flex-shrink: 0;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-red-r1) 16%, transparent);
+  color: var(--color-red-r1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.ci-job-stage-meta {
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+}
+
+.ci-job-stage-cancel {
+  margin-right: 0.5rem;
+  flex-shrink: 0;
+}
+
+.ci-job-stage-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.ci-job-stage-error {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--color-red-r1) 35%, var(--color-border));
+  background: color-mix(in oklch, var(--color-red-r1) 12%, var(--color-surface));
+  color: var(--color-red-r1);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex-shrink: 0;
+}
+
+.ci-job-stage-body .ci-log-viewer-shell {
+  flex: 1;
+  min-height: 8rem;
 }
 
 /* Pipeline DAG (React Flow) */
