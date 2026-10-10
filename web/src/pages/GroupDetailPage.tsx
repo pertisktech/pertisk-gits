@@ -29,8 +29,8 @@ export function GroupDetailPage() {
   })
 
   const { data: projects = [], isLoading, error } = useQuery({
-    queryKey: ['repositories', orgPath, { recursive: false }],
-    queryFn: () => api.listRepositories(token!, orgPath),
+    queryKey: ['repositories', orgPath, { recursive: true }],
+    queryFn: () => api.listRepositories(token!, orgPath, { recursive: true }),
     enabled: Boolean(token && orgPath),
   })
 

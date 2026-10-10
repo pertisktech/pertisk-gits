@@ -84,6 +84,28 @@ run_fpm_in_docker() {
   trap - RETURN
 }
 
+# BuildKit's container driver exits with graceful_stop when the daemon restarts or
+# runs out of memory. docker.sock then returns EOF until dockerd is back.
+docker_wait_ready() {
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
+    if docker info >/dev/null 2>&1; then
+      return 0
+    fi
+    echo "Docker daemon not ready (attempt ${attempt}/12); waiting..."
+    sleep $((attempt < 6 ? attempt * 2 : 10))
+  done
+  echo "Docker daemon did not recover" >&2
+  return 1
+}
+
+docker_reset_buildx_builder() {
+  local builder_name="$1"
+  docker_wait_ready || return 1
+  docker buildx rm "$builder_name" >/dev/null 2>&1 || true
+  docker buildx create --name "$builder_name" --driver docker-container --bootstrap
+}
+
 # Cross-compile Linux binaries with buildx and export via type=local (reliable for arm64 on amd64 hosts).
 # Usage: buildx_export_linux_binaries <builder> <dockerfile> <export_target> <arch> <version> <cache_dir> <out_dir> [extra build-arg flags...]
 buildx_export_linux_binaries() {
@@ -100,8 +122,7 @@ buildx_export_linux_binaries() {
 
   if ! docker buildx inspect "$builder_name" --bootstrap >/dev/null 2>&1; then
     echo "Buildx builder '$builder_name' is missing; creating..."
-    docker buildx rm "$builder_name" >/dev/null 2>&1 || true
-    docker buildx create --name "$builder_name" --driver docker-container --bootstrap
+    docker_reset_buildx_builder "$builder_name"
   fi
 
   mkdir -p "$cache_dir"
@@ -158,8 +179,10 @@ buildx_export_linux_binaries() {
     fi
     if [ "$attempt" -lt 3 ]; then
       echo "docker buildx build failed (attempt ${attempt}/3); recreating builder..."
-      docker buildx rm "$builder_name" >/dev/null 2>&1 || true
-      docker buildx create --name "$builder_name" --driver docker-container --bootstrap
+      sleep $((attempt * 5))
+      if ! docker_reset_buildx_builder "$builder_name"; then
+        echo "Builder reset failed; next attempt will try again." >&2
+      fi
     fi
   done
 

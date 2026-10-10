@@ -26,10 +26,21 @@ import { ProjectListRow } from './ProjectListRow'
 import listStyles from './ProjectList.module.css'
 import { EmptyState, LinkButton, TablePagination } from './ui'
 import { ImportMenuDropdown } from './ImportMenuDropdown'
+import { displayRepoName } from '../lib/projectInitial'
 import { useClientPagination } from '../lib/pagination'
 import { cn } from '../utils/cn'
 import panelStyles from './GroupChildrenPanel.module.css'
 import styles from '../pages/DashboardPage.module.css'
+
+function projectListLabel(project: Repository, orgPath: string) {
+  const path = project.organization_path ?? orgPath
+  const nested =
+    path === orgPath || !path.startsWith(`${orgPath}/`)
+      ? ''
+      : path.slice(orgPath.length + 1)
+  const name = displayRepoName(project.name, project.slug)
+  return nested ? `${nested}/${name}` : name
+}
 
 type ChildFilter = 'all' | 'subgroups' | 'projects'
 type ListSortOption = RepositorySortOption | GroupSortOption | GroupChildSortOption
@@ -177,36 +188,41 @@ export function GroupChildrenPanel({
       </div>
 
       {!isLoading && totalCount > 0 && (
-        <div className={panelStyles.filterRow}>
+        <>
           {hasBoth && (
-            <div className={panelStyles.filterTabs} role="tablist" aria-label={panelTitle}>
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={filter === tab.id}
-                  className={cn('app-segment-tab', filter === tab.id && 'active')}
-                  onClick={() => setFilter(tab.id as ChildFilter)}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            <div className="app-segment-bar">
+              <div className="app-segment" role="tablist" aria-label={panelTitle}>
+                {tabs.map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={filter === tab.id}
+                    data-no-global-button-hover="true"
+                    className={cn('app-segment-tab', filter === tab.id && 'active')}
+                    onClick={() => setFilter(tab.id as ChildFilter)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
-          <ListSearchToolbar
-            inline
-            className={panelStyles.filterToolbar}
-            search={search}
-            onSearchChange={setSearch}
-            searchPlaceholder="Filter by name or path…"
-            searchLabel={searchLabel}
-            sort={sort}
-            onSortChange={setSort}
-            sortLabel={sortLabel}
-            sortOptions={sortOptions}
-          />
-        </div>
+          <div className={panelStyles.filterRow}>
+            <ListSearchToolbar
+              inline
+              className={panelStyles.filterToolbar}
+              search={search}
+              onSearchChange={setSearch}
+              searchPlaceholder="Filter by name or path…"
+              searchLabel={searchLabel}
+              sort={sort}
+              onSortChange={setSort}
+              sortLabel={sortLabel}
+              sortOptions={sortOptions}
+            />
+          </div>
+        </>
       )}
 
       {isLoading && (
@@ -280,6 +296,7 @@ export function GroupChildrenPanel({
                 name={item.project.name}
                 updatedAt={item.project.updated_at}
                 lastCommitAt={item.project.last_commit_at}
+                displayLabel={projectListLabel(item.project, orgPath)}
                 stats={getProjectStats({
                   orgSlug: item.project.organization_path ?? orgPath,
                   slug: item.project.slug,
