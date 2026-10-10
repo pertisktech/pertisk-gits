@@ -450,14 +450,23 @@ echo "=== helper: workspace ready"
 
     let mut containers = Vec::new();
     if dind {
+        // Prefer iptables-legacy: nf_tables on Cilium hosts fails DinD bridge NAT with
+        // "CHAIN_ADD failed ... chain POSTROUTING".
         containers.push(Container {
             name: "dind".into(),
             image: Some(config.dind_image.clone()),
-            command: Some(vec!["dockerd".into()]),
-            args: Some(vec![
-                "--host=unix:///var/run/docker.sock".into(),
-                "--storage-driver=overlay2".into(),
-            ]),
+            command: Some(vec!["/bin/sh".into(), "-c".into()]),
+            args: Some(vec![concat!(
+                "set -eu; ",
+                "ln -sfn /usr/sbin/iptables-legacy /usr/sbin/iptables; ",
+                "ln -sfn /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables; ",
+                "ln -sfn /usr/sbin/iptables-legacy-restore /usr/sbin/iptables-restore; ",
+                "ln -sfn /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore; ",
+                "ln -sfn /usr/sbin/iptables-legacy-save /usr/sbin/iptables-save; ",
+                "ln -sfn /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save; ",
+                "exec dockerd --host=unix:///var/run/docker.sock --storage-driver=overlay2",
+            )
+            .into()]),
             security_context: Some(SecurityContext {
                 privileged: Some(true),
                 ..Default::default()
