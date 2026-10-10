@@ -906,12 +906,55 @@ async fn get_pipeline_config_preview(
     }))
 }
 
+#[derive(Debug, Deserialize)]
+struct ListPipelinesQuery {
+    page: Option<i64>,
+    per_page: Option<i64>,
+    /// `running` limits the page to pending, queued, and running pipelines.
+    status: Option<String>,
+}
+
+#[derive(Serialize)]
+struct PipelineRunListResponse {
+    runs: Vec<PipelineRunResponse>,
+    /// Count of runs matching the current filter (pagination).
+    total: i64,
+    all_total: i64,
+    running_total: i64,
+    page: i64,
+    per_page: i64,
+}
+
 async fn list_pipeline_runs(
     State(state): State<AppState>,
     auth: AuthUser,
     Path((org_path, repo_slug)): Path<(String, String)>,
-) -> Result<Json<Vec<PipelineRunResponse>>, ApiError> {
+    Query(query): Query<ListPipelinesQuery>,
+) -> Result<Json<PipelineRunListResponse>, ApiError> {
     let (_org, repo, _path) = load_repo_for_read(&state, &crate::org::org_path_from_param(&org_path), &repo_slug, Some(&auth)).await?;
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    let running_only = query.status.as_deref() == Some("running");
+
+    let (total, running_total) = sqlx::query_as::<_, (i64, i64)>(
+        r#"
+        SELECT
+            COUNT(*)::bigint,
+            COUNT(*) FILTER (
+                WHERE status IN ('pending', 'queued', 'running')
+            )::bigint
+        FROM pipeline_runs
+        WHERE repository_id = $1
+        "#,
+    )
+    .bind(repo.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(sqlx_error)?;
+
+    let page_total = if running_only { running_total } else { total };
 
     let runs = sqlx::query_as::<_, PipelineRunRow>(
         r#"
@@ -933,11 +976,18 @@ async fn list_pipeline_runs(
             ) AS pipeline_iid
         FROM pipeline_runs p
         WHERE p.repository_id = $1
+          AND (
+            $2::bool = false
+            OR p.status IN ('pending', 'queued', 'running')
+          )
         ORDER BY p.created_at DESC
-        LIMIT 50
+        LIMIT $3 OFFSET $4
         "#,
     )
     .bind(repo.id)
+    .bind(running_only)
+    .bind(per_page)
+    .bind(offset)
     .fetch_all(&state.pool)
     .await
     .map_err(sqlx_error)?;
@@ -947,7 +997,14 @@ async fn list_pipeline_runs(
         let jobs = fetch_job_runs(&state.pool, run.id).await.map_err(sqlx_error)?;
         out.push(run.into_response(jobs));
     }
-    Ok(Json(out))
+    Ok(Json(PipelineRunListResponse {
+        runs: out,
+        total: page_total,
+        all_total: total,
+        running_total,
+        page,
+        per_page,
+    }))
 }
 
 async fn get_pipeline_run(

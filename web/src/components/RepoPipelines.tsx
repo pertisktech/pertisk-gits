@@ -15,14 +15,10 @@ import {
 } from '../lib/pipelineStatus'
 import { RepoDetailTabs } from './RepoDetailTabs'
 import { PipelineGraph } from './PipelineGraph'
-import {
-  filterPipelineRuns,
-  PipelineRunsTable,
-  type PipelineListFilter,
-} from './PipelineRunsTable'
+import { PipelineRunsTable, type PipelineListFilter } from './PipelineRunsTable'
 import { PipelineSummary } from './PipelineSummary'
 import { RunPipelineDialog, type RunPipelineParams } from './RunPipelineDialog'
-import { EmptyState, PrimaryButton, SecondaryButton } from './ui'
+import { EmptyState, PrimaryButton, SecondaryButton, TablePagination } from './ui'
 
 function PipelineMigratePanel({
   suggestions,
@@ -193,21 +189,32 @@ export function RepoPipelines({
     [migrateData?.suggestions],
   )
 
-  const { data: runs = [], isLoading, error } = useQuery({
-    queryKey: ['pipeline-runs', orgSlug, repoSlug],
-    queryFn: () => api.listPipelineRuns(token, orgSlug, repoSlug),
+  const [page, setPage] = useState(1)
+  const pageSize = 20
+
+  useEffect(() => {
+    setPage(1)
+  }, [listFilter])
+
+  const { data: runPage, isLoading, error } = useQuery({
+    queryKey: ['pipeline-runs', orgSlug, repoSlug, page, listFilter],
+    queryFn: () =>
+      api.listPipelineRuns(token, orgSlug, repoSlug, {
+        page,
+        per_page: pageSize,
+        status: listFilter === 'running' ? 'running' : undefined,
+      }),
     enabled: Boolean(orgSlug && repoSlug && token),
     refetchInterval: (query) => {
-      const items = query.state.data ?? []
+      const items = query.state.data?.runs ?? []
       return items.some((r) => isRunInProgress(r)) ? 5000 : false
     },
   })
 
-  const runningRuns = useMemo(() => runs.filter((run) => isRunInProgress(run)), [runs])
-  const filteredRuns = useMemo(
-    () => filterPipelineRuns(runs, listFilter),
-    [runs, listFilter],
-  )
+  const runs = runPage?.runs ?? []
+  const runTotal = runPage?.total ?? 0
+  const allTotal = runPage?.all_total ?? 0
+  const runningTotal = runPage?.running_total ?? 0
 
   const triggerPipelineRun = async ({ refKind, refName, environment }: RunPipelineParams) => {
     const commits = await api.getRepoCommits(
@@ -344,7 +351,7 @@ jobs:
 
         <RepoDetailTabs
           tabs={[
-            { id: 'runs', label: `Runs (${runs.length})` },
+            { id: 'runs', label: `Runs (${allTotal})` },
             { id: 'editor', label: 'Editor' },
           ]}
           active={listTab}
@@ -362,16 +369,14 @@ jobs:
                     className={`repo-list-tab ${listFilter === filter ? 'active' : ''}`}
                     onClick={() => setListFilter(filter)}
                   >
-                    {filter === 'all'
-                      ? `All (${runs.length})`
-                      : `Running (${runningRuns.length})`}
+                    {filter === 'all' ? `All (${allTotal})` : `Running (${runningTotal})`}
                   </button>
                 ))}
               </div>
             </div>
 
             <PipelineRunsTable
-              runs={filteredRuns}
+              runs={runs}
               orgSlug={orgSlug}
               repoSlug={repoSlug}
               onOpenRun={(runId, jobId) =>
@@ -384,6 +389,13 @@ jobs:
                   ? 'No pipelines are running right now.'
                   : undefined
               }
+            />
+            <TablePagination
+              page={page}
+              pageSize={pageSize}
+              total={runTotal}
+              onPageChange={setPage}
+              itemLabel="pipelines"
             />
           </div>
         ) : (

@@ -10,7 +10,10 @@ export function useRepoPipelineRunsIndex(
 ) {
   const { data: runs = [], isLoading } = useQuery({
     queryKey: ['pipeline-runs', orgSlug, repoSlug, token ?? 'public'],
-    queryFn: () => api.listPipelineRuns(token!, orgSlug, repoSlug),
+    queryFn: async () => {
+      const page = await api.listPipelineRuns(token!, orgSlug, repoSlug, { per_page: 50 })
+      return page.runs
+    },
     enabled: Boolean(token && orgSlug && repoSlug),
     staleTime: 30_000,
   })

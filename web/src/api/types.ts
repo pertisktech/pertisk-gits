@@ -788,6 +788,15 @@ export interface PipelineRun {
   jobs: JobRun[]
 }
 
+export interface PipelineRunListResponse {
+  runs: PipelineRun[]
+  total: number
+  all_total: number
+  running_total: number
+  page: number
+  per_page: number
+}
+
 export interface CommitStatus {
   context: string
   state: 'pending' | 'success' | 'failure' | 'error'

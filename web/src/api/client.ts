@@ -34,6 +34,7 @@ import type {
   PipelineConfigPreview,
   PipelineMigrateResponse,
   PipelineRun,
+  PipelineRunListResponse,
   PullRequestCommentDetail,
   PullRequestDetail,
   PullRequestReview,
@@ -1175,12 +1176,23 @@ export const api = {
       token,
     ),
 
-  listPipelineRuns: (token: string, orgSlug: string, repoSlug: string) =>
-    request<PipelineRun[]>(
-      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines`,
+  listPipelineRuns: (
+    token: string,
+    orgSlug: string,
+    repoSlug: string,
+    params?: { page?: number; per_page?: number; status?: 'running' },
+  ) => {
+    const search = new URLSearchParams()
+    if (params?.page) search.set('page', String(params.page))
+    if (params?.per_page) search.set('per_page', String(params.per_page))
+    if (params?.status) search.set('status', params.status)
+    const query = search.toString()
+    return request<PipelineRunListResponse>(
+      `/organizations/${orgApiPath(orgSlug)}/repositories/${repoSlug}/pipelines${query ? `?${query}` : ''}`,
       {},
       token,
-    ),
+    )
+  },
 
   getPipelineRun: (token: string, orgSlug: string, repoSlug: string, runId: string) =>
     request<PipelineRun>(
