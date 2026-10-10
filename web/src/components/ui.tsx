@@ -340,33 +340,31 @@ export function TablePagination({
       <p className="text-sm text-text-secondary m-0">
         Showing {rangeStart}–{rangeEnd} of {total} {itemLabel}
       </p>
-      {totalPages > 1 && (
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            className="app-table-page-btn"
-            data-no-global-button-hover="true"
-            disabled={currentPage <= 1}
-            onClick={() => onPageChange(currentPage - 1)}
-            aria-label="Previous page"
-          >
-            <ChevronLeft size={16} />
-          </button>
-          <span className="px-2 text-sm text-text-secondary tabular-nums">
-            {currentPage} / {totalPages}
-          </span>
-          <button
-            type="button"
-            className="app-table-page-btn"
-            data-no-global-button-hover="true"
-            disabled={currentPage >= totalPages}
-            onClick={() => onPageChange(currentPage + 1)}
-            aria-label="Next page"
-          >
-            <ChevronRight size={16} />
-          </button>
-        </div>
-      )}
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          className="app-table-page-btn"
+          data-no-global-button-hover="true"
+          disabled={currentPage <= 1}
+          onClick={() => onPageChange(currentPage - 1)}
+          aria-label="Previous page"
+        >
+          <ChevronLeft size={16} />
+        </button>
+        <span className="px-2 text-sm text-text-secondary tabular-nums">
+          {currentPage} / {totalPages}
+        </span>
+        <button
+          type="button"
+          className="app-table-page-btn"
+          data-no-global-button-hover="true"
+          disabled={currentPage >= totalPages}
+          onClick={() => onPageChange(currentPage + 1)}
+          aria-label="Next page"
+        >
+          <ChevronRight size={16} />
+        </button>
+      </div>
     </div>
   )
 }

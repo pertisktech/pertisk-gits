@@ -22,8 +22,6 @@ import {
 import { ActionsStatusIcon } from './PipelineStatus'
 import { PipelineRerunMenu } from './PipelineRerunMenu'
 import { StatusBadge } from './StatusBadge'
-import { TablePagination } from './ui'
-import { useClientPagination } from '../lib/pagination'
 
 export type PipelineListFilter = 'all' | 'running'
 
@@ -49,13 +47,6 @@ export function PipelineRunsTable({
   rerunningRunId?: string | null
   emptyMessage?: string
 }) {
-  const {
-    items: pageRuns,
-    page,
-    setPage,
-    pageSize,
-    total,
-  } = useClientPagination(runs)
   const [nowMs, setNowMs] = useState(() => Date.now())
   const hasInProgressRuns = runs.some((run) => isRunInProgress(run))
 
@@ -98,7 +89,7 @@ export function PipelineRunsTable({
             </tr>
           </thead>
           <tbody>
-            {pageRuns.map((run) => (
+            {runs.map((run) => (
               <PipelineRunRow
                 key={run.id}
                 run={run}
@@ -114,15 +105,6 @@ export function PipelineRunsTable({
           </tbody>
         </table>
       </div>
-      {total > 0 && (
-        <TablePagination
-          page={page}
-          pageSize={pageSize}
-          total={total}
-          onPageChange={setPage}
-          itemLabel="pipelines"
-        />
-      )}
     </>
   )
 }
