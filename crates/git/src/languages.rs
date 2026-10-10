@@ -143,48 +143,67 @@ pub fn language_color(name: &str) -> &'static str {
     }
 }
 
-/// Analyze languages from a recursive `git ls-tree -r -l` of the given ref.
-pub async fn analyze_languages(
-    repo_path: &Path,
-    ref_name: &str,
-    kind: RefKind,
-) -> anyhow::Result<Vec<LanguageStat>> {
-    if !explorer::ref_exists_kind(repo_path, ref_name, kind).await? {
-        return Ok(Vec::new());
-    }
+fn is_vendored_path(path: &str) -> bool {
+    path.split(['/', '\\']).any(|seg| {
+        matches!(
+            seg,
+            "node_modules"
+                | "target"
+                | "vendor"
+                | "dist"
+                | "coverage"
+                | "__pycache__"
+                | ".git"
+        )
+    })
+}
 
-    let refspec = match kind {
-        RefKind::Branch => format!("refs/heads/{ref_name}"),
-        RefKind::Tag => format!("refs/tags/{ref_name}"),
-    };
+/// Data and prose files (JSON, lock-adjacent configs, docs) do not define the
+/// repository language when real source is present — same idea as Linguist.
+fn is_data_or_prose(lang: &str) -> bool {
+    matches!(
+        lang,
+        "JSON" | "YAML" | "TOML" | "XML" | "Markdown"
+    )
+}
 
-    let output = explorer::git_ls_tree_recursive(repo_path, &refspec).await?;
-    let mut bytes_by_lang: HashMap<String, u64> = HashMap::new();
+/// Build language stats from `(path, size)` pairs.
+pub fn summarize_languages(files: impl IntoIterator<Item = (impl AsRef<str>, u64)>) -> Vec<LanguageStat> {
+    let mut programming: HashMap<String, u64> = HashMap::new();
+    let mut other: HashMap<String, u64> = HashMap::new();
 
-    for line in output.lines() {
-        // Format: <mode> <type> <object> <size>\t<path>
-        let Some((meta, path)) = line.split_once('\t') else {
-            continue;
-        };
-        let parts: Vec<&str> = meta.split_whitespace().collect();
-        if parts.len() < 4 || parts[1] != "blob" {
+    for (path, size) in files {
+        if size == 0 {
             continue;
         }
-        let Ok(size) = parts[3].parse::<u64>() else {
-            continue;
-        };
-        if size == 0 {
+        let path = path.as_ref();
+        if is_vendored_path(path) {
             continue;
         }
         let Some(lang) = language_from_path(path) else {
             continue;
         };
-        *bytes_by_lang.entry(lang.to_string()).or_default() += size;
+        let bucket = if is_data_or_prose(lang) {
+            &mut other
+        } else {
+            &mut programming
+        };
+        *bucket.entry(lang.to_string()).or_default() += size;
     }
 
+    let bytes_by_lang = if programming.values().any(|bytes| *bytes > 0) {
+        programming
+    } else {
+        other
+    };
+
+    stats_from_bytes(bytes_by_lang)
+}
+
+fn stats_from_bytes(bytes_by_lang: HashMap<String, u64>) -> Vec<LanguageStat> {
     let total: u64 = bytes_by_lang.values().sum();
     if total == 0 {
-        return Ok(Vec::new());
+        return Vec::new();
     }
 
     let mut stats: Vec<LanguageStat> = bytes_by_lang
@@ -207,16 +226,51 @@ pub async fn analyze_languages(
             .then_with(|| a.name.cmp(&b.name))
     });
 
-    // Keep top languages; fold tiny leftovers into the last if needed (keep all for now, cap at 12)
     if stats.len() > 12 {
         stats.truncate(12);
         let kept: u64 = stats.iter().map(|s| s.bytes).sum();
-        for s in &mut stats {
-            s.percent = (s.bytes as f64 / kept as f64) * 100.0;
+        for stat in &mut stats {
+            stat.percent = (stat.bytes as f64 / kept as f64) * 100.0;
         }
     }
 
-    Ok(stats)
+    stats
+}
+
+/// Analyze languages from a recursive `git ls-tree -r -l` of the given ref.
+pub async fn analyze_languages(
+    repo_path: &Path,
+    ref_name: &str,
+    kind: RefKind,
+) -> anyhow::Result<Vec<LanguageStat>> {
+    if !explorer::ref_exists_kind(repo_path, ref_name, kind).await? {
+        return Ok(Vec::new());
+    }
+
+    let refspec = match kind {
+        RefKind::Branch => format!("refs/heads/{ref_name}"),
+        RefKind::Tag => format!("refs/tags/{ref_name}"),
+    };
+
+    let output = explorer::git_ls_tree_recursive(repo_path, &refspec).await?;
+    let mut files = Vec::new();
+
+    for line in output.lines() {
+        // Format: <mode> <type> <object> <size>\t<path>
+        let Some((meta, path)) = line.split_once('\t') else {
+            continue;
+        };
+        let parts: Vec<&str> = meta.split_whitespace().collect();
+        if parts.len() < 4 || parts[1] != "blob" {
+            continue;
+        }
+        let Ok(size) = parts[3].parse::<u64>() else {
+            continue;
+        };
+        files.push((path.to_string(), size));
+    }
+
+    Ok(summarize_languages(files))
 }
 
 pub fn primary_language(stats: &[LanguageStat]) -> Option<&LanguageStat> {
@@ -235,5 +289,27 @@ mod tests {
         assert_eq!(language_from_path("scripts/deploy.sh"), Some("Shell"));
         assert_eq!(language_from_path("Dockerfile"), Some("Dockerfile"));
         assert_eq!(language_from_path("package-lock.json"), None);
+    }
+
+    #[test]
+    fn rust_project_ignores_json_and_vendored_bytes() {
+        let stats = summarize_languages([
+            ("src/main.rs", 1_000u64),
+            ("src/lib.rs", 2_000),
+            ("data/schema.json", 20_000),
+            ("Cargo.toml", 400),
+            ("README.md", 8_000),
+            ("target/debug/deps/generated.rs", 50_000),
+            ("Cargo.lock", 30_000),
+        ]);
+        assert_eq!(stats.len(), 1);
+        assert_eq!(stats[0].name, "Rust");
+        assert!((stats[0].percent - 100.0).abs() < 0.01);
+    }
+
+    #[test]
+    fn json_only_repo_still_reports_json() {
+        let stats = summarize_languages([("config/app.json", 500u64), ("README.md", 100)]);
+        assert_eq!(stats[0].name, "JSON");
     }
 }
