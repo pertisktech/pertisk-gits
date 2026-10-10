@@ -5593,13 +5593,13 @@ select.app-field:disabled,
   overflow: hidden;
 }
 
-.app-main:has(.pipeline-run-page:has(.ci-job-stages)),
-.app-main:has(.pipeline-run-page:has(.ci-job-stages)) .app-container,
-.pipeline-run-page:has(.ci-job-stages) {
+.app-main:has(.pipeline-run-page:has(.gl-jobs)),
+.app-main:has(.pipeline-run-page:has(.gl-jobs)) .app-container,
+.pipeline-run-page:has(.gl-jobs) {
   overflow: auto;
 }
 
-.pipeline-run-page:has(.ci-job-stages) .app-panel:has(.ci-job-stages) {
+.pipeline-run-page:has(.gl-jobs) .app-panel:has(.gl-jobs) {
   flex: none;
   min-height: auto;
   overflow: visible;
@@ -5667,10 +5667,214 @@ select.app-field:disabled,
   overflow-x: auto;
 }
 
-.ci-job-stages {
+.ci-job-stages,
+.gl-jobs {
+  display: grid;
+  grid-template-columns: 15.5rem minmax(0, 1fr);
+  align-items: stretch;
+  background: var(--color-surface);
+  min-height: 20rem;
+}
+
+.gl-jobs-empty {
+  padding: 1.5rem 1rem;
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+}
+
+.gl-jobs-nav {
+  border-right: 1px solid var(--color-border);
+  background: var(--color-sidebar);
+}
+
+.gl-jobs-nav-title {
+  padding: 0.75rem 0.9rem 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.gl-jobs-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.5rem;
+}
+
+.gl-jobs-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  padding: 0.45rem 0.9rem;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.gl-jobs-nav-item:hover,
+.gl-jobs-nav-item--active {
+  background: color-mix(in oklch, var(--color-primary) 10%, var(--color-surface));
+}
+
+.gl-jobs-nav-item--active {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+.gl-jobs-nav-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.gl-jobs-nav-time {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.gl-jobs-trace {
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  background: var(--color-surface);
+}
+
+.gl-jobs-trace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gl-jobs-trace-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.gl-jobs-trace-name {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.gl-jobs-trace-meta {
+  margin: 0.15rem 0 0;
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: var(--color-muted);
+}
+
+.gl-jobs-trace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  flex-shrink: 0;
+}
+
+.gl-jobs-sections {
+  display: flex;
+  flex-direction: column;
+}
+
+.gl-jobs-section {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.gl-jobs-section--failure > .gl-jobs-section-toggle {
+  background: color-mix(in oklch, var(--color-red-r1) 8%, transparent);
+}
+
+.gl-jobs-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.4rem 1rem;
+  border: none;
+  background: var(--color-hover);
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.gl-jobs-section-toggle:hover {
+  background: color-mix(in oklch, var(--color-primary) 8%, var(--color-hover));
+}
+
+.gl-jobs-section-name {
+  font-weight: 600;
+  font-size: var(--text-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gl-jobs-section-exit {
+  flex-shrink: 0;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-red-r1) 16%, transparent);
+  color: var(--color-red-r1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+.gl-jobs-section-time {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.gl-jobs-section-body {
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.gl-jobs-section-error {
+  margin: 0;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid color-mix(in oklch, var(--color-red-r1) 35%, var(--color-border));
+  background: color-mix(in oklch, var(--color-red-r1) 12%, var(--color-surface));
+  color: var(--color-red-r1);
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.gl-jobs-section-body .ci-log-viewer--stage {
+  height: auto;
+  max-height: 24rem;
+}
+
+@media (max-width: 800px) {
+  .gl-jobs {
+    grid-template-columns: 1fr;
+  }
+
+  .gl-jobs-nav {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+  }
 }
 
 .ci-job-panel {
