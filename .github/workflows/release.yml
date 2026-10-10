@@ -1,6 +1,6 @@
 # Release on tag — runner Docker image (amd64 + arm64), pertisk-runner Helm chart,
-# and a GitHub Release entry for the tag.
-# Self-hosted runner. Packages (DEB/RPM) and the platform image are not built here.
+# Linux RPM/DEB for the runner (amd64 + arm64), and a GitHub Release for the tag.
+# Self-hosted runner. The platform image is not built here.
 
 name: Release runner
 
@@ -161,9 +161,68 @@ jobs:
           echo "  --version ${{ steps.version.outputs.VERSION }} -n pertisk --create-namespace" >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
 
+  runner-packages:
+    name: Package runner RPM and DEB
+    needs: docker-build
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          VERSION="${VERSION#v}"
+          echo "VERSION=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Free disk space
+        run: |
+          set -euo pipefail
+          df -h
+          docker buildx prune -af || true
+          docker builder prune -af || true
+          rm -rf release pertisk-runner-linux-amd64 pertisk-runner-linux-arm64 \
+            pertisk-runner-linux-amd64.version pertisk-runner-linux-arm64.version
+          df -h
+
+      - name: Build runner packages (amd64 and arm64)
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+          PERTISK_FORCE_DOCKER_BUILD: "1"
+          CARGO_BUILD_JOBS: ${{ env.CARGO_BUILD_JOBS }}
+        run: |
+          set -euo pipefail
+          make package-runner-amd64 VERSION="$VERSION"
+          make package-runner-arm64 VERSION="$VERSION"
+          echo "=== release artifacts ==="
+          ls -lh release
+          test -f "release/pertisk-runner_${VERSION}_amd64.deb"
+          test -f "release/pertisk-runner_${VERSION}_arm64.deb"
+          test -f "release/pertisk-runner-${VERSION}-1.x86_64.rpm"
+          test -f "release/pertisk-runner-${VERSION}-1.aarch64.rpm"
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: runner-packages
+          if-no-files-found: error
+          path: |
+            release/*.deb
+            release/*.rpm
+
+      - name: Summary
+        run: |
+          echo "## Runner packages" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Version:** ${{ steps.version.outputs.VERSION }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`pertisk-runner_${{ steps.version.outputs.VERSION }}_amd64.deb\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`pertisk-runner_${{ steps.version.outputs.VERSION }}_arm64.deb\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`pertisk-runner-${{ steps.version.outputs.VERSION }}-1.x86_64.rpm\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- \`pertisk-runner-${{ steps.version.outputs.VERSION }}-1.aarch64.rpm\`" >> "$GITHUB_STEP_SUMMARY"
+
   github-release:
     name: Create GitHub Release
-    needs: [docker-build, helm-publish]
+    needs: [docker-build, helm-publish, runner-packages]
     runs-on: [self-hosted, linux]
     permissions:
       contents: write
@@ -172,6 +231,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Download runner packages
+        uses: actions/download-artifact@v4
+        with:
+          name: runner-packages
+          path: release
 
       - name: Get version from tag
         id: version
@@ -187,11 +252,15 @@ jobs:
           tag_name: ${{ steps.version.outputs.TAG }}
           name: ${{ steps.version.outputs.TAG }}
           generate_release_notes: true
+          files: |
+            release/*.deb
+            release/*.rpm
           body: |
             ## Artifacts
 
             - Runner image: `${{ env.RUNNER_REGISTRY }}/runner:${{ steps.version.outputs.VERSION }}`
             - Helm chart: `pertisk/pertisk-runner` `${{ steps.version.outputs.VERSION }}` ([${{ env.HELM_CHART_REPO_URL }}](${{ env.HELM_CHART_REPO_URL }}))
+            - Linux packages (amd64 and arm64): `pertisk-runner` `.deb` and `.rpm` attached to this release
 
             ```bash
             helm repo add pertisk ${{ env.HELM_CHART_REPO_URL }}
@@ -207,3 +276,4 @@ jobs:
           echo "## GitHub Release" >> "$GITHUB_STEP_SUMMARY"
           echo "- **Tag:** ${{ steps.version.outputs.TAG }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- **URL:** https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.TAG }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Packages:** pertisk-runner RPM and DEB (linux/amd64, linux/arm64)" >> "$GITHUB_STEP_SUMMARY"
