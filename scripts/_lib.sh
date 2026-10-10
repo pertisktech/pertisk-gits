@@ -28,6 +28,7 @@ require_hosts() {
   if [ "$len" -eq 0 ]; then
     echo "error: $name is empty. Set host lists in scripts/hosts.local.sh" >&2
     echo "  cp scripts/hosts.local.example.sh scripts/hosts.local.sh" >&2
+    echo "  # or one-off: DEPLOY_HOST=user@host ./scripts/build-deploy.sh" >&2
     exit 1
   fi
 }

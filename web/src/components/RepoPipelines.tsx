@@ -349,15 +349,6 @@ jobs:
           </div>
         )}
 
-        <RepoDetailTabs
-          tabs={[
-            { id: 'runs', label: `Runs (${allTotal})` },
-            { id: 'editor', label: 'Editor' },
-          ]}
-          active={listTab}
-          onChange={(id) => setListTab(id as 'runs' | 'editor')}
-        />
-
         {listTab === 'runs' ? (
           <div className="p-4">
             <div className="repo-list-header mb-4">
@@ -419,11 +410,14 @@ jobs:
     <div className="space-y-4 min-w-0">
       <div className="app-panel">
         {!contentLoading && hasPipelineConfig && (
-          <div className="repo-list-header">
-            <div className="repo-list-header-segment">
-              <span className="repo-list-tab active cursor-default">Pipelines</span>
-            </div>
-            <div className="repo-list-header-actions">
+          <RepoDetailTabs
+            tabs={[
+              { id: 'runs', label: `Runs (${allTotal})` },
+              { id: 'editor', label: 'Editor' },
+            ]}
+            active={listTab}
+            onChange={(id) => setListTab(id as 'runs' | 'editor')}
+            actions={
               <PrimaryButton
                 type="button"
                 disabled={toolbarDisabled || triggerMutation.isPending}
@@ -436,8 +430,8 @@ jobs:
                 )}
                 Run pipeline
               </PrimaryButton>
-            </div>
-          </div>
+            }
+          />
         )}
 
         <div className="app-panel-body flush space-y-0">
