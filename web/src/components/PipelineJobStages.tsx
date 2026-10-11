@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Download, Loader2, Play, RotateCcw, Square } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { JobArtifact, JobRun, PipelineRun } from '../api/types'
 import {
   jobStepViews,
@@ -13,6 +13,13 @@ import { displayJobStatus, formatJobDuration } from '../lib/pipelineStatus'
 import { ActionsStatusIcon } from './PipelineStatus'
 import { CiLogViewer } from './PipelineTerminal'
 import { cn } from '../utils/cn'
+
+function logWithoutExitMarkers(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !/^===\s+.+\(exit\s+(\d+|cancelled)\)\s*$/.test(line.trim()))
+    .join('\n')
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -62,29 +69,34 @@ export function PipelineJobStages({
   onDownloadArtifact: (artifact: JobArtifact) => void
 }) {
   const [openSteps, setOpenSteps] = useState<Set<string>>(() => new Set())
+  const sectionRefs = useRef(new Map<string, HTMLElement>())
+
+  const job = activeJob ?? jobs[0] ?? null
+  const stages = job ? jobStepViews(job, run.status) : []
+  const jobStatus = job ? displayJobStatus(job, run.status) : null
+  const runningKey =
+    job && jobStatus
+      ? (stages.find((step) => stepDisplayStatus(step, jobStatus, run.status) === 'running')
+          ?.key ?? null)
+      : null
+  const focusKey = runningKey ?? activeStepKey
 
   useEffect(() => {
-    setOpenSteps(new Set(activeStepKey ? [activeStepKey] : []))
-  }, [activeJob?.id, logSession])
+    const key = runningKey ?? activeStepKey
+    setOpenSteps(new Set(key ? [key] : []))
+  }, [job?.id, logSession, runningKey, activeStepKey])
 
   useEffect(() => {
-    if (!activeStepKey) return
-    setOpenSteps((current) => {
-      if (current.has(activeStepKey)) return current
-      const next = new Set(current)
-      next.add(activeStepKey)
-      return next
-    })
-  }, [activeStepKey])
+    if (!focusKey) return
+    sectionRefs.current.get(focusKey)?.scrollIntoView({ block: 'nearest' })
+  }, [focusKey, job?.id, logSession])
 
-  if (jobs.length === 0) {
+  if (!job || jobs.length === 0) {
     return <div className="gl-jobs-empty">No jobs in this pipeline run.</div>
   }
 
-  const job = activeJob ?? jobs[0]
-  const jobStatus = displayJobStatus(job, run.status)
   const duration = formatJobDuration(job, nowMs)
-  const stages = jobStepViews(job, run.status)
+  const resolvedStatus = jobStatus ?? displayJobStatus(job, run.status)
 
   function toggleStep(stepKey: string) {
     setOpenSteps((current) => {
@@ -129,7 +141,7 @@ export function PipelineJobStages({
       <div className="gl-jobs-trace">
         <header className="gl-jobs-trace-head">
           <div className="gl-jobs-trace-title">
-            <ActionsStatusIcon status={jobStatus} size="md" />
+            <ActionsStatusIcon status={resolvedStatus} size="md" />
             <div>
               <h2 className="gl-jobs-trace-name">{job.job_name}</h2>
               <p className="gl-jobs-trace-meta">
@@ -192,7 +204,7 @@ export function PipelineJobStages({
             <CiLogViewer
               text=""
               emptyMessage={
-                jobStatus === 'manual'
+                resolvedStatus === 'manual'
                   ? canPlayJob(job)
                     ? 'Manual job. Run it when you are ready.'
                     : 'Manual job. Waiting for earlier jobs to finish.'
@@ -203,18 +215,30 @@ export function PipelineJobStages({
         ) : (
           <div className="gl-jobs-sections">
             {stages.map((step, index) => {
-              const status = stepDisplayStatus(step, jobStatus, run.status)
+              const status = stepDisplayStatus(step, resolvedStatus, run.status)
               const open = openSteps.has(step.key)
-              const logText = open ? stepLogText(job, step.key, run.status) : ''
+              const focused = step.key === focusKey
+              const logText = open
+                ? logWithoutExitMarkers(stepLogText(job, step.key, run.status))
+                : ''
               const failed =
                 status === 'failure' ||
                 (step.exitCode !== undefined && step.exitCode !== 0 && step.exitCode !== 130)
               const errorText = open && failed ? stepErrorExcerpt(logText) : null
               const meta = stepMeta(step, { nowMs, job, running: status === 'running' })
+              const timeLabel = meta.startsWith('exit ') ? '' : meta
               return (
                 <section
                   key={step.key}
-                  className={cn('gl-jobs-section', failed && 'gl-jobs-section--failure')}
+                  ref={(node) => {
+                    if (node) sectionRefs.current.set(step.key, node)
+                    else sectionRefs.current.delete(step.key)
+                  }}
+                  className={cn(
+                    'gl-jobs-section',
+                    open && focused && 'gl-jobs-section--focus',
+                    failed && 'gl-jobs-section--failure',
+                  )}
                 >
                   <button
                     type="button"
@@ -226,10 +250,7 @@ export function PipelineJobStages({
                     {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                     <ActionsStatusIcon status={status} size="sm" />
                     <span className="gl-jobs-section-name">{stepDisplayLabel(step, index)}</span>
-                    {failed && step.exitCode !== undefined && (
-                      <span className="gl-jobs-section-exit">exit {step.exitCode}</span>
-                    )}
-                    {meta && <span className="gl-jobs-section-time">{meta}</span>}
+                    {timeLabel && <span className="gl-jobs-section-time">{timeLabel}</span>}
                   </button>
                   {open && (
                     <div className="gl-jobs-section-body">
@@ -238,7 +259,7 @@ export function PipelineJobStages({
                         key={`${job.id}-${step.key}-${logSession}`}
                         className="ci-log-viewer--stage"
                         text={logText}
-                        followTail={status === 'running'}
+                        followTail={focused}
                         emptyMessage={
                           status === 'queued' || status === 'running'
                             ? 'Waiting for log output…'

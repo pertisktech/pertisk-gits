@@ -178,9 +178,9 @@ export function PipelineRunDetailPage() {
     if (!activeJob || !run) return
     if (displayJobStatus(activeJob, run.status) !== 'running') return
     const running = inferRunningStepName(activeJob, run.status)
-    if (running && running !== activeStepKey) {
-      setActiveStepKey(running)
-    }
+    if (!running || running === activeStepKey) return
+    userPinnedStep.current = false
+    setActiveStepKey(running)
   }, [activeJob, activeJob?.log_text, run, activeStepKey])
 
   const selectJob = (jobId: string, switchToJobs = true) => {

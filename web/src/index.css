@@ -5795,6 +5795,29 @@ select.app-field:disabled,
 
 .gl-jobs-section {
   border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.gl-jobs-section--focus {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.gl-jobs-section--focus > .gl-jobs-section-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.gl-jobs-section--focus .ci-log-viewer-shell {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .gl-jobs-section--failure > .gl-jobs-section-toggle {
@@ -5827,17 +5850,6 @@ select.app-field:disabled,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.gl-jobs-section-exit {
-  flex-shrink: 0;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--color-red-r1) 16%, transparent);
-  color: var(--color-red-r1);
-  font-size: 0.75rem;
-  font-weight: 600;
-  font-family: var(--font-mono);
 }
 
 .gl-jobs-section-time {
@@ -5878,9 +5890,12 @@ select.app-field:disabled,
   word-break: break-word;
 }
 
-.gl-jobs-section-body .ci-log-viewer--stage {
-  height: auto;
+.gl-jobs-section--focus .ci-log-viewer--stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
   max-height: none;
+  overflow: auto;
 }
 
 @media (max-width: 800px) {
