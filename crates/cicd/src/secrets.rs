@@ -89,6 +89,27 @@ pub fn is_maskable_secret(value: &str) -> bool {
     value.len() >= MIN_MASKED_SECRET_LEN
 }
 
+fn is_image_token_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/' | ':' | '@' | '+')
+}
+
+/// Replace `secret` only when it is not glued into an image, host, or release name.
+/// `omgwash-admin:v0.1.12` keeps `admin`; `token=supersecret123` does not.
+fn mask_delimited(text: &str, secret: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find(secret) {
+        let before = rest[..idx].chars().next_back();
+        let after = rest[idx + secret.len()..].chars().next();
+        let inside_name = before.is_some_and(is_image_token_char) || after.is_some_and(is_image_token_char);
+        out.push_str(&rest[..idx]);
+        out.push_str(if inside_name { secret } else { "***" });
+        rest = &rest[idx + secret.len()..];
+    }
+    out.push_str(rest);
+    out
+}
+
 /// Mask secret values in log output (longest values first to avoid partial leaks).
 pub fn mask_secrets_in_text(text: &str, secret_values: &[String]) -> String {
     let mut values: Vec<&str> = secret_values
@@ -101,7 +122,7 @@ pub fn mask_secrets_in_text(text: &str, secret_values: &[String]) -> String {
     let mut out = text.to_string();
     for value in values {
         if out.contains(value) {
-            out = out.replace(value, "***");
+            out = mask_delimited(&out, value);
         }
     }
     out
@@ -203,8 +224,15 @@ mod tests {
 
     #[test]
     fn mask_does_not_rewrite_admin_inside_image_names() {
-        let log = "deployed registry.example/omgwash/omgwash-admin:v0.1.11 to namespace omgwash";
-        let masked = mask_secrets_in_text(log, &["admin".into()]);
+        let log = "\
+pushed registry.tools.thaidevops.co/omgwash/omgwash-admin:v0.1.12
+pushed registry.tools.thaidevops.co/omgwash/omgwash-admin:latest
+#18 [auth] omgwash/omgwash-admin:pull,push token for registry.tools.thaidevops.co
+";
+        let masked = mask_secrets_in_text(
+            log,
+            &["omgwash-admin".into(), "adminadmin".into()],
+        );
         assert_eq!(masked, log);
     }
 
