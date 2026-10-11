@@ -10,6 +10,13 @@ export interface ProjectStatsRef {
 }
 
 const MAX_STATS_BATCH = 50
+const ACTIVE_PIPELINE = new Set(['pending', 'queued', 'running'])
+
+function batchHasActivePipeline(stats: { latest_pipeline_status: string | null }[] | undefined) {
+  return (stats ?? []).some(
+    (stat) => stat.latest_pipeline_status != null && ACTIVE_PIPELINE.has(stat.latest_pipeline_status),
+  )
+}
 
 function statsKey(project: ProjectStatsRef) {
   return `${project.orgSlug}/${project.slug}`
@@ -42,7 +49,9 @@ export function useDashboardProjectStats(projects: ProjectStatsRef[]) {
       queryKey: ['dashboard-project-stats', batch.map((p) => `${p.org_path}/${p.slug}`).join('|')],
       queryFn: () => api.getDashboardProjectStats(token!, batch),
       enabled: Boolean(token) && batch.length > 0,
-      staleTime: 60_000,
+      staleTime: 0,
+      refetchInterval: (query: { state: { data?: { stats: DashboardProjectStats[] } } }) =>
+        batchHasActivePipeline(query.state.data?.stats) ? 5_000 : false,
     })),
   })
 

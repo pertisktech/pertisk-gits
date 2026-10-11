@@ -398,6 +398,7 @@ echo "=== helper: workspace ready"
     let helper = Container {
         name: "helper".into(),
         image: Some(config.helper_image.clone()),
+        image_pull_policy: Some("IfNotPresent".into()),
         command: Some(vec!["/bin/sh".into(), "-c".into()]),
         args: Some(vec![init_script]),
         env: Some(common_env.clone()),
@@ -448,13 +449,15 @@ echo "=== helper: workspace ready"
         ..Default::default()
     };
 
-    let mut containers = Vec::new();
+    // Sidecar init (restartPolicy=Always) starts dockerd before the helper downloads
+    // the workspace, so the daemon is usually ready when the build container starts.
+    let mut init_containers = Vec::new();
     if dind {
-        // Prefer iptables-legacy: nf_tables on Cilium hosts fails DinD bridge NAT with
-        // "CHAIN_ADD failed ... chain POSTROUTING".
-        containers.push(Container {
+        init_containers.push(Container {
             name: "dind".into(),
             image: Some(config.dind_image.clone()),
+            image_pull_policy: Some("IfNotPresent".into()),
+            restart_policy: Some("Always".into()),
             command: Some(vec!["/bin/sh".into(), "-c".into()]),
             args: Some(vec![concat!(
                 "set -eu; ",
@@ -480,7 +483,8 @@ echo "=== helper: workspace ready"
             ..Default::default()
         });
     }
-    containers.push(build);
+    init_containers.push(helper);
+    let containers = vec![build];
 
     let mut pod_labels = labels.clone();
     pod_labels.insert("job-name".into(), job_name.into());
@@ -511,7 +515,7 @@ echo "=== helper: workspace ready"
 
     let mut spec = PodSpec {
         restart_policy: Some("Never".into()),
-        init_containers: Some(vec![helper]),
+        init_containers: Some(init_containers),
         containers,
         volumes: Some(volumes),
         ..Default::default()
@@ -559,7 +563,7 @@ fn env_var(name: &str, value: &str) -> EnvVar {
 
 /// Line-buffer job script output so Kubernetes log polling streams lines during long steps.
 const EXEC_JOB_SCRIPT: &str = r#"set -eu
-if command -v apk >/dev/null 2>&1; then
+if ! command -v stdbuf >/dev/null 2>&1 && command -v apk >/dev/null 2>&1; then
   apk add --no-cache coreutils >/dev/null 2>&1 || true
 fi
 if command -v stdbuf >/dev/null 2>&1; then
@@ -1000,6 +1004,41 @@ async fn fetch_container_log(pods: &Api<Pod>, pod_name: &str, container: &str) -
             tracing::warn!(%err, pod = %pod_name, %container, "failed to fetch container log");
             String::new()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::RunnerApi;
+
+    #[test]
+    fn dind_starts_as_sidecar_before_workspace_download() {
+        let config = K8sExecutorConfig::from_env();
+        let api = RunnerApi::new("http://127.0.0.1:8080", "ptr_test".into());
+        let job = build_job_spec(
+            &config,
+            "pertisk-job-test",
+            "pertisk-job-test-script",
+            &BTreeMap::new(),
+            &api,
+            Uuid::nil(),
+            Some(30),
+            "alpine:3.21",
+            true,
+        );
+        let spec = job
+            .spec
+            .unwrap()
+            .template
+            .spec
+            .unwrap();
+        let inits = spec.init_containers.unwrap();
+        assert_eq!(inits[0].name, "dind");
+        assert_eq!(inits[0].restart_policy.as_deref(), Some("Always"));
+        assert_eq!(inits[1].name, "helper");
+        assert!(spec.containers.iter().all(|container| container.name != "dind"));
+        assert!(spec.containers.iter().any(|container| container.name == "build"));
     }
 }
 
