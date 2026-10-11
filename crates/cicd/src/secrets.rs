@@ -81,12 +81,20 @@ pub fn apply_secrets_to_step(step: &Step, secrets: &HashMap<String, String>) -> 
     apply_ci_config_to_step(step, secrets, &HashMap::new())
 }
 
+/// Values shorter than this are not masked. `admin` (5) shows up in image names,
+/// release names, and hostnames; masking it rewrites those lines to `***`.
+pub const MIN_MASKED_SECRET_LEN: usize = 8;
+
+pub fn is_maskable_secret(value: &str) -> bool {
+    value.len() >= MIN_MASKED_SECRET_LEN
+}
+
 /// Mask secret values in log output (longest values first to avoid partial leaks).
 pub fn mask_secrets_in_text(text: &str, secret_values: &[String]) -> String {
     let mut values: Vec<&str> = secret_values
         .iter()
         .map(String::as_str)
-        .filter(|v| v.len() >= 4)
+        .filter(|v| is_maskable_secret(v))
         .collect();
     values.sort_by_key(|v| std::cmp::Reverse(v.len()));
 
@@ -191,6 +199,13 @@ mod tests {
     fn mask_ignores_short_secrets() {
         let masked = mask_secrets_in_text("key=abc", &["abc".into()]);
         assert_eq!(masked, "key=abc");
+    }
+
+    #[test]
+    fn mask_does_not_rewrite_admin_inside_image_names() {
+        let log = "deployed registry.example/omgwash/omgwash-admin:v0.1.11 to namespace omgwash";
+        let masked = mask_secrets_in_text(log, &["admin".into()]);
+        assert_eq!(masked, log);
     }
 
     #[test]

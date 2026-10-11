@@ -31,8 +31,8 @@ pub use schedule::{RerunReset, ScheduledJob, Scheduler};
 pub use script::render_job_script;
 pub use script::{shell_quote, wrap_shell_script_with_env};
 pub use secrets::{
-    apply_ci_config_to_step, apply_secrets_to_step, mask_secrets_in_text, resolve_secret_refs,
-    resolve_var_refs,
+    apply_ci_config_to_step, apply_secrets_to_step, is_maskable_secret, mask_secrets_in_text,
+    resolve_secret_refs, resolve_var_refs,
 };
 pub use trigger::{
     matches_pipeline_trigger, pipeline_event_from_ref, trigger_filter_applies, PipelineEvent,

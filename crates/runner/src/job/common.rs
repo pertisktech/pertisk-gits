@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use pertisk_cicd::{build_predefined_vars, PredefinedCiContext, PullRequestContext};
+use pertisk_cicd::{
+    build_predefined_vars, is_maskable_secret, PredefinedCiContext, PullRequestContext,
+};
 
 use crate::api::{PollJobResponse, RunnerApi};
 
@@ -94,7 +96,7 @@ pub async fn prepare_secrets(
     let mut variable_refs = HashMap::new();
 
     for item in response.secrets {
-        if item.masked && item.value.len() >= 4 {
+        if item.masked && is_maskable_secret(&item.value) {
             mask_values.push(item.value.clone());
         }
         let value = if item.secret_kind == "file" {
