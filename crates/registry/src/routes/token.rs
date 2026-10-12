@@ -106,7 +106,7 @@ fn ci_granted_scopes(
 ) -> Vec<RegistryAccess> {
     let mut granted = Vec::new();
     for (name, actions) in scopes {
-        if name != allowed_repository {
+        if !crate::auth::ci_repository_in_scope(allowed_repository, name) {
             continue;
         }
         let actions: Vec<String> = actions

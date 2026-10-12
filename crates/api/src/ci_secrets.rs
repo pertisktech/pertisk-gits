@@ -157,6 +157,8 @@ fn default_true() -> bool {
 #[derive(Serialize)]
 pub struct RunnerJobSecretsResponse {
     pub secrets: Vec<RunnerJobSecret>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub warnings: Vec<String>,
 }
 
 fn default_masked_for_scope(scope: CiConfigScope) -> bool {
@@ -742,6 +744,7 @@ pub async fn load_job_secrets_for_runner(
         })
         .collect();
 
+    let mut warnings = Vec::new();
     if ci_auto_registry_credentials_enabled() {
         let registry = server_host(server_url);
         let registry_image = format!("{}/{}/{}", registry, org_slug, repo_slug);
@@ -786,6 +789,10 @@ pub async fn load_job_secrets_for_runner(
             "CI_REGISTRY_PASSWORD".into(),
             (CiSecretKind::Variable, CiConfigScope::Secret, password, true),
         );
+    } else {
+        warnings.push(
+            "Built-in registry credentials are disabled by server policy.".into(),
+        );
     }
 
     for (name, kind, scope, masked, environment, blob) in org_rows {
@@ -818,7 +825,7 @@ pub async fn load_job_secrets_for_runner(
         })
         .collect();
 
-    Ok(RunnerJobSecretsResponse { secrets })
+    Ok(RunnerJobSecretsResponse { secrets, warnings })
 }
 
 async fn fetch_org_secret_summary(
@@ -914,7 +921,7 @@ fn internal(msg: String) -> (StatusCode, String) {
     (StatusCode::INTERNAL_SERVER_ERROR, msg)
 }
 
-fn ci_auto_registry_credentials_enabled() -> bool {
+pub fn ci_auto_registry_credentials_enabled() -> bool {
     match std::env::var("CI_AUTO_REGISTRY_CREDENTIALS_ENABLED") {
         Ok(value) => {
             let value = value.trim().to_ascii_lowercase();
@@ -924,12 +931,18 @@ fn ci_auto_registry_credentials_enabled() -> bool {
     }
 }
 
-fn ci_auto_registry_credentials_ttl_secs() -> i64 {
+pub fn ci_auto_registry_credentials_ttl_secs() -> i64 {
     std::env::var("CI_AUTO_REGISTRY_CREDENTIALS_TTL_SECS")
         .ok()
         .and_then(|v| v.trim().parse::<i64>().ok())
         .filter(|v| *v > 0)
         .unwrap_or(3600)
+}
+
+pub fn ci_auto_registry_scope_mode_label() -> &'static str {
+    pertisk_registry::auth::ci_registry_scope_mode_label(
+        pertisk_registry::auth::ci_auto_registry_scope_mode(),
+    )
 }
 
 fn server_host(url: &str) -> String {

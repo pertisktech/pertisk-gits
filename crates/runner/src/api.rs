@@ -400,4 +400,6 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Deserialize)]
 pub struct JobSecretsResponse {
     pub secrets: Vec<JobSecretItem>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
 }

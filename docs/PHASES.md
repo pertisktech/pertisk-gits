@@ -424,20 +424,22 @@ See [docs/NOTIFICATIONS.md](./NOTIFICATIONS.md)
 
 ---
 
-## Phase 8.5 — GitLab CI registry compatibility (Planned)
+## Phase 8.5 — GitLab CI registry compatibility (Done — MVP)
 
 **Goal:** Deliver GitLab-like out-of-the-box registry login in CI by auto-injecting registry credentials and image path variables.
 
 | Component | Status |
 |-----------|--------|
-| Built-in `CI_REGISTRY`, `CI_REGISTRY_IMAGE` in job env | Planned |
-| Built-in `CI_REGISTRY_USER`, `CI_REGISTRY_PASSWORD` (ephemeral) | Planned |
-| Project-scoped push/pull token issuance with TTL | Planned |
-| Runner masking and secure handling of registry password | Planned |
-| Admin toggle for auto registry credentials | Planned |
-| GitLab-compatible first-run pipeline snippet | Planned |
+| Built-in `CI_REGISTRY`, `CI_REGISTRY_IMAGE` in job env | Done |
+| Built-in `CI_REGISTRY_USER`, `CI_REGISTRY_PASSWORD` (ephemeral) | Done |
+| Project-scoped push/pull token issuance with TTL | Done |
+| Runner masking and secure handling of registry password | Done |
+| Admin toggle for auto registry credentials | Done (env + Admin → Configuration) |
+| Scope mode (`project-only` / `project-and-subpath`) | Done |
+| GitLab-compatible first-run pipeline snippet | Done |
+| Job-completion credential revocation | Deferred (TTL enforced) |
 
-Design draft: [CICD_GITLAB_REGISTRY_COMPAT.md](./CICD_GITLAB_REGISTRY_COMPAT.md)
+Design: [CICD_GITLAB_REGISTRY_COMPAT.md](./CICD_GITLAB_REGISTRY_COMPAT.md)
 
 ---
 
@@ -453,7 +455,7 @@ Design draft: [CICD_GITLAB_REGISTRY_COMPAT.md](./CICD_GITLAB_REGISTRY_COMPAT.md)
 | HTTP/3 (Quiche) | 3 |
 | CI/CD | 4 |
 | Deploy environments & GitLab/GitHub workflows | 4.6 |
-| GitLab CI registry auto credentials | 8.5 (planned) |
+| GitLab CI registry auto credentials | 8.5 |
 | Runner deployment (systemd / Docker / K8s) | 4.5 |
 | Built-in Container Registry | 5 |
 | SSO/LDAP Integration | 6 |

@@ -123,6 +123,32 @@ Every job automatically receives GitLab-compatible **predefined variables**. The
 | `CI_SERVER_URL` | Git server base URL |
 | `CI_MERGE_REQUEST_*` | Merge request fields when the pipeline runs for a PR |
 
+### Built-in registry credentials (GitLab-compatible)
+
+When `CI_AUTO_REGISTRY_CREDENTIALS_ENABLED` is on (default), every job also receives:
+
+| Variable | Description |
+|----------|-------------|
+| `CI_REGISTRY` | Registry host (from `GIT_PUBLIC_BASE_URL`) |
+| `CI_REGISTRY_IMAGE` | `{CI_REGISTRY}/{group}/{project}` |
+| `CI_REGISTRY_USER` | `gitlab-ci-token` |
+| `CI_REGISTRY_PASSWORD` | Short-lived job-scoped JWT (masked in logs) |
+
+Credentials allow `pull`/`push` only for the current project image path (or nested subpaths when `CI_AUTO_REGISTRY_SCOPE_MODE=project-and-subpath`). TTL defaults to 3600s (`CI_AUTO_REGISTRY_CREDENTIALS_TTL_SECS`). User-defined secrets with the same names still override. When auto credentials are disabled, the job log includes: `Built-in registry credentials are disabled by server policy.`
+
+```yaml
+jobs:
+  build-image:
+    runs-on: docker
+    steps:
+      - name: login
+        run: echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+      - name: build and push
+        run: |
+          docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" .
+          docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"
+```
+
 Example:
 
 ```yaml

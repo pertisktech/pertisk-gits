@@ -398,6 +398,9 @@ export interface AdminConfiguration {
   registration_enabled: boolean
   require_registration_approval: boolean
   super_admin_env_override: boolean
+  ci_auto_registry_credentials_enabled: boolean
+  ci_auto_registry_credentials_ttl_secs: number
+  ci_auto_registry_scope_mode: string
 }
 
 export interface ObservabilitySettings {

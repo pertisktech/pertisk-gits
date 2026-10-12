@@ -85,6 +85,35 @@ export function AdminConfigurationPage() {
             />
           </InfoPanel>
 
+          <InfoPanel title="CI registry credentials">
+            <InfoRow
+              label="Built-in registry auth"
+              value={
+                data.ci_auto_registry_credentials_enabled
+                  ? 'Enabled (GitLab-compatible CI_REGISTRY_* vars)'
+                  : 'Disabled'
+              }
+            />
+            <InfoRow
+              label="Credential TTL"
+              value={`${data.ci_auto_registry_credentials_ttl_secs}s`}
+            />
+            <InfoRow
+              label="Scope mode"
+              value={<code>{data.ci_auto_registry_scope_mode}</code>}
+            />
+            <InfoRow
+              label="Env overrides"
+              value={
+                <span className="text-sm text-text-secondary">
+                  <code>CI_AUTO_REGISTRY_CREDENTIALS_ENABLED</code>,{' '}
+                  <code>CI_AUTO_REGISTRY_CREDENTIALS_TTL_SECS</code>,{' '}
+                  <code>CI_AUTO_REGISTRY_SCOPE_MODE</code>
+                </span>
+              }
+            />
+          </InfoPanel>
+
           <AdminSmtpPanel />
         </div>
       )}

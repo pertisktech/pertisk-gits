@@ -314,11 +314,15 @@ export function RepoPipelines({
 {`# .pertisk-ci.yaml
 on: push
 jobs:
-  build:
+  build-image:
     runs-on: docker
     steps:
-      - name: test
-        run: echo "hello"`}
+      - name: login
+        run: echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+      - name: build and push
+        run: |
+          docker build -t "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA" .
+          docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA"`}
                 </pre>
               }
             />

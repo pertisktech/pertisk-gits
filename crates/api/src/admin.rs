@@ -244,6 +244,9 @@ struct AdminConfigurationResponse {
     registration_enabled: bool,
     require_registration_approval: bool,
     super_admin_env_override: bool,
+    ci_auto_registry_credentials_enabled: bool,
+    ci_auto_registry_credentials_ttl_secs: i64,
+    ci_auto_registry_scope_mode: String,
 }
 
 #[derive(Serialize, sqlx::FromRow)]
@@ -448,6 +451,12 @@ async fn admin_configuration(
         registration_enabled,
         require_registration_approval,
         super_admin_env_override: std::env::var("SUPER_ADMIN_USER_IDS").is_ok(),
+        ci_auto_registry_credentials_enabled: crate::ci_secrets::ci_auto_registry_credentials_enabled(
+        ),
+        ci_auto_registry_credentials_ttl_secs:
+            crate::ci_secrets::ci_auto_registry_credentials_ttl_secs(),
+        ci_auto_registry_scope_mode: crate::ci_secrets::ci_auto_registry_scope_mode_label()
+            .to_string(),
     }))
 }
 

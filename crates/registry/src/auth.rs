@@ -10,6 +10,57 @@ use crate::access::{can_pull, can_push, parse_image_name};
 pub const REGISTRY_TOKEN_TTL_SECS: i64 = 300;
 pub const CI_REGISTRY_BASIC_USER: &str = "gitlab-ci-token";
 
+/// How CI job credentials may address repositories under the project path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CiRegistryScopeMode {
+    /// Exact `{org}/{repo}` only (default).
+    ProjectOnly,
+    /// `{org}/{repo}` and nested paths like `{org}/{repo}/cache`.
+    ProjectAndSubpath,
+}
+
+pub fn ci_auto_registry_scope_mode() -> CiRegistryScopeMode {
+    match std::env::var("CI_AUTO_REGISTRY_SCOPE_MODE") {
+        Ok(value) => {
+            let value = value.trim().to_ascii_lowercase();
+            if matches!(
+                value.as_str(),
+                "project-and-subpath" | "subpath" | "prefix"
+            ) {
+                CiRegistryScopeMode::ProjectAndSubpath
+            } else {
+                CiRegistryScopeMode::ProjectOnly
+            }
+        }
+        Err(_) => CiRegistryScopeMode::ProjectOnly,
+    }
+}
+
+pub fn ci_registry_scope_mode_label(mode: CiRegistryScopeMode) -> &'static str {
+    match mode {
+        CiRegistryScopeMode::ProjectOnly => "project-only",
+        CiRegistryScopeMode::ProjectAndSubpath => "project-and-subpath",
+    }
+}
+
+/// Whether `requested` repository is in scope for CI credentials bound to `allowed`.
+pub fn ci_repository_in_scope(allowed: &str, requested: &str) -> bool {
+    ci_repository_in_scope_with_mode(allowed, requested, ci_auto_registry_scope_mode())
+}
+
+pub fn ci_repository_in_scope_with_mode(
+    allowed: &str,
+    requested: &str,
+    mode: CiRegistryScopeMode,
+) -> bool {
+    match mode {
+        CiRegistryScopeMode::ProjectOnly => requested == allowed,
+        CiRegistryScopeMode::ProjectAndSubpath => {
+            requested == allowed || requested.starts_with(&format!("{allowed}/"))
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CiRegistryBasicClaims {
     pub sub: String,
@@ -369,12 +420,14 @@ pub async fn authorize_registry(
             }
             BasicPrincipal::Ci(ci) => {
                 if let (Some(repo), Some(act)) = (repo_name, action) {
-                    if repo == ci.repository && (act == "pull" || act == "push") {
+                    if ci_repository_in_scope(&ci.repository, repo)
+                        && (act == "pull" || act == "push")
+                    {
                         return Ok(RegistryAuth {
                             user_id: Uuid::nil(),
                             access: vec![RegistryAccess {
                                 access_type: "repository".into(),
-                                name: ci.repository,
+                                name: repo.to_string(),
                                 actions: vec![act.to_string()],
                             }],
                         });
@@ -648,5 +701,29 @@ mod tests {
         let auth = verify_ci_registry_basic_token(secret, &token).unwrap();
         assert_eq!(auth.job_id, job_id);
         assert_eq!(auth.repository, repo);
+    }
+
+    #[test]
+    fn ci_repository_scope_project_only() {
+        let mode = CiRegistryScopeMode::ProjectOnly;
+        assert!(ci_repository_in_scope_with_mode("acme/widget", "acme/widget", mode));
+        assert!(!ci_repository_in_scope_with_mode(
+            "acme/widget",
+            "acme/widget/cache",
+            mode
+        ));
+        assert!(!ci_repository_in_scope_with_mode("acme/widget", "acme/other", mode));
+    }
+
+    #[test]
+    fn ci_repository_scope_project_and_subpath() {
+        let mode = CiRegistryScopeMode::ProjectAndSubpath;
+        assert!(ci_repository_in_scope_with_mode("acme/widget", "acme/widget", mode));
+        assert!(ci_repository_in_scope_with_mode(
+            "acme/widget",
+            "acme/widget/cache",
+            mode
+        ));
+        assert!(!ci_repository_in_scope_with_mode("acme/widget", "acme/other", mode));
     }
 }

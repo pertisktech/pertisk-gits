@@ -12,6 +12,7 @@ pub struct PreparedSecrets {
     pub secret_refs: HashMap<String, String>,
     pub variable_refs: HashMap<String, String>,
     pub mask_values: Vec<String>,
+    pub warnings: Vec<String>,
 }
 
 /// Build step environment from injected secrets/variables, overlaying the workspace path.
@@ -79,7 +80,10 @@ pub async fn prepare_secrets(
         Ok(response) => response,
         Err(err) => {
             tracing::warn!(%err, "failed to load job secrets; using predefined variables only");
-            crate::api::JobSecretsResponse { secrets: vec![] }
+            crate::api::JobSecretsResponse {
+                secrets: vec![],
+                warnings: vec![],
+            }
         }
     };
 
@@ -124,6 +128,7 @@ pub async fn prepare_secrets(
         secret_refs,
         variable_refs,
         mask_values,
+        warnings: response.warnings,
     })
 }
 

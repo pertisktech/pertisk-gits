@@ -60,6 +60,9 @@ pub async fn run_job(
     }
 
     let secrets = prepare_secrets(api, &job, work_root.path()).await?;
+    for warning in &secrets.warnings {
+        api.append_log(job.job_id, &format!("{warning}\n")).await?;
+    }
 
     let executor = ShellExecutor::new();
     let queue_wait = queued_at.elapsed();

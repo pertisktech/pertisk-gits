@@ -1,4 +1,6 @@
-# Feature Draft: GitLab-like Automatic Registry Credentials in CI
+# Feature: GitLab-like Automatic Registry Credentials in CI
+
+**Status:** Done (MVP) — see Phase 8.5 in [PHASES.md](./PHASES.md).
 
 ## Goal
 
