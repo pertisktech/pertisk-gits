@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Download, Loader2, Play, RotateCcw, Square } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { JobArtifact, JobRun, PipelineRun } from '../api/types'
 import {
   jobStepViews,
@@ -69,7 +69,6 @@ export function PipelineJobStages({
   onDownloadArtifact: (artifact: JobArtifact) => void
 }) {
   const [openSteps, setOpenSteps] = useState<Set<string>>(() => new Set())
-  const sectionRefs = useRef(new Map<string, HTMLElement>())
 
   const job = activeJob ?? jobs[0] ?? null
   const stages = job ? jobStepViews(job, run.status) : []
@@ -79,17 +78,15 @@ export function PipelineJobStages({
       ? (stages.find((step) => stepDisplayStatus(step, jobStatus, run.status) === 'running')
           ?.key ?? null)
       : null
-  const focusKey = runningKey ?? activeStepKey
-
-  useEffect(() => {
-    const key = runningKey ?? activeStepKey
-    setOpenSteps(new Set(key ? [key] : []))
-  }, [job?.id, logSession, runningKey, activeStepKey])
+  const fallbackKey = stages[0]?.key ?? null
+  const focusKey = runningKey ?? activeStepKey ?? fallbackKey
 
   useEffect(() => {
     if (!focusKey) return
-    sectionRefs.current.get(focusKey)?.scrollIntoView({ block: 'nearest' })
-  }, [focusKey, job?.id, logSession])
+    setOpenSteps((current) =>
+      current.size === 1 && current.has(focusKey) ? current : new Set([focusKey]),
+    )
+  }, [job?.id, logSession, focusKey])
 
   if (!job || jobs.length === 0) {
     return <div className="gl-jobs-empty">No jobs in this pipeline run.</div>
@@ -230,10 +227,6 @@ export function PipelineJobStages({
               return (
                 <section
                   key={step.key}
-                  ref={(node) => {
-                    if (node) sectionRefs.current.set(step.key, node)
-                    else sectionRefs.current.delete(step.key)
-                  }}
                   className={cn(
                     'gl-jobs-section',
                     open && focused && 'gl-jobs-section--focus',

@@ -19,6 +19,7 @@ export interface PipelineGraphNodeData extends Record<string, unknown> {
 }
 
 const NODE_WIDTH = 176
+const NODE_HEIGHT = 72
 const COL_GAP = 248
 const ROW_GAP = 88
 
@@ -188,6 +189,7 @@ export function layoutPipelineGraph(
       selected: selectedJob === job.name || selectedJob === job.job_id,
     },
     width: NODE_WIDTH,
+    height: NODE_HEIGHT,
   }))
 
   const statusByName = new Map(jobs.map((job) => [job.name, job.status]))

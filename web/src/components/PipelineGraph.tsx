@@ -148,8 +148,13 @@ export function PipelineGraph({
     )
   }
 
+  const fill = className?.includes('pipeline-graph-panel--inline')
+
   return (
-    <div className={`pipeline-graph-panel${className ? ` ${className}` : ''}`} style={{ height }}>
+    <div
+      className={`pipeline-graph-panel${className ? ` ${className}` : ''}`}
+      style={fill ? { minHeight: height } : { height }}
+    >
       <ReactFlow
         key={structureKey}
         nodes={nodes}
