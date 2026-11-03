@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
+import { stripHtmlComments } from './repoMarkdown'
 
 export function issueUrl(orgSlug: string, repoSlug: string, number: number) {
   return `/groups/${orgSlug}/projects/${repoSlug}/issues/${number}`
@@ -21,7 +22,7 @@ export interface CollaborationContext {
 
 /** Linkify #123 (issues) and !123 (pull requests); highlight @mentions. */
 export function preprocessCollaborationMarkdown(content: string, ctx: CollaborationContext) {
-  let text = content
+  let text = stripHtmlComments(content)
   text = text.replace(
     /(?<![\w/#])#(\d+)\b/g,
     (_, num) => `[#${num}](${issueUrl(ctx.orgSlug, ctx.repoSlug, Number(num))})`,
@@ -52,7 +53,7 @@ export function MarkdownBody({
     if (orgSlug && repoSlug) {
       return preprocessCollaborationMarkdown(content, { orgSlug, repoSlug })
     }
-    return content
+    return stripHtmlComments(content)
   }, [content, orgSlug, repoSlug])
 
   return (
