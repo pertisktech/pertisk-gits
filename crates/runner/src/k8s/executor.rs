@@ -570,11 +570,10 @@ fn env_var(name: &str, value: &str) -> EnvVar {
     }
 }
 
-/// Line-buffer job script output so Kubernetes log polling streams lines during long steps.
+/// Run the generated job script. Do not install packages here — `apk add` on
+/// `docker:*-cli` images can hang for minutes after DinD is already ready.
 const EXEC_JOB_SCRIPT: &str = r#"set -eu
-if ! command -v stdbuf >/dev/null 2>&1 && command -v apk >/dev/null 2>&1; then
-  apk add --no-cache coreutils >/dev/null 2>&1 || true
-fi
+echo "=== starting job steps"
 if command -v stdbuf >/dev/null 2>&1; then
   exec stdbuf -oL -eL /bin/sh /scripts/run.sh
 fi
@@ -594,6 +593,7 @@ while [ "$i" -lt 180 ]; do
   sleep 0.25 2>/dev/null || sleep 1
 done
 docker info >/dev/null
+# Fall through into EXEC_JOB_SCRIPT (same shell) — do not exit here.
 "#;
 
 async fn watch_job(
