@@ -152,7 +152,12 @@ export function jobStepViews(job: JobRun, runStatus?: PipelineRun['status']): Jo
     }))
   }
 
-  const logSteps = parseLogSteps(job.log_text)
+  const allLogSteps = parseLogSteps(job.log_text)
+  const configuredKeys = new Set(configured.map((step) => step.name))
+  const logSteps = allLogSteps.filter(
+    (entry) =>
+      configuredKeys.has(entry.name) || /^step-\d+$/.test(entry.name),
+  )
   if (configured.length > 0) {
     const nextIndex = inferNextStepIndex(
       logSteps,
@@ -240,7 +245,9 @@ export function inferRunningStepName(
     return null
   }
 
-  const logSteps = parseLogSteps(job.log_text)
+  const configuredSet = new Set(configured)
+  // Ignore system lines like `=== kubernetes pod … (running)` that match the step regex.
+  const logSteps = parseLogSteps(job.log_text).filter((step) => configuredSet.has(step.name))
   const running = logSteps.find((step) => step.exitCode === null)
   if (running) {
     return running.name
@@ -340,24 +347,22 @@ export function stepLogText(
     return section.text.trim() ? `${header}\n${section.text.trim()}` : header
   }
 
-  if (
-    effectiveJobStatus(job, runStatus) === 'running' &&
-    (inferRunningStepName(job, runStatus) === stepKey ||
-      findLogSection(job.log_text, stepKey) != null)
-  ) {
-    const runningName = inferRunningStepName(job, runStatus) ?? stepKey
-    const marker = `=== ${runningName} (running)`
+  const jobStatus = effectiveJobStatus(job, runStatus)
+  const runningName = inferRunningStepName(job, runStatus)
+  if (jobStatus === 'running' && (runningName === stepKey || runningName == null)) {
+    const marker = `=== ${stepKey} (running)`
     const start = job.log_text.indexOf(marker)
     if (start >= 0) {
       return job.log_text.slice(start)
     }
+    // Pre-step setup (k8s schedule / image pull / DinD) — show live job log, not a script preview.
     return job.log_text.trim()
-      ? `${job.log_text.trim()}\n\n=== ${runningName} (starting…)`
-      : `=== ${runningName} (starting…)`
+      ? `${job.log_text.trim()}\n\n=== ${stepKey} (starting…)`
+      : `=== ${stepKey} (starting…)`
   }
 
   if (
-    effectiveJobStatus(job, runStatus) === 'queued' &&
+    jobStatus === 'queued' &&
     (initialStepKey(job, runStatus) === stepKey ||
       jobStepViews(job, runStatus)[0]?.key === stepKey)
   ) {

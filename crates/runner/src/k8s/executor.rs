@@ -661,7 +661,7 @@ async fn watch_job(
             }
             api.append_log(
                 job_id,
-                &format!("\n=== helper init container failed (exit {init_exit})\n"),
+                &format!("\n=== kubernetes: helper init failed with code {init_exit}\n"),
             )
             .await?;
             return Ok((init_exit, false, false));
@@ -678,7 +678,8 @@ async fn watch_job(
             false,
         )
         .await;
-    api.append_log(job_id, &format!("=== kubernetes pod {pod_name} (running)\n"))
+    // Avoid `=== … (running)` — the UI parses that as a CI step marker.
+    api.append_log(job_id, &format!("=== kubernetes: pod {pod_name} ready\n"))
         .await?;
 
     let mut streamer = LogStreamer::new(api, job_id, mask_values);
