@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
-import { api } from '../api/client'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { ApiRequestError, api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { useProjectParams } from '../hooks/useProjectParams'
 import { RepoBranches } from '../components/RepoBranches'
@@ -35,9 +35,9 @@ export function ProjectDetailPage() {
   const tab: ProjectTab = projectNav?.tab ?? 'code'
 
   const { data: groups = [] } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token),
+    queryKey: ['organizations', token ?? 'public'],
+    queryFn: () => api.listOrganizations(token),
+    enabled: Boolean(orgSlug),
   })
 
   const { data, isLoading, error } = useQuery({
@@ -47,7 +47,7 @@ export function ProjectDetailPage() {
   })
 
   const { data: browserData } = useQuery({
-    queryKey: ['repo-browser', orgSlug, projectSlug],
+    queryKey: ['repo-browser', orgSlug, projectSlug, token ?? 'public'],
     queryFn: () => api.getRepoBrowser(orgSlug, projectSlug, token),
     enabled: Boolean(orgSlug && projectSlug),
   })
@@ -97,9 +97,19 @@ export function ProjectDetailPage() {
   }
 
   if (error) {
+    const status = error instanceof ApiRequestError ? error.status : undefined
+    const needsLogin = !token && (status === 401 || status === 403)
     return (
-      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm">
-        {(error as Error).message}
+      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm space-y-2">
+        <p className="m-0">{(error as Error).message}</p>
+        {needsLogin && (
+          <p className="m-0">
+            <Link to="/login" className="text-primary hover:underline">
+              Sign in
+            </Link>{' '}
+            to access private repositories.
+          </p>
+        )}
       </div>
     )
   }

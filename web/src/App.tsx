@@ -80,10 +80,12 @@ export default function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/auth/callback" element={<AuthCallbackPage />} />
             <Route element={<AppLayout />}>
+              <Route path="/" element={<Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/groups" element={<GroupsPage />} />
+              <Route path="/organizations" element={<Navigate to="/groups" replace />} />
+              <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />
               <Route element={<ProtectedRoute />}>
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/dashboard" element={<DashboardPage />} />
-                <Route path="/groups" element={<GroupsPage />} />
                 <Route path="/groups/new" element={<NewGroupPage />} />
                 <Route path="/groups/import" element={<GroupImportPage />} />
                 <Route path="/activity" element={<Navigate to="/activity/merge-requests" replace />} />
@@ -104,8 +106,6 @@ export default function App() {
                 </Route>
                 <Route path="/profile" element={<ProfilePage />} />
                 <Route path="/settings/auth" element={<Navigate to="/admin/auth" replace />} />
-                <Route path="/organizations" element={<Navigate to="/groups" replace />} />
-                <Route path="/organizations/:slug" element={<RedirectLegacyOrg />} />
               </Route>
               <Route path="/groups/*" element={<GroupAreaRouter />} />
               <Route path="/:orgSlug/:repoSlug" element={<RedirectShortRepo />} />

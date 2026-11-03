@@ -57,6 +57,10 @@ export function GroupAreaRouter() {
   const group = parseGroupRoute(pathname)
   if (!group) return <Navigate to="/groups" replace />
 
+  if (group.tab === 'repositories') {
+    return <GroupDetailPage />
+  }
+
   let page: ReactNode
   switch (group.tab) {
     case 'settings':

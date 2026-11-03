@@ -14,9 +14,9 @@ export function useGroupFromRoute() {
   const orgPath = route?.orgPath ?? ''
 
   const { data: groups = [] } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token && orgPath),
+    queryKey: ['organizations', token ?? 'public'],
+    queryFn: () => api.listOrganizations(token),
+    enabled: Boolean(orgPath),
   })
 
   const group = findGroupByPath(groups, orgPath)

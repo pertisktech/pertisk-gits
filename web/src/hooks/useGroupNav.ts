@@ -13,9 +13,9 @@ export function useGroupNav() {
   const route = useMemo(() => parseGroupRoute(location.pathname), [location.pathname])
 
   const { data: groups = [] } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token && route),
+    queryKey: ['organizations', token ?? 'public'],
+    queryFn: () => api.listOrganizations(token),
+    enabled: Boolean(route),
   })
 
   const orgPath = route?.orgPath ?? ''
@@ -40,6 +40,7 @@ export function useGroupNav() {
     ...route,
     orgSlug: orgPath,
     groupName: group?.name ?? orgPath,
+    isMember,
     canViewAudit,
     canManage,
   }

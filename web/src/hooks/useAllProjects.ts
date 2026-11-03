@@ -17,9 +17,8 @@ export function useAllProjects() {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['accessible-repositories'],
-    queryFn: () => api.listAccessibleRepositories(token!),
-    enabled: Boolean(token),
+    queryKey: ['accessible-repositories', token ?? 'public'],
+    queryFn: () => api.listAccessibleRepositories(token),
   })
 
   const projects = useMemo((): DashboardProject[] => {

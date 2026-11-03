@@ -45,24 +45,22 @@ export function GlobalSearch() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const { data: groups = [] } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token),
+    queryKey: ['organizations', token ?? 'public'],
+    queryFn: () => api.listOrganizations(token),
   })
 
   const { data: accessibleRepos = [] } = useQuery({
-    queryKey: ['accessible-repositories'],
-    queryFn: () => api.listAccessibleRepositories(token!),
-    enabled: Boolean(token),
+    queryKey: ['accessible-repositories', token ?? 'public'],
+    queryFn: () => api.listAccessibleRepositories(token),
   })
 
   const trimmedQuery = query.trim()
   const codeEnabled = trimmedQuery.length >= 2
 
   const { data: codeResults } = useQuery({
-    queryKey: ['global-code-search', trimmedQuery],
+    queryKey: ['global-code-search', token ?? 'public', trimmedQuery],
     queryFn: () => api.searchCode(trimmedQuery, token),
-    enabled: Boolean(token && codeEnabled),
+    enabled: codeEnabled,
   })
 
   const results = useMemo(() => {

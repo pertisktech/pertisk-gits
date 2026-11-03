@@ -34,6 +34,7 @@ import {
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
+import { useEffectiveUser } from '../auth/AuthContext'
 import { useActivityNav } from '../hooks/useActivityNav'
 import { useAdminNav } from '../hooks/useAdminNav'
 import { useGroupNav } from '../hooks/useGroupNav'
@@ -116,6 +117,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProps) {
+  const user = useEffectiveUser()
   const project = useProjectNav()
   const group = useGroupNav()
   const admin = useAdminNav()
@@ -123,6 +125,9 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
   const isSuperAdmin = useSuperAdmin()
   const showGlobalNav = !project && !group && !admin && !activity
   const showAdminFooter = showGlobalNav && isSuperAdmin
+  const visibleGlobalNavItems = user
+    ? globalNavItems
+    : globalNavItems.filter((item) => item.to === '/dashboard' || item.to === '/groups')
 
   return (
     <aside
@@ -155,7 +160,7 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
 
       <nav className="app-sidebar-nav">
         {!project && !group && !admin && !activity &&
-          globalNavItems.map(({ to, label, icon: Icon, end }) => (
+          visibleGlobalNavItems.map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
               to={to}
@@ -231,6 +236,8 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
               .filter((item) => item.id !== 'import' || group.canManage)
               .filter((item) => item.id !== 'settings' || group.canManage)
               .filter((item) => (item.id !== 'teams' && item.id !== 'roles' && item.id !== 'machine-users') || group.canManage)
+              .filter((item) => item.id !== 'members' || group.isMember)
+              .filter((item) => item.id !== 'secrets' || group.canManage)
               .map(({ id, label, icon: Icon }) => (
               <NavLink
                 key={id}

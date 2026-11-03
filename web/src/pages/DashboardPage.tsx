@@ -50,21 +50,27 @@ export function DashboardPage() {
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold tracking-tight text-text m-0">Projects</h1>
           <p className="text-sm text-muted mt-0 mb-0">
-            {user?.display_name ?? user?.username} · public repositories and projects in your groups
+            {user
+              ? `${user.display_name ?? user.username} · public repositories and projects in your groups`
+              : 'Public repositories — sign in to see private projects'}
           </p>
         </div>
         <div className="flex gap-2">
-          <LinkButton to="/groups/new">
-            <Plus size={14} />
-            New group
-          </LinkButton>
+          {user ? (
+            <LinkButton to="/groups/new">
+              <Plus size={14} />
+              New group
+            </LinkButton>
+          ) : (
+            <LinkButton to="/login">Sign in</LinkButton>
+          )}
           <LinkButton to="/groups" primary>
             Browse groups
           </LinkButton>
         </div>
       </div>
 
-      {!isLoading && projects.length === 0 && (
+      {!isLoading && projects.length === 0 && user && (
         <div className="app-panel mb-4">
           <div className="app-panel-header">Get started</div>
           <div className="p-5 text-sm text-text-secondary space-y-2">
@@ -110,12 +116,22 @@ export function DashboardPage() {
         {!isLoading && projects.length === 0 && (
           <EmptyState
             icon={<FolderGit2 size={40} />}
-            title="No projects yet"
-            description="Create a group, then add your first repository."
+            title={user ? 'No projects yet' : 'No public projects'}
+            description={
+              user
+                ? 'Create a group, then add your first repository.'
+                : 'Public repositories will appear here. Sign in to create projects or view private ones.'
+            }
             action={
-              <LinkButton to="/groups/new" primary>
-                Create group
-              </LinkButton>
+              user ? (
+                <LinkButton to="/groups/new" primary>
+                  Create group
+                </LinkButton>
+              ) : (
+                <LinkButton to="/login" primary>
+                  Sign in
+                </LinkButton>
+              )
             }
           />
         )}

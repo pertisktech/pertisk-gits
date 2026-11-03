@@ -258,14 +258,14 @@ export const api = {
       token,
     ),
 
-  listOrganizations: (token: string) =>
+  listOrganizations: (token?: string | null) =>
     request<Organization[]>('/organizations', {}, token),
 
-  listAccessibleRepositories: (token: string) =>
+  listAccessibleRepositories: (token?: string | null) =>
     request<Repository[]>('/repositories/accessible', {}, token),
 
   getDashboardProjectStats: (
-    token: string,
+    token: string | null | undefined,
     projects: { org_path: string; slug: string }[],
   ) =>
     request<{ stats: DashboardProjectStats[] }>(
@@ -274,7 +274,7 @@ export const api = {
       token,
     ),
 
-  listSubgroups: (token: string, orgPath: string) =>
+  listSubgroups: (token: string | null | undefined, orgPath: string) =>
     request<Organization[]>(`/organizations/${orgApiPath(orgPath)}/subgroups`, {}, token),
 
   listOrganizationMembers: (token: string, orgSlug: string) =>
@@ -582,7 +582,7 @@ export const api = {
     }, token),
 
   listRepositories: (
-    token: string,
+    token: string | null | undefined,
     orgSlug: string,
     options?: { recursive?: boolean },
   ) => {

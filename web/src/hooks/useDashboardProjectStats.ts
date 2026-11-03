@@ -46,9 +46,13 @@ export function useDashboardProjectStats(projects: ProjectStatsRef[]) {
 
   const queries = useQueries({
     queries: batches.map((batch) => ({
-      queryKey: ['dashboard-project-stats', batch.map((p) => `${p.org_path}/${p.slug}`).join('|')],
-      queryFn: () => api.getDashboardProjectStats(token!, batch),
-      enabled: Boolean(token) && batch.length > 0,
+      queryKey: [
+        'dashboard-project-stats',
+        token ?? 'public',
+        batch.map((p) => `${p.org_path}/${p.slug}`).join('|'),
+      ],
+      queryFn: () => api.getDashboardProjectStats(token, batch),
+      enabled: batch.length > 0,
       staleTime: 0,
       refetchInterval: (query: { state: { data?: { stats: DashboardProjectStats[] } } }) =>
         batchHasActivePipeline(query.state.data?.stats) ? 5_000 : false,

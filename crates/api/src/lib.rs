@@ -156,6 +156,15 @@ pub async fn run() -> anyhow::Result<()> {
     };
 
     let repo_read_routes = Router::new()
+        .route("/organizations", get(list_organizations))
+        .route(
+            "/organizations/{org_path}/subgroups",
+            get(list_organization_subgroups),
+        )
+        .route(
+            "/organizations/{org_path}/repositories",
+            get(list_repositories),
+        )
         .route(
             "/organizations/{org_path}/repositories/{repo_slug}",
             get(get_repository),
@@ -200,6 +209,7 @@ pub async fn run() -> anyhow::Result<()> {
             "/organizations/{org_path}/repositories/{repo_slug}/commits/{commit_sha}",
             get(get_repo_commit),
         )
+        .merge(dashboard::dashboard_routes())
         .merge(collaboration::collaboration_read_routes())
         .merge(wiki::wiki_read_routes())
         .merge(code_search::code_search_read_routes())
@@ -216,19 +226,17 @@ pub async fn run() -> anyhow::Result<()> {
         .merge(sso::sso_routes())
         .route("/me", get(me).patch(update_me))
         .route("/users/search", get(search_users))
-        .merge(dashboard::dashboard_routes())
         .route("/me/ssh-keys", get(list_ssh_keys).post(create_ssh_key))
         .route("/me/ssh-keys/{key_id}", axum::routing::delete(delete_ssh_key))
-        .route("/organizations", get(list_organizations).post(create_organization))
+        .route("/organizations", post(create_organization))
         .route(
             "/organizations/{org_path}",
             patch(update_organization).delete(delete_organization),
         )
-        .route("/organizations/{org_path}/subgroups", get(list_organization_subgroups))
         .route("/organizations/{org_path}/members", get(list_organization_members))
         .route(
             "/organizations/{org_path}/repositories",
-            get(list_repositories).post(create_repository),
+            post(create_repository),
         )
         .route(
             "/organizations/{org_path}/repositories/{repo_slug}",
@@ -970,20 +978,33 @@ async fn delete_ssh_key(
 
 async fn list_organizations(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
 ) -> Result<Json<Vec<OrganizationListItem>>, ApiError> {
-    let rows = sqlx::query_as::<_, OrganizationListRow>(
-        r#"
-        SELECT DISTINCT
-            o.id,
-            o.slug,
-            o.name,
-            o.description,
-            o.parent_id,
-            o.full_path,
-            o.created_at,
-            o.updated_at,
-            EXISTS (
+    let user_id = auth.as_ref().map(|a| a.user_id);
+    let rows = if let Some(user_id) = user_id {
+        sqlx::query_as::<_, OrganizationListRow>(
+            r#"
+            SELECT DISTINCT
+                o.id,
+                o.slug,
+                o.name,
+                o.description,
+                o.parent_id,
+                o.full_path,
+                o.created_at,
+                o.updated_at,
+                EXISTS (
+                    SELECT 1
+                    FROM organization_members m
+                    INNER JOIN organizations member_org ON member_org.id = m.organization_id
+                    WHERE m.user_id = $1
+                      AND (
+                        o.full_path = member_org.full_path
+                        OR o.full_path LIKE member_org.full_path || '/%'
+                      )
+                ) AS is_member
+            FROM organizations o
+            WHERE EXISTS (
                 SELECT 1
                 FROM organization_members m
                 INNER JOIN organizations member_org ON member_org.id = m.organization_id
@@ -992,30 +1013,52 @@ async fn list_organizations(
                     o.full_path = member_org.full_path
                     OR o.full_path LIKE member_org.full_path || '/%'
                   )
-            ) AS is_member
-        FROM organizations o
-        WHERE EXISTS (
-            SELECT 1
-            FROM organization_members m
-            INNER JOIN organizations member_org ON member_org.id = m.organization_id
-            WHERE m.user_id = $1
-              AND (
-                o.full_path = member_org.full_path
-                OR o.full_path LIKE member_org.full_path || '/%'
-              )
+            )
+            OR EXISTS (
+                SELECT 1
+                FROM repositories r
+                WHERE r.organization_id = o.id
+                  AND r.visibility = 'public'
+            )
+            ORDER BY o.full_path
+            "#,
         )
-        OR EXISTS (
-            SELECT 1
-            FROM repositories r
-            WHERE r.organization_id = o.id
-              AND r.visibility = 'public'
+        .bind(user_id)
+        .fetch_all(&state.pool)
+        .await
+    } else {
+        sqlx::query_as::<_, OrganizationListRow>(
+            r#"
+            SELECT DISTINCT
+                o.id,
+                o.slug,
+                o.name,
+                o.description,
+                o.parent_id,
+                o.full_path,
+                o.created_at,
+                o.updated_at,
+                FALSE AS is_member
+            FROM organizations o
+            WHERE EXISTS (
+                WITH RECURSIVE subtree AS (
+                    SELECT id FROM organizations WHERE id = o.id
+                    UNION ALL
+                    SELECT child.id
+                    FROM organizations child
+                    INNER JOIN subtree s ON child.parent_id = s.id
+                )
+                SELECT 1
+                FROM repositories r
+                WHERE r.organization_id IN (SELECT id FROM subtree)
+                  AND r.visibility = 'public'
+            )
+            ORDER BY o.full_path
+            "#,
         )
-        ORDER BY o.full_path
-        "#,
-    )
-    .bind(auth.user_id)
-    .fetch_all(&state.pool)
-    .await
+        .fetch_all(&state.pool)
+        .await
+    }
     .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
 
     Ok(Json(
@@ -1059,16 +1102,17 @@ struct OrganizationListItem {
 
 async fn list_organization_subgroups(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path(org_path): Path<String>,
 ) -> Result<Json<Vec<Organization>>, ApiError> {
+    let user_id = auth.as_ref().map(|a| a.user_id);
     let org = crate::org::find_org_for_browse(
         &state.pool,
         &org::org_path_from_param(&org_path),
-        auth.user_id,
+        user_id,
     )
     .await?;
-    let subgroups = org::list_subgroups(&state.pool, org.id).await?;
+    let subgroups = org::list_browsable_subgroups(&state.pool, org.id, user_id).await?;
     Ok(Json(subgroups))
 }
 
@@ -1429,13 +1473,17 @@ struct RepositoryListItem {
 
 async fn list_repositories(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Path(org_path): Path<String>,
     Query(query): Query<ListRepositoriesQuery>,
 ) -> Result<Json<Vec<RepositoryListItem>>, ApiError> {
     let org_path = crate::org::org_path_from_param(&org_path);
-    let org = crate::org::find_org_by_path(&state.pool, &org_path).await?;
-    let is_member = crate::org::is_org_member(&state.pool, org.id, auth.user_id).await?;
+    let user_id = auth.as_ref().map(|a| a.user_id);
+    let org = crate::org::find_org_for_browse(&state.pool, &org_path, user_id).await?;
+    let is_member = match user_id {
+        Some(uid) => crate::org::is_org_member(&state.pool, org.id, uid).await?,
+        None => false,
+    };
 
     let mut repos = if query.recursive {
         sqlx::query_as::<_, RepositoryListRow>(

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Plus, Settings } from 'lucide-react'
-import { api } from '../api/client'
+import { Link } from 'react-router-dom'
+import { ApiRequestError, api } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { GroupChildrenPanel } from '../components/GroupChildrenPanel'
 import { GroupLandingHero } from '../components/GroupLandingHero'
@@ -22,16 +23,16 @@ export function GroupDetailPage() {
     retry: false,
   })
 
-  const { data: subgroups = [], isLoading: subgroupsLoading } = useQuery({
-    queryKey: ['subgroups', orgPath],
-    queryFn: () => api.listSubgroups(token!, orgPath),
-    enabled: Boolean(token && orgPath),
+  const { data: subgroups = [], isLoading: subgroupsLoading, error: subgroupsError } = useQuery({
+    queryKey: ['subgroups', token ?? 'public', orgPath],
+    queryFn: () => api.listSubgroups(token, orgPath),
+    enabled: Boolean(orgPath),
   })
 
   const { data: projects = [], isLoading, error } = useQuery({
-    queryKey: ['repositories', orgPath, { recursive: true }],
-    queryFn: () => api.listRepositories(token!, orgPath, { recursive: true }),
-    enabled: Boolean(token && orgPath),
+    queryKey: ['repositories', token ?? 'public', orgPath, { recursive: true }],
+    queryFn: () => api.listRepositories(token, orgPath, { recursive: true }),
+    enabled: Boolean(orgPath),
   })
 
   const canManage =
@@ -39,6 +40,25 @@ export function GroupDetailPage() {
     members.find((member) => member.user.id === user?.id)?.role === 'admin'
 
   const basePath = `/groups/${orgPath}`
+  const accessError = error ?? subgroupsError
+  const needsLogin =
+    !token &&
+    accessError instanceof ApiRequestError &&
+    (accessError.status === 401 || accessError.status === 403)
+
+  if (needsLogin) {
+    return (
+      <div className="p-3 rounded-lg border border-red-r1/30 bg-dashboard-danger-bg text-dashboard-danger text-sm space-y-2">
+        <p className="m-0">{accessError.message}</p>
+        <p className="m-0">
+          <Link to="/login" className="text-primary hover:underline">
+            Sign in
+          </Link>{' '}
+          to access private groups.
+        </p>
+      </div>
+    )
+  }
 
   return (
     <>

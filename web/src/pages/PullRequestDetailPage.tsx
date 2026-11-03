@@ -81,9 +81,8 @@ export function PullRequestDetailPage() {
   }
 
   const { data: groups = [] } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token),
+    queryKey: ['organizations', token ?? 'public'],
+    queryFn: () => api.listOrganizations(token),
   })
 
   const { data: repoData } = useQuery({

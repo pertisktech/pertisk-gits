@@ -24,9 +24,8 @@ export function GroupsPage() {
   const [sort, setSort] = useState<GroupSortOption>('name_asc')
 
   const { data: groups = [], isLoading, error } = useQuery({
-    queryKey: ['organizations'],
-    queryFn: () => api.listOrganizations(token!),
-    enabled: Boolean(token),
+    queryKey: ['organizations', token ?? 'public'],
+    queryFn: () => api.listOrganizations(token),
   })
 
   const { topLevelGroups, statsByGroupId, isLoading: statsLoading } = useTopLevelGroupStats(groups)
@@ -53,15 +52,25 @@ export function GroupsPage() {
     <>
       <PageHeader
         title="Groups"
-        subtitle="Organize projects and members into teams"
+        subtitle={
+          token
+            ? 'Organize projects and members into teams'
+            : 'Browse groups with public repositories'
+        }
         action={
-          <div className="flex flex-wrap items-center gap-2">
-            <ImportMenuDropdown />
-            <LinkButton to="/groups/new" primary>
-              <Plus size={14} />
-              New group
+          token ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <ImportMenuDropdown />
+              <LinkButton to="/groups/new" primary>
+                <Plus size={14} />
+                New group
+              </LinkButton>
+            </div>
+          ) : (
+            <LinkButton to="/login" primary>
+              Sign in
             </LinkButton>
-          </div>
+          )
         }
       />
 
@@ -98,13 +107,23 @@ export function GroupsPage() {
         {!isLoading && topLevelGroups.length === 0 && (
           <EmptyState
             icon={<Users size={40} />}
-            title="No groups yet"
-            description="Create a group to organize repositories, or import projects from GitHub or GitLab."
+            title={token ? 'No groups yet' : 'No public groups'}
+            description={
+              token
+                ? 'Create a group to organize repositories, or import projects from GitHub or GitLab.'
+                : 'Groups with public repositories will appear here. Sign in to create a group.'
+            }
             action={
-              <LinkButton to="/groups/new" primary>
-                <Plus size={14} />
-                Create your first group
-              </LinkButton>
+              token ? (
+                <LinkButton to="/groups/new" primary>
+                  <Plus size={14} />
+                  Create your first group
+                </LinkButton>
+              ) : (
+                <LinkButton to="/login" primary>
+                  Sign in
+                </LinkButton>
+              )
             }
           />
         )}

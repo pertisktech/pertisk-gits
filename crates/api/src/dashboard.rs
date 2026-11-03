@@ -8,7 +8,9 @@ use pertisk_domain::models::{RepoVisibility, Repository};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{cicd, load_repo_for_read, repository_activity, ApiError, AppState, AuthUser};
+use crate::{
+    cicd, load_repo_for_read, repository_activity, ApiError, AppState, AuthUser, OptionalAuth,
+};
 
 const MAX_PROJECTS: usize = 50;
 
@@ -73,44 +75,70 @@ struct AccessibleRepositoryListItem {
 
 async fn list_accessible_repositories(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
 ) -> Result<Json<Vec<AccessibleRepositoryListItem>>, ApiError> {
-    let mut repos = sqlx::query_as::<_, AccessibleRepositoryRow>(
-        r#"
-        SELECT
-            r.id,
-            r.organization_id,
-            r.name,
-            r.slug,
-            r.description,
-            r.visibility,
-            r.default_branch,
-            r.created_at,
-            r.updated_at,
-            r.last_commit_at,
-            o.full_path AS organization_path,
-            o.name AS organization_name
-        FROM repositories r
-        INNER JOIN organizations o ON o.id = r.organization_id
-        WHERE r.visibility = 'public'
-           OR EXISTS (
-                SELECT 1
-                FROM organization_members om
-                WHERE om.organization_id = r.organization_id
-                  AND om.user_id = $1
-           )
-           OR EXISTS (
-                SELECT 1
-                FROM repository_permissions rp
-                WHERE rp.repository_id = r.id
-                  AND rp.user_id = $1
-           )
-        ORDER BY COALESCE(r.last_commit_at, r.updated_at) DESC, o.full_path, r.name
-        "#,
-    )
-    .bind(auth.user_id)
-    .fetch_all(&state.pool)
-    .await
+    let mut repos = if let Some(auth) = auth.as_ref() {
+        sqlx::query_as::<_, AccessibleRepositoryRow>(
+            r#"
+            SELECT
+                r.id,
+                r.organization_id,
+                r.name,
+                r.slug,
+                r.description,
+                r.visibility,
+                r.default_branch,
+                r.created_at,
+                r.updated_at,
+                r.last_commit_at,
+                o.full_path AS organization_path,
+                o.name AS organization_name
+            FROM repositories r
+            INNER JOIN organizations o ON o.id = r.organization_id
+            WHERE r.visibility = 'public'
+               OR EXISTS (
+                    SELECT 1
+                    FROM organization_members om
+                    WHERE om.organization_id = r.organization_id
+                      AND om.user_id = $1
+               )
+               OR EXISTS (
+                    SELECT 1
+                    FROM repository_permissions rp
+                    WHERE rp.repository_id = r.id
+                      AND rp.user_id = $1
+               )
+            ORDER BY COALESCE(r.last_commit_at, r.updated_at) DESC, o.full_path, r.name
+            "#,
+        )
+        .bind(auth.user_id)
+        .fetch_all(&state.pool)
+        .await
+    } else {
+        sqlx::query_as::<_, AccessibleRepositoryRow>(
+            r#"
+            SELECT
+                r.id,
+                r.organization_id,
+                r.name,
+                r.slug,
+                r.description,
+                r.visibility,
+                r.default_branch,
+                r.created_at,
+                r.updated_at,
+                r.last_commit_at,
+                o.full_path AS organization_path,
+                o.name AS organization_name
+            FROM repositories r
+            INNER JOIN organizations o ON o.id = r.organization_id
+            WHERE r.visibility = 'public'
+            ORDER BY COALESCE(r.last_commit_at, r.updated_at) DESC, o.full_path, r.name
+            "#,
+        )
+        .fetch_all(&state.pool)
+        .await
+    }
     .map_err(|e| ApiError::from(pertisk_domain::DomainError::Internal(e.to_string())))?;
 
     if repos.iter().any(|repo| repo.last_commit_at.is_none()) {
@@ -165,7 +193,7 @@ async fn list_accessible_repositories(
 
 async fn project_stats(
     State(state): State<AppState>,
-    auth: AuthUser,
+    OptionalAuth(auth): OptionalAuth,
     Json(body): Json<ProjectStatsRequest>,
 ) -> Result<Json<ProjectStatsResponse>, ApiError> {
     if body.projects.is_empty() {
@@ -185,7 +213,7 @@ async fn project_stats(
             continue;
         }
 
-        let result = project_stat(&state, &auth, &org_path, slug).await;
+        let result = project_stat(&state, auth.as_ref(), &org_path, slug).await;
         stats.push(match result {
             Ok(stat) => stat,
             Err(_) => ProjectStats {
@@ -207,12 +235,11 @@ async fn project_stats(
 
 async fn project_stat(
     state: &AppState,
-    auth: &AuthUser,
+    auth: Option<&AuthUser>,
     org_path: &str,
     slug: &str,
 ) -> Result<ProjectStats, ApiError> {
-    let (_org, repo, repo_path) =
-        load_repo_for_read(state, org_path, slug, Some(auth)).await?;
+    let (_org, repo, repo_path) = load_repo_for_read(state, org_path, slug, auth).await?;
 
     let (branch_count, tag_count, open_issue_count, has_pipelines, latest_pipeline_status, languages) =
         tokio::join!(
