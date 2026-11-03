@@ -279,9 +279,8 @@ async fn cleanup_job_resources(
     delete_kubernetes_job(client, namespace, job_name).await;
 
     let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
-    if let Err(err) =
-        wait_for_job_pods_gone(&pods, job_name, Duration::from_secs(120)).await
-    {
+    // Keep this short — a stuck terminating pod should not delay the next attempt for minutes.
+    if let Err(err) = wait_for_job_pods_gone(&pods, job_name, Duration::from_secs(30)).await {
         tracing::warn!(%err, job = %job_name, "timed out waiting for job pods to terminate");
     }
 
@@ -354,7 +353,7 @@ async fn wait_for_job_pods_gone(
         if Instant::now() >= deadline {
             anyhow::bail!("timed out waiting for pods of job {job_name} to terminate");
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 }
 
@@ -445,6 +444,7 @@ echo "=== helper: workspace ready"
     let build = Container {
         name: "build".into(),
         image: Some(build_image.to_string()),
+        image_pull_policy: Some("IfNotPresent".into()),
         command: Some(build_command),
         args: build_args,
         env: Some(build_env),
@@ -464,20 +464,26 @@ echo "=== helper: workspace ready"
             command: Some(vec!["/bin/sh".into(), "-c".into()]),
             args: Some(vec![concat!(
                 "set -eu; ",
+                // Legacy iptables avoids nft setup failures in some clusters; --iptables=false
+                // skips bridge/NAT plumbing that is unused for typical CI build/push and
+                // makes dockerd ready much faster (GitLab-style DinD).
                 "ln -sfn /usr/sbin/iptables-legacy /usr/sbin/iptables; ",
                 "ln -sfn /usr/sbin/ip6tables-legacy /usr/sbin/ip6tables; ",
                 "ln -sfn /usr/sbin/iptables-legacy-restore /usr/sbin/iptables-restore; ",
                 "ln -sfn /usr/sbin/ip6tables-legacy-restore /usr/sbin/ip6tables-restore; ",
                 "ln -sfn /usr/sbin/iptables-legacy-save /usr/sbin/iptables-save; ",
                 "ln -sfn /usr/sbin/ip6tables-legacy-save /usr/sbin/ip6tables-save; ",
-                "exec dockerd --host=unix:///var/run/docker.sock --storage-driver=overlay2",
+                "exec dockerd --host=unix:///var/run/docker.sock --storage-driver=overlay2 --iptables=false --ip6tables=false",
             )
             .into()]),
             security_context: Some(SecurityContext {
                 privileged: Some(true),
                 ..Default::default()
             }),
-            env: Some(vec![env_var("DOCKER_TLS_CERTDIR", "")]),
+            env: Some(vec![
+                env_var("DOCKER_TLS_CERTDIR", ""),
+                env_var("DOCKER_IPTABLES", "false"),
+            ]),
             volume_mounts: Some(vec![VolumeMount {
                 name: "docker-sock".into(),
                 mount_path: "/var/run".into(),
@@ -578,13 +584,14 @@ exec /bin/sh /scripts/run.sh
 const WAIT_FOR_DIND_SCRIPT: &str = r#"set -eu
 echo "=== waiting for docker daemon"
 i=0
-while [ "$i" -lt 90 ]; do
-  if docker info >/dev/null 2>&1; then
+# ~45s max; poll often so we start steps as soon as dockerd is up.
+while [ "$i" -lt 180 ]; do
+  if [ -S /var/run/docker.sock ] && docker info >/dev/null 2>&1; then
     echo "=== docker daemon ready"
     break
   fi
   i=$((i + 1))
-  sleep 1
+  sleep 0.25 2>/dev/null || sleep 1
 done
 docker info >/dev/null
 "#;
@@ -874,6 +881,11 @@ async fn wait_for_build_ready(
     let lp = ListParams::default().labels(&selector);
     let deadline = Instant::now() + Duration::from_secs(300);
     let mut last_helper_log_at = Instant::now();
+    let mut last_progress_at = Instant::now()
+        .checked_sub(Duration::from_secs(5))
+        .unwrap_or_else(Instant::now);
+    let mut last_progress = String::new();
+    let mut logged_waiting = false;
 
     loop {
         if *cancel_rx.borrow() {
@@ -888,10 +900,31 @@ async fn wait_for_build_ready(
             if *cancel_rx.borrow() {
                 anyhow::bail!("job cancelled while waiting for build container");
             }
+            if !logged_waiting {
+                let _ = api
+                    .append_log(
+                        job_id,
+                        "=== kubernetes: waiting for pod (scheduling / creating)\n",
+                    )
+                    .await;
+                logged_waiting = true;
+            }
         }
         if let Some(pod) = list.items.first() {
             if let Some(name) = pod.metadata.name.clone() {
-                if helper_init_running(pod) && last_helper_log_at.elapsed() >= Duration::from_secs(5)
+                let progress = pod_startup_progress(pod);
+                if (progress != last_progress && !progress.is_empty())
+                    || last_progress_at.elapsed() >= Duration::from_secs(5)
+                {
+                    if !progress.is_empty() && progress != last_progress {
+                        let _ = api
+                            .append_log(job_id, &format!("=== kubernetes: {progress}\n"))
+                            .await;
+                        last_progress = progress;
+                    }
+                    last_progress_at = Instant::now();
+                }
+                if helper_init_running(pod) && last_helper_log_at.elapsed() >= Duration::from_secs(3)
                 {
                     let helper_log = fetch_container_log(pods, &name, "helper").await;
                     if !helper_log.is_empty() {
@@ -904,8 +937,49 @@ async fn wait_for_build_ready(
                 }
             }
         }
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
+}
+
+fn container_wait_reason(pod: &Pod, name: &str, init: bool) -> Option<String> {
+    let status = pod.status.as_ref()?;
+    let statuses = if init {
+        status.init_container_statuses.as_ref()
+    } else {
+        status.container_statuses.as_ref()
+    }?;
+    let container = statuses.iter().find(|c| c.name == name)?;
+    let state = container.state.as_ref()?;
+    if let Some(waiting) = state.waiting.as_ref() {
+        let reason = waiting.reason.as_deref().unwrap_or("Waiting");
+        let message = waiting.message.as_deref().unwrap_or("");
+        if message.is_empty() {
+            Some(format!("{name}: {reason}"))
+        } else {
+            Some(format!("{name}: {reason} ({message})"))
+        }
+    } else if state.running.is_some() {
+        Some(format!("{name}: Running"))
+    } else if let Some(term) = state.terminated.as_ref() {
+        Some(format!("{name}: Terminated(exit {})", term.exit_code))
+    } else {
+        None
+    }
+}
+
+fn pod_startup_progress(pod: &Pod) -> String {
+    let phase = pod
+        .status
+        .as_ref()
+        .and_then(|s| s.phase.as_deref())
+        .unwrap_or("Unknown");
+    let mut parts = vec![format!("phase={phase}")];
+    for (name, init) in [("dind", true), ("helper", true), ("build", false)] {
+        if let Some(reason) = container_wait_reason(pod, name, init) {
+            parts.push(reason);
+        }
+    }
+    parts.join(" · ")
 }
 
 fn helper_init_running(pod: &Pod) -> bool {
@@ -1042,6 +1116,13 @@ mod tests {
         assert_eq!(inits[1].name, "helper");
         assert!(spec.containers.iter().all(|container| container.name != "dind"));
         assert!(spec.containers.iter().any(|container| container.name == "build"));
+        let dind_args = inits[0].args.as_ref().and_then(|a| a.first()).cloned().unwrap_or_default();
+        assert!(
+            dind_args.contains("--iptables=false"),
+            "DinD should disable iptables for faster CI startup"
+        );
+        let build = spec.containers.iter().find(|c| c.name == "build").unwrap();
+        assert_eq!(build.image_pull_policy.as_deref(), Some("IfNotPresent"));
     }
 }
 

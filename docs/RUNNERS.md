@@ -202,7 +202,7 @@ jobs:
 
 When `image` is omitted, the runner uses `kubernetes.buildImage` / `PERTISK_K8S_BUILD_IMAGE` (default `debian:bookworm-slim`). Official images (`golang`, `rust`, `node`, etc.) work as-is — steps run with `bash -c` so the image `PATH` is preserved (login shells would strip `/usr/local/go/bin`, `/usr/local/cargo/bin`, etc.).
 
-**Docker / buildx in job pods** — set `dind: true` on the job and use a Docker CLI image (e.g. `docker:27-cli`). The runner adds a privileged `docker:dind` sidecar; both containers share a `docker.sock` via `emptyDir` (no unencrypted TCP API). The cluster must allow privileged pods.
+**Docker / buildx in job pods** — set `dind: true` on the job and use a Docker CLI image (e.g. `docker:27-cli`). The runner adds a privileged `docker:dind` sidecar; both containers share a `docker.sock` via `emptyDir` (no unencrypted TCP API). The cluster must allow privileged pods. DinD starts with `--iptables=false` for faster daemon readiness (typical CI build/push does not need bridge NAT). Job logs stream pod phase / image-pull progress while waiting so cold starts are visible. Pre-pull `docker:*-dind` and your job `image` onto nodes to avoid multi-minute pulls.
 
 ```yaml
 jobs:
