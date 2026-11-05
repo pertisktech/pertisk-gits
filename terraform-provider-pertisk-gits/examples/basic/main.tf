@@ -33,6 +33,12 @@ variable "deploy_token" {
   default   = "change-me"
 }
 
+variable "sonar_token" {
+  type      = string
+  sensitive = true
+  default   = "change-me"
+}
+
 resource "pertisk_gits_group" "platform" {
   slug = "platform"
   name = "Platform"
@@ -45,14 +51,50 @@ resource "pertisk_gits_project" "app" {
   visibility = "private"
 }
 
-resource "pertisk_gits_ci_variable" "registry" {
+# --- Automation: CI variables (vars.NAME) ---
+
+resource "pertisk_gits_ci_variable" "server_registry" {
   scope       = "server"
   name        = "HARBOR_REGISTRY"
   environment = "all"
   value       = "harbor.example.com"
 }
 
-resource "pertisk_gits_ci_secret" "deploy_token" {
+resource "pertisk_gits_ci_variable" "group_sonar_url" {
+  scope       = "group"
+  org_path    = pertisk_gits_group.platform.full_path
+  name        = "SONAR_DASHBOARD_URL"
+  environment = "all"
+  value       = "https://sonar.example.com/dashboard"
+}
+
+resource "pertisk_gits_ci_variable" "repo_service_name" {
+  scope       = "repository"
+  org_path    = pertisk_gits_group.platform.full_path
+  repo_slug   = pertisk_gits_project.app.slug
+  name        = "SERVICE_NAME"
+  environment = "all"
+  value       = "app"
+}
+
+# --- Automation: CI secrets (secrets.NAME) ---
+
+resource "pertisk_gits_ci_secret" "server_ci_bot" {
+  scope       = "server"
+  name        = "CI_BOT_TOKEN"
+  environment = "all"
+  value       = var.deploy_token
+}
+
+resource "pertisk_gits_ci_secret" "group_sonar" {
+  scope       = "group"
+  org_path    = pertisk_gits_group.platform.full_path
+  name        = "SONAR_TOKEN"
+  environment = "all"
+  value       = var.sonar_token
+}
+
+resource "pertisk_gits_ci_secret" "repo_deploy" {
   scope       = "repository"
   org_path    = pertisk_gits_group.platform.full_path
   repo_slug   = pertisk_gits_project.app.slug

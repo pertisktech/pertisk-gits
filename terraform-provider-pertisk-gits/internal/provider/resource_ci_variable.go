@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = &ciVariableResource{}
-	_ resource.ResourceWithConfigure   = &ciVariableResource{}
-	_ resource.ResourceWithImportState = &ciVariableResource{}
+	_ resource.Resource                   = &ciVariableResource{}
+	_ resource.ResourceWithConfigure      = &ciVariableResource{}
+	_ resource.ResourceWithImportState    = &ciVariableResource{}
+	_ resource.ResourceWithValidateConfig = &ciVariableResource{}
 )
 
 func NewCiVariableResource() resource.Resource { return &ciVariableResource{} }
@@ -33,8 +34,22 @@ func (r *ciVariableResource) Metadata(_ context.Context, req resource.MetadataRe
 
 func (r *ciVariableResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "A CI variable (`vars.NAME`) at server, group, or repository scope.",
+		MarkdownDescription: "Automation CI variable (`${{ vars.NAME }}`) at server, group, or repository scope. Maps to Admin/Group/Project → Automation.",
 		Attributes:          ciSchema(false),
+	}
+}
+
+func (r *ciVariableResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var cfg ciEntryModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if cfg.Scope.IsUnknown() || cfg.Scope.IsNull() {
+		return
+	}
+	if err := validateCiScope(cfg); err != nil {
+		resp.Diagnostics.AddError("Invalid CI variable configuration", err.Error())
 	}
 }
 
@@ -47,22 +62,23 @@ func ciSchema(secret bool) map[string]schema.Attribute {
 			},
 		},
 		"scope": schema.StringAttribute{
-			Required:            true,
-			MarkdownDescription: "`server`, `group`, or `repository`.",
+			Required: true,
+			MarkdownDescription: "Automation level: `server` (Admin → Automation), `group` (Group → Settings → Automation), " +
+				"or `repository` (Project → Settings → Automation). Aliases: `instance`, `org`, `repo`, `project`.",
 			PlanModifiers: []planmodifier.String{
 				stringplanmodifier.RequiresReplace(),
 			},
 		},
 		"org_path": schema.StringAttribute{
 			Optional:            true,
-			MarkdownDescription: "Group full path (required for group/repository scope).",
+			MarkdownDescription: "Group full path. Required for `group` and `repository` scope; omit for `server`.",
 			PlanModifiers: []planmodifier.String{
 				stringplanmodifier.RequiresReplace(),
 			},
 		},
 		"repo_slug": schema.StringAttribute{
 			Optional:            true,
-			MarkdownDescription: "Repository slug (required for repository scope).",
+			MarkdownDescription: "Repository slug. Required for `repository` scope; omit for `server`/`group`.",
 			PlanModifiers: []planmodifier.String{
 				stringplanmodifier.RequiresReplace(),
 			},
@@ -78,7 +94,7 @@ func ciSchema(secret bool) map[string]schema.Attribute {
 			Optional:            true,
 			Computed:            true,
 			Default:             stringdefault.StaticString("all"),
-			MarkdownDescription: "`all`, `dev`, `qa`, `uat`, or `prd`.",
+			MarkdownDescription: "`all`, `dev`, `qa`, `uat`, or `prd`. Same name can exist once per environment.",
 			PlanModifiers: []planmodifier.String{
 				stringplanmodifier.RequiresReplace(),
 			},
@@ -100,7 +116,7 @@ func ciSchema(secret bool) map[string]schema.Attribute {
 			Optional:            true,
 			Computed:            true,
 			Default:             stringdefault.StaticString("variable"),
-			MarkdownDescription: "`variable` (env) or `file`.",
+			MarkdownDescription: "`variable` (env) or `file` (written to `.pertisk-secrets/NAME` on the runner).",
 		}
 	} else {
 		attrs["secret_kind"] = schema.StringAttribute{
@@ -129,15 +145,17 @@ func (r *ciVariableResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	scope := "variable"
+	apiScope := resolvedCiScope(plan)
+	plan.Scope = types.StringValue(apiScope)
+	configScope := "variable"
 	body := client.UpsertCiSecretRequest{
 		Name:        plan.Name.ValueString(),
-		ConfigScope: &scope,
+		ConfigScope: &configScope,
 		Masked:      boolPtr(plan.Masked.ValueBool()),
 		Environment: stringPtr(plan.Environment.ValueString()),
 		Value:       plan.Value.ValueString(),
 	}
-	entry, err := r.api.CreateCiSecret(ctx, plan.Scope.ValueString(), orgPathValue(plan), repoSlugValue(plan), body)
+	entry, err := r.api.CreateCiSecret(ctx, apiScope, orgPathValue(plan), repoSlugValue(plan), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Create CI variable failed", err.Error())
 		return
@@ -153,7 +171,7 @@ func (r *ciVariableResource) Read(ctx context.Context, req resource.ReadRequest,
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	entry, err := r.api.GetCiSecretByID(ctx, state.Scope.ValueString(), orgPathValue(state), repoSlugValue(state), state.ID.ValueString())
+	entry, err := r.api.GetCiSecretByID(ctx, resolvedCiScope(state), orgPathValue(state), repoSlugValue(state), state.ID.ValueString())
 	if err != nil {
 		if client.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -174,18 +192,18 @@ func (r *ciVariableResource) Update(ctx context.Context, req resource.UpdateRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	scope := "variable"
+	configScope := "variable"
 	body := client.UpdateCiSecretRequest{
-		ConfigScope: &scope,
+		ConfigScope: &configScope,
 		Masked:      boolPtr(plan.Masked.ValueBool()),
 		Value:       stringPtr(plan.Value.ValueString()),
 	}
-	entry, err := r.api.UpdateCiSecret(ctx, state.Scope.ValueString(), orgPathValue(state), repoSlugValue(state), state.ID.ValueString(), body)
+	entry, err := r.api.UpdateCiSecret(ctx, resolvedCiScope(state), orgPathValue(state), repoSlugValue(state), state.ID.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Update CI variable failed", err.Error())
 		return
 	}
-	plan.Scope = state.Scope
+	plan.Scope = types.StringValue(resolvedCiScope(state))
 	plan.OrgPath = state.OrgPath
 	plan.RepoSlug = state.RepoSlug
 	plan.Name = state.Name
@@ -200,7 +218,7 @@ func (r *ciVariableResource) Delete(ctx context.Context, req resource.DeleteRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.api.DeleteCiSecret(ctx, state.Scope.ValueString(), orgPathValue(state), repoSlugValue(state), state.ID.ValueString()); err != nil && !client.IsNotFound(err) {
+	if err := r.api.DeleteCiSecret(ctx, resolvedCiScope(state), orgPathValue(state), repoSlugValue(state), state.ID.ValueString()); err != nil && !client.IsNotFound(err) {
 		resp.Diagnostics.AddError("Delete CI variable failed", err.Error())
 	}
 }

@@ -11,9 +11,10 @@ import (
 )
 
 var (
-	_ resource.Resource                = &ciSecretResource{}
-	_ resource.ResourceWithConfigure   = &ciSecretResource{}
-	_ resource.ResourceWithImportState = &ciSecretResource{}
+	_ resource.Resource                     = &ciSecretResource{}
+	_ resource.ResourceWithConfigure        = &ciSecretResource{}
+	_ resource.ResourceWithImportState      = &ciSecretResource{}
+	_ resource.ResourceWithValidateConfig   = &ciSecretResource{}
 )
 
 func NewCiSecretResource() resource.Resource { return &ciSecretResource{} }
@@ -28,8 +29,19 @@ func (r *ciSecretResource) Metadata(_ context.Context, req resource.MetadataRequ
 
 func (r *ciSecretResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "A CI secret (`secrets.NAME`) at server, group, or repository scope. Value is write-only.",
+		MarkdownDescription: "Automation CI secret (`${{ secrets.NAME }}`) at server, group, or repository scope. Value is sensitive and write-only on read. Maps to Admin/Group/Project → Automation.",
 		Attributes:          ciSchema(true),
+	}
+}
+
+func (r *ciSecretResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var cfg ciEntryModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	if err := validateCiScope(cfg); err != nil {
+		resp.Diagnostics.AddError("Invalid CI secret configuration", err.Error())
 	}
 }
 
@@ -48,20 +60,22 @@ func (r *ciSecretResource) Create(ctx context.Context, req resource.CreateReques
 		return
 	}
 
-	scope := "secret"
+	apiScope := resolvedCiScope(plan)
+	plan.Scope = types.StringValue(apiScope)
+	configScope := "secret"
 	kind := plan.SecretKind.ValueString()
 	if kind == "" {
 		kind = "variable"
 	}
 	body := client.UpsertCiSecretRequest{
 		Name:        plan.Name.ValueString(),
-		ConfigScope: &scope,
+		ConfigScope: &configScope,
 		SecretKind:  &kind,
 		Masked:      boolPtr(plan.Masked.ValueBool()),
 		Environment: stringPtr(plan.Environment.ValueString()),
 		Value:       plan.Value.ValueString(),
 	}
-	entry, err := r.api.CreateCiSecret(ctx, plan.Scope.ValueString(), orgPathValue(plan), repoSlugValue(plan), body)
+	entry, err := r.api.CreateCiSecret(ctx, apiScope, orgPathValue(plan), repoSlugValue(plan), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Create CI secret failed", err.Error())
 		return
@@ -76,7 +90,7 @@ func (r *ciSecretResource) Read(ctx context.Context, req resource.ReadRequest, r
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	entry, err := r.api.GetCiSecretByID(ctx, state.Scope.ValueString(), orgPathValue(state), repoSlugValue(state), state.ID.ValueString())
+	entry, err := r.api.GetCiSecretByID(ctx, resolvedCiScope(state), orgPathValue(state), repoSlugValue(state), state.ID.ValueString())
 	if err != nil {
 		if client.IsNotFound(err) {
 			resp.State.RemoveResource(ctx)
@@ -98,23 +112,23 @@ func (r *ciSecretResource) Update(ctx context.Context, req resource.UpdateReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	scope := "secret"
+	configScope := "secret"
 	kind := plan.SecretKind.ValueString()
 	if kind == "" {
 		kind = "variable"
 	}
 	body := client.UpdateCiSecretRequest{
-		ConfigScope: &scope,
+		ConfigScope: &configScope,
 		SecretKind:  &kind,
 		Masked:      boolPtr(plan.Masked.ValueBool()),
 		Value:       stringPtr(plan.Value.ValueString()),
 	}
-	entry, err := r.api.UpdateCiSecret(ctx, state.Scope.ValueString(), orgPathValue(state), repoSlugValue(state), state.ID.ValueString(), body)
+	entry, err := r.api.UpdateCiSecret(ctx, resolvedCiScope(state), orgPathValue(state), repoSlugValue(state), state.ID.ValueString(), body)
 	if err != nil {
 		resp.Diagnostics.AddError("Update CI secret failed", err.Error())
 		return
 	}
-	plan.Scope = state.Scope
+	plan.Scope = types.StringValue(resolvedCiScope(state))
 	plan.OrgPath = state.OrgPath
 	plan.RepoSlug = state.RepoSlug
 	plan.Name = state.Name
@@ -132,7 +146,7 @@ func (r *ciSecretResource) Delete(ctx context.Context, req resource.DeleteReques
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	if err := r.api.DeleteCiSecret(ctx, state.Scope.ValueString(), orgPathValue(state), repoSlugValue(state), state.ID.ValueString()); err != nil && !client.IsNotFound(err) {
+	if err := r.api.DeleteCiSecret(ctx, resolvedCiScope(state), orgPathValue(state), repoSlugValue(state), state.ID.ValueString()); err != nil && !client.IsNotFound(err) {
 		resp.Diagnostics.AddError("Delete CI secret failed", err.Error())
 	}
 }
