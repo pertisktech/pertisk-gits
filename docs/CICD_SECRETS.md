@@ -19,7 +19,7 @@ Set `SECRETS_ENCRYPTION_KEY` to a 32-byte key (base64 or hex). If unset, the API
 
 | Scope | Table | Who can manage | Visibility |
 |-------|-------|----------------|------------|
-| Server | `instance_secrets` | Super admin (`Admin → CI secrets`) | All pipelines on the instance |
+| Server | `instance_secrets` | Super admin (`Admin → Automation`) | All pipelines on the instance |
 | Group | `organization_secrets` | Org owner/admin | All pipelines in the group |
 | Repository | `repository_secrets` | Repo admin or org owner/admin | Pipelines in that repository only |
 
@@ -45,7 +45,7 @@ Use the **same variable name** in each environment with a **different value**:
 
 ### UI
 
-1. Open **Admin → CI secrets** (server-wide), **Group → Secrets**, or **Project → Settings → Repository secrets**.
+1. Open **Admin → Automation** (server-wide), **Group → Settings → Automation**, or **Project → Settings → Automation**.
 2. Click **Add secret**.
 3. Set **Name** = `HARBOR_URL`, **Environment** = `dev`, **Value** = your dev Harbor URL.
 4. Repeat for `qa`, `uat`, `prd` with the same name and different values.

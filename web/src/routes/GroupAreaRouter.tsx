@@ -15,7 +15,6 @@ import { GroupDetailPage } from '../pages/GroupDetailPage'
 import { GroupImportPage } from '../pages/GroupImportPage'
 import { GroupMachineUsersPage } from '../pages/GroupMachineUsersPage'
 import { GroupMembersPage } from '../pages/GroupMembersPage'
-import { GroupSecretsPage } from '../pages/GroupSecretsPage'
 import { GroupSettingsPage } from '../pages/GroupSettingsPage'
 import { GroupTeamsPage } from '../pages/GroupTeamsPage'
 import { IssueDetailPage } from '../pages/IssueDetailPage'
@@ -82,8 +81,11 @@ export function GroupAreaRouter() {
       page = <GroupAuditPage />
       break
     case 'secrets':
-      page = <GroupSecretsPage />
-      break
+      return (
+        <RequireAuth>
+          <Navigate to={`/groups/${group.orgPath}/settings?section=automation`} replace />
+        </RequireAuth>
+      )
     case 'import':
       page = <GroupImportPage />
       break

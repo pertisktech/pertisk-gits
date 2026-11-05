@@ -87,7 +87,7 @@ const adminNavItems: { id: AdminTab; label: string; icon: LucideIcon }[] = [
   { id: 'observability', label: 'Logging & metrics', icon: Activity },
   { id: 'auth', label: 'SSO / LDAP', icon: KeyRound },
   { id: 'users', label: 'Users', icon: UserCog },
-  { id: 'ci-secrets', label: 'CI secrets', icon: KeyRound },
+  { id: 'automation', label: 'Automation', icon: Workflow },
   { id: 'backups', label: 'Backups', icon: HardDrive },
   { id: 'runners', label: 'Runners', icon: Server },
 ]
@@ -98,7 +98,6 @@ const groupNavItems: { id: GroupTab; label: string; icon: LucideIcon }[] = [
   { id: 'teams', label: 'Teams', icon: UsersRound },
   { id: 'roles', label: 'Custom roles', icon: Shield },
   { id: 'machine-users', label: 'Machine users', icon: Bot },
-  { id: 'secrets', label: 'Secrets', icon: KeyRound },
   { id: 'import', label: 'Import', icon: Download },
   { id: 'audit', label: 'Audit log', icon: ScrollText },
   { id: 'settings', label: 'Settings', icon: Settings },
@@ -238,7 +237,6 @@ export function AppSidebar({ open, collapsed, onToggleCollapse }: AppSidebarProp
               .filter((item) => item.id !== 'settings' || group.canManage)
               .filter((item) => (item.id !== 'teams' && item.id !== 'roles' && item.id !== 'machine-users') || group.canManage)
               .filter((item) => item.id !== 'members' || group.isMember)
-              .filter((item) => item.id !== 'secrets' || group.canManage)
               .map(({ id, label, icon: Icon }) => (
               <NavLink
                 key={id}
