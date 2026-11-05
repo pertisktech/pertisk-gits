@@ -43,6 +43,19 @@ pub fn ci_secrets_write_routes() -> Router<AppState> {
         )
 }
 
+/// Super-admin server-level CI secrets/variables (`/admin/ci-secrets`).
+pub fn instance_secrets_routes() -> Router<AppState> {
+    Router::new()
+        .route(
+            "/admin/ci-secrets",
+            get(list_instance_secrets).post(create_instance_secret),
+        )
+        .route(
+            "/admin/ci-secrets/{secret_id}",
+            patch(update_instance_secret).delete(delete_instance_secret),
+        )
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, sqlx::Type, PartialEq, Eq)]
 #[sqlx(type_name = "ci_config_scope", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
@@ -201,6 +214,205 @@ fn summary_from_row(
         created_at,
         updated_at,
     })
+}
+
+async fn list_instance_secrets(
+    State(state): State<AppState>,
+    auth: AuthUser,
+) -> Result<Json<Vec<CiSecretSummary>>, ApiError> {
+    crate::admin::ensure_super_admin(&state.pool, auth.user_id).await?;
+
+    let rows = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiConfigScope, bool, CiSecretEnvironment, Vec<u8>, DateTime<Utc>, DateTime<Utc>)>(
+        r#"
+        SELECT id, name, secret_kind, config_scope, masked, environment, encrypted_value, created_at, updated_at
+        FROM instance_secrets
+        ORDER BY config_scope ASC, environment ASC, name ASC
+        "#,
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(sqlx_error)?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|row| summary_from_row(&state.secrets_crypto, row))
+            .collect::<Result<Vec<_>, _>>()?,
+    ))
+}
+
+async fn create_instance_secret(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Json(body): Json<UpsertSecretRequest>,
+) -> Result<(StatusCode, Json<CiSecretSummary>), ApiError> {
+    crate::admin::ensure_super_admin(&state.pool, auth.user_id).await?;
+    let name = normalize_secret_name(&body.name)?;
+    let scope = body.config_scope.unwrap_or(CiConfigScope::Secret);
+    let kind = match scope {
+        CiConfigScope::Variable => CiSecretKind::Variable,
+        CiConfigScope::Secret => body.secret_kind.unwrap_or(CiSecretKind::Variable),
+    };
+    let masked = body.masked.unwrap_or_else(|| default_masked_for_scope(scope));
+    let environment = body.environment.unwrap_or(CiSecretEnvironment::All);
+    let encrypted = state
+        .secrets_crypto
+        .encrypt(&body.value)
+        .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+
+    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiConfigScope, bool, CiSecretEnvironment, Vec<u8>, DateTime<Utc>, DateTime<Utc>)>(
+        r#"
+        INSERT INTO instance_secrets (name, secret_kind, config_scope, masked, environment, encrypted_value, created_by)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, name, secret_kind, config_scope, masked, environment, encrypted_value, created_at, updated_at
+        "#,
+    )
+    .bind(&name)
+    .bind(kind)
+    .bind(scope)
+    .bind(masked)
+    .bind(environment)
+    .bind(&encrypted)
+    .bind(auth.user_id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(|e| {
+        if let sqlx::Error::Database(db) = &e {
+            if db.constraint() == Some("instance_secrets_name_env_key") {
+                return ApiError::from(DomainError::Validation(format!(
+                    "entry {name} already exists for environment {env}",
+                    env = environment.as_str()
+                )));
+            }
+        }
+        sqlx_error(e)
+    })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(summary_from_row(&state.secrets_crypto, row)?),
+    ))
+}
+
+async fn update_instance_secret(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(secret_id): Path<Uuid>,
+    Json(body): Json<UpdateSecretRequest>,
+) -> Result<Json<CiSecretSummary>, ApiError> {
+    crate::admin::ensure_super_admin(&state.pool, auth.user_id).await?;
+
+    let existing = sqlx::query_as::<_, (CiSecretKind, CiConfigScope, bool)>(
+        "SELECT secret_kind, config_scope, masked FROM instance_secrets WHERE id = $1",
+    )
+    .bind(secret_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(sqlx_error)?
+    .ok_or(DomainError::NotFound)?;
+
+    let scope = body.config_scope.unwrap_or(existing.1);
+    let kind = match scope {
+        CiConfigScope::Variable => CiSecretKind::Variable,
+        CiConfigScope::Secret => body.secret_kind.unwrap_or(existing.0),
+    };
+    let masked = body.masked.unwrap_or(if scope == existing.1 {
+        existing.2
+    } else {
+        default_masked_for_scope(scope)
+    });
+
+    if let Some(value) = &body.value {
+        let encrypted = state
+            .secrets_crypto
+            .encrypt(value)
+            .map_err(|e| ApiError::from(DomainError::Internal(e.to_string())))?;
+        sqlx::query(
+            r#"
+            UPDATE instance_secrets
+            SET secret_kind = $2, config_scope = $3, masked = $4, encrypted_value = $5, updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(secret_id)
+        .bind(kind)
+        .bind(scope)
+        .bind(masked)
+        .bind(&encrypted)
+        .execute(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+    } else if body.secret_kind.is_some()
+        || body.config_scope.is_some()
+        || body.masked.is_some()
+        || body.environment.is_some()
+    {
+        sqlx::query(
+            r#"
+            UPDATE instance_secrets
+            SET secret_kind = $2, config_scope = $3, masked = $4, updated_at = NOW()
+            WHERE id = $1
+            "#,
+        )
+        .bind(secret_id)
+        .bind(kind)
+        .bind(scope)
+        .bind(masked)
+        .execute(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+        if let Some(environment) = body.environment {
+            sqlx::query(
+                "UPDATE instance_secrets SET environment = $2, updated_at = NOW() WHERE id = $1",
+            )
+            .bind(secret_id)
+            .bind(environment)
+            .execute(&state.pool)
+            .await
+            .map_err(sqlx_error)?;
+        }
+    }
+
+    fetch_instance_secret_summary(&state.pool, &state.secrets_crypto, secret_id).await
+}
+
+async fn delete_instance_secret(
+    State(state): State<AppState>,
+    auth: AuthUser,
+    Path(secret_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    crate::admin::ensure_super_admin(&state.pool, auth.user_id).await?;
+
+    let result = sqlx::query("DELETE FROM instance_secrets WHERE id = $1")
+        .bind(secret_id)
+        .execute(&state.pool)
+        .await
+        .map_err(sqlx_error)?;
+
+    if result.rows_affected() == 0 {
+        return Err(DomainError::NotFound.into());
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn fetch_instance_secret_summary(
+    pool: &PgPool,
+    crypto: &SecretsCrypto,
+    secret_id: Uuid,
+) -> Result<Json<CiSecretSummary>, ApiError> {
+    let row = sqlx::query_as::<_, (Uuid, String, CiSecretKind, CiConfigScope, bool, CiSecretEnvironment, Vec<u8>, DateTime<Utc>, DateTime<Utc>)>(
+        r#"
+        SELECT id, name, secret_kind, config_scope, masked, environment, encrypted_value, created_at, updated_at
+        FROM instance_secrets
+        WHERE id = $1
+        "#,
+    )
+    .bind(secret_id)
+    .fetch_optional(pool)
+    .await
+    .map_err(sqlx_error)?
+    .ok_or(DomainError::NotFound)?;
+
+    Ok(Json(summary_from_row(crypto, row)?))
 }
 
 async fn list_org_secrets(
@@ -710,6 +922,17 @@ pub async fn load_job_secrets_for_runner(
     let predefined = build_predefined_vars(&predefined_ctx);
     let job_environment = context.effective_environment.as_deref();
 
+    // Precedence: predefined (+ auto registry) → instance → organization → repository.
+    let instance_rows = sqlx::query_as::<_, (String, CiSecretKind, CiConfigScope, bool, CiSecretEnvironment, Vec<u8>)>(
+        r#"
+        SELECT name, secret_kind, config_scope, masked, environment, encrypted_value
+        FROM instance_secrets
+        "#,
+    )
+    .fetch_all(pool)
+    .await
+    .map_err(|e| internal(e.to_string()))?;
+
     let org_rows = sqlx::query_as::<_, (String, CiSecretKind, CiConfigScope, bool, CiSecretEnvironment, Vec<u8>)>(
         r#"
         SELECT name, secret_kind, config_scope, masked, environment, encrypted_value
@@ -795,6 +1018,15 @@ pub async fn load_job_secrets_for_runner(
         );
     }
 
+    for (name, kind, scope, masked, environment, blob) in instance_rows {
+        if !environment.matches_job(job_environment) {
+            continue;
+        }
+        let value = crypto
+            .decrypt(&blob)
+            .map_err(|e| internal(e.to_string()))?;
+        merged.insert(name, (kind, scope, value, masked));
+    }
     for (name, kind, scope, masked, environment, blob) in org_rows {
         if !environment.matches_job(job_environment) {
             continue;

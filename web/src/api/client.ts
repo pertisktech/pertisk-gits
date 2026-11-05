@@ -1553,6 +1553,44 @@ export const api = {
     return response.text()
   },
 
+  listInstanceSecrets: (token: string) =>
+    request<import('./types').CiSecret[]>(`/admin/ci-secrets`, {}, token),
+
+  createInstanceSecret: (
+    token: string,
+    payload: {
+      name: string
+      secret_kind?: import('./types').CiSecretKind
+      config_scope?: import('./types').CiConfigScope
+      masked?: boolean
+      environment?: import('./types').CiSecretEnvironment
+      value: string
+    },
+  ) =>
+    request<import('./types').CiSecret>(`/admin/ci-secrets`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }, token),
+
+  updateInstanceSecret: (
+    token: string,
+    secretId: string,
+    payload: {
+      secret_kind?: import('./types').CiSecretKind
+      config_scope?: import('./types').CiConfigScope
+      masked?: boolean
+      environment?: import('./types').CiSecretEnvironment
+      value?: string
+    },
+  ) =>
+    request<import('./types').CiSecret>(`/admin/ci-secrets/${secretId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token),
+
+  deleteInstanceSecret: (token: string, secretId: string) =>
+    request<void>(`/admin/ci-secrets/${secretId}`, { method: 'DELETE' }, token),
+
   listOrgSecrets: (token: string, orgSlug: string) =>
     request<import('./types').CiSecret[]>(`/organizations/${orgApiPath(orgSlug)}/secrets`, {}, token),
 

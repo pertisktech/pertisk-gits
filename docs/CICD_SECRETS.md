@@ -1,6 +1,6 @@
 # CI/CD secrets and variables
 
-Group and repository **secrets** and **variables** for pipelines (GitLab-style). All values are encrypted at rest (AES-256-GCM).
+Server, group, and repository **secrets** and **variables** for pipelines (GitLab-style). All values are encrypted at rest (AES-256-GCM). Manage them in the UI or with the [Terraform provider](./TERRAFORM.md).
 
 | Kind | UI tab | After save | Pipeline syntax | Logs |
 |------|--------|------------|-----------------|------|
@@ -19,10 +19,15 @@ Set `SECRETS_ENCRYPTION_KEY` to a 32-byte key (base64 or hex). If unset, the API
 
 | Scope | Table | Who can manage | Visibility |
 |-------|-------|----------------|------------|
+| Server | `instance_secrets` | Super admin (`Admin → CI secrets`) | All pipelines on the instance |
 | Group | `organization_secrets` | Org owner/admin | All pipelines in the group |
 | Repository | `repository_secrets` | Repo admin or org owner/admin | Pipelines in that repository only |
 
-Repository secrets override group secrets with the **same name and environment**.
+### Merge precedence
+
+When a job loads secrets/variables (same name + matching environment), later scopes win:
+
+**predefined → server (instance) → group → repository**
 
 ## Secrets by environment
 
@@ -40,7 +45,7 @@ Use the **same variable name** in each environment with a **different value**:
 
 ### UI
 
-1. Open **Group → Secrets** (shared) or **Project → Settings → Repository secrets**.
+1. Open **Admin → CI secrets** (server-wide), **Group → Secrets**, or **Project → Settings → Repository secrets**.
 2. Click **Add secret**.
 3. Set **Name** = `HARBOR_URL`, **Environment** = `dev`, **Value** = your dev Harbor URL.
 4. Repeat for `qa`, `uat`, `prd` with the same name and different values.
@@ -95,7 +100,7 @@ After a job is claimed, the runner fetches decrypted values from `GET /api/v1/ru
 
 ## Predefined variables (GitLab-style)
 
-Every job automatically receives GitLab-compatible **predefined variables**. They are injected as shell environment variables and available via `${{ secrets.NAME }}` in pipeline YAML. User-defined group/repository secrets **override** predefined variables with the same name.
+Every job automatically receives GitLab-compatible **predefined variables**. They are injected as shell environment variables and available via `${{ secrets.NAME }}` in pipeline YAML. User-defined server/group/repository entries **override** predefined variables with the same name (see [Merge precedence](#merge-precedence)).
 
 | Variable | Description |
 |----------|-------------|

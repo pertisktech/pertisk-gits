@@ -264,6 +264,7 @@ pub async fn run() -> anyhow::Result<()> {
         .merge(audit::audit_routes())
         .merge(import::import_routes())
         .merge(admin::admin_routes())
+        .merge(ci_secrets::instance_secrets_routes())
         .merge(observability::observability_routes())
         .merge(notifications::notification_routes())
         .merge(backup::backup_routes())

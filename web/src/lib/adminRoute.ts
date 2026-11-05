@@ -1,4 +1,13 @@
-export type AdminTab = 'system' | 'health' | 'configuration' | 'observability' | 'auth' | 'users' | 'runners' | 'backups'
+export type AdminTab =
+  | 'system'
+  | 'health'
+  | 'configuration'
+  | 'observability'
+  | 'auth'
+  | 'users'
+  | 'runners'
+  | 'backups'
+  | 'ci-secrets'
 
 const ADMIN_PATH = /^\/admin(?:\/(.*))?$/
 
@@ -15,6 +24,7 @@ export function parseAdminRoute(pathname: string) {
   else if (rest === 'users') tab = 'users'
   else if (rest === 'runners') tab = 'runners'
   else if (rest === 'backups') tab = 'backups'
+  else if (rest === 'ci-secrets') tab = 'ci-secrets'
 
   return { tab, basePath: '/admin' as const }
 }

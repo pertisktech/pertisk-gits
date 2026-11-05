@@ -18,6 +18,7 @@ import { RegisterPage } from './pages/RegisterPage'
 import { RunnersPage } from './pages/RunnersPage'
 import { SuperAdminRoute } from './routes/SuperAdminRoute'
 import { AdminBackupPage } from './pages/admin/AdminBackupPage'
+import { AdminCiSecretsPage } from './pages/admin/AdminCiSecretsPage'
 import { AdminConfigurationPage } from './pages/admin/AdminConfigurationPage'
 import { AdminHealthPage } from './pages/admin/AdminHealthPage'
 import { AdminObservabilityPage } from './pages/admin/AdminObservabilityPage'
@@ -101,6 +102,7 @@ export default function App() {
                   <Route path="/admin/observability" element={<AdminObservabilityPage />} />
                   <Route path="/admin/auth" element={<AdminAuthPage />} />
                   <Route path="/admin/users" element={<AdminUsersPage />} />
+                  <Route path="/admin/ci-secrets" element={<AdminCiSecretsPage />} />
                   <Route path="/admin/backups" element={<AdminBackupPage />} />
                   <Route path="/admin/runners" element={<RunnersPage />} />
                 </Route>
